@@ -12,6 +12,12 @@ From source:
 
     python setup.py install
 
+Testing
+=======
+
+.. code:: bash
+
+    python setup.py test
 
 Contributing
 ============

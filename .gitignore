@@ -6,4 +6,7 @@ torchgeometry.egg-info/
 */**/*~
 *~
 *.swp
+.eggs/*
+.cache/*
+.pytest_cache/*
 docs/build
