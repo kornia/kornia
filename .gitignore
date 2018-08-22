@@ -1,0 +1,8 @@
+build/
+dist/
+torchvision.egg-info/
+*/**/__pycache__
+*/**/*.pyc
+*/**/*~
+*~
+docs/build
