@@ -1,8 +1,9 @@
 build/
 dist/
-torchvision.egg-info/
+torchgeometry.egg-info/
 */**/__pycache__
 */**/*.pyc
 */**/*~
 *~
+*.swp
 docs/build
