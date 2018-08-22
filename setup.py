@@ -43,6 +43,10 @@ setup(
     long_description=readme,
     license='BSD',
 
+    # Test
+    setup_requires=['pytest-runner'],
+    tests_require=['pytest'],
+
     # Package info
     packages=find_packages(exclude=('test',)),
 
