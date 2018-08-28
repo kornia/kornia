@@ -1,6 +1,41 @@
 import torch
 
 
+"""Constant with number pi
+"""
+pi = torch.Tensor([3.141592653589793])
+
+
+def rad2deg(x):
+    """Converts angles from radians to degrees.
+
+    Args:
+        x (Tensor): tensor of unspecified size.
+
+    Returns: tensor with same size as input.
+    """
+    if not torch.is_tensor(x):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(x)))
+
+    return 180. * x / pi.to(x.device).type(x.dtype)
+
+    
+def deg2rad(x):
+    """Converts angles from degrees to radians.
+
+    Args:
+        x (Tensor): tensor of unspecified size.
+
+    Returns: tensor with same size as input.
+    """
+    if not torch.is_tensor(x):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(x)))
+
+    return x * pi.to(x.device).type(x.dtype) / 180.
+
+
 def convert_points_from_homogeneous(points, eps=1e-6):
     """Converts points from homogeneous to Euclidean space.
 

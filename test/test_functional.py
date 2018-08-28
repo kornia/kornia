@@ -24,7 +24,7 @@ def tensor_to_gradcheck_var(tensor):
       `gradcheck` needs 64-bit floating point and requires gradient.
     """
     tensor = tensor.type(torch.DoubleTensor)
-    return tensor.requires_grad_()
+    return tensor.requires_grad_(True)
 
 
 class Tester(unittest.TestCase):
@@ -122,6 +122,49 @@ class Tester(unittest.TestCase):
 
         # evaluate function gradient
         res = gradcheck(dgm.transform_points, (dst_homo_src, points_src,),
+                        raise_exception=True)
+
+    def test_pi(self):
+        self.assertAlmostEqual(dgm.pi.item(), 3.141592, places=4)
+
+    def test_rad2deg(self):
+        # generate input data
+        x_rad = dgm.pi * torch.rand(2, 3, 4)
+
+        # convert radians/degrees
+        x_deg = dgm.rad2deg(x_rad)
+        x_deg_to_rad = dgm.deg2rad(x_deg)
+
+        # compute error
+        error = torch.sum((x_rad - x_deg_to_rad) ** 2)
+        self.assertAlmostEqual(error.item(), 0.0)
+        
+    def test_rad2deg_gradcheck(self):
+        # generate input data
+        x_rad = dgm.pi * torch.rand(2, 3, 4)
+
+        # evaluate function gradient
+        res = gradcheck(dgm.rad2deg, (tensor_to_gradcheck_var(x_rad),),
+                        raise_exception=True)
+
+    def test_deg2rad(self):
+        # generate input data
+        x_deg = 180. * torch.rand(2, 3, 4)
+
+        # convert radians/degrees
+        x_rad = dgm.deg2rad(x_deg)
+        x_rad_to_deg = dgm.rad2deg(x_rad)
+
+        # compute error
+        error = torch.sum((x_deg - x_rad_to_deg) ** 2)
+        self.assertAlmostEqual(error.item(), 0.0)
+        
+    def test_deg2rad_gradcheck(self):
+        # generate input data
+        x_deg = 180. * torch.rand(2, 3, 4)
+
+        # evaluate function gradient
+        res = gradcheck(dgm.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                         raise_exception=True)
 
 
