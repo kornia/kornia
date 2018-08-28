@@ -7,16 +7,17 @@ from torch.autograd import gradcheck
 
 # test utilies
 
-def create_eye_batch(batch_size):
+def create_eye_batch(batch_size, eye_size):
     """Creates a batch of identity matrices of shape Bx3x3
     """
-    return torch.eye(3).view(1, 3, 3).expand(batch_size, -1, -1)
+    return torch.eye(eye_size).view(
+        1, eye_size, eye_size).expand(batch_size, -1, -1)
 
-def create_random_homography(batch_size, std_val=1e-1):
+def create_random_homography(batch_size, eye_size, std_val=1e-1):
     """Creates a batch of random homographies of shape Bx3x3
     """
-    std = std_val * torch.rand(batch_size, 3, 3)
-    eye = create_eye_batch(batch_size)
+    std = std_val * torch.rand(batch_size, eye_size, eye_size)
+    eye = create_eye_batch(batch_size, eye_size)
     return eye + std
 
 def tensor_to_gradcheck_var(tensor):
@@ -73,19 +74,21 @@ class Tester(unittest.TestCase):
     def test_inverse(self):
         # generate input data
         batch_size = 2
-        homographies = create_random_homography(batch_size)
+        eye_size = 3  # identity 3x3
+        homographies = create_random_homography(batch_size, eye_size)
         homographies_inv = dgm.inverse(homographies)
 
         # H_inv * H == I
         res = torch.matmul(homographies_inv, homographies)
-        eye = create_eye_batch(batch_size)
+        eye = create_eye_batch(batch_size, eye_size)
         error = torch.sum((res - eye) ** 2)
         self.assertAlmostEqual(error.item(), 0.0)
 
     def test_inverse_gradcheck(self):
         # generate input data
         batch_size = 2
-        homographies = create_random_homography(batch_size)
+        eye_size = 3  # identity 3x3
+        homographies = create_random_homography(batch_size, eye_size)
         homographies = tensor_to_gradcheck_var(homographies)  # to var
 
         # evaluate function gradient
@@ -96,8 +99,9 @@ class Tester(unittest.TestCase):
         batch_size = 2
         num_points = 2
         num_dims = 2
+        eye_size = 3  # identity 3x3
         points_src = torch.rand(batch_size, 2, num_dims)
-        dst_homo_src = create_random_homography(batch_size)
+        dst_homo_src = create_random_homography(batch_size, eye_size)
 
         # transform the points from dst to ref
         points_dst = dgm.transform_points(dst_homo_src, points_src)
@@ -115,9 +119,10 @@ class Tester(unittest.TestCase):
         batch_size = 2
         num_points = 2
         num_dims = 2
+        eye_size = 3  # identity 3x3
         points_src = torch.rand(batch_size, 2, num_dims)
         points_src = tensor_to_gradcheck_var(points_src)      # to var
-        dst_homo_src = create_random_homography(batch_size)
+        dst_homo_src = create_random_homography(batch_size, eye_size)
         dst_homo_src = tensor_to_gradcheck_var(dst_homo_src)  # to var
 
         # evaluate function gradient
@@ -167,6 +172,27 @@ class Tester(unittest.TestCase):
         res = gradcheck(dgm.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                         raise_exception=True)
 
+    @unittest.skip("Need to verify output")
+    def test_inverse_pose(self):
+        # generate input data
+        batch_size = 2
+        eye_size = 4  # identity 4x4
+        dst_pose_src = create_random_homography(batch_size, eye_size)
+
+        # compute the inverse of the pose
+        src_pose_dst = dgm.inverse_pose(dst_pose_src)
+        # TODO: add assert with proper check
+
+    def test_inverse_pose_gradcheck(self):
+        # generate input data
+        batch_size = 2
+        eye_size = 4  # identity 4x4
+        dst_pose_src = create_random_homography(batch_size, eye_size)
+        dst_pose_src = tensor_to_gradcheck_var(dst_pose_src)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.inverse_pose, (dst_pose_src,),
+                        raise_exception=True)
 
 if __name__ == '__main__':
     unittest.main()
