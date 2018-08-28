@@ -1,7 +1,8 @@
 import torch
 
 __all__ = ["pi", "rad2deg", "deg2rad", "convert_points_from_homogeneous",
-           "convert_points_to_homogeneous", "transform_points", "inverse"]
+           "convert_points_to_homogeneous", "transform_points", "inverse",
+           "inverse_pose"]
 
 
 """Constant with number pi
@@ -15,7 +16,8 @@ def rad2deg(x):
     Args:
         x (Tensor): tensor of unspecified size.
 
-    Returns: tensor with same size as input.
+    Returns:
+        Tensor: tensor with same size as input.
     """
     if not torch.is_tensor(x):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -30,7 +32,8 @@ def deg2rad(x):
     Args:
         x (Tensor): tensor of unspecified size.
 
-    Returns: tensor with same size as input.
+    Returns:
+        Tensor: tensor with same size as input.
     """
     if not torch.is_tensor(x):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -113,3 +116,33 @@ def inverse(homography):
                          .format(points.shape))
     # iterate, compute inverse and stack tensors
     return torch.stack([torch.inverse(homo) for homo in homography])
+
+
+def inverse_pose(pose):
+    """Inverts a 4x4 pose.
+
+    Args:
+        points (Tensor): tensor of either size (4, 4) or (B, 4, 4).
+
+    Returns:
+        Tensor: tensor with same size as input.
+    """
+    if not torch.is_tensor(pose):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(pose)))
+    if not pose.shape[-2:] == (4, 4):
+        raise ValueError("Input size must be a 4x4 tensor. Got {}"
+                         .format(pose.shape))
+    pose_shape = pose.shape
+    if len(pose_shape) == 2:
+        pose = torch.unsqueeze(pose, dim=0)
+
+    pose_inv = pose.clone()
+    pose_inv[..., :3, 0:3] = torch.transpose(pose[..., :3, :3], 1, 2)
+    pose_inv[..., :3, 2:3] = torch.matmul(
+        -1.0 * pose_inv[..., :3, :3], pose[..., :3, 2:3])
+
+    if len(pose_shape) == 2:
+        pose_inv = torch.squeeze(pose_inv, dim=0)
+
+    return pose_inv
