@@ -6,6 +6,7 @@ torchgeometry.egg-info/
 */**/*~
 *~
 *.swp
+*.swo
 .eggs/*
 .cache/*
 .pytest_cache/*
