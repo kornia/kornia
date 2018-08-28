@@ -2,16 +2,29 @@ import unittest
 
 import torch
 import torchgeometry as dgm
+from torch.autograd import gradcheck
+
 
 # test utilies
 
 def create_eye_batch(batch_size):
+    """Creates a batch of identity matrices of shape Bx3x3
+    """
     return torch.eye(3).view(1, 3, 3).expand(batch_size, -1, -1)
 
 def create_random_homography(batch_size, std_val=1e-1):
+    """Creates a batch of random homographies of shape Bx3x3
+    """
     std = std_val * torch.rand(batch_size, 3, 3)
     eye = create_eye_batch(batch_size)
     return eye + std
+
+def tensor_to_gradcheck_var(tensor):
+    """Converts the input tensor to a valid variable to check the gradient.
+      `gradcheck` needs 64-bit floating point and requires gradient.
+    """
+    tensor = tensor.type(torch.DoubleTensor)
+    return tensor.requires_grad_()
 
 
 class Tester(unittest.TestCase):
@@ -25,6 +38,16 @@ class Tester(unittest.TestCase):
         points_h = dgm.convert_points_to_homogeneous(points)
         self.assertTrue((points_h[..., -1] == torch.ones(1, 2, 1)).all())
 
+    def test_convert_points_to_homogeneous_gradcheck(self):
+        # generate input data
+        batch_size = 2
+        points = torch.rand(batch_size, 2, 3)
+        points = tensor_to_gradcheck_var(points)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.convert_points_to_homogeneous, (points,),
+                        raise_exception=True)
+
     def test_convert_points_from_homogeneous(self):
         # generate input data
         batch_size = 2
@@ -37,6 +60,16 @@ class Tester(unittest.TestCase):
         error = torch.sum((points_h[..., :2] - points) ** 2)
         self.assertAlmostEqual(error.item(), 0.0)
 
+    def test_convert_points_from_homogeneous_gradcheck(self):
+        # generate input data
+        batch_size = 2
+        points = torch.rand(batch_size, 2, 3)
+        points = tensor_to_gradcheck_var(points)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.convert_points_from_homogeneous, (points,),
+                        raise_exception=True)
+
     def test_inverse(self):
         # generate input data
         batch_size = 2
@@ -48,6 +81,15 @@ class Tester(unittest.TestCase):
         eye = create_eye_batch(batch_size)
         error = torch.sum((res - eye) ** 2)
         self.assertAlmostEqual(error.item(), 0.0)
+
+    def test_inverse_gradcheck(self):
+        # generate input data
+        batch_size = 2
+        homographies = create_random_homography(batch_size)
+        homographies = tensor_to_gradcheck_var(homographies)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.inverse, (homographies,), raise_exception=True)
 
     def test_transform_points(self):
         # generate input data
@@ -67,6 +109,20 @@ class Tester(unittest.TestCase):
         # projected should be equal as initial
         error = torch.sum((points_src - points_dst_to_src) ** 2)
         self.assertAlmostEqual(error.item(), 0.0)
+
+    def test_transform_points_gradcheck(self):
+        # generate input data
+        batch_size = 2
+        num_points = 2
+        num_dims = 2
+        points_src = torch.rand(batch_size, 2, num_dims)
+        points_src = tensor_to_gradcheck_var(points_src)      # to var
+        dst_homo_src = create_random_homography(batch_size)
+        dst_homo_src = tensor_to_gradcheck_var(dst_homo_src)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.transform_points, (dst_homo_src, points_src,),
+                        raise_exception=True)
 
 
 if __name__ == '__main__':
