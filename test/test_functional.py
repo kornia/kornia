@@ -35,7 +35,7 @@ class Tester(unittest.TestCase):
         points = dgm.convert_points_from_homogeneous(points_h)
 
         error = torch.sum((points_h[..., :2] - points) ** 2)
-        self.assertAlmostEqual(error, 0.0)
+        self.assertAlmostEqual(error.item(), 0.0)
 
     def test_inverse(self):
         # generate input data
@@ -47,7 +47,7 @@ class Tester(unittest.TestCase):
         res = torch.matmul(homographies_inv, homographies)
         eye = create_eye_batch(batch_size)
         error = torch.sum((res - eye) ** 2)
-        self.assertAlmostEqual(error, 0.0)
+        self.assertAlmostEqual(error.item(), 0.0)
 
     def test_transform_points(self):
         # generate input data
@@ -66,7 +66,7 @@ class Tester(unittest.TestCase):
 
         # projected should be equal as initial
         error = torch.sum((points_src - points_dst_to_src) ** 2)
-        self.assertAlmostEqual(error, 0.0)
+        self.assertAlmostEqual(error.item(), 0.0)
 
 
 if __name__ == '__main__':
