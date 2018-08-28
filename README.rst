@@ -3,6 +3,20 @@ torchgeometry
 
 The torchgeometry package consists of functionalities to make Geometric Computer Vision differentiable.
 
+Quick Usage
+===========
+
+.. code:: python
+
+ import torch
+ import torchgeometry as dgm  # differential geometry
+
+ x_rad = dgm.pi * torch.rand(1, 3, 3)
+ x_deg = dgm.rad2deg(x_rad)
+
+ torch.allclose(x_rad, dgm.deg2rad(x_deg))  # True
+
+
 Installation
 ============
 
