@@ -27,6 +27,11 @@ def tensor_to_gradcheck_var(tensor):
     tensor = tensor.type(torch.DoubleTensor)
     return tensor.requires_grad_(True)
 
+def compute_mse(x, y):
+    """Computes the mean square error between the inputs
+    """
+    return torch.sqrt(((x - y) ** 2).sum())
+
 
 class Tester(unittest.TestCase):
 
@@ -58,8 +63,8 @@ class Tester(unittest.TestCase):
         # to euclidean
         points = dgm.convert_points_from_homogeneous(points_h)
 
-        error = torch.sum((points_h[..., :2] - points) ** 2)
-        self.assertAlmostEqual(error.item(), 0.0)
+        error = compute_mse(points_h[..., :2] , points)
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
 
     def test_convert_points_from_homogeneous_gradcheck(self):
         # generate input data
@@ -80,9 +85,8 @@ class Tester(unittest.TestCase):
 
         # H_inv * H == I
         res = torch.matmul(homographies_inv, homographies)
-        eye = create_eye_batch(batch_size, eye_size)
-        error = torch.sum((res - eye) ** 2)
-        self.assertAlmostEqual(error.item(), 0.0)
+        error = compute_mse(res, create_eye_batch(batch_size, eye_size))
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
 
     def test_inverse_gradcheck(self):
         # generate input data
@@ -111,8 +115,8 @@ class Tester(unittest.TestCase):
         points_dst_to_src = dgm.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
-        error = torch.sum((points_src - points_dst_to_src) ** 2)
-        self.assertAlmostEqual(error.item(), 0.0)
+        error = compute_mse(points_src, points_dst_to_src)
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
 
     def test_transform_points_gradcheck(self):
         # generate input data
@@ -141,8 +145,8 @@ class Tester(unittest.TestCase):
         x_deg_to_rad = dgm.deg2rad(x_deg)
 
         # compute error
-        error = torch.sum((x_rad - x_deg_to_rad) ** 2)
-        self.assertAlmostEqual(error.item(), 0.0)
+        error = compute_mse(x_rad, x_deg_to_rad)
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
         
     def test_rad2deg_gradcheck(self):
         # generate input data
@@ -161,8 +165,8 @@ class Tester(unittest.TestCase):
         x_rad_to_deg = dgm.rad2deg(x_rad)
 
         # compute error
-        error = torch.sum((x_deg - x_rad_to_deg) ** 2)
-        self.assertAlmostEqual(error.item(), 0.0)
+        error = compute_mse(x_deg, x_rad_to_deg)
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
         
     def test_deg2rad_gradcheck(self):
         # generate input data
@@ -172,7 +176,6 @@ class Tester(unittest.TestCase):
         res = gradcheck(dgm.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                         raise_exception=True)
 
-    @unittest.skip("Need to verify output")
     def test_inverse_pose(self):
         # generate input data
         batch_size = 2
@@ -181,7 +184,12 @@ class Tester(unittest.TestCase):
 
         # compute the inverse of the pose
         src_pose_dst = dgm.inverse_pose(dst_pose_src)
-        # TODO: add assert with proper check
+
+        # H_inv * H == I
+        res = torch.matmul(src_pose_dst, dst_pose_src)
+        error = compute_mse(res, create_eye_batch(batch_size, eye_size))
+        self.assertAlmostEqual(error.item(), 0.0, places=4)
+        
 
     def test_inverse_pose_gradcheck(self):
         # generate input data
