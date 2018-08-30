@@ -139,8 +139,8 @@ def inverse_pose(pose):
 
     pose_inv = pose.clone()
     pose_inv[..., :3, 0:3] = torch.transpose(pose[..., :3, :3], 1, 2)
-    pose_inv[..., :3, 2:3] = torch.matmul(
-        -1.0 * pose_inv[..., :3, :3], pose[..., :3, 2:3])
+    pose_inv[..., :3, 3:4] = torch.matmul(
+        -1.0 * pose_inv[..., :3, :3], pose[..., :3, 3:4])
 
     if len(pose_shape) == 2:
         pose_inv = torch.squeeze(pose_inv, dim=0)

@@ -178,10 +178,13 @@ class Tester(unittest.TestCase):
 
     def test_inverse_pose(self):
         # generate input data
-        batch_size = 2
+        batch_size = 1
         eye_size = 4  # identity 4x4
         dst_pose_src = create_random_homography(batch_size, eye_size)
+        dst_pose_src[:, -1] = 0.0
+        dst_pose_src[:, -1, -1] = 1.0
 
+        import pdb;pdb.set_trace()
         # compute the inverse of the pose
         src_pose_dst = dgm.inverse_pose(dst_pose_src)
 
