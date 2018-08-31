@@ -1,7 +1,15 @@
 import torch
+import numpy as np
 
 
 # test utilites
+
+
+def create_checkerboard(w, h, nw):
+    """Creates a synthetic checkerd board of shape HxW and window size `nw`.
+    """
+    return np.kron([[1, 0] * nw, [0, 1] * nw] * nw,
+                   np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
 
 
 def create_eye_batch(batch_size, eye_size):
@@ -23,8 +31,8 @@ def tensor_to_gradcheck_var(tensor):
     """Converts the input tensor to a valid variable to check the gradient.
       `gradcheck` needs 64-bit floating point and requires gradient.
     """
-    tensor = tensor.type(torch.DoubleTensor)
-    return tensor.requires_grad_(True)
+    assert torch.is_tensor(tensor), type(tensor)
+    return tensor.requires_grad_(True).type(torch.DoubleTensor)
 
 
 def compute_mse(x, y):
