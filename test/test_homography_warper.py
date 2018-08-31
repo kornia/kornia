@@ -1,0 +1,76 @@
+import unittest
+
+import torch
+import torchgeometry as dgm
+from torch.autograd import gradcheck
+
+import utils  # test utils
+
+
+class Tester(unittest.TestCase):
+
+    num_tests = 10
+
+    def test_homography_warper(self):
+        # generate input data
+        batch_size = 1
+        height, width = 128, 128
+        eye_size = 3  # identity 3x3
+
+        # create checkerboard
+        board = utils.create_checkerboard(height, width, 4)
+        patch_src = torch.from_numpy(board).view( \
+            1, 1, height, width).expand(batch_size, 1, height, width)
+
+        # create base homography
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+
+        # instantiate warper
+        warper = dgm.HomographyWarper(width, height)
+
+        for i in range(self.num_tests):
+            # generate homography noise
+            homo_delta = torch.zeros_like(dst_homo_src)
+            homo_delta[:, -1, -1] = 0.0
+
+            dst_homo_src_i = dst_homo_src + homo_delta
+
+            # transform the points from dst to ref
+            patch_dst = warper(patch_src, dst_homo_src_i)
+            patch_dst_to_src = warper(patch_dst, dgm.inverse(dst_homo_src_i))
+
+            # projected should be equal as initial
+            error = utils.compute_patch_error(
+                patch_dst, patch_dst_to_src, height, width)
+
+            threshold = 0.05
+            self.assertTrue(error.item() < threshold)
+
+    # TODO: fixme
+    @unittest.skip("Test freezes")
+    def test_homography_warper_gradcheck(self):
+        # generate input data
+        batch_size = 1
+        height, width = 128, 128
+        eye_size = 3  # identity 3x3
+
+        # create checkerboard
+        board = utils.create_checkerboard(height, width, 4)
+        patch_src = torch.from_numpy(board).view( \
+            1, 1, height, width).expand(batch_size, 1, height, width)
+        patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
+
+        # create base homography
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
+
+        # instantiate warper
+        warper = dgm.HomographyWarper(width, height)
+
+        # evaluate function gradient
+        res = gradcheck(warper, (patch_src, dst_homo_src,),
+                        raise_exception=True)
+
+
+if __name__ == '__main__':
+    unittest.main()
