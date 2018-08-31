@@ -1,8 +1,16 @@
 import torch
 
-__all__ = ["pi", "rad2deg", "deg2rad", "convert_points_from_homogeneous",
-           "convert_points_to_homogeneous", "transform_points", "inverse",
-           "inverse_pose"]
+
+__all__ = [
+    "pi",
+    "rad2deg",
+    "deg2rad",
+    "convert_points_from_homogeneous",
+    "convert_points_to_homogeneous",
+    "transform_points",
+    "inverse",
+    "inverse_pose",
+]
 
 
 """Constant with number pi
