@@ -46,8 +46,6 @@ class Tester(unittest.TestCase):
             threshold = 0.05
             self.assertTrue(error.item() < threshold)
 
-    # TODO: fixme
-    @unittest.skip("Test freezes")
     def test_homography_warper_gradcheck(self):
         # generate input data
         batch_size = 1
@@ -68,8 +66,8 @@ class Tester(unittest.TestCase):
         warper = dgm.HomographyWarper(width, height)
 
         # evaluate function gradient
-        res = gradcheck(warper, (patch_src, dst_homo_src,),
-                        raise_exception=True)
+        res = gradcheck(warper, (patch_src, dst_homo_src,), eps=1e-2,
+                        atol=1e-2, raise_exception=True)
 
 
 if __name__ == '__main__':
