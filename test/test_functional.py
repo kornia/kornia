@@ -38,7 +38,7 @@ class Tester(unittest.TestCase):
         # to euclidean
         points = dgm.convert_points_from_homogeneous(points_h)
 
-        error = utils.compute_mse(points_h[..., :2] , points)
+        error = utils.compute_mse(points_h[..., :2], points)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
 
     def test_convert_points_from_homogeneous_gradcheck(self):
@@ -126,7 +126,7 @@ class Tester(unittest.TestCase):
         # compute error
         error = utils.compute_mse(x_rad, x_deg_to_rad)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
-        
+
     def test_rad2deg_gradcheck(self):
         # generate input data
         x_rad = dgm.pi * torch.rand(2, 3, 4)
@@ -147,7 +147,7 @@ class Tester(unittest.TestCase):
         # compute error
         error = utils.compute_mse(x_deg, x_rad_to_deg)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
-        
+
     def test_deg2rad_gradcheck(self):
         # generate input data
         x_deg = 180. * torch.rand(2, 3, 4)
@@ -166,7 +166,6 @@ class Tester(unittest.TestCase):
         dst_pose_src[:, -1] = 0.0
         dst_pose_src[:, -1, -1] = 1.0
 
-        import pdb;pdb.set_trace()
         # compute the inverse of the pose
         src_pose_dst = dgm.inverse_pose(dst_pose_src)
 

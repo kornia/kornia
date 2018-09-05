@@ -8,8 +8,8 @@ from .functional import transform_points
 def create_meshgrid(width, height, normalized_coordinates=True):
     '''Generates a coordinate grid for an image of width(cols), height(rows).
     This is normalized to be in the range [-1,1] to be consistent with the
-    pytorch function
-    grid_sample. http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
+    pytorch function grid_sample.
+    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
     Returns a 3xN matrix.
     '''
     if normalized_coordinates:
@@ -48,7 +48,8 @@ height, width   '''
 
     def warp_grid(self, H):
         """
-        :param H: Homography or homographies (stacked) to transform all points in the grid.
+        :param H: Homography or homographies (stacked) to transform all points
+                  in the grid.
         :returns: Tensor[1, Height, Width, 2] containing transformed points in
                   normalized images space.
         """
@@ -94,15 +95,17 @@ height, width   '''
     def forward(self, patch, dst_H_src, padding_mode='zeros'):
         """
         Warps an image from dst into src's reference frame.
-        :param patch: Tensor[X,Y,Height,Width] The image to warp. Should be from dst.
+        :param patch: Tensor[X,Y,Height,Width] The image to warp.
+                      Should be from dst.
         :param dst_H_src: Tensor[3,3] The homography from src to dst.
         :param padding_mode: Either 'zeros' to replace out of bounds with zeros
                              or 'border' to choose the closest border data.
-        :returns: Tensor[X,Y,Height,Width] patch sampled at locations from src warped to dst.
+        :returns: Tensor[X,Y,Height,Width] patch sampled at locations from src
+                  warped to dst.
         """
-        assert dst_H_src.device == patch.device, \
-                "Patch and homography must be on the same device." \
-                " patch.device: {} dst_H_src.device: {}" \
-                .format(patch.device, dst_H_src.device)
-        return F.grid_sample(patch, self.warp_grid(dst_H_src),
-            'bilinear', padding_mode=padding_mode)
+        if not dst_H_src.device == patch.device:
+            raise TypeError("Patch and homography must be on the same device. \
+                            Got patch.device: {} dst_H_src.device: {}."
+                            .format(patch.device, dst_H_src.device))
+        return F.grid_sample(patch, self.warp_grid(dst_H_src), 'bilinear',
+                             padding_mode=padding_mode)

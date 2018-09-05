@@ -19,7 +19,7 @@ class Tester(unittest.TestCase):
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view( \
+        patch_src = torch.from_numpy(board).view(
             1, 1, height, width).expand(batch_size, 1, height, width)
 
         # create base homography
@@ -54,7 +54,7 @@ class Tester(unittest.TestCase):
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view( \
+        patch_src = torch.from_numpy(board).view(
             1, 1, height, width).expand(batch_size, 1, height, width)
         patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
 
