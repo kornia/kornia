@@ -27,6 +27,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.convert_points_to_homogeneous, (points,),
                         raise_exception=True)
+        self.assertTrue(res)
 
     def test_convert_points_from_homogeneous(self):
         # generate input data
@@ -49,6 +50,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.convert_points_from_homogeneous, (points,),
                         raise_exception=True)
+        self.assertTrue(res)
 
     def test_inverse(self):
         # generate input data
@@ -72,6 +74,7 @@ class Tester(unittest.TestCase):
 
         # evaluate function gradient
         res = gradcheck(dgm.inverse, (homographies,), raise_exception=True)
+        self.assertTrue(res)
 
     def test_transform_points(self):
         # generate input data
@@ -107,6 +110,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.transform_points, (dst_homo_src, points_src,),
                         raise_exception=True)
+        self.assertTrue(res)
 
     def test_pi(self):
         self.assertAlmostEqual(dgm.pi.item(), 3.141592, places=4)
@@ -130,6 +134,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
                         raise_exception=True)
+        self.assertTrue(res)
 
     def test_deg2rad(self):
         # generate input data
@@ -150,6 +155,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
                         raise_exception=True)
+        self.assertTrue(res)
 
     @unittest.skip("")
     def test_inverse_pose(self):
@@ -179,6 +185,7 @@ class Tester(unittest.TestCase):
         # evaluate function gradient
         res = gradcheck(dgm.inverse_pose, (dst_pose_src,),
                         raise_exception=True)
+        self.assertTrue(res)
 
 if __name__ == '__main__':
     unittest.main()

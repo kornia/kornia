@@ -27,12 +27,12 @@ def create_random_homography(batch_size, eye_size, std_val=1e-3):
     return eye + std.uniform_(-std_val, std_val)
 
 
-def tensor_to_gradcheck_var(tensor):
+def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     """Converts the input tensor to a valid variable to check the gradient.
       `gradcheck` needs 64-bit floating point and requires gradient.
     """
     assert torch.is_tensor(tensor), type(tensor)
-    return tensor.requires_grad_(True).type(torch.DoubleTensor)
+    return tensor.requires_grad_(requires_grad).type(dtype)
 
 
 def compute_mse(x, y):
