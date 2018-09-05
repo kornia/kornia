@@ -1,6 +1,9 @@
 torchgeometry
 =============
 
+.. image:: https://travis-ci.com/arraiy/torchgeometry.svg?branch=master
+    :target: https://travis-ci.com/arraiy/torchgeometry
+
 The torchgeometry package consists of functionalities to make Geometric Computer Vision differentiable.
 
 Quick Usage
