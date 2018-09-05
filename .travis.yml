@@ -1,5 +1,8 @@
 language: python
 
+notifications:
+  email: false
+
 matrix:
   include:
     - env: LINT_CHECK
@@ -24,5 +27,6 @@ install:
   - source activate test-environment
   - python setup.py install
   - pip install --upgrade pytest
+
 script:
 - pytest test/
