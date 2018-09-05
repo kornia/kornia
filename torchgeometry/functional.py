@@ -33,7 +33,7 @@ def rad2deg(x):
 
     return 180. * x / pi.to(x.device).type(x.dtype)
 
-    
+
 def deg2rad(x):
     """Converts angles from degrees to radians.
 
@@ -107,7 +107,7 @@ def transform_points(dst_homo_src, points_src):
     # to homogeneous
     points_src_h = convert_points_to_homogeneous(points_src)  # BxNx3
     # transform coordinates
-    points_dst_h = torch.matmul(dst_homo_src, points_src_h.transpose(1, 2))  # Bx3xN
+    points_dst_h = torch.matmul(dst_homo_src, points_src_h.transpose(1, 2))
     points_dst_h = points_dst_h.permute(0, 2, 1)  # BxNx3
     # to euclidean
     points_dst = convert_points_from_homogeneous(points_dst_h)  # BxNx2
