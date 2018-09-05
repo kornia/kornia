@@ -2,21 +2,23 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .functional import transform_points
 
-def generate_grid(width, height):
+
+def create_meshgrid(width, height, normalized_coordinates=True):
     '''Generates a coordinate grid for an image of width(cols), height(rows).
     This is normalized to be in the range [-1,1] to be consistent with the
     pytorch function
     grid_sample. http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
     Returns a 3xN matrix.
     '''
-    xs = torch.linspace(-1, 1, width)
-    ys = torch.linspace(-1, 1, height)
-    return torch.stack([
-        xs.repeat(height),
-        ys.repeat(width, 1).t().contiguous().view(-1),
-        torch.ones(width * height)
-    ], 1).t()
+    if normalized_coordinates:
+        xs = torch.linspace(-1, 1, width)
+        ys = torch.linspace(-1, 1, height)
+    else:
+        xs = torch.linspace(0, width - 1, width)
+        ys = torch.linspace(0, height - 1, height)
+    return torch.stack(torch.meshgrid([xs, ys])).view(1, 2, -1)
 
 
 class HomographyWarper(nn.Module):
@@ -40,8 +42,9 @@ height, width   '''
         else:
             self.width = width
             self.height = height
-            # This is a parmeter to support moving to GPU with call to self.cuda()
-            self.grid = generate_grid(width, height)
+            # create base grid to use for computing the flow
+            grid = create_meshgrid(height, width, normalized_coordinates=True)
+            self.grid = grid.permute(0, 2, 1)  # 1x(H*W)x2
 
     def warp_grid(self, H):
         """
@@ -49,12 +52,12 @@ height, width   '''
         :returns: Tensor[1, Height, Width, 2] containing transformed points in
                   normalized images space.
         """
-        # TODO(edgarriba): use dgm.transform_points
-        grid = self.grid.expand(H.shape[0], *self.grid.shape)
-        flow_h = torch.matmul(H, grid.to(H.device).type_as(H))
-        flow = flow_h[:, :2] / flow_h[:, -1:]  # projective
-        flow = flow.view(-1, 2, self.height, self.width)  # Nx2xHxW
-        return flow.permute(0, 2, 3, 1)  # NxHxWx2
+        batch_size = H.shape[0]  # expand grid to match the input batch size
+        grid = self.grid.expand(batch_size, *self.grid.shape[-2:])  # Nx(H*W)x2
+        # perform the actual grid transformation,
+        # the grid is copied to input device and casted to the same type
+        flow = transform_points(H, grid.to(H.device).type_as(H))    # Nx(H*W)x2
+        return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
 
     def random_warp(self, patch, dist):
         return self(patch, random_homography(dist))

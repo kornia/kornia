@@ -102,7 +102,7 @@ def transform_points(dst_homo_src, points_src):
         raise ValueError("Input size must be a three dimensional tensor")
     if not dst_homo_src.shape[0] == points_src.shape[0]:
         raise ValueError("Input batch size must be the same for both tensors")
-    if not dst_homo_src.shape[1] == (points_src.shape[1] + 1):
+    if not dst_homo_src.shape[2] == (points_src.shape[2] + 1):
         raise ValueError("Input dimensions must differe by one unit")
     # to homogeneous
     points_src_h = convert_points_to_homogeneous(points_src)  # BxNx3
