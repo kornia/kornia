@@ -49,7 +49,7 @@ class Tester(unittest.TestCase):
     def test_homography_warper_gradcheck(self):
         # generate input data
         batch_size = 1
-        height, width = 128, 128
+        height, width = 16, 16  # small patch, otherwise the test takes forever
         eye_size = 3  # identity 3x3
 
         # create checkerboard
@@ -60,14 +60,16 @@ class Tester(unittest.TestCase):
 
         # create base homography
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
-        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
+        dst_homo_src = utils.tensor_to_gradcheck_var(
+            dst_homo_src, requires_grad=False)  # to var
 
         # instantiate warper
         warper = dgm.HomographyWarper(width, height)
 
         # evaluate function gradient
-        res = gradcheck(warper, (patch_src, dst_homo_src,), eps=1e-2,
-                        atol=1e-2, raise_exception=True)
+        res = gradcheck(warper, (patch_src, dst_homo_src,),
+                        raise_exception=True)
+        self.assertTrue(res)
 
 
 if __name__ == '__main__':
