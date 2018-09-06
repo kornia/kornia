@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from .functional import transform_points
 
 
-def create_meshgrid(width, height, normalized_coordinates=True):
+def create_meshgrid(height, width, normalized_coordinates=True):
     '''Generates a coordinate grid for an image of width(cols), height(rows).
     This is normalized to be in the range [-1,1] to be consistent with the
     pytorch function grid_sample.
@@ -18,7 +18,7 @@ def create_meshgrid(width, height, normalized_coordinates=True):
     else:
         xs = torch.linspace(0, width - 1, width)
         ys = torch.linspace(0, height - 1, height)
-    return torch.stack(torch.meshgrid([xs, ys])).view(1, 2, -1)
+    return torch.stack(torch.meshgrid([ys, xs])).view(1, 2, -1)
 
 
 class HomographyWarper(nn.Module):
@@ -26,7 +26,7 @@ class HomographyWarper(nn.Module):
     Warps patches by homographies.
 height, width   '''
 
-    def __init__(self, width, height, points=None):
+    def __init__(self, height, width, points=None):
         '''
         :param width: The width of the image to warp.
         :param height: The height of the image to warp.

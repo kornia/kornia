@@ -5,7 +5,7 @@ import numpy as np
 # test utilites
 
 
-def create_checkerboard(w, h, nw):
+def create_checkerboard(h, w, nw):
     """Creates a synthetic checkerd board of shape HxW and window size `nw`.
     """
     return np.kron([[1, 0] * nw, [0, 1] * nw] * nw,
