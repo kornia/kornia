@@ -11,11 +11,15 @@ You can download the data by running:  ``./download_data.sh``
 Usage
 =====
 
+1. From root, run the docker developement or build first if needed: ``//torchgeometry/dev_en.sh``
+2. Browse to ``cd /code/torchgeometry/examples/homography_regression``
+3. Install the dependencies by running: ``./install_dependencies.sh``
+4. Now you can run the example followingthe instructions below:
+
 .. code:: bash
 
  python main.py --input-dir ./data --output-dir ./output --cuda --lr 1e-6 
 
-You can find the instructions below about how to use the script:
 
 .. code:: bash
 
