@@ -13,7 +13,13 @@ Usage
 
 .. code:: bash
 
-usage: main.py [-h] --input-dir INPUT_DIR --output-dir OUTPUT_DIR
+ python main.py --input-dir ./data --output-dir ./output --cuda --lr 1e-6 
+
+You can find the instructions below about how to use the script:
+
+.. code:: bash
+
+main.py [-h] --input-dir INPUT_DIR --output-dir OUTPUT_DIR
                [--num-iterations N] [--lr LR] [--momentum M] [--cuda]
                [--seed S] [--log-interval N]
 
