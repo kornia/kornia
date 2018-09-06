@@ -14,7 +14,7 @@ class Tester(unittest.TestCase):
     def test_homography_warper(self):
         # generate input data
         batch_size = 1
-        height, width = 128, 128
+        height, width = 128, 64
         eye_size = 3  # identity 3x3
 
         # create checkerboard
@@ -26,7 +26,7 @@ class Tester(unittest.TestCase):
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
 
         # instantiate warper
-        warper = dgm.HomographyWarper(width, height)
+        warper = dgm.HomographyWarper(height, width)
 
         for i in range(self.num_tests):
             # generate homography noise
@@ -49,7 +49,7 @@ class Tester(unittest.TestCase):
     def test_homography_warper_gradcheck(self):
         # generate input data
         batch_size = 1
-        height, width = 16, 16  # small patch, otherwise the test takes forever
+        height, width = 16, 32  # small patch, otherwise the test takes forever
         eye_size = 3  # identity 3x3
 
         # create checkerboard
@@ -64,7 +64,7 @@ class Tester(unittest.TestCase):
             dst_homo_src, requires_grad=False)  # to var
 
         # instantiate warper
-        warper = dgm.HomographyWarper(width, height)
+        warper = dgm.HomographyWarper(height, width)
 
         # evaluate function gradient
         res = gradcheck(warper, (patch_src, dst_homo_src,),
