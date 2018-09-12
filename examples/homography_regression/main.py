@@ -25,6 +25,9 @@ def load_image(file_name):
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
 
+    factor = 0.5
+    img = cv2.resize(img, fx=factor, fy=factor)
+
     # convert image to torch tensor
     tensor = dgm.utils.image_to_tensor(img).float() / 255.
     tensor = tensor.view(1, *tensor.shape)  # 1xCxHxW
@@ -42,6 +45,7 @@ class MyHomography(nn.Module):
     def reset_parameters(self, std=1e-1):
         torch.nn.init.eye_(self.homo)
         self.homo.data += torch.zeros_like(self.homo).uniform_(-std, std)
+        self.homo.data[..., -1, -1] = 1.0
 
     def forward(self):
         return torch.unsqueeze(self.homo, dim=0)  # 1x3x3
@@ -66,6 +70,8 @@ def HomographyRegressionApp():
                         help='random seed (default: 666)')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--log-interval-vis', type=int, default=100, metavar='N',
+                        help='how many batches to wait before visual logging training status')
     args = parser.parse_args()
 
     # define the device to use for inference
@@ -87,8 +93,9 @@ def HomographyRegressionApp():
     dst_homo_src = MyHomography().to(device)
 
     # setup optimizer
-    optimizer = optim.SGD(dst_homo_src.parameters(), lr=args.lr,
-                          momentum=args.momentum)
+    #optimizer = optim.SGD(dst_homo_src.parameters(), lr=args.lr,
+    #                      momentum=args.momentum)
+    optimizer = optim.Adam(dst_homo_src.parameters(), lr=args.lr, weight_decay=1e-4)
 
     # main training loop
 
@@ -98,12 +105,13 @@ def HomographyRegressionApp():
 
         # warp the reference image to the destiny with current homography
         img_src_to_dst = warper(img_src, dst_homo_src())
-        #import ipdb;ipdb.set_trace()
 
         # compute the photometric loss
-        loss = F.mse_loss(img_src_to_dst, img_dst)
-        #loss = F.smooth_l1_loss(img_src_to_dst, img_dst)
-        #loss = F.l1_loss(img_src_to_dst, img_dst)
+        #import ipdb;ipdb.set_trace()
+        #loss = F.mse_loss(img_src_to_dst, img_dst.detach(), reduction='none')
+        #loss = F.smooth_l1_loss(img_src_to_dst, img_dst.detach())
+        loss = F.l1_loss(img_src_to_dst, img_dst, reduction='none')
+        loss = loss.mean()
 
         # compute gradient and update optimizer parameters
         optimizer.zero_grad()
@@ -114,6 +122,14 @@ def HomographyRegressionApp():
             print('Train Tteration: {}/{}\tLoss: {:.6}'.format(
                   iter_idx, args.num_iterations, loss.item()))
             print(dst_homo_src.homo)
+
+        if iter_idx % args.log_interval_vis == 0:
+            # merge warped and target image for visualization
+            img_src_to_dst = warper(img_src, dst_homo_src())
+            img_vis = 255. * (0.5 * img_src_to_dst + img_dst)
+            # save warped image to disk
+            file_name = os.path.join(args.output_dir, 'warped_{}.png'.format(iter_idx))
+            cv2.imwrite(file_name, dgm.utils.tensor_to_image(img_vis))
 
 
 if __name__ == "__main__":
