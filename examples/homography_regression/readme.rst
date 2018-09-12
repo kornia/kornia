@@ -18,7 +18,7 @@ Usage
 
 .. code:: bash
 
- python main.py --input-dir ./data --output-dir ./output --cuda --lr 1e-6 
+ python main.py --input-dir ./data --output-dir ./out --num-iterations 1000 --log-interval-vis 200 --cuda --lr 1e-3
 
 
 .. code:: bash
@@ -37,9 +37,9 @@ optional arguments:
                         the path to output the results.
   --num-iterations N    number of training iterations (default: 1000)
   --lr LR               learning rate (default: 1e-3)
-  --momentum M          SGD momentum (default: 0.9)
   --cuda                enables CUDA training
   --seed S              random seed (default: 666)
   --log-interval N      how many batches to wait before logging training
                         status
-
+  --log-interval-vis N  how many batches to wait before visual logging
+                        training status
