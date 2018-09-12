@@ -18,7 +18,7 @@ def create_meshgrid(height, width, normalized_coordinates=True):
     else:
         xs = torch.linspace(0, width - 1, width)
         ys = torch.linspace(0, height - 1, height)
-    return torch.stack(torch.meshgrid([ys, xs])).view(1, 2, -1)
+    return torch.stack(torch.meshgrid([ys, xs])).view(1, 2, -1)[:, (1, 0), :]
 
 
 class HomographyWarper(nn.Module):
