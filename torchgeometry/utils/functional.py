@@ -16,7 +16,7 @@ def tensor_to_image(tensor):
        in the GPU, it will be copied back to CPU.
     """
     # TODO: add asserts and type checkings
+    tensor = torch.squeeze(tensor)
     if len(tensor.shape) == 2:
         tensor = torch.unsqueeze(tensor, dim=0)
-    tensor = tensor.permute(1, 2, 0).contiguous()
-    return torch.squeeze(tensor).cpu().numpy()
+    return tensor.permute(1, 2, 0).contiguous().cpu().detach().numpy()
