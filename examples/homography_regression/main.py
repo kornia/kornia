@@ -25,9 +25,6 @@ def load_image(file_name):
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
 
-    factor = 0.5
-    img = cv2.resize(img, fx=factor, fy=factor)
-
     # convert image to torch tensor
     tensor = dgm.utils.image_to_tensor(img).float() / 255.
     tensor = tensor.view(1, *tensor.shape)  # 1xCxHxW
@@ -42,10 +39,8 @@ class MyHomography(nn.Module):
 
         self.reset_parameters()
 
-    def reset_parameters(self, std=1e-1):
+    def reset_parameters(self):
         torch.nn.init.eye_(self.homo)
-        self.homo.data += torch.zeros_like(self.homo).uniform_(-std, std)
-        self.homo.data[..., -1, -1] = 1.0
 
     def forward(self):
         return torch.unsqueeze(self.homo, dim=0)  # 1x3x3
@@ -53,7 +48,7 @@ class MyHomography(nn.Module):
 
 def HomographyRegressionApp():
     # Training settings
-    parser = argparse.ArgumentParser(description='Homography Regression with perception loss.')
+    parser = argparse.ArgumentParser(description='Homography Regression with photometric loss.')
     parser.add_argument('--input-dir', type=str, required=True,
                         help='the path to the directory with the input data.')
     parser.add_argument('--output-dir', type=str, required=True,
@@ -62,8 +57,6 @@ def HomographyRegressionApp():
                         help='number of training iterations (default: 1000)')
     parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
                         help='learning rate (default: 1e-3)')
-    parser.add_argument('--momentum', type=float, default=0.9, metavar='M',
-                        help='SGD momentum (default: 0.9)')
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='enables CUDA training')
     parser.add_argument('--seed', type=int, default=666, metavar='S',
@@ -85,17 +78,15 @@ def HomographyRegressionApp():
     img_dst, _ = load_image(os.path.join(args.input_dir, 'img2.ppm'))
     dst_homo_src_gt = load_homography(os.path.join(args.input_dir, 'H1to2p'))
     
-    # instantiate the homography worker from `torchgeometry`
+    # instantiate the homography warper from `torchgeometry`
     height, width = img_src.shape[-2:]
     warper = dgm.HomographyWarper(height, width)
 
     # create the homography as the parameter to be optimized
     dst_homo_src = MyHomography().to(device)
 
-    # setup optimizer
-    #optimizer = optim.SGD(dst_homo_src.parameters(), lr=args.lr,
-    #                      momentum=args.momentum)
-    optimizer = optim.Adam(dst_homo_src.parameters(), lr=args.lr, weight_decay=1e-4)
+    # create optimizer
+    optimizer = optim.Adam(dst_homo_src.parameters(), lr=args.lr)
 
     # main training loop
 
@@ -107,11 +98,13 @@ def HomographyRegressionApp():
         img_src_to_dst = warper(img_src, dst_homo_src())
 
         # compute the photometric loss
-        #import ipdb;ipdb.set_trace()
-        #loss = F.mse_loss(img_src_to_dst, img_dst.detach(), reduction='none')
-        #loss = F.smooth_l1_loss(img_src_to_dst, img_dst.detach())
         loss = F.l1_loss(img_src_to_dst, img_dst, reduction='none')
-        loss = loss.mean()
+
+        # propagate the error just for a fixed window
+        w_size = 100  # window size
+        h_2, w_2 = height // 2, width // 2
+        loss = loss[..., h_2 - w_size:h_2 + w_size, w_2 - w_size:w_2 + w_size]
+        loss = torch.mean(loss)
 
         # compute gradient and update optimizer parameters
         optimizer.zero_grad()
@@ -119,7 +112,7 @@ def HomographyRegressionApp():
         optimizer.step()
 
         if iter_idx % args.log_interval == 0:
-            print('Train Tteration: {}/{}\tLoss: {:.6}'.format(
+            print('Train iteration: {}/{}\tLoss: {:.6}'.format(
                   iter_idx, args.num_iterations, loss.item()))
             print(dst_homo_src.homo)
 
@@ -128,7 +121,8 @@ def HomographyRegressionApp():
             img_src_to_dst = warper(img_src, dst_homo_src())
             img_vis = 255. * (0.5 * img_src_to_dst + img_dst)
             # save warped image to disk
-            file_name = os.path.join(args.output_dir, 'warped_{}.png'.format(iter_idx))
+            file_name = os.path.join(
+                args.output_dir, 'warped_{}.png'.format(iter_idx))
             cv2.imwrite(file_name, dgm.utils.tensor_to_image(img_vis))
 
 
