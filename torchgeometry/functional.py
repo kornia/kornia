@@ -121,7 +121,7 @@ def inverse(homography):
     """
     if not len(homography.shape) == 3:
         raise ValueError("Input size must be a three dimensional tensor. Got {}"
-                         .format(points.shape))
+                         .format(homography.shape))
     # iterate, compute inverse and stack tensors
     return torch.stack([torch.inverse(homo) for homo in homography])
 
