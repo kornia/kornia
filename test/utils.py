@@ -5,6 +5,13 @@ import numpy as np
 # test utilites
 
 
+def create_pinhole(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz):
+    """Creates pinhole model encoded to a torch.Tensor.
+    """
+    return torch.Tensor([
+        [fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz]])
+
+
 def create_checkerboard(h, w, nw):
     """Creates a synthetic checkerd board of shape HxW and window size `nw`.
     """
@@ -47,9 +54,8 @@ def compute_patch_error(x, y, h, w):
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
 
 
-def check_equal_torch(a, b):
-    dtype_val = np.finfo(a.numpy().dtype).eps
-    return (torch.norm(a - b) <= (a.numel() * dtype_val)).item()
+def check_equal_torch(a, b, eps=1e-4):
+    return (torch.norm(a - b) <= (a.numel() * eps)).item()
 
 
 def check_equal_numpy(a, b):
