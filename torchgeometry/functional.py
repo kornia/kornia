@@ -1,5 +1,7 @@
 import torch
 
+from .transforms import rtvec_to_pose
+
 
 __all__ = [
     "pi",
@@ -10,6 +12,10 @@ __all__ = [
     "transform_points",
     "inverse",
     "inverse_pose",
+    "pinhole_matrix",
+    "inv_pinhole_matrix",
+    "scale_pinhole",
+    "homography_i_H_ref",
 ]
 
 
@@ -154,3 +160,60 @@ def inverse_pose(pose):
         pose_inv = torch.squeeze(pose_inv, dim=0)
 
     return pose_inv
+
+
+def pinhole_matrix(pinhole):
+    assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    # unpack pinhole values
+    fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
+    # create output container
+    k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
+    k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)   # Nx4x4
+    # fill output with pinhole values
+    k[..., 0, 0] = fx;  k[..., 0, 2] = cx
+    k[..., 1, 1] = fy;  k[..., 1, 2] = cy
+    return k
+
+
+def inv_pinhole_matrix(pinhole, eps=1e-6):
+    assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    # unpack pinhole values
+    fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
+    # create output container
+    k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
+    k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)   # Nx4x4
+    # fill output with inverse values
+    k[..., 0, 0] = 1. / (fx + eps); k[..., 0, 2] = -1. * cx / (fx + eps)
+    k[..., 1, 1] = 1. / (fy + eps); k[..., 1, 2] = -1. * cy / (fy + eps)
+    return k
+ 
+
+def scale_pinhole(pinhole, scale):
+    """Scales the pinhole matrix from a pinhole model.
+    """
+    assert len(pinhole) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    assert len(scale) == 2 and scale.shape[1] == 1, scale.shape
+    pinhole_scaled = pinhole.clone()
+    pinhole_scaled[..., :6] = pinhole[..., :6] * scale
+    return pinhole_scaled
+
+
+def get_optical_pose_base(pinhole):
+    assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    optical_pose_parent = pinhole[..., 6:]
+    return rtvec_to_pose(optical_pose_parent)
+
+
+def homography_i_H_ref(pinhole_i, pinhole_ref):
+    """
+    Homography from pinhole_ref to pinhole_i
+    :returns matrix (4x4) that converts depth points from pinhole_ref to
+        pinhole_i
+    """
+    assert len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape
+    assert pinhole_i.shape == pinhole_ref.shape, pinhole_ref.shape
+    i_pose_base = get_optical_pose_base(pinhole_i)
+    ref_pose_base = get_optical_pose_base(pinhole_ref)
+    i_pose_ref = torch.matmul(i_pose_base, inverse_pose(ref_pose_base))
+    return torch.matmul(pinhole_matrix(pinhole_i), \
+        torch.matmul(i_pose_ref, inv_pinhole_matrix(pinhole_ref)))

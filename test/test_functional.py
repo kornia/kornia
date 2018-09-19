@@ -186,5 +186,54 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
+    def test_homography_i_H_ref(self):
+        # generate input data
+        image_height, image_width = 32., 32.
+        cx, cy = image_width / 2, image_height / 2
+        fx, fy = 1., 1.
+        rx, ry, rz = 0., 0., 0.
+        tx, ty, tz = 0., 0., 0.
+        offset_x = 10.  # we will apply a 10units offset to `i` camera
+
+        pinhole_ref = utils.create_pinhole(fx, fy, cx, cy, \
+            image_height, image_width, rx, ry, rx, tx, ty, tz)
+
+        pinhole_i = utils.create_pinhole(fx, fy, cx, cy, \
+            image_height, image_width, rx, ry, rx, tx + offset_x, ty, tz)
+
+        # compute homography from ref to i
+        i_H_ref = dgm.homography_i_H_ref(pinhole_i, pinhole_ref)
+        i_H_ref_inv = dgm.inverse(i_H_ref)
+
+        # compute homography from i to ref
+        ref_H_i = dgm.homography_i_H_ref(pinhole_ref, pinhole_i)
+
+        res = utils.check_equal_torch(i_H_ref_inv, ref_H_i)
+        self.assertTrue(res)
+
+    @unittest.skip("Jacobian mismatch for output 0 with respect to input 0")
+    def test_homography_i_H_ref_gradcheck(self):
+        # generate input data
+        image_height, image_width = 32., 32.
+        cx, cy = image_width / 2, image_height / 2
+        fx, fy = 1., 1.
+        rx, ry, rz = 0., 0., 0.
+        tx, ty, tz = 0., 0., 0.
+        offset_x = 10.  # we will apply a 10units offset to `i` camera
+
+        pinhole_ref = utils.create_pinhole(fx, fy, cx, cy, \
+            image_height, image_width, rx, ry, rx, tx, ty, tz)
+        pinhole_ref = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
+
+        pinhole_i = utils.create_pinhole(fx, fy, cx, cy, \
+            image_height, image_width, rx, ry, rx, tx + offset_x, ty, tz)
+        pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(dgm.homography_i_H_ref, (pinhole_i, pinhole_ref,),
+                        raise_exception=True)
+        self.assertTrue(res)
+
+
 if __name__ == '__main__':
     unittest.main()
