@@ -45,3 +45,12 @@ def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
+
+
+def check_equal_torch(a, b):
+    dtype_val = np.finfo(a.numpy().dtype).eps
+    return (torch.norm(a - b) <= (a.numel() * dtype_val)).item()
+
+
+def check_equal_numpy(a, b):
+    return np.linalg.norm(a - b) <= (a.size * np.finfo(np.float32).eps)
