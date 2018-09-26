@@ -6,8 +6,11 @@ from .functional import scale_pinhole, homography_i_H_ref
 
 
 class DepthWarper(nn.Module):
+    """Warps a patch by inverse depth.
+    """
     def __init__(self, pinholes, width=None, height=None):
         super(DepthWarper, self).__init__()
+        # TODO: add type and value checkings
         self.width = width
         self.height = height
         self._pinholes = pinholes
@@ -15,6 +18,7 @@ class DepthWarper(nn.Module):
         self._pinhole_ref = None  # to be filled later
 
     def compute_homographies(self, pinhole, scale):
+        # TODO: add type and value checkings
         pinhole_ref = scale_pinhole(pinhole, scale)
         if self.width is None:
             self.width = pinhole_ref[..., 4]
@@ -26,7 +30,7 @@ class DepthWarper(nn.Module):
         self._i_Hs_ref = homography_i_H_ref(pinhole_i, pinhole_ref) 
 
     def _compute_projection(self, x, y, invd):
-        point = torch.FloatTensor([[x], [y], [1.0], [invd]])).to(x.device)
+        point = torch.FloatTensor([[x], [y], [1.0], [invd]]).to(x.device)
         flow = torch.matmul(self._i_Hs_ref, point)
         z = 1. / flow[:, :, 2]
         x = (flow[:, :, 0] * z)
@@ -52,6 +56,7 @@ accurate sampling of the depth cost volume, per camera.
     # compute grids
 
     def warp(self, inv_depth_ref, roi=None):
+        # TODO: add type and value checkings
         assert self._i_Hs_ref is not None, 'call compute_homographies'
         if roi == None:
             roi = (0, self.height, 0, self.width)
@@ -62,9 +67,6 @@ accurate sampling of the depth cost volume, per camera.
         area = width * height
 
         # take sub region
-        #inv_depth_ref = inv_depth_ref.squeeze(0)[start_row:end_row, start_col:
-        #                                         end_col].contiguous()
-        import pdb;pdb.set_trace()
         inv_depth_ref = inv_depth_ref[..., start_row:end_row, \
                                            start_col:end_col].contiguous()
 
@@ -79,15 +81,20 @@ accurate sampling of the depth cost volume, per camera.
         xv = torch.ger(ones_x, x).view(area)
         yv = torch.ger(y, ones_y).view(area)
 
-        flow = [xv, yv, ones, inv_depth_ref.view(area)]
-        flow = torch.stack(flow, 0)
+        grid = [xv, yv, ones, inv_depth_ref.view(area)]
+        grid = torch.stack(grid, 0)
+        batch_size = inv_depth_ref.shape[0]
+        grid = grid.unsqueeze(0).expand(batch_size, -1, -1)
 
-        flow = torch.matmul(self._i_Hs_ref, flow)
+        flow = torch.matmul(self._i_Hs_ref, grid)
         assert len(flow.shape) == 3, flow.shape
 
+        factor_x = (self.width - 1) / 2
+        factor_y = (self.height - 1) / 2
+
         z = 1. / flow[:, 2]  # Nx(H*W)
-        x = (flow[:, 0] * z - self.width / 2) / (self.width / 2)
-        y = (flow[:, 1] * z - self.height / 2) / (self.height / 2)
+        x = (flow[:, 0] * z - factor_x) / factor_x
+        y = (flow[:, 1] * z - factor_y) / factor_y
 
         flow = torch.stack([x, y], 1)  # Nx2x(H*W)
 
@@ -96,5 +103,5 @@ accurate sampling of the depth cost volume, per camera.
         return flows.permute(0, 2, 3, 1)  # NxHxWx2
 
     def forward(self, inv_depth_ref, data):
-        # be aware that grid_sample only supports float or double type
+        # TODO: add type and value checkings
         return torch.nn.functional.grid_sample(data, self.warp(inv_depth_ref))
