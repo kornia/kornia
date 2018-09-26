@@ -1,6 +1,6 @@
 from .functional import *
 from .homography_warper import HomographyWarper
-from .depth_warper import DepthWarper
+#from .depth_warper import DepthWarper
 
 from torchgeometry import utils
 from torchgeometry import transforms

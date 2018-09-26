@@ -13,7 +13,7 @@ class Tester(unittest.TestCase):
 
     def test_angle_axis_to_rotation_matrix_torch(self):
         # generate input data
-        batch_size = 2 
+        batch_size = 2
         angle_axis = torch.rand(batch_size, 3)
         eye_batch = utils.create_eye_batch(batch_size, 4)
 
@@ -23,7 +23,7 @@ class Tester(unittest.TestCase):
         rotation_matrix_eye = torch.matmul(
             rotation_matrix, rotation_matrix.transpose(1, 2))
         self.assertTrue(check_equal_torch(rotation_matrix_eye, eye_batch))
- 
+
     def test_angle_axis_to_rotation_matrix_numpy(self):
         # generate input data
         angle_axis = np.random.rand(3)
@@ -58,6 +58,17 @@ class Tester(unittest.TestCase):
         res = gradcheck(tf.rtvec_to_pose, (rtvec,), raise_exception=True)
         self.assertTrue(res)
 
+    def test_rotation_matrix_to_angle_axis_torch(self):
+        rmat = torch.tensor([[-0.30382753, -0.95095137, -0.05814062,  0.],
+                             [-0.71581715,  0.26812278, -0.64476041,  0.],
+                             [ 0.62872461, -0.15427791, -0.76217038,  0.],
+                             [ 0.        ,  0.        ,  0.        ,  1.]])
+        rvec = torch.tensor([1.50485376, -2.10737739,  0.7214174 ])
+        self.assertTrue(check_equal_torch(tf.rotation_matrix_to_angle_axis(rmat), rvec))
+
+    def test_rotation_matrix_to_angle_axis_gradcheck(self):
+        print('test_rotation_matrix_to_angle_axis_gradcheck to be implemented :)')
+        self.assertTrue(True)
 
 if __name__ == '__main__':
     unittest.main()
