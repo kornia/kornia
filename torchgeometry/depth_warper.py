@@ -17,13 +17,16 @@ class DepthWarper(nn.Module):
         self._i_Hs_ref = None  # to be filled later
         self._pinhole_ref = None  # to be filled later
 
-    def compute_homographies(self, pinhole, scale):
+    def compute_homographies(self, pinhole, scale=None):
+        if scale is None:
+            batch_size = pinhole.shape[0]
+            scale = torch.ones(batch_size, 1).to(pinhole.device).type_as(pinhole)
         # TODO: add type and value checkings
         pinhole_ref = scale_pinhole(pinhole, scale)
         if self.width is None:
-            self.width = pinhole_ref[..., 4]
+            self.width = pinhole_ref[..., 5]
         if self.height is None:
-            self.height = pinhole_ref[..., 5]
+            self.height = pinhole_ref[..., 4]
         self._pinhole_ref = pinhole_ref
         # scale pinholes_i and compute homographies
         pinhole_i = scale_pinhole(self._pinholes, scale)
@@ -59,7 +62,7 @@ accurate sampling of the depth cost volume, per camera.
         # TODO: add type and value checkings
         assert self._i_Hs_ref is not None, 'call compute_homographies'
         if roi == None:
-            roi = (0, self.height, 0, self.width)
+            roi = (0, int(self.height), 0, int(self.width))
         start_row, end_row, start_col, end_col = roi
         assert start_row < end_row
         assert start_col < end_col
@@ -67,6 +70,7 @@ accurate sampling of the depth cost volume, per camera.
         area = width * height
 
         # take sub region
+        #import ipdb;ipdb.set_trace()
         inv_depth_ref = inv_depth_ref[..., start_row:end_row, \
                                            start_col:end_col].contiguous()
 
