@@ -47,8 +47,6 @@ class Tester(unittest.TestCase):
             patch_src[..., :-int(offset), :-int(offset)], \
             patch_dst[..., int(offset):, int(offset):])
         self.assertTrue(res)
-      
-        pass
 
 
 if __name__ == '__main__':
