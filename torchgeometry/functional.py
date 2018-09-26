@@ -191,8 +191,8 @@ def inv_pinhole_matrix(pinhole, eps=1e-6):
 def scale_pinhole(pinhole, scale):
     """Scales the pinhole matrix from a pinhole model.
     """
-    assert len(pinhole) == 2 and pinhole.shape[1] == 12, pinhole.shape
-    assert len(scale) == 2 and scale.shape[1] == 1, scale.shape
+    assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
+    assert len(scale.shape) == 2 and scale.shape[1] == 1, scale.shape
     pinhole_scaled = pinhole.clone()
     pinhole_scaled[..., :6] = pinhole[..., :6] * scale
     return pinhole_scaled
