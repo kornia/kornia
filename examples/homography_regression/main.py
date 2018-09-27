@@ -116,14 +116,45 @@ def HomographyRegressionApp():
                   iter_idx, args.num_iterations, loss.item()))
             print(dst_homo_src.homo)
 
+        def draw_rectangle(image, dst_homo_src):
+            height, width = image.shape[:2]
+            pts_src = torch.FloatTensor([[
+                [-1, -1],  # top-left
+                [1, -1], # bottom-left
+                [1, 1], # bottom-right
+                [-1, 1], # top-right
+            ]]).to(dst_homo_src.device)
+            # transform points
+            pts_dst = dgm.transform_points(dgm.inverse(dst_homo_src), pts_src)
+
+            def compute_factor(size):                               
+                return 1.0 * size / 2                               
+            def convert_coordinates_to_pixel(coordinates, factor):  
+                return factor * (coordinates + 1.0)                 
+            # compute convertion factor                             
+            x_factor = compute_factor(width-1)                
+            y_factor = compute_factor(height-1)               
+            pts_dst = pts_dst.cpu().squeeze().detach().numpy()
+            pts_dst[..., 0] = convert_coordinates_to_pixel(pts_dst[..., 0], x_factor)
+            pts_dst[..., 1] = convert_coordinates_to_pixel(pts_dst[..., 1], y_factor)
+
+            # do the actual drawing
+            #import ipdb;ipdb.set_trace()
+            for i in range(4):
+                pt_i, pt_ii = tuple(pts_dst[i % 4]), tuple(pts_dst[(i+1) % 4])
+                image = cv2.line(image, pt_i, pt_ii, (255,0,0), 3)
+            return image
+            
         if iter_idx % args.log_interval_vis == 0:
             # merge warped and target image for visualization
             img_src_to_dst = warper(img_src, dst_homo_src())
-            img_vis = 255. * (0.5 * img_src_to_dst + img_dst)
+            img_vis = 255. * 0.5 * (img_src_to_dst + img_dst)
+            img_vis_np = dgm.utils.tensor_to_image(img_vis)
+            image_draw = draw_rectangle(img_vis_np, dst_homo_src())
             # save warped image to disk
             file_name = os.path.join(
                 args.output_dir, 'warped_{}.png'.format(iter_idx))
-            cv2.imwrite(file_name, dgm.utils.tensor_to_image(img_vis))
+            cv2.imwrite(file_name, image_draw)
 
 
 if __name__ == "__main__":
