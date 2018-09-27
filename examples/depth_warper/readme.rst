@@ -19,14 +19,14 @@ Usage
 
 .. code:: bash
 
-  python main.py --input-dir ./data --output-dir ./out --frame-source-id 2 --frame-destination-id 1
+  python main.py --input-dir ./data --output-dir ./out --frame-ref-id 2 --frame-i-id 1
 
 .. code:: bash
 
 usage: main.py [-h] --input-dir INPUT_DIR --output-dir OUTPUT_DIR
                [--sequence-name SEQUENCE_NAME]
-               [--frame-source-id FRAME_SOURCE_ID]
-               [--frame-destination-id FRAME_DESTINATION_ID] [--cuda]
+               [--frame-ref-id FRAME_REF_ID]
+               [--frame-i-id FRAME_I_ID] [--cuda]
                [--seed S]
 
 Warp images by depth application.
@@ -39,9 +39,9 @@ optional arguments:
                         the path to output the results.
   --sequence-name SEQUENCE_NAME
                         the name of the sequence.
-  --frame-source-id FRAME_SOURCE_ID
-                        the id for the source image in the sequence.
-  --frame-destination-id FRAME_DESTINATION_ID
-                        the id for the destination image in the sequence.
+  --frame-ref-id FRAME_REF_ID
+                        the id for the reference image in the sequence.
+  --frame-i-id FRAME_I_ID
+                        the id for the image i in the sequence.
   --cuda                enables CUDA training
   --seed S              random seed (default: 666)

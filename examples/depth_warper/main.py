@@ -28,14 +28,9 @@ def create_pinhole(intrinsic, extrinsic, height, width):
     pinhole[3] = intrinsic[1, 2]  # cy
     pinhole[4] = height
     pinhole[5] = width
-    # TODO: implement in torchgeometry
-    rvec = cv2.Rodrigues(extrinsic[:3, :3])[0]
-    pinhole[6] = rvec[0, 0]  # rx
-    pinhole[7] = rvec[1, 0]  # rx
-    pinhole[8] = rvec[2, 0]  # rx
-    pinhole[9] = extrinsic[0, 3]   # tx
-    pinhole[10] = extrinsic[1, 3]  # ty
-    pinhole[11] = extrinsic[2, 3]  # tz
+    pinhole[6:9] = dgm.transforms.rotation_matrix_to_angle_axis(
+        torch.tensor(extrinsic))
+    pinhole[9:12] = torch.tensor(extrinsic[:, 3])
     return pinhole.view(1, -1)
 
 
@@ -90,13 +85,13 @@ def DepthWarperApp():
                         help='the path to output the results.')
     parser.add_argument('--sequence-name', type=str, default='alley_1',
                         help='the name of the sequence.')
-    parser.add_argument('--frame-source-id', type=int, default=1,
-                        help='the id for the source image in the sequence.')
+    parser.add_argument('--frame-ref-id', type=int, default=1,
+                        help='the id for the reference image in the sequence.')
     parser.add_argument(
-        '--frame-destination-id',
+        '--frame-i-id',
         type=int,
         default=2,
-        help='the id for the destination image in the sequence.')
+        help='the id for the image i in the sequence.')
     # device parameters
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='enables CUDA training')
@@ -116,28 +111,34 @@ def DepthWarperApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_src, depth_src, cam_src = load_data(root_dir, args.sequence_name,
-                                            args.frame_source_id)
-    img_dst, depth_dst, cam_dst = load_data(root_dir, args.sequence_name,
-                                            args.frame_destination_id)
+    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name,
+                                            args.frame_ref_id)
+    img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name,
+                                            args.frame_i_id)
 
     # instantiate the homography warper from `torchgeometry`
-    warper = dgm.DepthWarper(cam_src)
-    warper.compute_homographies(cam_dst)
+    warper = dgm.DepthWarper(cam_i)
+    warper.compute_homographies(cam_ref)
 
     # compute the inverse depth and warp the source image
-    inv_depth_src = 1. / depth_src
-    img_src_to_dst = warper(inv_depth_src, img_src)
+    inv_depth_ref = 1. / depth_ref
+    img_i_to_ref = warper(inv_depth_ref, img_i)
 
-    img_vis_warped = 0.5 * img_src_to_dst + img_dst
+    # generate occlusion mask
+    mask = ((img_ref - img_i_to_ref).mean(1) < 1e-1).float()
+    #import ipdb;ipdb.set_trace()
+
+    img_vis_warped = 0.5 * img_i_to_ref + img_ref
+    img_vis_warped_masked = mask*(0.5 * img_i_to_ref + img_ref)
 
     # save warped image to disk
     file_name = os.path.join(
         args.output_dir,
         'warped_{0}_to_{1}.png'.format(
-            args.frame_source_id,
-            args.frame_destination_id))
+            args.frame_i_id, args.frame_ref_id))
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255. * img_vis_warped))
+    cv2.imwrite(file_name+'mask.png', dgm.utils.tensor_to_image(255.*mask))
+    cv2.imwrite(file_name+'warpedmask.png', dgm.utils.tensor_to_image(255.*img_vis_warped_masked))
 
 
 if __name__ == "__main__":
