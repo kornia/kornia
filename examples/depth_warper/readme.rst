@@ -4,6 +4,44 @@ Warp Image by Depth
 This example shows how to use the `DepthWarper` in order to warp an image from a reference camera to a destination 
 by the depth using the epipolar geometry constraints assumig a pinhole camera model.
 
+Quick overview
+--------------
+
+.. code:: python
+
+ # load the data
+ img_src = load_image(os.path.join(args.input_dir, 'img1.ppm'))
+ img_dst = load_image(os.path.join(args.input_dir, 'img2.ppm'))
+    
+ # instantiate the homography warper from `torchgeometry`
+ height, width = img_src.shape[-2:]
+ warper = dgm.HomographyWarper(height, width)
+
+ # create the homography as the parameter to be optimized
+ # NOTE: MyHomography is an inherited nn.Module class
+ dst_homo_src = MyHomography().to(device)
+
+ # create optimizer
+ optimizer = optim.Adam(dst_homo_src.parameters(), lr=args.lr)
+
+ # main training loop
+
+ for iter_idx in range(args.num_iterations):
+     # send data to device
+     img_src, img_dst = img_src.to(device), img_dst.to(device)
+
+     # warp the reference image to the destiny with current homography
+     img_src_to_dst = warper(img_src, dst_homo_src())
+
+     # compute the photometric loss
+     loss = F.l1_loss(img_src_to_dst, img_dst)
+
+     # compute gradient and update optimizer parameters
+     optimizer.zero_grad()
+     loss.backward()
+     optimizer.step()
+
+
 Downloading the data
 ====================
 
