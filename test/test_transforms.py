@@ -59,15 +59,18 @@ class Tester(unittest.TestCase):
         self.assertTrue(res)
 
     def test_rotation_matrix_to_angle_axis_torch(self):
-        rmat = torch.tensor([[-0.30382753, -0.95095137, -0.05814062,  0.],
-                             [-0.71581715,  0.26812278, -0.64476041,  0.],
-                             [ 0.62872461, -0.15427791, -0.76217038,  0.],
-                             [ 0.        ,  0.        ,  0.        ,  1.]])
-        rvec = torch.tensor([1.50485376, -2.10737739,  0.7214174 ])
-        self.assertTrue(check_equal_torch(tf.rotation_matrix_to_angle_axis(rmat), rvec))
+        rmat = torch.tensor([[-0.30382753, -0.95095137, -0.05814062, 0.],
+                             [-0.71581715, 0.26812278, -0.64476041, 0.],
+                             [0.62872461, -0.15427791, -0.76217038, 0.],
+                             [0., 0., 0., 1.]])
+        rvec = torch.tensor([1.50485376, -2.10737739, 0.7214174])
+        self.assertTrue(
+            check_equal_torch(
+                tf.rotation_matrix_to_angle_axis(rmat),
+                rvec))
 
     def test_rotation_matrix_to_angle_axis_gradcheck(self):
-        print('test_rotation_matrix_to_angle_axis_gradcheck to be implemented :)')
+        print('test_rotation_matrix_to_angle_axis_gradcheck to be implemented :)')  # noqa
         self.assertTrue(True)
 
 if __name__ == '__main__':

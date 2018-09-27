@@ -48,7 +48,8 @@ class MyHomography(nn.Module):
 
 def HomographyRegressionApp():
     # Training settings
-    parser = argparse.ArgumentParser(description='Homography Regression with photometric loss.')
+    parser = argparse.ArgumentParser(
+        description='Homography Regression with photometric loss.')
     parser.add_argument('--input-dir', type=str, required=True,
                         help='the path to the directory with the input data.')
     parser.add_argument('--output-dir', type=str, required=True,
@@ -61,10 +62,18 @@ def HomographyRegressionApp():
                         help='enables CUDA training')
     parser.add_argument('--seed', type=int, default=666, metavar='S',
                         help='random seed (default: 666)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='how many batches to wait before logging training status')
-    parser.add_argument('--log-interval-vis', type=int, default=100, metavar='N',
-                        help='how many batches to wait before visual logging training status')
+    parser.add_argument(
+        '--log-interval',
+        type=int,
+        default=10,
+        metavar='N',
+        help='how many batches to wait before logging training status')
+    parser.add_argument(
+        '--log-interval-vis',
+        type=int,
+        default=100,
+        metavar='N',
+        help='how many batches to wait before visual logging training status')
     args = parser.parse_args()
 
     # define the device to use for inference
@@ -77,7 +86,7 @@ def HomographyRegressionApp():
     img_src, _ = load_image(os.path.join(args.input_dir, 'img1.ppm'))
     img_dst, _ = load_image(os.path.join(args.input_dir, 'img2.ppm'))
     dst_homo_src_gt = load_homography(os.path.join(args.input_dir, 'H1to2p'))
-    
+
     # instantiate the homography warper from `torchgeometry`
     height, width = img_src.shape[-2:]
     warper = dgm.HomographyWarper(height, width)
@@ -120,31 +129,33 @@ def HomographyRegressionApp():
             height, width = image.shape[:2]
             pts_src = torch.FloatTensor([[
                 [-1, -1],  # top-left
-                [1, -1], # bottom-left
-                [1, 1], # bottom-right
-                [-1, 1], # top-right
+                [1, -1],  # bottom-left
+                [1, 1],  # bottom-right
+                [-1, 1],  # top-right
             ]]).to(dst_homo_src.device)
             # transform points
             pts_dst = dgm.transform_points(dgm.inverse(dst_homo_src), pts_src)
 
-            def compute_factor(size):                               
-                return 1.0 * size / 2                               
-            def convert_coordinates_to_pixel(coordinates, factor):  
-                return factor * (coordinates + 1.0)                 
-            # compute convertion factor                             
-            x_factor = compute_factor(width-1)                
-            y_factor = compute_factor(height-1)               
+            def compute_factor(size):
+                return 1.0 * size / 2
+
+            def convert_coordinates_to_pixel(coordinates, factor):
+                return factor * (coordinates + 1.0)
+            # compute convertion factor
+            x_factor = compute_factor(width - 1)
+            y_factor = compute_factor(height - 1)
             pts_dst = pts_dst.cpu().squeeze().detach().numpy()
-            pts_dst[..., 0] = convert_coordinates_to_pixel(pts_dst[..., 0], x_factor)
-            pts_dst[..., 1] = convert_coordinates_to_pixel(pts_dst[..., 1], y_factor)
+            pts_dst[..., 0] = convert_coordinates_to_pixel(
+                pts_dst[..., 0], x_factor)
+            pts_dst[..., 1] = convert_coordinates_to_pixel(
+                pts_dst[..., 1], y_factor)
 
             # do the actual drawing
-            #import ipdb;ipdb.set_trace()
             for i in range(4):
-                pt_i, pt_ii = tuple(pts_dst[i % 4]), tuple(pts_dst[(i+1) % 4])
-                image = cv2.line(image, pt_i, pt_ii, (255,0,0), 3)
+                pt_i, pt_ii = tuple(pts_dst[i % 4]), tuple(pts_dst[(i + 1) % 4])
+                image = cv2.line(image, pt_i, pt_ii, (255, 0, 0), 3)
             return image
-            
+
         if iter_idx % args.log_interval_vis == 0:
             # merge warped and target image for visualization
             img_src_to_dst = warper(img_src, dst_homo_src())
@@ -158,4 +169,4 @@ def HomographyRegressionApp():
 
 
 if __name__ == "__main__":
-     HomographyRegressionApp()
+    HomographyRegressionApp()
