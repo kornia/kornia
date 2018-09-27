@@ -88,7 +88,6 @@ def angle_axis_to_rotation_matrix_torch(angle_axis, eps=1e-6):
     # compute rotation matrices
     rotation_matrix_normal = _compute_rotation_matrix(angle_axis, theta2)
     rotation_matrix_taylor = _compute_rotation_matrix_taylor(angle_axis)
-
     # create mask to handle both cases
     mask = (theta2 > eps).view(-1, 1, 1).to(theta2.device)
     mask_pos = (mask == True).type_as(theta2)
@@ -129,52 +128,70 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
     '''
-    quaternion = rotation_matrix_to_quaternion(rotation_matrix)
-    return quaternion_to_angle_axis(quaternion)
+    quaternion = rotation_matrix_to_quaternion_torch(rotation_matrix)
+    return quaternion_to_angle_axis_torch(quaternion)
 
 
-def rotation_matrix_to_quaternion(rotation_matrix):
+def rotation_matrix_to_quaternion_torch(rotation_matrix, eps=1e-6):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
     '''
-    quaternion = torch.zeros(4)
-    trace = rotation_matrix[0,0] + rotation_matrix[1,1] + rotation_matrix[2,2]
-    if trace >= 0.0:
-        t = torch.sqrt(trace + 1.0)
-        quaternion[0] = 0.5 * t
-        t = 0.5 / t
-        quaternion[1] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) * t
-        quaternion[2] = (rotation_matrix[0, 2] - rotation_matrix[2, 0]) * t
-        quaternion[3] = (rotation_matrix[1, 0] - rotation_matrix[0, 1]) * t
-    else:
-        i = 0
-        if rotation_matrix[1, 1] > rotation_matrix[0, 0]:
-            i = 1
+    rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
-        if rotation_matrix[2, 2] > rotation_matrix[i, i]:
-            i = 2
+    mask_d2 = rmat_t[:, 2, 2] < eps
 
-        j = (i + 1) % 3
-        k = (j + 1) % 3
-        t = torch.sqrt(rotation_matrix[i, i] - rotation_matrix[j, j] -
-                    rotation_matrix[k, k] + 1.0)
-        quaternion[i + 1] = 0.5 * t
-        t = 0.5 / t
-        quaternion[0] = (rotation_matrix[k, j] - rotation_matrix[j, k]) * t
-        quaternion[j + 1] = (rotation_matrix[j, i] + rotation_matrix[i, j]) * t
-        quaternion[k + 1] = (rotation_matrix[k, i] + rotation_matrix[i, k]) * t
-    quaternion /= torch.norm(quaternion)
-    return quaternion
+    mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:,1, 1]
+    mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:,1, 1]
 
 
-def quaternion_to_angle_axis(quaternion):
+    t0 = 1 + rmat_t[:,0, 0] - rmat_t[:,1, 1] - rmat_t[:,2, 2]
+    q0 = torch.stack([rmat_t[:,1, 2] - rmat_t[:, 2, 1],
+                   t0,  rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                   rmat_t[:, 2, 0] + rmat_t[:,0, 2]], -1)
+    t0_rep = t0.repeat(4,1).t()
+
+    t1 = 1 - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
+    q1 = torch.stack([rmat_t[:, 2,0] - rmat_t[:,0, 2],
+                    rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                    t1,  rmat_t[:, 1, 2] + rmat_t[:, 2, 1]], -1)
+    t1_rep = t1.repeat(4,1).t()
+
+    t2 = 1 - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q2 = torch.stack([rmat_t[:, 0, 1] - rmat_t[:, 1, 0],
+                     rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
+                     rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2], -1)
+    t2_rep = t2.repeat(4,1).t()
+
+    t3 = 1 + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q3 = torch.stack([t3,  rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
+                      rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
+                      rmat_t[:, 0, 1] - rmat_t[:, 1, 0]], -1)
+    t3_rep = t3.repeat(4,1).t()
+
+
+    mask_c0 = mask_d2 * mask_d0_d1
+    mask_c1 = mask_d2 * (1 - mask_d0_d1)
+    mask_c2 = (1 - mask_d2) * mask_d0_nd1
+    mask_c3 = (1 - mask_d2) * (1 - mask_d0_nd1)
+    mask_c0 = mask_c0.view(-1, 1).type_as(q0)
+    mask_c1 = mask_c1.view(-1, 1).type_as(q1)
+    mask_c2 = mask_c2.view(-1, 1).type_as(q2)
+    mask_c3 = mask_c3.view(-1, 1).type_as(q3)
+
+    q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 + t2_rep * mask_c2 + t3_rep * mask_c3)
+    q *= 0.5
+    return q
+
+
+def quaternion_to_angle_axis_torch(quaternion):
     '''
     Convert quaternion vector to angle axis of rotation
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
     :param quaternion: Tensor vector of length 4
     :return: angle axis of rotation (vector of length 3)
     '''
-    assert quaternion.size(0) == 4, 'Input must be a vector of length 4'
+    assert quaternion.size(1) == 4, 'Input must be a vector of length 4'
     normalizer = 1 / torch.norm(quaternion)
     q1 = quaternion[1] * normalizer
     q2 = quaternion[2] * normalizer
