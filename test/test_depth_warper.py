@@ -19,12 +19,23 @@ class Tester(unittest.TestCase):
         tx, ty, tz = 0., 0., 0.
         offset = 1.  # we will apply a 1unit offset to `i` camera
 
-        pinhole_src = utils.create_pinhole(fx, fy, cx, cy, \
-            height, width, rx, ry, rx, tx, ty, tz)
+        pinhole_src = utils.create_pinhole(
+            fx, fy, cx, cy, height, width, rx, ry, rx, tx, ty, tz)
         pinhole_src = pinhole_src.expand(batch_size, -1)
 
-        pinhole_dst = utils.create_pinhole(fx, fy, cx, cy, \
-            height, width, rx, ry, rx, tx + offset, ty + offset, tz)
+        pinhole_dst = utils.create_pinhole(
+            fx,
+            fy,
+            cx,
+            cy,
+            height,
+            width,
+            rx,
+            ry,
+            rx,
+            tx + offset,
+            ty + offset,
+            tz)
         pinhole_dst = pinhole_dst.expand(batch_size, -1)
 
         # create checkerboard
@@ -34,7 +45,9 @@ class Tester(unittest.TestCase):
 
         # instantiate warper and compute relative homographies
         warper = dgm.DepthWarper(pinhole_src, height, width)
-        warper.compute_homographies(pinhole_dst, scale=torch.ones(batch_size, 1))
+        warper.compute_homographies(
+            pinhole_dst, scale=torch.ones(
+                batch_size, 1))
 
         # generate synthetic inverse depth
         inv_depth_src = torch.ones(batch_size, 1, height, width)
@@ -43,8 +56,8 @@ class Tester(unittest.TestCase):
         patch_dst = warper(inv_depth_src, patch_src)
 
         # compute error
-        res = utils.check_equal_torch( \
-            patch_src[..., :-int(offset), :-int(offset)], \
+        res = utils.check_equal_torch(
+            patch_src[..., :-int(offset), :-int(offset)],
             patch_dst[..., int(offset):, int(offset):])
         self.assertTrue(res)
 

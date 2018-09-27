@@ -29,7 +29,7 @@ def create_pinhole(intrinsic, extrinsic, height, width):
     pinhole[4] = height
     pinhole[5] = width
     # TODO: implement in torchgeometry
-    rvec = cv2.Rodrigues(extrinsic[:3,:3])[0]
+    rvec = cv2.Rodrigues(extrinsic[:3, :3])[0]
     pinhole[6] = rvec[0, 0]  # rx
     pinhole[7] = rvec[1, 0]  # rx
     pinhole[8] = rvec[2, 0]  # rx
@@ -69,17 +69,20 @@ def load_data(root_path, sequence_name, frame_id):
     depth_file = os.path.join(root_path, 'depth', sequence_name,
                               file_name + '.dpt')
     camera_file = os.path.join(root_path, 'camdata_left', sequence_name,
-                              file_name + '.cam')
+                               file_name + '.cam')
     # load the actual data
     image = load_image(image_file)
     depth = load_depth(depth_file)
-    camera_data = load_camera_data(camera_file) 
-    camera = create_pinhole(*camera_data, *image.shape[-2:])
+    # load camera data and create pinhole
+    height, width = image.shape[-2:]
+    intrinsics, extrinsics = load_camera_data(camera_file)
+    camera = create_pinhole(intrinsics, extrinsics, height, width)
     return image, depth, camera
 
 
 def DepthWarperApp():
-    parser = argparse.ArgumentParser(description='Warp images by depth application.')
+    parser = argparse.ArgumentParser(
+        description='Warp images by depth application.')
     # data parameters
     parser.add_argument('--input-dir', type=str, required=True,
                         help='the path to the directory with the input data.')
@@ -89,8 +92,11 @@ def DepthWarperApp():
                         help='the name of the sequence.')
     parser.add_argument('--frame-source-id', type=int, default=1,
                         help='the id for the source image in the sequence.')
-    parser.add_argument('--frame-destination-id', type=int, default=2,
-                        help='the id for the destination image in the sequence.')
+    parser.add_argument(
+        '--frame-destination-id',
+        type=int,
+        default=2,
+        help='the id for the destination image in the sequence.')
     # device parameters
     parser.add_argument('--cuda', action='store_true', default=False,
                         help='enables CUDA training')
@@ -114,7 +120,7 @@ def DepthWarperApp():
                                             args.frame_source_id)
     img_dst, depth_dst, cam_dst = load_data(root_dir, args.sequence_name,
                                             args.frame_destination_id)
- 
+
     # instantiate the homography warper from `torchgeometry`
     warper = dgm.DepthWarper(cam_src)
     warper.compute_homographies(cam_dst)
@@ -123,15 +129,16 @@ def DepthWarperApp():
     inv_depth_src = 1. / depth_src
     img_src_to_dst = warper(inv_depth_src, img_src)
 
-    #import ipdb;ipdb.set_trace()
     img_vis_warped = 0.5 * img_src_to_dst + img_dst
 
-    ## save warped image to disk
-    file_name = os.path.join(args.output_dir, \
-        'warped_{0}_to_{1}.png'.format(args.frame_source_id, \
-                                       args.frame_destination_id))
+    # save warped image to disk
+    file_name = os.path.join(
+        args.output_dir,
+        'warped_{0}_to_{1}.png'.format(
+            args.frame_source_id,
+            args.frame_destination_id))
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255. * img_vis_warped))
 
 
 if __name__ == "__main__":
-     DepthWarperApp()
+    DepthWarperApp()

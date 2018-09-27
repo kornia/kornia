@@ -91,8 +91,8 @@ def angle_axis_to_rotation_matrix_torch(angle_axis, eps=1e-6):
 
     # create mask to handle both cases
     mask = (theta2 > eps).view(-1, 1, 1).to(theta2.device)
-    mask_pos = (mask == True).type_as(theta2)
-    mask_neg = (mask == False).type_as(theta2)
+    mask_pos = (mask).type_as(theta2)
+    mask_neg = (mask == False).type_as(theta2)  # noqa
 
     # create output pose matrix
     batch_size = angle_axis.shape[0]
@@ -106,13 +106,15 @@ def angle_axis_to_rotation_matrix_torch(angle_axis, eps=1e-6):
 
 def angle_axis_to_rotation_matrix(angle_axis):
     if isinstance(angle_axis, np.ndarray):
-       return angle_axis_to_rotation_matrix_numpy(angle_axis)
+        return angle_axis_to_rotation_matrix_numpy(angle_axis)
     elif isinstance(angle_axis, torch.Tensor):
-       if not (len(angle_axis.shape) == 2 and angle_axis.shape[1] == 3):
-           raise ValueError("Input must be a two dimensional torch.Tensor.")
-       return angle_axis_to_rotation_matrix_torch(angle_axis)
+        if not (len(angle_axis.shape) == 2 and angle_axis.shape[1] == 3):
+            raise ValueError("Input must be a two dimensional torch.Tensor.")
+        return angle_axis_to_rotation_matrix_torch(angle_axis)
     else:
-       raise NotImplementedError('Not suported type {}'.format(type(angle_axis)))
+        raise NotImplementedError(
+            'Not suported type {}'.format(
+                type(angle_axis)))
 
 
 def rtvec_to_pose(rtvec):
@@ -138,7 +140,8 @@ def rotation_matrix_to_quaternion(rotation_matrix):
     Convert 4x4 rotation matrix to 4d quaternion vector
     '''
     quaternion = torch.zeros(4)
-    trace = rotation_matrix[0,0] + rotation_matrix[1,1] + rotation_matrix[2,2]
+    trace = rotation_matrix[0, 0] + \
+        rotation_matrix[1, 1] + rotation_matrix[2, 2]
     if trace >= 0.0:
         t = torch.sqrt(trace + 1.0)
         quaternion[0] = 0.5 * t
@@ -157,7 +160,7 @@ def rotation_matrix_to_quaternion(rotation_matrix):
         j = (i + 1) % 3
         k = (j + 1) % 3
         t = torch.sqrt(rotation_matrix[i, i] - rotation_matrix[j, j] -
-                    rotation_matrix[k, k] + 1.0)
+                       rotation_matrix[k, k] + 1.0)
         quaternion[i + 1] = 0.5 * t
         t = 0.5 / t
         quaternion[0] = (rotation_matrix[k, j] - rotation_matrix[j, k]) * t

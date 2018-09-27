@@ -195,11 +195,22 @@ class Tester(unittest.TestCase):
         tx, ty, tz = 0., 0., 0.
         offset_x = 10.  # we will apply a 10units offset to `i` camera
 
-        pinhole_ref = utils.create_pinhole(fx, fy, cx, cy, \
-            image_height, image_width, rx, ry, rx, tx, ty, tz)
+        pinhole_ref = utils.create_pinhole(
+            fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
 
-        pinhole_i = utils.create_pinhole(fx, fy, cx, cy, \
-            image_height, image_width, rx, ry, rx, tx + offset_x, ty, tz)
+        pinhole_i = utils.create_pinhole(
+            fx,
+            fy,
+            cx,
+            cy,
+            image_height,
+            image_width,
+            rx,
+            ry,
+            rx,
+            tx + offset_x,
+            ty,
+            tz)
 
         # compute homography from ref to i
         i_H_ref = dgm.homography_i_H_ref(pinhole_i, pinhole_ref)
@@ -221,12 +232,23 @@ class Tester(unittest.TestCase):
         tx, ty, tz = 0., 0., 0.
         offset_x = 10.  # we will apply a 10units offset to `i` camera
 
-        pinhole_ref = utils.create_pinhole(fx, fy, cx, cy, \
-            image_height, image_width, rx, ry, rx, tx, ty, tz)
+        pinhole_ref = utils.create_pinhole(
+            fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
         pinhole_ref = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
 
-        pinhole_i = utils.create_pinhole(fx, fy, cx, cy, \
-            image_height, image_width, rx, ry, rx, tx + offset_x, ty, tz)
+        pinhole_i = utils.create_pinhole(
+            fx,
+            fy,
+            cx,
+            cy,
+            image_height,
+            image_width,
+            rx,
+            ry,
+            rx,
+            tx + offset_x,
+            ty,
+            tz)
         pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
 
         # evaluate function gradient
