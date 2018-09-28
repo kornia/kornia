@@ -4,7 +4,16 @@ torchgeometry
 .. image:: https://travis-ci.com/arraiy/torchgeometry.svg?branch=master
     :target: https://travis-ci.com/arraiy/torchgeometry
 
-The torchgeometry package consists of functionalities to make Geometric Computer Vision differentiable.
+What is torchgeometry?
+===========
+The torchgeometry package consists of a set of routines and differentiable modules to solve generic geometry problems. In its core, the package uses the efficiency of Pytorch as its main backend in addition to take the advantage of the autograd to define and compute the gradient of complex functions. In this first version, we provide different functionalities designed mainly for computer vision applications such as image and tensors warping modules which rely on the epipolar geometry theory. The roadmap will include to add more and more functionalities so that developers in the short term can use the package with the purpose to optimize their loss functions to solve geometry problems.
+
+Version v0.1.0 focuses on Image and tensor warping functions such as:
+
+* Calibration
+* Epipolar geometry
+* Homography
+* Depth
 
 Quick Usage
 ===========
@@ -48,6 +57,16 @@ Testing
 .. code:: bash
 
     python setup.py test
+
+Cite
+============
+If you are using DGM in your research-related documents, it is recommended that you cite DGM poster. 
+
+
+Future work
+============
+The `roadmap <https://github.com/arraiy/torchgeometry/issues/1>`_ will add more functions to allow developers to solve geometric problems.
+
 
 Contributing
 ============
