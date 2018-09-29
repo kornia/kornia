@@ -6,7 +6,7 @@ torchgeometry
 
 What is torchgeometry?
 ===========
-The torchgeometry package consists of a set of routines and differentiable modules to solve generic geometry problems. In its core, the package uses the efficiency of Pytorch as its main backend in addition to take the advantage of the autograd to define and compute the gradient of complex functions. In this first version, we provide different functionalities designed mainly for computer vision applications such as image and tensors warping modules which rely on the epipolar geometry theory. The roadmap will include to add more and more functionalities so that developers in the short term can use the package with the purpose to optimize their loss functions to solve geometry problems.
+The torchgeometry package consists of a set of routines and differentiable modules to solve generic geometry problems. At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of autograd to define and compute the gradient of complex functions. In this first version, we provide different functions designed mainly for computer vision applications, such as image and tensors warping modules which rely on the epipolar geometry theory. The roadmap will include adding more and more functionality so that developers in the short term can use the package for the purpose of optimizing their loss functions to solve geometry problems.
 
 Version v0.1.0 focuses on Image and tensor warping functions such as:
 
