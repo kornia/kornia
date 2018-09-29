@@ -20,7 +20,7 @@ if [[ -z "$DATA_DIR" ]] ; then
     docker_data_volume="-v $(pwd):$(pwd)"
 fi
 
-docker_command=nvidia-docker
+docker_command=docker
 
 repo=${ARRAIY_REPO:=arraiy/torchgeometry}
 

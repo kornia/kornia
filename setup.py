@@ -48,7 +48,7 @@ setup(
     tests_require=['pytest'],
 
     # Package info
-    packages=find_packages(exclude=('test', 'examples',)),
+    packages=find_packages(exclude=('docs', 'test', 'examples',)),
 
     zip_safe=True,
     install_requires=requirements,
