@@ -114,7 +114,7 @@ def DepthWarperApp():
     img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name,
                                             args.frame_ref_id)
     img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name,
-                                            args.frame_i_id)
+                                      args.frame_i_id)
 
     # instantiate the homography warper from `torchgeometry`
     warper = dgm.DepthWarper(cam_i)
@@ -126,10 +126,9 @@ def DepthWarperApp():
 
     # generate occlusion mask
     mask = ((img_ref - img_i_to_ref).mean(1) < 1e-1).float()
-    #import ipdb;ipdb.set_trace()
 
     img_vis_warped = 0.5 * img_i_to_ref + img_ref
-    img_vis_warped_masked = mask*(0.5 * img_i_to_ref + img_ref)
+    img_vis_warped_masked = mask * (0.5 * img_i_to_ref + img_ref)
 
     # save warped image to disk
     file_name = os.path.join(
@@ -137,8 +136,9 @@ def DepthWarperApp():
         'warped_{0}_to_{1}.png'.format(
             args.frame_i_id, args.frame_ref_id))
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255. * img_vis_warped))
-    cv2.imwrite(file_name+'mask.png', dgm.utils.tensor_to_image(255.*mask))
-    cv2.imwrite(file_name+'warpedmask.png', dgm.utils.tensor_to_image(255.*img_vis_warped_masked))
+    cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255. * mask))
+    cv2.imwrite(file_name + 'warpedmask.png',
+                dgm.utils.tensor_to_image(255. * img_vis_warped_masked))
 
 
 if __name__ == "__main__":
