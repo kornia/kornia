@@ -60,7 +60,18 @@ Testing
 
 Cite
 ============
-If you are using DGM in your research-related documents, it is recommended that you cite DGM poster. 
+
+If you are using torchgeometry in your research-related documents, it is recommended that you cite the poster.
+
+.. code:: bash
+
+ @misc{Arraiy2018,
+  author    = {E. Riba, M Fathollahi, W. Chaney, E. Rublee and G. Bradski}
+  title     = {torchgeometry: when PyTorch meets geometry},
+  booktitle = {PyTorch Developer Conference},
+  year      = {2018},
+  url       = {https://drive.google.com/file/d/1xiao1Xj9WzjJ08YY_nYwsthE-wxfyfhG/view?usp=sharing}
+ }
 
 
 Future work
