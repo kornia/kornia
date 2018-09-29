@@ -1,5 +1,10 @@
 import torch
 
+__all__ = [
+    "tensor_to_image",
+    "image_to_tensor",
+]
+
 
 def image_to_tensor(image):
     """Converts a numpy image to a torch.Tensor image.
