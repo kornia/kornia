@@ -1,5 +1,8 @@
-torchgeometry
-=============
+
+.. image:: https://raw.githubusercontent.com/arraiy/torchgeometry/master/docs/source/_static/img/torchgeometry_logo.svg
+  :align: center
+
+--------------------------------------------------------------------------------
 
 .. image:: https://travis-ci.com/arraiy/torchgeometry.svg?branch=master
     :target: https://travis-ci.com/arraiy/torchgeometry
