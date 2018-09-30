@@ -1,0 +1,450 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>torchgeometry &mdash; Torchgeometry master documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
+  <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="#">
+          
+
+          
+            
+            <img src="_static/arraiy-logo-large-final.svg" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                master (0.1.0 )
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <!-- Local TOC -->
+              <div class="local-toc"><ul>
+<li><a class="reference internal" href="#">torchgeometry</a><ul>
+<li><a class="reference internal" href="#pinhole">Pinhole</a></li>
+<li><a class="reference internal" href="#convertions">Convertions</a></li>
+<li><a class="reference internal" href="#utilities">Utilities</a></li>
+<li><a class="reference internal" href="#containers">Containers</a></li>
+</ul>
+</li>
+</ul>
+</div>
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">Torchgeometry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="#">Docs</a> &raquo;</li>
+        
+      <li>torchgeometry</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="torchgeometry">
+<h1>torchgeometry<a class="headerlink" href="#torchgeometry" title="Permalink to this headline">¶</a></h1>
+<p>The <a class="reference internal" href="#module-torchgeometry" title="torchgeometry"><code class="xref py py-mod docutils literal"><span class="pre">torchgeometry</span></code></a> package consists of a set of routines and differentiable modules to solve generic geometry problems. At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of autograd to define and compute the gradient of complex functions. In this first version, we provide different functions designed mainly for computer vision applications, such as image and tensors warping modules which rely on the epipolar geometry theory. The roadmap will include adding more and more functionality so that developers in the short term can use the package for the purpose of optimizing their loss functions to solve geometry problems.</p>
+<p>Version v0.1.0 focuses on Image and tensor warping functions such as:</p>
+<ul class="simple">
+<li>Calibration</li>
+<li>Epipolar geometry</li>
+<li>Homography</li>
+<li>Depth</li>
+</ul>
+<span class="target" id="module-torchgeometry"></span><div class="section" id="pinhole">
+<h2>Pinhole<a class="headerlink" href="#pinhole" title="Permalink to this headline">¶</a></h2>
+<dl class="function">
+<dt id="torchgeometry.inverse">
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse</code><span class="sig-paren">(</span><em>homography</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.inverse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Batched version of torch.inverse(…)</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.inverse_pose">
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse_pose</code><span class="sig-paren">(</span><em>pose</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.inverse_pose" title="Permalink to this definition">¶</a></dt>
+<dd><p>Inverts a 4x4 pose.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of either size (4, 4) or (B, 4, 4).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.pinhole_matrix">
+<code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.inv_pinhole_matrix">
+<code class="descclassname">torchgeometry.</code><code class="descname">inv_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.inv_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.scale_pinhole">
+<code class="descclassname">torchgeometry.</code><code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinhole</em>, <em>scale</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scales the pinhole matrix from a pinhole model.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.homography_i_H_ref">
+<code class="descclassname">torchgeometry.</code><code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
+<dd><p>Homography from pinhole_ref to pinhole_i
+:returns matrix (4x4) that converts depth points from pinhole_ref to</p>
+<blockquote>
+<div>pinhole_i</div></blockquote>
+</dd></dl>
+
+</div>
+<div class="section" id="convertions">
+<h2>Convertions<a class="headerlink" href="#convertions" title="Permalink to this headline">¶</a></h2>
+<dl class="function">
+<dt id="torchgeometry.rad2deg">
+<code class="descclassname">torchgeometry.</code><code class="descname">rad2deg</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.rad2deg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts angles from radians to degrees.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>x</strong> (<em>Tensor</em>) – tensor of unspecified size.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.deg2rad">
+<code class="descclassname">torchgeometry.</code><code class="descname">deg2rad</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.deg2rad" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts angles from degrees to radians.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>x</strong> (<em>Tensor</em>) – tensor of unspecified size.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.convert_points_from_homogeneous">
+<code class="descclassname">torchgeometry.</code><code class="descname">convert_points_from_homogeneous</code><span class="sig-paren">(</span><em>points</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.convert_points_from_homogeneous" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts points from homogeneous to Euclidean space.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of N-dimensional points of size (B, D, N).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of N-1-dimensional points of size (B, D, N-1).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.convert_points_to_homogeneous">
+<code class="descclassname">torchgeometry.</code><code class="descname">convert_points_to_homogeneous</code><span class="sig-paren">(</span><em>points</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.convert_points_to_homogeneous" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts points from Euclidean to homogeneous space.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of N-dimensional points of size (B, D, N).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of N+1-dimensional points of size (B, D, N+1).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.transform_points">
+<code class="descclassname">torchgeometry.</code><code class="descname">transform_points</code><span class="sig-paren">(</span><em>dst_homo_src</em>, <em>points_src</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.transform_points" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies Transformation to points.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="utilities">
+<h2>Utilities<a class="headerlink" href="#utilities" title="Permalink to this headline">¶</a></h2>
+<dl class="function">
+<dt id="torchgeometry.tensor_to_image">
+<code class="descclassname">torchgeometry.</code><code class="descname">tensor_to_image</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.tensor_to_image" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts a torch.Tensor image to a numpy image. In case the tensor is
+in the GPU, it will be copied back to CPU.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.image_to_tensor">
+<code class="descclassname">torchgeometry.</code><code class="descname">image_to_tensor</code><span class="sig-paren">(</span><em>image</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.image_to_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts a numpy image to a torch.Tensor image.</p>
+</dd></dl>
+
+</div>
+<div class="section" id="containers">
+<h2>Containers<a class="headerlink" href="#containers" title="Permalink to this headline">¶</a></h2>
+<dl class="class">
+<dt id="torchgeometry.HomographyWarper">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">HomographyWarper</code><span class="sig-paren">(</span><em>height</em>, <em>width</em>, <em>points=None</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.HomographyWarper" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div>Warps patches by homographies.</div></blockquote>
+<p>height, width</p>
+<dl class="method">
+<dt id="torchgeometry.HomographyWarper.forward">
+<code class="descname">forward</code><span class="sig-paren">(</span><em>patch</em>, <em>dst_H_src</em>, <em>padding_mode=’zeros’</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.HomographyWarper.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps an image from dst into src’s reference frame.
+:param patch: Tensor[X,Y,Height,Width] The image to warp.</p>
+<blockquote>
+<div>Should be from dst.</div></blockquote>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>dst_H_src</strong> – Tensor[3,3] The homography from src to dst.</li>
+<li><strong>padding_mode</strong> – Either ‘zeros’ to replace out of bounds with zeros
+or ‘border’ to choose the closest border data.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">Tensor[X,Y,Height,Width] patch sampled at locations from src
+warped to dst.</p>
+</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="method">
+<dt id="torchgeometry.HomographyWarper.warp_grid">
+<code class="descname">warp_grid</code><span class="sig-paren">(</span><em>H</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.HomographyWarper.warp_grid" title="Permalink to this definition">¶</a></dt>
+<dd><table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>H</strong> – Homography or homographies (stacked) to transform all points
+in the grid.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Tensor[1, Height, Width, 2] containing transformed points in
+normalized images space.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.DepthWarper">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">DepthWarper</code><span class="sig-paren">(</span><em>pinholes</em>, <em>width=None</em>, <em>height=None</em><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.DepthWarper" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps a patch by inverse depth.</p>
+<dl class="method">
+<dt id="torchgeometry.DepthWarper.compute_subpixel_step">
+<code class="descname">compute_subpixel_step</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#torchgeometry.DepthWarper.compute_subpixel_step" title="Permalink to this definition">¶</a></dt>
+<dd><p>This computes the required inverse depth step to achieve sub pixel
+accurate sampling of the depth cost volume, per camera.</p>
+<blockquote>
+<div>Szeliski, Richard, and Daniel Scharstein.
+“Symmetric sub-pixel stereo matching.” European Conference on Computer
+Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Arraiy, Inc..
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    <script type="text/javascript">
+        var DOCUMENTATION_OPTIONS = {
+            URL_ROOT:'./',
+            VERSION:'master',
+            LANGUAGE:'None',
+            COLLAPSE_INDEX:false,
+            FILE_SUFFIX:'.html',
+            HAS_SOURCE:  true,
+            SOURCELINK_SUFFIX: '.txt'
+        };
+    </script>
+      <script type="text/javascript" src="_static/jquery.js"></script>
+      <script type="text/javascript" src="_static/underscore.js"></script>
+      <script type="text/javascript" src="_static/doctools.js"></script>
+      <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+
+  
+
+  <script type="text/javascript" src="_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
