@@ -13,15 +13,15 @@
    id="Layer_1"
    x="0px"
    y="0px"
-   viewBox="0 0 180 54.999999"
+   viewBox="0 0 910 261.574"
    xml:space="preserve"
    sodipodi:docname="torchgeometry_logo.svg"
-   width="180"
-   height="55"
+   width="910"
+   height="261.57401"
    inkscape:version="0.92.3 (2405546, 2018-03-11)"><metadata
    id="metadata4166"><rdf:RDF><cc:Work
        rdf:about=""><dc:format>image/svg+xml</dc:format><dc:type
-         rdf:resource="http://purl.org/dc/dcmitype/StillImage" /><dc:title /></cc:Work></rdf:RDF></metadata><defs
+         rdf:resource="http://purl.org/dc/dcmitype/StillImage" /><dc:title></dc:title></cc:Work></rdf:RDF></metadata><defs
    id="defs4164"><clipPath
      id="clipPath20"
      clipPathUnits="userSpaceOnUse"><path
@@ -41,13 +41,15 @@
    id="namedview4162"
    showgrid="false"
    inkscape:snap-text-baseline="true"
-   inkscape:zoom="4.4566852"
-   inkscape:cx="61.913619"
-   inkscape:cy="3.5313368"
+   inkscape:zoom="1"
+   inkscape:cx="429.9915"
+   inkscape:cy="242.64115"
    inkscape:window-x="67"
    inkscape:window-y="27"
    inkscape:window-maximized="1"
-   inkscape:current-layer="g4169" />
+   inkscape:current-layer="g4169"
+   showguides="true"
+   inkscape:guide-bbox="true" />
 <style
    type="text/css"
    id="style4135">
@@ -57,7 +59,7 @@
 
 <g
    id="g4159"
-   transform="translate(-2,2.7999972)">
+   transform="matrix(5.226194,0,0,5.226194,-26.302096,-3.84007)">
 	<g
    id="g4157">
 		<path
@@ -106,15 +108,15 @@
 </g>
 <g
    id="g4169"
-   transform="matrix(0.03835147,0,0,-0.03835147,57.507716,62.912837)"><g
+   transform="matrix(0.03835147,0,0,-0.03835147,57.507716,269.48684)"><g
      id="g12"
-     transform="matrix(4.6782157,0,0,4.6782157,-1377.3033,1199.6852)"><path
+     transform="matrix(24.449263,0,0,24.449263,-1274.4445,5201.1662)"><path
        inkscape:connector-curvature="0"
        d="M 0,0 101.079,58.924 204.117,-0.001 V -117.847 L 102.062,-176.764 0,-117.845 Z"
        style="fill:#000000;fill-opacity:1;fill-rule:nonzero;stroke:none"
        id="path14" /></g><g
      id="g16"
-     transform="matrix(4.6782157,0,0,4.6782157,-1471.7712,325.23122)"
+     transform="matrix(24.449263,0,0,24.449263,-1767.8935,634.97849)"
      style="fill:none;fill-opacity:1;stroke:#a0b4c8;stroke-opacity:1"><g
        id="g18"
        clip-path="url(#clipPath20)"
@@ -128,19 +130,19 @@
            style="fill:none;fill-opacity:1;stroke:#a0b4c8;stroke-width:15.70647526;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-dasharray:none;stroke-opacity:1"
            id="path26" /></g></g></g><g
      id="g28"
-     transform="matrix(4.6782157,0,0,4.6782157,-869.90217,908.90272)"><path
+     transform="matrix(24.449263,0,0,24.449263,1377.5908,3685.3439)"><path
        inkscape:connector-curvature="0"
        d="M 0,0 56.912,32.491 56.584,-32.844 0,-65.589 Z"
        style="fill:#2a6d9b;fill-opacity:1;fill-rule:nonzero;stroke:none"
        id="path30" /></g><g
      id="g32"
-     transform="matrix(4.6782157,0,0,4.6782157,-1167.5349,1107.5052)"><path
+     transform="matrix(24.449263,0,0,24.449263,-177.89562,4723.2941)"><path
        inkscape:connector-curvature="0"
        d="M 0,0 57.105,33.143 115.157,0 57.358,-32.645 Z"
        style="fill:#c1c1c1;fill-opacity:1;fill-rule:nonzero;stroke:none"
        id="path34" /></g></g><g
    id="g4285"
-   transform="matrix(1.1078574,0,0,1.1078574,-23.514991,-0.90139192)"><text
+   transform="matrix(5.7898777,0,0,5.7898777,-138.74361,-23.18425)"><text
    xml:space="preserve"
    style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:16px;line-height:1.25;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:discretionary-ligatures;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start;fill:#252525;fill-opacity:1;stroke:#000000;stroke-width:0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
    x="103.84724"
@@ -151,6 +153,7 @@
      x="103.84724"
      y="45.551811"
      style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:16px;font-family:sans-serif;-inkscape-font-specification:'sans-serif, Normal';font-variant-ligatures:discretionary-ligatures;font-variant-caps:normal;font-variant-numeric:normal;font-feature-settings:normal;text-align:start;writing-mode:lr-tb;text-anchor:start;fill:#252525;fill-opacity:1;stroke:#000000;stroke-width:0;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1">geometry</tspan></text>
+
 
 
 
