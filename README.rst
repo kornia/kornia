@@ -1,5 +1,5 @@
 
-.. image:: https://raw.githubusercontent.com/arraiy/torchgeometry/master/docs/source/_static/img/torchgeometry_logo.svg
+.. image:: https://github.com/arraiy/torchgeometry/blob/master/docs/source/_static/img/torchgeometry_logo.svg
   :align: center
 
 --------------------------------------------------------------------------------
