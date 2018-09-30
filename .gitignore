@@ -10,4 +10,3 @@ torchgeometry.egg-info/
 .eggs/*
 .cache/*
 .pytest_cache/*
-docs/build
