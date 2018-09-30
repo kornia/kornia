@@ -9,3 +9,4 @@ torchgeometry.egg-info/
 .eggs/*
 .cache/*
 .pytest_cache/*
+.dev_env
