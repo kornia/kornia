@@ -44,7 +44,7 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
-    #'sphinxcontrib.googleanalytics',
+    'sphinx.ext.githubpages',
 ]
 
 napoleon_use_ivar = True
@@ -117,7 +117,7 @@ html_theme_options = {
     'logo_only': True,
 }
 
-html_logo = '_static/img/arraiy-logo-large-final.svg'
+html_logo = '_static/img/torchgeometry_logo.svg'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
