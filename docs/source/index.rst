@@ -26,7 +26,7 @@ Pinhole
 .. autofunction:: scale_pinhole
 .. autofunction:: homography_i_H_ref
 
-Convertions
+Conversions
 -----------
 
 .. autofunction:: rad2deg
