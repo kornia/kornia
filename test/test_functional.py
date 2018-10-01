@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-import torchgeometry as dgm
+import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utilities
@@ -15,7 +15,7 @@ class Tester(unittest.TestCase):
         points = torch.rand(batch_size, 2, 3)
 
         # to homogeneous
-        points_h = dgm.convert_points_to_homogeneous(points)
+        points_h = tgm.convert_points_to_homogeneous(points)
         self.assertTrue((points_h[..., -1] == torch.ones(1, 2, 1)).all())
 
     def test_convert_points_to_homogeneous_gradcheck(self):
@@ -25,7 +25,7 @@ class Tester(unittest.TestCase):
         points = utils.tensor_to_gradcheck_var(points)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.convert_points_to_homogeneous, (points,),
+        res = gradcheck(tgm.convert_points_to_homogeneous, (points,),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -36,7 +36,7 @@ class Tester(unittest.TestCase):
         points_h[..., -1] = 1.0
 
         # to euclidean
-        points = dgm.convert_points_from_homogeneous(points_h)
+        points = tgm.convert_points_from_homogeneous(points_h)
 
         error = utils.compute_mse(points_h[..., :2], points)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
@@ -48,7 +48,7 @@ class Tester(unittest.TestCase):
         points = utils.tensor_to_gradcheck_var(points)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.convert_points_from_homogeneous, (points,),
+        res = gradcheck(tgm.convert_points_from_homogeneous, (points,),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -57,7 +57,7 @@ class Tester(unittest.TestCase):
         batch_size = 2
         eye_size = 3  # identity 3x3
         homographies = utils.create_random_homography(batch_size, eye_size)
-        homographies_inv = dgm.inverse(homographies)
+        homographies_inv = tgm.inverse(homographies)
 
         # H_inv * H == I
         res = torch.matmul(homographies_inv, homographies)
@@ -73,7 +73,7 @@ class Tester(unittest.TestCase):
         homographies = utils.tensor_to_gradcheck_var(homographies)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.inverse, (homographies,), raise_exception=True)
+        res = gradcheck(tgm.inverse, (homographies,), raise_exception=True)
         self.assertTrue(res)
 
     def test_transform_points(self):
@@ -86,11 +86,11 @@ class Tester(unittest.TestCase):
         dst_homo_src = utils.create_random_homography(batch_size, eye_size)
 
         # transform the points from dst to ref
-        points_dst = dgm.transform_points(dst_homo_src, points_src)
+        points_dst = tgm.transform_points(dst_homo_src, points_src)
 
         # transform the points from ref to dst
-        src_homo_dst = dgm.inverse(dst_homo_src)
-        points_dst_to_src = dgm.transform_points(src_homo_dst, points_dst)
+        src_homo_dst = tgm.inverse(dst_homo_src)
+        points_dst_to_src = tgm.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
         error = utils.compute_mse(points_src, points_dst_to_src)
@@ -108,20 +108,20 @@ class Tester(unittest.TestCase):
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.transform_points, (dst_homo_src, points_src,),
+        res = gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
                         raise_exception=True)
         self.assertTrue(res)
 
     def test_pi(self):
-        self.assertAlmostEqual(dgm.pi.item(), 3.141592, places=4)
+        self.assertAlmostEqual(tgm.pi.item(), 3.141592, places=4)
 
     def test_rad2deg(self):
         # generate input data
-        x_rad = dgm.pi * torch.rand(2, 3, 4)
+        x_rad = tgm.pi * torch.rand(2, 3, 4)
 
         # convert radians/degrees
-        x_deg = dgm.rad2deg(x_rad)
-        x_deg_to_rad = dgm.deg2rad(x_deg)
+        x_deg = tgm.rad2deg(x_rad)
+        x_deg_to_rad = tgm.deg2rad(x_deg)
 
         # compute error
         error = utils.compute_mse(x_rad, x_deg_to_rad)
@@ -129,10 +129,10 @@ class Tester(unittest.TestCase):
 
     def test_rad2deg_gradcheck(self):
         # generate input data
-        x_rad = dgm.pi * torch.rand(2, 3, 4)
+        x_rad = tgm.pi * torch.rand(2, 3, 4)
 
         # evaluate function gradient
-        res = gradcheck(dgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
+        res = gradcheck(tgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -141,8 +141,8 @@ class Tester(unittest.TestCase):
         x_deg = 180. * torch.rand(2, 3, 4)
 
         # convert radians/degrees
-        x_rad = dgm.deg2rad(x_deg)
-        x_rad_to_deg = dgm.rad2deg(x_rad)
+        x_rad = tgm.deg2rad(x_deg)
+        x_rad_to_deg = tgm.rad2deg(x_rad)
 
         # compute error
         error = utils.compute_mse(x_deg, x_rad_to_deg)
@@ -153,7 +153,7 @@ class Tester(unittest.TestCase):
         x_deg = 180. * torch.rand(2, 3, 4)
 
         # evaluate function gradient
-        res = gradcheck(dgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
+        res = gradcheck(tgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -167,7 +167,7 @@ class Tester(unittest.TestCase):
         dst_pose_src[:, -1, -1] = 1.0
 
         # compute the inverse of the pose
-        src_pose_dst = dgm.inverse_pose(dst_pose_src)
+        src_pose_dst = tgm.inverse_pose(dst_pose_src)
 
         # H_inv * H == I
         res = torch.matmul(src_pose_dst, dst_pose_src)
@@ -182,7 +182,7 @@ class Tester(unittest.TestCase):
         dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.inverse_pose, (dst_pose_src,),
+        res = gradcheck(tgm.inverse_pose, (dst_pose_src,),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -213,11 +213,11 @@ class Tester(unittest.TestCase):
             tz)
 
         # compute homography from ref to i
-        i_H_ref = dgm.homography_i_H_ref(pinhole_i, pinhole_ref)
-        i_H_ref_inv = dgm.inverse(i_H_ref)
+        i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref)
+        i_H_ref_inv = tgm.inverse(i_H_ref)
 
         # compute homography from i to ref
-        ref_H_i = dgm.homography_i_H_ref(pinhole_ref, pinhole_i)
+        ref_H_i = tgm.homography_i_H_ref(pinhole_ref, pinhole_i)
 
         res = utils.check_equal_torch(i_H_ref_inv, ref_H_i)
         self.assertTrue(res)
@@ -252,7 +252,7 @@ class Tester(unittest.TestCase):
         pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.homography_i_H_ref, (pinhole_i, pinhole_ref,),
+        res = gradcheck(tgm.homography_i_H_ref, (pinhole_i, pinhole_ref,),
                         raise_exception=True)
         self.assertTrue(res)
 
