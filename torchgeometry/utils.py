@@ -6,7 +6,8 @@ import torchgeometry as tgm
 __all__ = [
     "tensor_to_image",
     "image_to_tensor",
-    "draw_rectangle"
+    "draw_rectangle",
+    "create_pinhole"
 ]
 
 
@@ -29,6 +30,21 @@ def tensor_to_image(tensor):
     if len(tensor.shape) == 2:
         tensor = torch.unsqueeze(tensor, dim=0)
     return tensor.permute(1, 2, 0).contiguous().cpu().detach().numpy()
+
+
+def create_pinhole(intrinsic, extrinsic, height, width):
+    pinhole = torch.zeros(12)
+    pinhole[0] = intrinsic[0, 0]  # fx
+    pinhole[1] = intrinsic[1, 1]  # fy
+    pinhole[2] = intrinsic[0, 2]  # cx
+    pinhole[3] = intrinsic[1, 2]  # cy
+    pinhole[4] = height
+    pinhole[5] = width
+    pinhole[6:9] = tgm.rotation_matrix_to_angle_axis(
+        torch.tensor(extrinsic))
+    pinhole[9:12] = torch.tensor(extrinsic[:, 3])
+    return pinhole.view(1, -1)
+
 
 def draw_rectangle(image, dst_homo_src):
     height, width = image.shape[:2]
