@@ -24,36 +24,44 @@ __all__ = [
 pi = torch.Tensor([3.141592653589793])
 
 
-def rad2deg(x):
+def rad2deg(tensor):
     """Converts angles from radians to degrees.
 
     Args:
-        x (Tensor): tensor of unspecified size.
+        tensor (Tensor): Tensor to be converted of unspecified shape.
 
     Returns:
-        Tensor: tensor with same size as input.
+        Tensor: Converted tensor with same shape as input.
+
+    Example:
+        >>> input = tgm.pi * torch.rand(1, 3, 3)
+        >>> output = tgm.rad2deg(input)
     """
-    if not torch.is_tensor(x):
+    if not torch.is_tensor(tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(x)))
+                        .format(type(tensor)))
 
-    return 180. * x / pi.to(x.device).type(x.dtype)
+    return 180. * tensor / pi.to(tensor.device).type(tensor.dtype)
 
 
-def deg2rad(x):
+def deg2rad(tensor):
     """Converts angles from degrees to radians.
 
     Args:
-        x (Tensor): tensor of unspecified size.
+        tensor (Tensor): Tensor to be converted of unspecified shape.
 
     Returns:
-        Tensor: tensor with same size as input.
-    """
-    if not torch.is_tensor(x):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(x)))
+        Tensor: Converted tensor with same shape as input.
 
-    return x * pi.to(x.device).type(x.dtype) / 180.
+    Example:
+        >>> input = 360. * torch.rand(1, 3, 3)
+        >>> output = tgm.deg2rad(input)
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+
+    return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
 def convert_points_from_homogeneous(points, eps=1e-6):
