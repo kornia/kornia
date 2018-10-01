@@ -28,7 +28,7 @@ VERSION = find_version('torchgeometry', '__init__.py')
 
 
 requirements = [
-    'torch',
+    'torch==0.4.1.post2',
 ]
 
 
