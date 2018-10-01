@@ -29,7 +29,7 @@ h1, h2, .rst-content .toctree-wrapper p.caption, h3, h4, h5, h6, legend, p.capti
 /* Fixes for mobile */
 .wy-nav-top {
     background-color: #fff;
-    /background-image: url('../img/arraiy-logo-text-black-large-final.svg');
+    background-image: url('../img/arraiy-logo-text-black-large-final.svg');
     background-repeat: no-repeat;
     background-position: center;
     padding: 0;

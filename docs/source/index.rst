@@ -14,17 +14,19 @@ Version v0.1.0 focuses on Image and tensor warping functions such as:
 * Homography
 * Depth
 
+
 .. automodule:: torchgeometry
+
 
 Pinhole
 --------
 
-.. autofunction:: inverse
 .. autofunction:: inverse_pose
 .. autofunction:: pinhole_matrix
 .. autofunction:: inv_pinhole_matrix
 .. autofunction:: scale_pinhole
 .. autofunction:: homography_i_H_ref
+
 
 Conversions
 -----------
@@ -34,12 +36,20 @@ Conversions
 .. autofunction:: convert_points_from_homogeneous
 .. autofunction:: convert_points_to_homogeneous
 .. autofunction:: transform_points
+.. autofunction:: angle_axis_to_rotation_matrix
+.. autofunction:: rotation_matrix_to_angle_axis
+.. autofunction:: rotation_matrix_to_quaternion
+.. autofunction:: quaternion_to_angle_axis
+.. autofunction:: rtvec_to_pose
+
 
 Utilities
 ---------
 
+.. autofunction:: inverse
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
+
 
 Containers
 ----------
