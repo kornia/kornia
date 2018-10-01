@@ -19,11 +19,12 @@ fi
 
 $sdk_dir/.dev_env/bin/conda install -y \
   ipython \
+  jupyter \
+  matplotlib \
   numpy \
   pytorch \
   torchvision \
   opencv \
   -c pytorch
-  
-$sdk_dir/.dev_env/bin/conda  clean -ya					    
 
+$sdk_dir/.dev_env/bin/conda  clean -ya

@@ -1,8 +1,12 @@
+import cv2
+import numpy as np
 import torch
+import torchgeometry as tgm
 
 __all__ = [
     "tensor_to_image",
     "image_to_tensor",
+    "draw_rectangle"
 ]
 
 
@@ -25,3 +29,32 @@ def tensor_to_image(tensor):
     if len(tensor.shape) == 2:
         tensor = torch.unsqueeze(tensor, dim=0)
     return tensor.permute(1, 2, 0).contiguous().cpu().detach().numpy()
+
+def draw_rectangle(image, dst_homo_src):
+    height, width = image.shape[:2]
+    pts_src = torch.FloatTensor([[
+        [-1, -1],  # top-left
+        [1, -1],  # bottom-left
+        [1, 1],  # bottom-right
+        [-1, 1],  # top-right
+    ]]).to(dst_homo_src.device)
+    # transform points
+    pts_dst = tgm.transform_points(tgm.inverse(dst_homo_src), pts_src)
+    def compute_factor(size):
+        return 1.0 * size / 2
+
+    def convert_coordinates_to_pixel(coordinates, factor):
+        return factor * (coordinates + 1.0)
+    # compute convertion factor
+    x_factor = compute_factor(width - 1)
+    y_factor = compute_factor(height - 1)
+    pts_dst = pts_dst.cpu().squeeze().detach().numpy()
+    pts_dst[..., 0] = convert_coordinates_to_pixel(
+        pts_dst[..., 0], x_factor)
+    pts_dst[..., 1] = convert_coordinates_to_pixel(
+        pts_dst[..., 1], y_factor)
+    # do the actual drawing
+    for i in range(4):
+        pt_i, pt_ii = tuple(pts_dst[i % 4]), tuple(pts_dst[(i + 1) % 4])
+        image = cv2.line(image, pt_i, pt_ii, (255, 0, 0), 3)
+    return image
