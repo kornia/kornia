@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-import torchgeometry as dgm
+import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
@@ -44,7 +44,7 @@ class Tester(unittest.TestCase):
             1, 1, height, width).expand(batch_size, 1, height, width)
 
         # instantiate warper and compute relative homographies
-        warper = dgm.DepthWarper(pinhole_src, height, width)
+        warper = tgm.DepthWarper(pinhole_src, height, width)
         warper.compute_homographies(
             pinhole_dst, scale=torch.ones(
                 batch_size, 1))
