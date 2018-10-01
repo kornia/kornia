@@ -196,27 +196,86 @@
 
 <dl class="function">
 <dt id="torchgeometry.pinhole_matrix">
-<code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinholes</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts vector pinhole representation to 4x4 Tensor</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices of size (N, 4, 4).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.inv_pinhole_matrix">
 <code class="descclassname">torchgeometry.</code><code class="descname">inv_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inv_pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inv_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Invert a set of pinholes</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices of size (N, 4, 4).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.scale_pinhole">
-<code class="descclassname">torchgeometry.</code><code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinhole</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#scale_pinhole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
-<dd><p>Scales the pinhole matrix from a pinhole model.</p>
+<code class="descclassname">torchgeometry.</code><code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinholes</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#scale_pinhole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scales the pinhole matrix for each pinhole model.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
+<li><strong>scale</strong> (<em>Tensor</em>) – tensor of scales of form [N, 1]</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of scaled pinholes of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.homography_i_H_ref">
 <code class="descclassname">torchgeometry.</code><code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#homography_i_H_ref"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
-<dd><p>Homography from pinhole_ref to pinhole_i
-:returns matrix (4x4) that converts depth points from pinhole_ref to</p>
-<blockquote>
-<div>pinhole_i</div></blockquote>
+<dd><p>Homography from pinhole_ref to pinhole_i</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
+<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i (N, 4, 4).</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 </div>
@@ -306,8 +365,26 @@
 
 <dl class="function">
 <dt id="torchgeometry.transform_points">
-<code class="descclassname">torchgeometry.</code><code class="descname">transform_points</code><span class="sig-paren">(</span><em>dst_homo_src</em>, <em>points_src</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#transform_points"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.transform_points" title="Permalink to this definition">¶</a></dt>
-<dd><p>Applies Transformation to points.</p>
+<code class="descclassname">torchgeometry.</code><code class="descname">transform_points</code><span class="sig-paren">(</span><em>dst_pose_src</em>, <em>points_src</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#transform_points"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.transform_points" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies batch of transformations to batch of sets of points.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>dst_pose_src</strong> (<em>Tensor</em>) – tensor for transformations of size (B, D+1, D+1).</li>
+<li><strong>points_src</strong> (<em>Tensor</em>) – tensor of points of size (B, N, D).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of N-dimensional points of size (B, D, N).</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
@@ -347,8 +424,20 @@ Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 <h2>Utilities<a class="headerlink" href="#utilities" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
 <dt id="torchgeometry.inverse">
-<code class="descclassname">torchgeometry.</code><code class="descname">inverse</code><span class="sig-paren">(</span><em>homography</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse</code><span class="sig-paren">(</span><em>transforms</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse" title="Permalink to this definition">¶</a></dt>
 <dd><p>Batched version of torch.inverse(…)</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>transforms</strong> (<em>Tensor</em>) – tensor of transformations of size (B, D, D).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted transformations of size (B, D, D).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
 </dd></dl>
 
 <dl class="function">
