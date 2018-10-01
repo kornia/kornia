@@ -12,4 +12,4 @@ if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
     $sdk_dir/setup_dev_env.sh	      
 fi	
 source $sdk_dir/.dev_env/bin/activate $sdk_dir/.dev_env
-export PYTHONPATH=$PYTHONPATH:$sdk_root
+export PYTHONPATH=$PYTHONPATH:$sdk_dir
