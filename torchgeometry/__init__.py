@@ -1,5 +1,5 @@
 from .functional import *
-from .convertions import *
+from .conversions import *
 from .utils import *
 from .homography_warper import HomographyWarper
 from .depth_warper import DepthWarper

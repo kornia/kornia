@@ -1,6 +1,6 @@
 import torch
 
-from .convertions import rtvec_to_pose
+from .conversions import rtvec_to_pose
 
 
 __all__ = [
