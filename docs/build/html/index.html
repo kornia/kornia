@@ -177,14 +177,8 @@
 <span class="target" id="module-torchgeometry"></span><div class="section" id="pinhole">
 <h2>Pinhole<a class="headerlink" href="#pinhole" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
-<dt id="torchgeometry.inverse">
-<code class="descname">inverse</code><span class="sig-paren">(</span><em>homography</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse" title="Permalink to this definition">¶</a></dt>
-<dd><p>Batched version of torch.inverse(…)</p>
-</dd></dl>
-
-<dl class="function">
 <dt id="torchgeometry.inverse_pose">
-<code class="descname">inverse_pose</code><span class="sig-paren">(</span><em>pose</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse_pose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse_pose" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse_pose</code><span class="sig-paren">(</span><em>pose</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse_pose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse_pose" title="Permalink to this definition">¶</a></dt>
 <dd><p>Inverts a 4x4 pose.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -202,23 +196,23 @@
 
 <dl class="function">
 <dt id="torchgeometry.pinhole_matrix">
-<code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.inv_pinhole_matrix">
-<code class="descname">inv_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inv_pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inv_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">inv_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inv_pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inv_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.scale_pinhole">
-<code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinhole</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#scale_pinhole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinhole</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#scale_pinhole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
 <dd><p>Scales the pinhole matrix from a pinhole model.</p>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.homography_i_H_ref">
-<code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#homography_i_H_ref"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#homography_i_H_ref"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
 <dd><p>Homography from pinhole_ref to pinhole_i
 :returns matrix (4x4) that converts depth points from pinhole_ref to</p>
 <blockquote>
@@ -230,43 +224,53 @@
 <h2>Conversions<a class="headerlink" href="#conversions" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
 <dt id="torchgeometry.rad2deg">
-<code class="descname">rad2deg</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#rad2deg"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rad2deg" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">rad2deg</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#rad2deg"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rad2deg" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts angles from radians to degrees.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>x</strong> (<em>Tensor</em>) – tensor of unspecified size.</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>tensor</strong> (<em>Tensor</em>) – Tensor to be converted of unspecified shape.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Converted tensor with same shape as input.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rad2deg</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.deg2rad">
-<code class="descname">deg2rad</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#deg2rad"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.deg2rad" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">deg2rad</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#deg2rad"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.deg2rad" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts angles from degrees to radians.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>x</strong> (<em>Tensor</em>) – tensor of unspecified size.</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>tensor</strong> (<em>Tensor</em>) – Tensor to be converted of unspecified shape.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Converted tensor with same shape as input.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="mf">360.</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">deg2rad</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.convert_points_from_homogeneous">
-<code class="descname">convert_points_from_homogeneous</code><span class="sig-paren">(</span><em>points</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#convert_points_from_homogeneous"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.convert_points_from_homogeneous" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">convert_points_from_homogeneous</code><span class="sig-paren">(</span><em>points</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#convert_points_from_homogeneous"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.convert_points_from_homogeneous" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts points from homogeneous to Euclidean space.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -284,7 +288,7 @@
 
 <dl class="function">
 <dt id="torchgeometry.convert_points_to_homogeneous">
-<code class="descname">convert_points_to_homogeneous</code><span class="sig-paren">(</span><em>points</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#convert_points_to_homogeneous"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.convert_points_to_homogeneous" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">convert_points_to_homogeneous</code><span class="sig-paren">(</span><em>points</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#convert_points_to_homogeneous"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.convert_points_to_homogeneous" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts points from Euclidean to homogeneous space.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
@@ -302,23 +306,61 @@
 
 <dl class="function">
 <dt id="torchgeometry.transform_points">
-<code class="descname">transform_points</code><span class="sig-paren">(</span><em>dst_homo_src</em>, <em>points_src</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#transform_points"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.transform_points" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">transform_points</code><span class="sig-paren">(</span><em>dst_homo_src</em>, <em>points_src</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#transform_points"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.transform_points" title="Permalink to this definition">¶</a></dt>
 <dd><p>Applies Transformation to points.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.angle_axis_to_rotation_matrix">
+<code class="descclassname">torchgeometry.</code><code class="descname">angle_axis_to_rotation_matrix</code><span class="sig-paren">(</span><em>angle_axis</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#angle_axis_to_rotation_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.angle_axis_to_rotation_matrix" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.rotation_matrix_to_angle_axis">
+<code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_angle_axis</code><span class="sig-paren">(</span><em>rotation_matrix</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_angle_axis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert 4x4 rotation matrix to 4d quaternion vector</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.rotation_matrix_to_quaternion">
+<code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_quaternion</code><span class="sig-paren">(</span><em>rotation_matrix</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_quaternion"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_quaternion" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert 4x4 rotation matrix to 4d quaternion vector</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.quaternion_to_angle_axis">
+<code class="descclassname">torchgeometry.</code><code class="descname">quaternion_to_angle_axis</code><span class="sig-paren">(</span><em>quaternion</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#quaternion_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.quaternion_to_angle_axis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert quaternion vector to angle axis of rotation
+Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+:param quaternion: Tensor vector of length 4
+:return: angle axis of rotation (vector of length 3)</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.rtvec_to_pose">
+<code class="descclassname">torchgeometry.</code><code class="descname">rtvec_to_pose</code><span class="sig-paren">(</span><em>rtvec</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rtvec_to_pose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rtvec_to_pose" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert axis-angle rotation and translation vector to 4x4 pose matrix</p>
 </dd></dl>
 
 </div>
 <div class="section" id="utilities">
 <h2>Utilities<a class="headerlink" href="#utilities" title="Permalink to this headline">¶</a></h2>
 <dl class="function">
+<dt id="torchgeometry.inverse">
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse</code><span class="sig-paren">(</span><em>homography</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/functional.html#inverse"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse" title="Permalink to this definition">¶</a></dt>
+<dd><p>Batched version of torch.inverse(…)</p>
+</dd></dl>
+
+<dl class="function">
 <dt id="torchgeometry.tensor_to_image">
-<code class="descname">tensor_to_image</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#tensor_to_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.tensor_to_image" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">tensor_to_image</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#tensor_to_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.tensor_to_image" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts a torch.Tensor image to a numpy image. In case the tensor is
 in the GPU, it will be copied back to CPU.</p>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.image_to_tensor">
-<code class="descname">image_to_tensor</code><span class="sig-paren">(</span><em>image</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#image_to_tensor"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image_to_tensor" title="Permalink to this definition">¶</a></dt>
+<code class="descclassname">torchgeometry.</code><code class="descname">image_to_tensor</code><span class="sig-paren">(</span><em>image</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#image_to_tensor"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image_to_tensor" title="Permalink to this definition">¶</a></dt>
 <dd><p>Converts a numpy image to a torch.Tensor image.</p>
 </dd></dl>
 
@@ -327,7 +369,7 @@ in the GPU, it will be copied back to CPU.</p>
 <h2>Containers<a class="headerlink" href="#containers" title="Permalink to this headline">¶</a></h2>
 <dl class="class">
 <dt id="torchgeometry.HomographyWarper">
-<em class="property">class </em><code class="descname">HomographyWarper</code><span class="sig-paren">(</span><em>height</em>, <em>width</em>, <em>points=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#HomographyWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.HomographyWarper" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">HomographyWarper</code><span class="sig-paren">(</span><em>height</em>, <em>width</em>, <em>points=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#HomographyWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.HomographyWarper" title="Permalink to this definition">¶</a></dt>
 <dd><blockquote>
 <div>Warps patches by homographies.</div></blockquote>
 <p>height, width</p>
@@ -378,7 +420,7 @@ normalized images space.</td>
 
 <dl class="class">
 <dt id="torchgeometry.DepthWarper">
-<em class="property">class </em><code class="descname">DepthWarper</code><span class="sig-paren">(</span><em>pinholes</em>, <em>width=None</em>, <em>height=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">DepthWarper</code><span class="sig-paren">(</span><em>pinholes</em>, <em>width=None</em>, <em>height=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper" title="Permalink to this definition">¶</a></dt>
 <dd><p>Warps a patch by inverse depth.</p>
 <dl class="method">
 <dt id="torchgeometry.DepthWarper.compute_subpixel_step">
