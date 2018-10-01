@@ -19,6 +19,8 @@ fi
 
 $sdk_dir/.dev_env/bin/conda install -y \
   ipython \
+  jupyter \
+  matplotlib \
   numpy \
   pytorch \
   torchvision \
@@ -26,6 +28,5 @@ $sdk_dir/.dev_env/bin/conda install -y \
   sphinx \
   sphinx_rtd_theme \
   -c pytorch
-  
-$sdk_dir/.dev_env/bin/conda  clean -ya					    
 
+$sdk_dir/.dev_env/bin/conda  clean -ya
