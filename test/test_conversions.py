@@ -2,7 +2,7 @@ import unittest
 import numpy as np
 
 import torch
-import torchgeometry as dgm
+import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
@@ -18,7 +18,7 @@ class Tester(unittest.TestCase):
         eye_batch = utils.create_eye_batch(batch_size, 4)
 
         # apply transform
-        rotation_matrix = dgm.angle_axis_to_rotation_matrix(angle_axis)
+        rotation_matrix = tgm.angle_axis_to_rotation_matrix(angle_axis)
 
         rotation_matrix_eye = torch.matmul(
             rotation_matrix, rotation_matrix.transpose(1, 2))
@@ -29,7 +29,7 @@ class Tester(unittest.TestCase):
         angle_axis = np.random.rand(3)
 
         # apply transform
-        rotation_matrix = dgm.angle_axis_to_rotation_matrix(angle_axis)
+        rotation_matrix = tgm.angle_axis_to_rotation_matrix(angle_axis)
 
         rotation_matrix_eye = rotation_matrix.dot(rotation_matrix.T)
         self.assertTrue(check_equal_numpy(rotation_matrix_eye, np.eye(4)))
@@ -41,10 +41,10 @@ class Tester(unittest.TestCase):
         angle_axis = utils.tensor_to_gradcheck_var(angle_axis)  # to var
 
         # apply transform
-        rotation_matrix = dgm.angle_axis_to_rotation_matrix(angle_axis)
+        rotation_matrix = tgm.angle_axis_to_rotation_matrix(angle_axis)
 
         # evaluate function gradient
-        res = gradcheck(dgm.angle_axis_to_rotation_matrix, (angle_axis,),
+        res = gradcheck(tgm.angle_axis_to_rotation_matrix, (angle_axis,),
                         raise_exception=True)
         self.assertTrue(res)
 
@@ -55,7 +55,7 @@ class Tester(unittest.TestCase):
         rtvec = utils.tensor_to_gradcheck_var(rtvec)  # to var
 
         # evaluate function gradient
-        res = gradcheck(dgm.rtvec_to_pose, (rtvec,), raise_exception=True)
+        res = gradcheck(tgm.rtvec_to_pose, (rtvec,), raise_exception=True)
         self.assertTrue(res)
 
     def test_rotation_matrix_to_angle_axis_torch(self):
@@ -66,7 +66,7 @@ class Tester(unittest.TestCase):
         rvec = torch.tensor([1.50485376, -2.10737739, 0.7214174])
         self.assertTrue(
             check_equal_torch(
-                dgm.rotation_matrix_to_angle_axis(rmat),
+                tgm.rotation_matrix_to_angle_axis(rmat),
                 rvec))
 
     @unittest.skip('')

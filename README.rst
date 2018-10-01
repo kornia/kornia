@@ -24,24 +24,24 @@ Quick Usage
 .. code:: python
 
  import torch
- import torchgeometry as dgm  # differential geometry
+ import torchgeometry as tgm
 
- x_rad = dgm.pi * torch.rand(1, 3, 3)
- x_deg = dgm.rad2deg(x_rad)
+ x_rad = tgm.pi * torch.rand(1, 3, 3)
+ x_deg = tgm.rad2deg(x_rad)
 
- torch.allclose(x_rad, dgm.deg2rad(x_deg))  # True
+ torch.allclose(x_rad, tgm.deg2rad(x_deg))  # True
 
 -------------------------------------------------------
 
 .. code:: python
 
  import torch
- import torchgeometry as dgm  # differential geometry
+ import torchgeometry as tgm
 
  img_ref = torch.rand(1, 3, 32, 32)  # NxCxHxW
- dst_homo_ref = torch.eye(1) + eps   # Nx3x3
+ dst_homo_ref = torch.eye(3) + eps   # Nx3x3
 
- warper = dgm.HomographyWarper(32, 32)
+ warper = tgm.HomographyWarper(32, 32)
  img_ref_to_dst = warper(img_ref, dst_homo_ref)  # NxCxHxW
 
 
