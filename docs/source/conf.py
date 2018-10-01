@@ -109,9 +109,6 @@ html_context = {
     ],
 }
 
-add_module_names = False
-
-
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
