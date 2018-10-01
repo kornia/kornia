@@ -1,7 +1,7 @@
 import unittest
 
 import torch
-import torchgeometry as dgm
+import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
@@ -26,7 +26,7 @@ class Tester(unittest.TestCase):
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
 
         # instantiate warper
-        warper = dgm.HomographyWarper(height, width)
+        warper = tgm.HomographyWarper(height, width)
 
         for i in range(self.num_tests):
             # generate homography noise
@@ -37,7 +37,7 @@ class Tester(unittest.TestCase):
 
             # transform the points from dst to ref
             patch_dst = warper(patch_src, dst_homo_src_i)
-            patch_dst_to_src = warper(patch_dst, dgm.inverse(dst_homo_src_i))
+            patch_dst_to_src = warper(patch_dst, tgm.inverse(dst_homo_src_i))
 
             # projected should be equal as initial
             error = utils.compute_patch_error(
@@ -64,7 +64,7 @@ class Tester(unittest.TestCase):
             dst_homo_src, requires_grad=False)  # to var
 
         # instantiate warper
-        warper = dgm.HomographyWarper(height, width)
+        warper = tgm.HomographyWarper(height, width)
 
         # evaluate function gradient
         res = gradcheck(warper, (patch_src, dst_homo_src,),
