@@ -1,6 +1,8 @@
-.. image:: https://github.com/arraiy/torchgeometry/blob/master/docs/source/_static/img/torchgeometry_logo.svg
-  :width: 350 px
-  :align: center
+.. raw:: html
+
+  <p align="center">
+    <img width="50%" src="https://github.com/arraiy/torchgeometry/blob/master/docs/source/_static/img/torchgeometry_logo.svg" />
+  </p>
 
 --------------------------------------------------------------------------------
 
