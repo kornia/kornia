@@ -152,7 +152,13 @@
 <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
 <span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
 
-<span class="kn">from</span> <span class="nn">.functional</span> <span class="k">import</span> <span class="n">transform_points</span>
+<span class="kn">from</span> <span class="nn">.conversions</span> <span class="k">import</span> <span class="n">transform_points</span>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">&quot;HomographyWarper&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;homography_warp&quot;</span><span class="p">,</span>
+<span class="p">]</span>
 
 
 <span class="k">def</span> <span class="nf">create_meshgrid</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
@@ -171,19 +177,23 @@
     <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">([</span><span class="n">ys</span><span class="p">,</span> <span class="n">xs</span><span class="p">]))</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">:]</span>
 
 
-<div class="viewcode-block" id="HomographyWarper"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper">[docs]</a><span class="k">class</span> <span class="nc">HomographyWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-    <span class="sd">&#39;&#39;&#39;</span>
-<span class="sd">    Warps patches by homographies.</span>
-<span class="sd">height, width   &#39;&#39;&#39;</span>
+<span class="c1"># layer api</span>
 
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-        <span class="sd">&#39;&#39;&#39;</span>
-<span class="sd">        :param width: The width of the image to warp.</span>
-<span class="sd">        :param height: The height of the image to warp.</span>
-<span class="sd">        :param points: Tensor[3, N] of homogeneous points in normalized image</span>
+<div class="viewcode-block" id="HomographyWarper"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper">[docs]</a><span class="k">class</span> <span class="nc">HomographyWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Warps patches by homographies.</span>
+
+<span class="sd">    .. math::</span>
+
+<span class="sd">        X_{dst} = H_{dst}^{src} * X_{src}</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        width (int): The width of the image to warp.</span>
+<span class="sd">        height (int): The height of the image to warp.</span>
+<span class="sd">        points (Tensor): Tensor[3, N] of homogeneous points in normalized image</span>
 <span class="sd">                       space [-1, 1] to sample. Optional parameter.</span>
-<span class="sd">        &#39;&#39;&#39;</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">HomographyWarper</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">points</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">assert</span> <span class="n">points</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">,</span> <span class="s2">&quot;Points must be 3xN&quot;</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">points</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
@@ -242,23 +252,68 @@
         <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span>
             <span class="n">image</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;bilinear&#39;</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="n">padding_mode</span><span class="p">)</span>
 
-<div class="viewcode-block" id="HomographyWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Warps an image from dst into src&#39;s reference frame.</span>
-<span class="sd">        :param patch: Tensor[X,Y,Height,Width] The image to warp.</span>
-<span class="sd">                      Should be from dst.</span>
-<span class="sd">        :param dst_H_src: Tensor[3,3] The homography from src to dst.</span>
-<span class="sd">        :param padding_mode: Either &#39;zeros&#39; to replace out of bounds with zeros</span>
+<div class="viewcode-block" id="HomographyWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">patch</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Warps an image or tensor from source into reference frame.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            patch (Tensor): The image or tensor to warp. Should be from source.</span>
+<span class="sd">            dst_homo_src (Tensor): The homography or stack of homographies from source to destination.</span>
+<span class="sd">            padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with zeros</span>
 <span class="sd">                             or &#39;border&#39; to choose the closest border data.</span>
-<span class="sd">        :returns: Tensor[X,Y,Height,Width] patch sampled at locations from src</span>
-<span class="sd">                  warped to dst.</span>
+
+<span class="sd">        Return:</span>
+<span class="sd">            Tensor: Patch sampled at locations from source to destination.</span>
+
+<span class="sd">        Shape:</span>
+<span class="sd">            - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`</span>
+<span class="sd">            - Output: :math:`(N, C, H, W)`</span>
+
+<span class="sd">        Example:</span>
+<span class="sd">            &gt;&gt;&gt; input = torch.rand(1, 3, 32, 32)</span>
+<span class="sd">            &gt;&gt;&gt; homography = torch.eye(3).view(1, 3, 3)</span>
+<span class="sd">            &gt;&gt;&gt; warper = tgm.HomographyWarper(32, 32)</span>
+<span class="sd">            &gt;&gt;&gt; output = warper(input, homography)  # NxCxHxW</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">dst_H_src</span><span class="o">.</span><span class="n">device</span> <span class="o">==</span> <span class="n">patch</span><span class="o">.</span><span class="n">device</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">dst_homo_src</span><span class="o">.</span><span class="n">device</span> <span class="o">==</span> <span class="n">patch</span><span class="o">.</span><span class="n">device</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Patch and homography must be on the same device. </span><span class="se">\</span>
 <span class="s2">                            Got patch.device: </span><span class="si">{}</span><span class="s2"> dst_H_src.device: </span><span class="si">{}</span><span class="s2">.&quot;</span>
-                            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">patch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="o">.</span><span class="n">device</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp_grid</span><span class="p">(</span><span class="n">dst_H_src</span><span class="p">),</span> <span class="s1">&#39;bilinear&#39;</span><span class="p">,</span>
+                            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">patch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="o">.</span><span class="n">device</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp_grid</span><span class="p">(</span><span class="n">dst_homo_src</span><span class="p">),</span> <span class="s1">&#39;bilinear&#39;</span><span class="p">,</span>
                              <span class="n">padding_mode</span><span class="o">=</span><span class="n">padding_mode</span><span class="p">)</span></div></div>
+
+<span class="c1"># functional api</span>
+
+<div class="viewcode-block" id="homography_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.homography_warp">[docs]</a><span class="k">def</span> <span class="nf">homography_warp</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">dsize</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                    <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    .. note:: Functional API for :class:`torgeometry.HomographyWarper`</span>
+
+<span class="sd">    Warps patches by homographies.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        patch (Tensor): The image or tensor to warp. Should be from source.</span>
+<span class="sd">        dst_homo_src (Tensor): The homography or stack of homographies from source to destination.</span>
+<span class="sd">        dsize (tuple): The height and width of the image to warp.</span>
+<span class="sd">        points (Tensor): Tensor[3, N] of homogeneous points in normalized image</span>
+<span class="sd">                   space [-1, 1] to sample. Optional parameter.</span>
+<span class="sd">        padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with zeros</span>
+<span class="sd">                         or &#39;border&#39; to choose the closest border data.</span>
+
+<span class="sd">    Return:</span>
+<span class="sd">        Tensor: Patch sampled at locations from source to destination.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`</span>
+<span class="sd">        - Output: :math:`(N, C, H, W)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(1, 3, 32, 32)</span>
+<span class="sd">        &gt;&gt;&gt; homography = torch.eye(3).view(1, 3, 3)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.homography_warp(input, homography, (32, 32))  # NxCxHxW</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">height</span><span class="p">,</span> <span class="n">width</span> <span class="o">=</span> <span class="n">dsize</span>
+    <span class="n">warper</span> <span class="o">=</span> <span class="n">HomographyWarper</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">points</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">warper</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">padding_mode</span><span class="p">)</span></div>
 </pre></div>
 
            </div>
