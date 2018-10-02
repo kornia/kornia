@@ -42,6 +42,7 @@ class HomographyWarper(nn.Module):
         points (Tensor): Tensor[3, N] of homogeneous points in normalized image
                        space [-1, 1] to sample. Optional parameter.
     """
+
     def __init__(self, height, width, points=None):
         super(HomographyWarper, self).__init__()
         if points is not None:
@@ -107,9 +108,11 @@ class HomographyWarper(nn.Module):
 
         Args:
             patch (Tensor): The image or tensor to warp. Should be from source.
-            dst_homo_src (Tensor): The homography or stack of homographies from source to destination.
-            padding_mode (string): Either 'zeros' to replace out of bounds with zeros
-                             or 'border' to choose the closest border data.
+            dst_homo_src (Tensor): The homography or stack of homographies
+                                   from source to destination.
+            padding_mode (string): Either 'zeros' to replace out of bounds with
+                                   zeros or 'border' to choose the closest
+                                   border data.
 
         Return:
             Tensor: Patch sampled at locations from source to destination.
@@ -133,6 +136,7 @@ class HomographyWarper(nn.Module):
 
 # functional api
 
+
 def homography_warp(patch, dst_H_src, dsize, points=None,
                     padding_mode='zeros'):
     """
@@ -142,12 +146,14 @@ def homography_warp(patch, dst_H_src, dsize, points=None,
 
     Args:
         patch (Tensor): The image or tensor to warp. Should be from source.
-        dst_homo_src (Tensor): The homography or stack of homographies from source to destination.
+        dst_homo_src (Tensor): The homography or stack of homographies from
+                               source to destination.
         dsize (tuple): The height and width of the image to warp.
         points (Tensor): Tensor[3, N] of homogeneous points in normalized image
                    space [-1, 1] to sample. Optional parameter.
-        padding_mode (string): Either 'zeros' to replace out of bounds with zeros
-                         or 'border' to choose the closest border data.
+        padding_mode (string): Either 'zeros' to replace out of bounds with
+                               zeros or 'border' to choose the closest border
+                               data.
 
     Return:
         Tensor: Patch sampled at locations from source to destination.
