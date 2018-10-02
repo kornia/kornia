@@ -24,10 +24,18 @@ def inverse_pose(pose):
     """Inverts a 4x4 pose.
 
     Args:
-        points (Tensor): tensor of either size (4, 4) or (B, 4, 4).
+        points (Tensor): tensor with poses.
 
     Returns:
-        Tensor: tensor with same size as input.
+        Tensor: tensor with inverted poses.
+
+    Shape:
+        - Input: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pose = torch.rand(1, 4, 4)         # Nx4x4
+        >>> pose_inv = tgm.inverse_pose(pose)  # Nx4x4
     """
     if not torch.is_tensor(pose):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -51,15 +59,21 @@ def inverse_pose(pose):
 
 
 def pinhole_matrix(pinholes):
-    """Converts vector pinhole representation to 4x4 Tensor
+    """Returns the pinhole matrix from a pinhole model
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-                           of size (N, 12).
+        pinholes (Tensor): tensor of pinhole models.
 
     Returns:
-        Tensor: tensor of pinhole matrices of size (N, 4, 4).
+        Tensor: tensor of pinhole matrices.
 
+    Shape:
+        - Input: :math:`(N, 12)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pinhole = torch.rand(1, 12)    # Nx12
+        >>> pinhole_matrix = tgm.pinhole_matrix(pinhole)  # Nx4x4
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     # unpack pinhole values
@@ -76,15 +90,21 @@ def pinhole_matrix(pinholes):
 
 
 def inverse_pinhole_matrix(pinhole, eps=1e-6):
-    """Invert a set of pinholes
+    """Returns the inverted pinhole matrix from a pinhole model
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-                           of size (N, 12).
+        pinholes (Tensor): tensor with pinhole models.
 
     Returns:
-        Tensor: tensor of inverted pinhole matrices of size (N, 4, 4).
+        Tensor: tensor of inverted pinhole matrices.
 
+    Shape:
+        - Input: :math:`(N, 12)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pinhole = torch.rand(1, 12)    # Nx12
+        >>> pinhole_matrix_inv = tgm.inverse_pinhole_matrix(pinhole)  # Nx4x4
     """
     assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
     # unpack pinhole values
@@ -104,14 +124,20 @@ def scale_pinhole(pinholes, scale):
     """Scales the pinhole matrix for each pinhole model.
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-                           of size (N, 12).
-        scale (Tensor): tensor of scales of form [N, 1]
+        pinholes (Tensor): tensor with the pinhole model.
+        scale (Tensor): tensor of scales.
 
     Returns:
-        Tensor: tensor of scaled pinholes of form
-                [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        Tensor: tensor of scaled pinholes.
 
+    Shape:
+        - Input: :math:`(N, 12)` and :math:`(N, 1)`
+        - Output: :math:`(N, 12)`
+
+    Example:
+        >>> pinhole_i = torch.rand(1, 12)    # Nx12
+        >>> scales = 2.0 * torch.ones(1, 1)  # Nx1
+        >>> pinhole_i_scaled = tgm.scale_pinhole(pinhole_i)  # Nx12
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     assert len(scale.shape) == 2 and scale.shape[1] == 1, scale.shape
@@ -138,18 +164,27 @@ def get_optical_pose_base(pinholes):
 
 def homography_i_H_ref(pinhole_i, pinhole_ref):
     """
-    Homography from pinhole_ref to pinhole_i
+    Homography from reference to ith pinhole
+
+    .. math::
+        H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
 
     Args:
-        pinhole_i (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-                            of size (N, 12).
-        pinhole_ref (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-                              of size (N, 12).
+        pinhole_i (Tensor): tensor with pinhole model for ith frame.
+        pinhole_ref (Tensor): tensor with pinhole model for reference frame.
 
-    Returns:
+    Return:
         Tensor: tensors that convert depth points (u, v, d) from pinhole_ref to
                 pinhole_i (N, 4, 4).
 
+    Shape:
+        - Input: :math:`(N, 12)` and :math:`(N, 12)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pinhole_i = torch.rand(1, 12)    # Nx12
+        >>> pinhole_ref = torch.rand(1, 12)  # Nx12
+        >>> i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
     """
     assert len(
         pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape

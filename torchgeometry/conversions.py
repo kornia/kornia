@@ -82,6 +82,14 @@ def convert_points_from_homogeneous(points, eps=1e-6):
 
     Returns:
         Tensor: tensor of N-1-dimensional points of size (B, D, N-1).
+
+    Shape:
+        - Input: :math:`(B, D, N)`
+        - Output: :math:`(B, D, N - 1)`
+
+    Example:
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> output = tgm.convert_points_from_homogeneous(input)  # BxNx2
     """
     if not torch.is_tensor(points):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -99,10 +107,18 @@ def convert_points_to_homogeneous(points):
     """Converts points from Euclidean to homogeneous space.
 
     Args:
-        points (Tensor): tensor of N-dimensional points of size (B, D, N).
+        points (Tensor): tensor of N-dimensional points of size.
 
     Returns:
-        Tensor: tensor of N+1-dimensional points of size (B, D, N+1).
+        Tensor: tensor of N+1-dimensional points.
+
+    Shape:
+        - Input: :math:`(B, D, N)`
+        - Output: :math:`(B, D, N + 1)`
+
+    Example:
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> output = tgm.convert_points_to_homogeneous(input)  # BxNx4
     """
     if not torch.is_tensor(points):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -120,12 +136,20 @@ def transform_points(dst_pose_src, points_src):
     """Applies batch of transformations to batch of sets of points.
 
     Args:
-        dst_pose_src (Tensor): tensor for transformations of size (B, D+1, D+1).
-        points_src (Tensor): tensor of points of size (B, N, D).
+        dst_pose_src (Tensor): tensor for transformations.
+        points_src (Tensor): tensor of points.
 
     Returns:
-        Tensor: tensor of N-dimensional points of size (B, D, N).
+        Tensor: tensor of N-dimensional points.
 
+    Shape:
+        - Input: :math:`(B, D+1, D+1)` and :math:`(B, D, N)`
+        - Output: :math:`(B, N, D)`
+
+    Example:
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> pose = torch.eye(4).view(1, 4, 4)   # Bx4x4
+        >>> output = tgm.transform_points(pose, input)  # BxNx3
     """
     if not torch.is_tensor(dst_pose_src) or not torch.is_tensor(points_src):
         raise TypeError("Input type is not a torch.Tensor")
@@ -151,12 +175,18 @@ def angle_axis_to_rotation_matrix(angle_axis):
     """Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
 
     Args:
-        angle_axis (Tensor): tensor of 3d vector of axis-angle rotations
-                             of size (N, 3).
+        angle_axis (Tensor): tensor of 3d vector of axis-angle rotations.
 
     Returns:
-        Tensor: tensor of 4x4 rotation matrices of size (N, 4, 4).
+        Tensor: tensor of 4x4 rotation matrices.
 
+    Shape:
+        - Input: :math:`(N, 3)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> input = torch.rand(1, 3)  # Nx3
+        >>> output = tgm.angle_axis_to_rotation_matrix(input)  # Nx4x4
     """
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
@@ -220,11 +250,18 @@ def rtvec_to_pose(rtvec):
     Convert axis-angle rotation and translation vector to 4x4 pose matrix
 
     Args:
-        rtvec (Tensor): Rodrigues vector transformations of size (N, 6).
+        rtvec (Tensor): Rodrigues vector transformations
 
     Returns:
-        Tensor: transformation matrices of size (N, 4, 4).
+        Tensor: transformation matrices
 
+    Shape:
+        - Input: :math:`(N, 6)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> input = torch.rand(3, 6)  # Nx6
+        >>> output = tgm.rtvec_to_pose(input)  # Nx4x4
     """
     assert rtvec.shape[-1] == 6, 'rtvec=[rx, ry, rz, tx, ty, tz]'
     pose = angle_axis_to_rotation_matrix(rtvec[..., :3])
@@ -233,14 +270,21 @@ def rtvec_to_pose(rtvec):
 
 
 def rotation_matrix_to_angle_axis(rotation_matrix):
-    """Convert 4x4 rotation matrix to 4d quaternion vector
+    """Convert 4x4 rotation matrix to Rodrigues vector
 
     Args:
-        rotation_matrix (Tensor): rotation matrix of size (4, 4).
+        rotation_matrix (Tensor): rotation matrix.
 
     Returns:
-        Tensor: Rodrigues vector transformation of size (1, 6).
+        Tensor: Rodrigues vector transformation.
 
+    Shape:
+        - Input: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 3)`
+
+    Example:
+        >>> input = torch.rand(2, 4, 4)  # Nx4x4
+        >>> output = tgm.rotation_matrix_to_angle_axis(input)  # Nx3
     """
     # todo add check that matrix is a valid rotation matrix
     quaternion = rotation_matrix_to_quaternion(rotation_matrix)
@@ -259,6 +303,13 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     Return:
         Tensor: the rotation in quaternion
 
+    Shape:
+        - Input: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 4)`
+
+    Example:
+        >>> input = torch.rand(4, 4, 4)  # Nx4x4
+        >>> output = tgm.rotation_matrix_to_quaternion(input)  # Nx4
     """
     rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
@@ -313,10 +364,18 @@ def quaternion_to_angle_axis(quaternion, eps=1e-6):
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        quaternion (Tensor): vector of length 4
+        quaternion (Tensor): batch with quaternions
 
     Return:
-        Tensor: angle axis of rotation (vector of length 3)
+        Tensor: batch with angle axis of rotation
+
+    Shape:
+        - Input: :math:`(N, 4)`
+        - Output: :math:`(N, 3)`
+
+    Example:
+        >>> input = torch.rand(2, 4)  # Nx4
+        >>> output = tgm.quaternion_to_angle_axis(input)  # Nx3
     """
     assert quaternion.size(1) == 4, 'Input must be a vector of length 4'
     normalizer = 1 / torch.norm(quaternion, dim=1)
