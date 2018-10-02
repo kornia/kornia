@@ -13,8 +13,28 @@ __all__ = [
 
 class DepthWarper(nn.Module):
     """Warps a patch by inverse depth.
-    """
 
+    .. math::
+        H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
+
+        I_{ref} = \\omega(I_{i}, H_{ref}^{i}, \\xi_{ref})
+
+    Args:
+        pinholes (Tensor): The pinhole models for ith frame with shape `[Nx12]`.
+        width (int): The width of the image to warp. Optional.
+        height (int): The height of the image to warp. Optional.
+
+    .. note::
+       The pinhole model is represented in a single vector as follows:
+
+       .. math::
+           pinhole = (f_x, f_y, c_x, c_y, height, width, r_x, r_y, r_z, t_x, t_y, t_z)
+ 
+       where:
+           :math:`(r_x, r_y, r_z)` is the rotation vector in angle-axis convention.
+
+           :math:`(t_x, t_y, t_z)` is the translation vector.
+    """
     def __init__(self, pinholes, width=None, height=None):
         super(DepthWarper, self).__init__()
         # TODO: add type and value checkings
@@ -115,16 +135,65 @@ accurate sampling of the depth cost volume, per camera.
         flows = flow.view(n, c, height, width)  # Nx2xHxW
         return flows.permute(0, 2, 3, 1)  # NxHxWx2
 
-    def forward(self, inv_depth_ref, data):
+    def forward(self, inv_depth_ref, patch_i):
+        """Warps an image or tensor from ith frame to reference given the inverse depth in the reference frame.
+
+        Args:
+            inv_depth_ref (Tensor): The inverse depth in the reference frame.
+            patch_i (Tensor): The patch in the it frame.
+
+        Return:
+            Tensor: The warped data from ith frame to reference.
+
+        Shape:
+            - Input: :math:`(N, 1, H, W)` and :math:`(N, C, H, W)`
+            - Output: :math:`(N, C, H, W)`
+
+        Example:
+            >>> # image in ith frame
+            >>> img_i = torch.rand(1, 3, 32, 32)       # NxCxHxW
+            >>> # pinholes models for camera i and reference
+            >>> pinholes_i = torch.Tensor([1, 12])     # Nx12
+            >>> pinhole_ref = torch.Tensor([1, 12]),   # Nx12
+            >>> # create the depth warper and compute the homographies
+            >>> warper = tgm.DepthWarper(pinholes_i)
+            >>> warper.compute_homographies(pinhole_ref)
+            >>> # warper the ith frame to reference by inverse depth in the reference
+            >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
+            >>> img_ref = warper(inv_depth_ref, img_i)    # NxCxHxW
+        """
         # TODO: add type and value checkings
-        return torch.nn.functional.grid_sample(data, self.warp(inv_depth_ref))
+        return torch.nn.functional.grid_sample(patch_i, self.warp(inv_depth_ref))
 
 
 # functional api
 
 def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i, \
                  width=None, height=None):
-    """Functional API for :class:`torgeometry.DepthWarper`.
+    """
+    .. note::
+        Functional API for :class:`torgeometry.DepthWarper`.
+    
+    Warps a patch by inverse depth.
+
+    Args:
+        pinholes_i (Tensor): The pinhole models for ith frame with shape `[Nx12]`.
+        pinholes_ref (Tensor): The pinhole models for the reference frame with shape `[1x12]`.
+        inv_depth_ref (Tensor): The inverse depth in the reference frame.
+        patch_i (Tensor): The patch data in the ith frame.
+
+    Return:
+        Tensor: The warped data from ith frame to reference.
+
+    Example:
+        >>> # image in ith frame
+        >>> img_i = torch.rand(1, 3, 32, 32)          # NxCxHxW
+        >>> # pinholes models for camera i and reference
+        >>> pinholes_i = torch.Tensor([1, 12])        # Nx12
+        >>> pinhole_ref = torch.Tensor([1, 12]),      # Nx12
+        >>> # warp the ith frame to reference by inverse depth in the reference
+        >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
+        >>> img_ref = tgm.depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW
     """
     warper = DepthWarper(pinholes_i, width=width, height=height)
     warper.compute_homographies(pinhole_ref)
