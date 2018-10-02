@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .functional import transform_points
+from .conversions import transform_points
+
+
+__all__ = [
+    "HomographyWarper",
+    "homography_warp",
+]
 
 
 def create_meshgrid(height, width, normalized_coordinates=True):
@@ -20,6 +26,8 @@ def create_meshgrid(height, width, normalized_coordinates=True):
         ys = torch.linspace(0, height - 1, height)
     return torch.stack(torch.meshgrid([ys, xs])).view(1, 2, -1)[:, (1, 0), :]
 
+
+# layer api
 
 class HomographyWarper(nn.Module):
     '''
@@ -109,3 +117,13 @@ height, width   '''
                             .format(patch.device, dst_H_src.device))
         return F.grid_sample(patch, self.warp_grid(dst_H_src), 'bilinear',
                              padding_mode=padding_mode)
+
+# functional api
+
+def homography_warp(patch, dst_H_src, dsize, points=None,
+                    padding_mode='zeros'):
+    """Functional API for :class:`torgeometry.HomographyWarper`.
+    """
+    height, width = dsize
+    warper = HomographyWarper(height, width, points)
+    return warper(patch, dst_H_src, padding_mode)

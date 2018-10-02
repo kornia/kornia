@@ -46,6 +46,13 @@ class Tester(unittest.TestCase):
             threshold = 0.05
             self.assertTrue(error.item() < threshold)
 
+            # check functional api
+            patch_dst_to_src_functional = tgm.homography_warp(
+                patch_dst, tgm.inverse(dst_homo_src_i), (height, width))
+            res = utils.check_equal_torch(patch_dst_to_src,
+                patch_dst_to_src_functional)
+            self.assertTrue(res)
+
     def test_homography_warper_gradcheck(self):
         # generate input data
         batch_size = 1
@@ -71,6 +78,10 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
+        # evaluate function gradient
+        res = gradcheck(tgm.homography_warp, (patch_src, dst_homo_src,
+                        (height, width)), raise_exception=True)
+        self.assertTrue(res)
 
 if __name__ == '__main__':
     unittest.main()
