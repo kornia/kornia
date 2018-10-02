@@ -109,8 +109,12 @@ class Tester(unittest.TestCase):
         self.assertAlmostEqual(error.item(), 0.0, places=4)
 
         # functional
-        self.assertTrue(torch.allclose(points_dst,
-            tgm.TransformPoints()(dst_homo_src, points_src)))
+        self.assertTrue(
+            torch.allclose(
+                points_dst,
+                tgm.TransformPoints()(
+                    dst_homo_src,
+                    points_src)))
 
     def test_transform_points_gradcheck(self):
         # generate input data
