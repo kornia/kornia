@@ -57,7 +57,7 @@ class Tester(unittest.TestCase):
 
         # compute error
         res = utils.check_equal_torch(
-            patch_ref[..., :-int(offset), :-int(offset)],
+            patch_ref[..., :int(height - offset), :int(width - offset)],
             patch_i[..., int(offset):, int(offset):])
         self.assertTrue(res)
 
