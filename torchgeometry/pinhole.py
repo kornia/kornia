@@ -54,7 +54,8 @@ def pinhole_matrix(pinholes):
     """Converts vector pinhole representation to 4x4 Tensor
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                           of size (N, 12).
 
     Returns:
         Tensor: tensor of pinhole matrices of size (N, 4, 4).
@@ -78,7 +79,8 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
     """Invert a set of pinholes
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                           of size (N, 12).
 
     Returns:
         Tensor: tensor of inverted pinhole matrices of size (N, 4, 4).
@@ -102,11 +104,13 @@ def scale_pinhole(pinholes, scale):
     """Scales the pinhole matrix for each pinhole model.
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                           of size (N, 12).
         scale (Tensor): tensor of scales of form [N, 1]
 
     Returns:
-        Tensor: tensor of scaled pinholes of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        Tensor: tensor of scaled pinholes of form
+                [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
 
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
@@ -120,7 +124,8 @@ def get_optical_pose_base(pinholes):
     """Get extrinsic transformation matrices for pinholes
 
     Args:
-        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+        pinholes (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                           of size (N, 12).
 
     Returns:
         Tensor: tensor of extrinsic transformation matrices of size (N, 4, 4).
@@ -135,13 +140,16 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
     """
     Homography from pinhole_ref to pinhole_i
 
-    Args: 
-        pinhole_i (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
-        pinhole_ref (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).
+    Args:
+        pinhole_i (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                            of size (N, 12).
+        pinhole_ref (Tensor): tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+                              of size (N, 12).
 
     Returns:
-        Tensor: tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i (N, 4, 4).
-        
+        Tensor: tensors that convert depth points (u, v, d) from pinhole_ref to
+                pinhole_i (N, 4, 4).
+
     """
     assert len(
         pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape

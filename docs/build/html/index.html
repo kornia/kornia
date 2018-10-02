@@ -215,7 +215,8 @@
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+of size (N, 12).</td>
 </tr>
 <tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices of size (N, 4, 4).</td>
 </tr>
@@ -233,7 +234,8 @@
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+of size (N, 12).</td>
 </tr>
 <tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices of size (N, 4, 4).</td>
 </tr>
@@ -252,12 +254,18 @@
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
+<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+of size (N, 12).</li>
 <li><strong>scale</strong> (<em>Tensor</em>) – tensor of scales of form [N, 1]</li>
 </ul>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of scaled pinholes of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</p>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><dl class="docutils">
+<dt>tensor of scaled pinholes of form</dt>
+<dd><p class="first last">[fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</p>
+</dd>
+</dl>
+</p>
 </td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
@@ -276,12 +284,19 @@
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
-<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</li>
+<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+of size (N, 12).</li>
+<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
+of size (N, 12).</li>
 </ul>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i (N, 4, 4).</p>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><dl class="docutils">
+<dt>tensors that convert depth points (u, v, d) from pinhole_ref to</dt>
+<dd><p class="first last">pinhole_i (N, 4, 4).</p>
+</dd>
+</dl>
+</p>
 </td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
@@ -550,7 +565,10 @@
 <dl class="function">
 <dt id="torchgeometry.tensor_to_image">
 <code class="descclassname">torchgeometry.</code><code class="descname">tensor_to_image</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#tensor_to_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.tensor_to_image" title="Permalink to this definition">¶</a></dt>
-<dd><p>Converts a torch.Tensor image to a numpy image. In case the tensor is in the GPU, it will be copied back to CPU.</p>
+<dd><dl class="docutils">
+<dt>Converts a torch.Tensor image to a numpy image. In case the tensor is in</dt>
+<dd>the GPU, it will be copied back to CPU.</dd>
+</dl>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -621,9 +639,11 @@ space [-1, 1] to sample. Optional parameter.</li>
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
 <li><strong>patch</strong> (<em>Tensor</em>) – The image or tensor to warp. Should be from source.</li>
-<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies from source to destination.</li>
-<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with zeros
-or ‘border’ to choose the closest border data.</li>
+<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies
+from source to destination.</li>
+<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with
+zeros or ‘border’ to choose the closest
+border data.</li>
 </ul>
 </td>
 </tr>
@@ -704,7 +724,10 @@ Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
 <dl class="method">
 <dt id="torchgeometry.DepthWarper.forward">
 <code class="descname">forward</code><span class="sig-paren">(</span><em>inv_depth_ref</em>, <em>patch_i</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper.forward"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper.forward" title="Permalink to this definition">¶</a></dt>
-<dd><p>Warps an image or tensor from ith frame to reference given the inverse depth in the reference frame.</p>
+<dd><dl class="docutils">
+<dt>Warps an image or tensor from ith frame to reference given the</dt>
+<dd>inverse depth in the reference frame.</dd>
+</dl>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -740,7 +763,7 @@ Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># create the depth warper and compute the homographies</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">warper</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">DepthWarper</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">warper</span><span class="o">.</span><span class="n">compute_homographies</span><span class="p">(</span><span class="n">pinhole_ref</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="c1"># warper the ith frame to reference by inverse depth in the reference</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># warp the ith frame to reference by inverse depth</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">inv_depth_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>  <span class="c1"># Nx1xHxW</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">warper</span><span class="p">(</span><span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>    <span class="c1"># NxCxHxW</span>
 </pre></div>
@@ -763,12 +786,14 @@ Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
 <li><strong>patch</strong> (<em>Tensor</em>) – The image or tensor to warp. Should be from source.</li>
-<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies from source to destination.</li>
+<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies from
+source to destination.</li>
 <li><strong>dsize</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.7)"><em>tuple</em></a>) – The height and width of the image to warp.</li>
 <li><strong>points</strong> (<em>Tensor</em>) – Tensor[3, N] of homogeneous points in normalized image
 space [-1, 1] to sample. Optional parameter.</li>
-<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with zeros
-or ‘border’ to choose the closest border data.</li>
+<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with
+zeros or ‘border’ to choose the closest border
+data.</li>
 </ul>
 </td>
 </tr>
@@ -809,8 +834,10 @@ or ‘border’ to choose the closest border data.</li>
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>pinholes_i</strong> (<em>Tensor</em>) – The pinhole models for ith frame with shape <cite>[Nx12]</cite>.</li>
-<li><strong>pinholes_ref</strong> (<em>Tensor</em>) – The pinhole models for the reference frame with shape <cite>[1x12]</cite>.</li>
+<li><strong>pinholes_i</strong> (<em>Tensor</em>) – The pinhole models for ith frame with
+shape <cite>[Nx12]</cite>.</li>
+<li><strong>pinholes_ref</strong> (<em>Tensor</em>) – The pinhole models for the reference frame
+with shape <cite>[1x12]</cite>.</li>
 <li><strong>inv_depth_ref</strong> (<em>Tensor</em>) – The inverse depth in the reference frame.</li>
 <li><strong>patch_i</strong> (<em>Tensor</em>) – The patch data in the ith frame.</li>
 </ul>
@@ -832,7 +859,7 @@ or ‘border’ to choose the closest border data.</li>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">]),</span>      <span class="c1"># Nx12</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># warp the ith frame to reference by inverse depth in the reference</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">inv_depth_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>  <span class="c1"># Nx1xHxW</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">depth_warp</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">depth_warp</span><span class="p">(</span>         <span class="o">&gt;&gt;&gt;</span>     <span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
 </pre></div>
 </div>
 </dd></dl>

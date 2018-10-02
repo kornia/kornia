@@ -25,6 +25,7 @@ class DepthWarper(nn.Module):
         height (int): The height of the image to warp. Optional.
 
     """
+
     def __init__(self, pinholes, width=None, height=None):
         super(DepthWarper, self).__init__()
         # TODO: add type and value checkings
@@ -126,7 +127,8 @@ accurate sampling of the depth cost volume, per camera.
         return flows.permute(0, 2, 3, 1)  # NxHxWx2
 
     def forward(self, inv_depth_ref, patch_i):
-        """Warps an image or tensor from ith frame to reference given the inverse depth in the reference frame.
+        """Warps an image or tensor from ith frame to reference given the
+           inverse depth in the reference frame.
 
         Args:
             inv_depth_ref (Tensor): The inverse depth in the reference frame.
@@ -148,27 +150,30 @@ accurate sampling of the depth cost volume, per camera.
             >>> # create the depth warper and compute the homographies
             >>> warper = tgm.DepthWarper(pinholes_i)
             >>> warper.compute_homographies(pinhole_ref)
-            >>> # warper the ith frame to reference by inverse depth in the reference
+            >>> # warp the ith frame to reference by inverse depth
             >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
             >>> img_ref = warper(inv_depth_ref, img_i)    # NxCxHxW
         """
         # TODO: add type and value checkings
-        return torch.nn.functional.grid_sample(patch_i, self.warp(inv_depth_ref))
+        return torch.nn.functional.grid_sample(
+            patch_i, self.warp(inv_depth_ref))
 
 
 # functional api
 
-def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i, \
-                 width=None, height=None):
+def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i,
+               width=None, height=None):
     """
     .. note::
         Functional API for :class:`torgeometry.DepthWarper`
-    
+
     Warps a patch by inverse depth.
 
     Args:
-        pinholes_i (Tensor): The pinhole models for ith frame with shape `[Nx12]`.
-        pinholes_ref (Tensor): The pinhole models for the reference frame with shape `[1x12]`.
+        pinholes_i (Tensor): The pinhole models for ith frame with
+                             shape `[Nx12]`.
+        pinholes_ref (Tensor): The pinhole models for the reference frame
+                               with shape `[1x12]`.
         inv_depth_ref (Tensor): The inverse depth in the reference frame.
         patch_i (Tensor): The patch data in the ith frame.
 
@@ -183,7 +188,8 @@ def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i, \
         >>> pinhole_ref = torch.Tensor([1, 12]),      # Nx12
         >>> # warp the ith frame to reference by inverse depth in the reference
         >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
-        >>> img_ref = tgm.depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW
+        >>> img_ref = tgm.depth_warp( \
+        >>>     pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW
     """
     warper = DepthWarper(pinholes_i, width=width, height=height)
     warper.compute_homographies(pinhole_ref)

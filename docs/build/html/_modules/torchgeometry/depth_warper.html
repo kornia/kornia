@@ -175,6 +175,7 @@
 <span class="sd">        height (int): The height of the image to warp. Optional.</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pinholes</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">(</span><span class="n">DepthWarper</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="c1"># TODO: add type and value checkings</span>
@@ -276,7 +277,8 @@
         <span class="k">return</span> <span class="n">flows</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># NxHxWx2</span>
 
 <div class="viewcode-block" id="DepthWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.DepthWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">):</span>
-        <span class="sd">&quot;&quot;&quot;Warps an image or tensor from ith frame to reference given the inverse depth in the reference frame.</span>
+        <span class="sd">&quot;&quot;&quot;Warps an image or tensor from ith frame to reference given the</span>
+<span class="sd">           inverse depth in the reference frame.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            inv_depth_ref (Tensor): The inverse depth in the reference frame.</span>
@@ -298,27 +300,30 @@
 <span class="sd">            &gt;&gt;&gt; # create the depth warper and compute the homographies</span>
 <span class="sd">            &gt;&gt;&gt; warper = tgm.DepthWarper(pinholes_i)</span>
 <span class="sd">            &gt;&gt;&gt; warper.compute_homographies(pinhole_ref)</span>
-<span class="sd">            &gt;&gt;&gt; # warper the ith frame to reference by inverse depth in the reference</span>
+<span class="sd">            &gt;&gt;&gt; # warp the ith frame to reference by inverse depth</span>
 <span class="sd">            &gt;&gt;&gt; inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW</span>
 <span class="sd">            &gt;&gt;&gt; img_ref = warper(inv_depth_ref, img_i)    # NxCxHxW</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># TODO: add type and value checkings</span>
-        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span><span class="n">patch_i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp</span><span class="p">(</span><span class="n">inv_depth_ref</span><span class="p">))</span></div></div>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span>
+            <span class="n">patch_i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp</span><span class="p">(</span><span class="n">inv_depth_ref</span><span class="p">))</span></div></div>
 
 
 <span class="c1"># functional api</span>
 
-<div class="viewcode-block" id="depth_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.depth_warp">[docs]</a><span class="k">def</span> <span class="nf">depth_warp</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">,</span> \
-                 <span class="n">width</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<div class="viewcode-block" id="depth_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.depth_warp">[docs]</a><span class="k">def</span> <span class="nf">depth_warp</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">,</span>
+               <span class="n">width</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    .. note::</span>
 <span class="sd">        Functional API for :class:`torgeometry.DepthWarper`</span>
-<span class="sd">    </span>
+
 <span class="sd">    Warps a patch by inverse depth.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        pinholes_i (Tensor): The pinhole models for ith frame with shape `[Nx12]`.</span>
-<span class="sd">        pinholes_ref (Tensor): The pinhole models for the reference frame with shape `[1x12]`.</span>
+<span class="sd">        pinholes_i (Tensor): The pinhole models for ith frame with</span>
+<span class="sd">                             shape `[Nx12]`.</span>
+<span class="sd">        pinholes_ref (Tensor): The pinhole models for the reference frame</span>
+<span class="sd">                               with shape `[1x12]`.</span>
 <span class="sd">        inv_depth_ref (Tensor): The inverse depth in the reference frame.</span>
 <span class="sd">        patch_i (Tensor): The patch data in the ith frame.</span>
 
@@ -333,7 +338,8 @@
 <span class="sd">        &gt;&gt;&gt; pinhole_ref = torch.Tensor([1, 12]),      # Nx12</span>
 <span class="sd">        &gt;&gt;&gt; # warp the ith frame to reference by inverse depth in the reference</span>
 <span class="sd">        &gt;&gt;&gt; inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW</span>
-<span class="sd">        &gt;&gt;&gt; img_ref = tgm.depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW</span>
+<span class="sd">        &gt;&gt;&gt; img_ref = tgm.depth_warp( \</span>
+<span class="sd">        &gt;&gt;&gt;     pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">warper</span> <span class="o">=</span> <span class="n">DepthWarper</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="n">height</span><span class="p">)</span>
     <span class="n">warper</span><span class="o">.</span><span class="n">compute_homographies</span><span class="p">(</span><span class="n">pinhole_ref</span><span class="p">)</span>

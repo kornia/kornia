@@ -192,6 +192,7 @@
 <span class="sd">        points (Tensor): Tensor[3, N] of homogeneous points in normalized image</span>
 <span class="sd">                       space [-1, 1] to sample. Optional parameter.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
+
     <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">(</span><span class="n">HomographyWarper</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="k">if</span> <span class="n">points</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -257,9 +258,11 @@
 
 <span class="sd">        Args:</span>
 <span class="sd">            patch (Tensor): The image or tensor to warp. Should be from source.</span>
-<span class="sd">            dst_homo_src (Tensor): The homography or stack of homographies from source to destination.</span>
-<span class="sd">            padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with zeros</span>
-<span class="sd">                             or &#39;border&#39; to choose the closest border data.</span>
+<span class="sd">            dst_homo_src (Tensor): The homography or stack of homographies</span>
+<span class="sd">                                   from source to destination.</span>
+<span class="sd">            padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with</span>
+<span class="sd">                                   zeros or &#39;border&#39; to choose the closest</span>
+<span class="sd">                                   border data.</span>
 
 <span class="sd">        Return:</span>
 <span class="sd">            Tensor: Patch sampled at locations from source to destination.</span>
@@ -283,6 +286,7 @@
 
 <span class="c1"># functional api</span>
 
+
 <div class="viewcode-block" id="homography_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.homography_warp">[docs]</a><span class="k">def</span> <span class="nf">homography_warp</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">dsize</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                     <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
@@ -292,12 +296,14 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        patch (Tensor): The image or tensor to warp. Should be from source.</span>
-<span class="sd">        dst_homo_src (Tensor): The homography or stack of homographies from source to destination.</span>
+<span class="sd">        dst_homo_src (Tensor): The homography or stack of homographies from</span>
+<span class="sd">                               source to destination.</span>
 <span class="sd">        dsize (tuple): The height and width of the image to warp.</span>
 <span class="sd">        points (Tensor): Tensor[3, N] of homogeneous points in normalized image</span>
 <span class="sd">                   space [-1, 1] to sample. Optional parameter.</span>
-<span class="sd">        padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with zeros</span>
-<span class="sd">                         or &#39;border&#39; to choose the closest border data.</span>
+<span class="sd">        padding_mode (string): Either &#39;zeros&#39; to replace out of bounds with</span>
+<span class="sd">                               zeros or &#39;border&#39; to choose the closest border</span>
+<span class="sd">                               data.</span>
 
 <span class="sd">    Return:</span>
 <span class="sd">        Tensor: Patch sampled at locations from source to destination.</span>
