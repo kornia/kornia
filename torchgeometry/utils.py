@@ -10,22 +10,28 @@ __all__ = [
     "tensor_to_image",
     "image_to_tensor",
     "draw_rectangle",
-    "create_pinhole"
+    "create_pinhole",
     "inverse",
     "Inverse",
 ]
 
 
-def inverse(homography):
-    # TODO: add documentation
-    # NOTE: we expect in the future to have a native Pytorch function
-    """Batched version of torch.inverse(...)
+def inverse(transforms):
+    """Batched version of `torch.inverse`
+
+    Args:
+        transforms (Tensor): tensor of transformations of size (B, D, D).
+
+    Returns:
+        Tensor: tensor of inverted transformations of size (B, D, D).
+
     """
-    if not len(homography.shape) == 3:
-        raise ValueError("Input size must be a three dimensional tensor. Got {}"
-                         .format(homography.shape))
+    if not len(transforms.shape) == 3:
+        raise ValueError(
+            "Input size must be a three dimensional tensor. Got {}".format(
+                transforms.shape))
     # iterate, compute inverse and stack tensors
-    return torch.stack([torch.inverse(homo) for homo in homography])
+    return torch.stack([torch.inverse(transform) for transform in transforms])
 
 
 class Inverse(nn.Module):
@@ -58,8 +64,7 @@ def image_to_tensor(image):
 
 
 def tensor_to_image(tensor):
-    """Converts a torch.Tensor image to a numpy image. In case the tensor is
-       in the GPU, it will be copied back to CPU.
+    """Converts a torch.Tensor image to a numpy image. In case the tensor is in the GPU, it will be copied back to CPU.
 
     Args:
         tensor (Tensor): image of the form (C, H, W).
