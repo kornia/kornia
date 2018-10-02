@@ -443,7 +443,21 @@ of size (N, 12).</li>
 <dl class="function">
 <dt id="torchgeometry.angle_axis_to_rotation_matrix">
 <code class="descclassname">torchgeometry.</code><code class="descname">angle_axis_to_rotation_matrix</code><span class="sig-paren">(</span><em>angle_axis</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#angle_axis_to_rotation_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.angle_axis_to_rotation_matrix" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<dd><p>Convert 3d vector of axis-angle rotation to 4x4 rotation matrix</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>angle_axis</strong> (<em>Tensor</em>) – tensor of 3d vector of axis-angle rotations
+of size (N, 3).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of 4x4 rotation matrices of size (N, 4, 4).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.rotation_matrix_to_angle_axis">
@@ -465,13 +479,42 @@ of size (N, 12).</li>
 
 <dl class="function">
 <dt id="torchgeometry.rotation_matrix_to_quaternion">
-<code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_quaternion</code><span class="sig-paren">(</span><em>rotation_matrix</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_quaternion"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_quaternion" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_quaternion</code><span class="sig-paren">(</span><em>rotation_matrix</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_quaternion"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_quaternion" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert 4x4 rotation matrix to 4d quaternion vector</p>
+<p>This algorithm is based on algorithm described in
+<a class="reference external" href="https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201">https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201</a></p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>rotation_matrix</strong> (<em>Tensor</em>) – the rotation matrix to convert.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">the rotation in quaternion</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.quaternion_to_angle_axis">
-<code class="descclassname">torchgeometry.</code><code class="descname">quaternion_to_angle_axis</code><span class="sig-paren">(</span><em>quaternion</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#quaternion_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.quaternion_to_angle_axis" title="Permalink to this definition">¶</a></dt>
-<dd></dd></dl>
+<code class="descclassname">torchgeometry.</code><code class="descname">quaternion_to_angle_axis</code><span class="sig-paren">(</span><em>quaternion</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#quaternion_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.quaternion_to_angle_axis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert quaternion vector to angle axis of rotation</p>
+<p>Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>quaternion</strong> (<em>Tensor</em>) – vector of length 4</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">angle axis of rotation (vector of length 3)</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.rtvec_to_pose">
