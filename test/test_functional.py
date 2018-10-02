@@ -18,6 +18,10 @@ class Tester(unittest.TestCase):
         points_h = tgm.convert_points_to_homogeneous(points)
         self.assertTrue((points_h[..., -1] == torch.ones(1, 2, 1)).all())
 
+        # functional
+        self.assertTrue(
+            torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points)))
+
     def test_convert_points_to_homogeneous_gradcheck(self):
         # generate input data
         batch_size = 2
@@ -40,6 +44,10 @@ class Tester(unittest.TestCase):
 
         error = utils.compute_mse(points_h[..., :2], points)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
+
+        # functional
+        self.assertTrue(torch.allclose(
+            points, tgm.ConvertPointsFromHomogeneous()(points_h)))
 
     def test_convert_points_from_homogeneous_gradcheck(self):
         # generate input data
@@ -64,6 +72,10 @@ class Tester(unittest.TestCase):
         eye = utils.create_eye_batch(batch_size, eye_size)
         error = utils.compute_mse(res, eye)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
+
+        # functional
+        self.assertTrue(
+            torch.allclose(homographies_inv, tgm.Inverse()(homographies)))
 
     def test_inverse_gradcheck(self):
         # generate input data
@@ -96,6 +108,10 @@ class Tester(unittest.TestCase):
         error = utils.compute_mse(points_src, points_dst_to_src)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
 
+        # functional
+        self.assertTrue(torch.allclose(points_dst,
+            tgm.TransformPoints()(dst_homo_src, points_src)))
+
     def test_transform_points_gradcheck(self):
         # generate input data
         batch_size = 2
@@ -127,6 +143,9 @@ class Tester(unittest.TestCase):
         error = utils.compute_mse(x_rad, x_deg_to_rad)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
 
+        # functional
+        self.assertTrue(torch.allclose(x_deg, tgm.RadToDeg()(x_rad)))
+
     def test_rad2deg_gradcheck(self):
         # generate input data
         x_rad = tgm.pi * torch.rand(2, 3, 4)
@@ -147,6 +166,9 @@ class Tester(unittest.TestCase):
         # compute error
         error = utils.compute_mse(x_deg, x_rad_to_deg)
         self.assertAlmostEqual(error.item(), 0.0, places=4)
+
+        # functional
+        self.assertTrue(torch.allclose(x_rad, tgm.DegToRad()(x_deg)))
 
     def test_deg2rad_gradcheck(self):
         # generate input data

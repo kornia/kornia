@@ -1,13 +1,150 @@
 import torch
+import torch.nn as nn
 import numpy as np
 
 __all__ = [
+    # functional api
+    "pi",
+    "rad2deg",
+    "deg2rad",
+    "convert_points_from_homogeneous",
+    "convert_points_to_homogeneous",
+    "transform_points",
     "angle_axis_to_rotation_matrix",
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
     "quaternion_to_angle_axis",
     "rtvec_to_pose",
+    # layer api
+    "RadToDeg",
+    "DegToRad",
+    "ConvertPointsFromHomogeneous",
+    "ConvertPointsToHomogeneous",
+    "TransformPoints",
+    "AngleAxisToRotationMatrix",
+    "RotationMatrixToAngleAxis",
+    "RotationMatrixToQuaternion",
+    "QuaternionToAngleAxis",
+    "RtvecToPose",
 ]
+
+
+"""Constant with number pi
+"""
+pi = torch.Tensor([3.141592653589793])
+
+
+def rad2deg(tensor):
+    """Converts angles from radians to degrees.
+
+    Args:
+        tensor (Tensor): Tensor to be converted of unspecified shape.
+
+    Returns:
+        Tensor: Converted tensor with same shape as input.
+
+    Example:
+        >>> input = tgm.pi * torch.rand(1, 3, 3)
+        >>> output = tgm.rad2deg(input)
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+
+    return 180. * tensor / pi.to(tensor.device).type(tensor.dtype)
+
+
+def deg2rad(tensor):
+    """Converts angles from degrees to radians.
+
+    Args:
+        tensor (Tensor): Tensor to be converted of unspecified shape.
+
+    Returns:
+        Tensor: Converted tensor with same shape as input.
+
+    Example:
+        >>> input = 360. * torch.rand(1, 3, 3)
+        >>> output = tgm.deg2rad(input)
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+
+    return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
+
+
+def convert_points_from_homogeneous(points, eps=1e-6):
+    """Converts points from homogeneous to Euclidean space.
+
+    Args:
+        points (Tensor): tensor of N-dimensional points of size (B, D, N).
+
+    Returns:
+        Tensor: tensor of N-1-dimensional points of size (B, D, N-1).
+    """
+    if not torch.is_tensor(points):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(points)))
+
+    if not len(points.shape) == 3:
+        raise ValueError(
+            "Input size must be a three dimensional tensor. Got {}".format(
+                points.shape))
+
+    return points[..., :-1] / (points[..., -1:] + eps)
+
+
+def convert_points_to_homogeneous(points):
+    """Converts points from Euclidean to homogeneous space.
+
+    Args:
+        points (Tensor): tensor of N-dimensional points of size (B, D, N).
+
+    Returns:
+        Tensor: tensor of N+1-dimensional points of size (B, D, N+1).
+    """
+    if not torch.is_tensor(points):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(points)))
+
+    if not len(points.shape) == 3:
+        raise ValueError(
+            "Input size must be a three dimensional tensor. Got {}".format(
+                points.shape))
+
+    return torch.cat([points, torch.ones_like(points)[..., :1]], dim=-1)
+
+
+def transform_points(dst_pose_src, points_src):
+    """Applies batch of transformations to batch of sets of points.
+
+    Args: 
+        dst_pose_src (Tensor): tensor for transformations of size (B, D+1, D+1).
+        points_src (Tensor): tensor of points of size (B, N, D).
+
+    Returns:
+        Tensor: tensor of N-dimensional points of size (B, D, N).
+
+    """
+    if not torch.is_tensor(dst_pose_src) or not torch.is_tensor(points_src):
+        raise TypeError("Input type is not a torch.Tensor")
+    if not dst_pose_src.device == points_src.device:
+        raise TypeError("Tensor must be in the same device")
+    if not len(dst_pose_src.shape) == 3 or not len(points_src.shape) == 3:
+        raise ValueError("Input size must be a three dimensional tensor")
+    if not dst_pose_src.shape[0] == points_src.shape[0]:
+        raise ValueError("Input batch size must be the same for both tensors")
+    if not dst_pose_src.shape[2] == (points_src.shape[2] + 1):
+        raise ValueError("Input dimensions must differe by one unit")
+    # to homogeneous
+    points_src_h = convert_points_to_homogeneous(points_src)  # BxNxD+1
+    # transform coordinates
+    points_dst_h = torch.matmul(dst_pose_src, points_src_h.transpose(1, 2))
+    points_dst_h = points_dst_h.permute(0, 2, 1)  # BxNxD+1
+    # to euclidean
+    points_dst = convert_points_from_homogeneous(points_dst_h)  # BxNxD
+    return points_dst
 
 
 def angle_axis_to_rotation_matrix_numpy(angle_axis):
@@ -382,3 +519,87 @@ def quaternion_to_angle_axis_torch(quaternion, eps=1e-6):
 # TODO: add below funtionalities
 #  - rotation_matrix_to_angle_axis
 #  - pose_to_rtvec
+
+
+# layer api
+
+
+class RadToDeg(nn.Module):
+    def __init__(self):
+        super(RadToDeg, self).__init__()
+
+    def forward(self, input):
+        return rad2deg(input)
+
+
+class DegToRad(nn.Module):
+    def __init__(self):
+        super(DegToRad, self).__init__()
+
+    def forward(self, input):
+        return deg2rad(input)
+
+
+class ConvertPointsFromHomogeneous(nn.Module):
+    def __init__(self):
+        super(ConvertPointsFromHomogeneous, self).__init__()
+
+    def forward(self, input):
+        return convert_points_from_homogeneous(input)
+
+
+class ConvertPointsToHomogeneous(nn.Module):
+    def __init__(self):
+        super(ConvertPointsToHomogeneous, self).__init__()
+
+    def forward(self, input):
+        return convert_points_to_homogeneous(input)
+
+
+class TransformPoints(nn.Module):
+    def __init__(self):
+        super(TransformPoints, self).__init__()
+
+    def forward(self, dst_homo_src, points_src):
+        return transform_points(dst_homo_src, points_src)
+
+
+class AngleAxisToRotationMatrix(nn.Module):
+    def __init__(self):
+        super(AngleAxisToRotationMatrix, self).__init__()
+
+    def forward(self, input):
+        return angle_axis_to_rotation_matrix(input)
+
+
+class RotationMatrixToAngleAxis(nn.Module):
+    def __init__(self):
+        super(RotationMatrixToAngleAxis, self).__init__()
+
+    def forward(self, input):
+        return rotation_matrix_to_angle_axis(input)
+
+
+class RotationMatrixToQuaternion(nn.Module):
+    def __init__(self):
+        super(RotationMatrixToQuaterion, self).__init__()
+
+    def forward(self, input):
+        return rotation_matrix_to_quaterion(input)
+
+
+class QuaternionToAngleAxis(nn.Module):
+    def __init__(self):
+        super(QuaternionToAngleAxis, self).__init__()
+
+    def forward(self, input):
+        return quaterion_to_angle_axis(input)
+
+
+class RtvecToPose(nn.Module):
+    def __init__(self):
+        super(RtvecToPose, self).__init__()
+
+    def forward(self, input):
+        return rtvec_to_pose(input)
+>>>>>>> refactor and add layers api
