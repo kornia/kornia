@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 
-
 __all__ = [
     "angle_axis_to_rotation_matrix",
     "rotation_matrix_to_angle_axis",
@@ -14,6 +13,13 @@ __all__ = [
 def angle_axis_to_rotation_matrix_numpy(angle_axis):
     """
     Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
+
+    Args:
+        angle_axis (numpy.ndarray): array of 3d vector of axis-angle rotations of size (1, 3).
+    
+    Returns:
+        numpy.ndarray: array of 4x4 rotation matrices of size (4, 4).
+        
     """
     # stolen from ceres/rotation.h
     k_one = 1.0
@@ -56,7 +62,15 @@ def angle_axis_to_rotation_matrix_numpy(angle_axis):
 def angle_axis_to_rotation_matrix_torch(angle_axis, eps=1e-6):
     """
     Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
+
+    Args:
+        angle_axis (Tensor): tensor of 3d vector of axis-angle rotations of size (N, 3).
+    
+    Returns:
+        Tensor: tensor of 4x4 rotation matrices of size (N, 4, 4).
+
     """
+
     def _compute_rotation_matrix(angle_axis, theta2):
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
@@ -77,15 +91,15 @@ def angle_axis_to_rotation_matrix_torch(angle_axis, eps=1e-6):
         r02 = wy * sin_theta + wx * wz * (k_one - cos_theta)
         r12 = -wx * sin_theta + wy * wz * (k_one - cos_theta)
         r22 = cos_theta + wz * wz * (k_one - cos_theta)
-        rotation_matrix = torch.cat([
-            r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
+        rotation_matrix = torch.cat(
+            [r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
     def _compute_rotation_matrix_taylor(angle_axis):
         rx, ry, rz = torch.chunk(angle_axis, 3, dim=1)
         k_one = torch.ones_like(rx)
-        rotation_matrix = torch.cat([
-            k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
+        rotation_matrix = torch.cat(
+            [k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
     # stolen from ceres/rotation.h
@@ -121,14 +135,20 @@ def angle_axis_to_rotation_matrix(angle_axis):
             raise ValueError("Input must be a two dimensional torch.Tensor.")
         return angle_axis_to_rotation_matrix_torch(angle_axis)
     else:
-        raise NotImplementedError(
-            'Not suported type {}'.format(
-                type(angle_axis)))
+        raise NotImplementedError('Not suported type {}'.format(
+            type(angle_axis)))
 
 
 def rtvec_to_pose(rtvec):
     """
     Convert axis-angle rotation and translation vector to 4x4 pose matrix
+
+    Args: 
+        rtvec (Tensor): Rodrigues vector transformations of size (N, 6).
+
+    Returns:
+        Tensor: transformation matrices of size (N, 4, 4).
+
     """
     assert rtvec.shape[-1] == 6, 'rtvec=[rx, ry, rz, tx, ty, tz]'
     pose = angle_axis_to_rotation_matrix(rtvec[..., :3])
@@ -139,7 +159,15 @@ def rtvec_to_pose(rtvec):
 def rotation_matrix_to_angle_axis(rotation_matrix):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
+
+    Args:
+        rotation_matrix (Tensor): rotation matrix of size (4, 4).
+
+    Returns:
+        Tensor: Rodrigues vector transformation of size (1, 6).
+
     '''
+    #todo add check that matrix is a valid rotation matrix
     quaternion = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
 
@@ -147,6 +175,13 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
 def rotation_matrix_to_quaternion(rotation_matrix):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
+
+    Args:
+        rotation_matrix (Tensor): rotation matrix of size (4, 4).
+
+    Returns:
+        Tensor: quaternion representation of rotation of size (1, 4).
+
     '''
     quaternion = torch.zeros(4)
     trace = rotation_matrix[0, 0] + \
@@ -183,8 +218,13 @@ def quaternion_to_angle_axis(quaternion):
     '''
     Convert quaternion vector to angle axis of rotation
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
-    :param quaternion: Tensor vector of length 4
-    :return: angle axis of rotation (vector of length 3)
+    
+    Args:
+        quaternion (Tensor): quaternion rotation vector of length 4
+
+    Returns:
+        Tensor: axis-angle rotation of size (1, 3).
+        
     '''
     assert quaternion.size(0) == 4, 'Input must be a vector of length 4'
     normalizer = 1 / torch.norm(quaternion)
