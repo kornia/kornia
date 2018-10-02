@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import torch
-import numpy as np
 import torchgeometry as tgm
 import torch.nn as nn
 
@@ -45,7 +44,7 @@ class Inverse(nn.Module):
 def image_to_tensor(image):
     """Converts a numpy image to a torch.Tensor image.
 
-    Args: 
+    Args:
         image (numpy.ndarray): image of the form (H, W, C).
 
     Returns:
@@ -64,7 +63,8 @@ def image_to_tensor(image):
 
 
 def tensor_to_image(tensor):
-    """Converts a torch.Tensor image to a numpy image. In case the tensor is in the GPU, it will be copied back to CPU.
+    """Converts a torch.Tensor image to a numpy image. In case the tensor is in
+       the GPU, it will be copied back to CPU.
 
     Args:
         tensor (Tensor): image of the form (C, H, W).
@@ -109,6 +109,7 @@ def draw_rectangle(image, dst_homo_src):
     ]]).to(dst_homo_src.device)
     # transform points
     pts_dst = tgm.transform_points(tgm.inverse(dst_homo_src), pts_src)
+
     def compute_factor(size):
         return 1.0 * size / 2
 
