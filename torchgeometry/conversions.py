@@ -258,7 +258,7 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
 
     Return:
         Tensor: the rotation in quaternion
-    
+
     """
     rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
@@ -309,7 +309,7 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
 
 def quaternion_to_angle_axis(quaternion, eps=1e-6):
     """Convert quaternion vector to angle axis of rotation
-    
+
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
