@@ -24,16 +24,6 @@ class DepthWarper(nn.Module):
         width (int): The width of the image to warp. Optional.
         height (int): The height of the image to warp. Optional.
 
-    .. note::
-       The pinhole model is represented in a single vector as follows:
-
-       .. math::
-           pinhole = (f_x, f_y, c_x, c_y, height, width, r_x, r_y, r_z, t_x, t_y, t_z)
- 
-       where:
-           :math:`(r_x, r_y, r_z)` is the rotation vector in angle-axis convention.
-
-           :math:`(t_x, t_y, t_z)` is the translation vector.
     """
     def __init__(self, pinholes, width=None, height=None):
         super(DepthWarper, self).__init__()
@@ -172,7 +162,7 @@ def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i, \
                  width=None, height=None):
     """
     .. note::
-        Functional API for :class:`torgeometry.DepthWarper`.
+        Functional API for :class:`torgeometry.DepthWarper`
     
     Warps a patch by inverse depth.
 

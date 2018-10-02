@@ -74,7 +74,7 @@ def pinhole_matrix(pinholes):
     return k
 
 
-def inv_pinhole_matrix(pinhole, eps=1e-6):
+def inverse_pinhole_matrix(pinhole, eps=1e-6):
     """Invert a set of pinholes
 
     Args:

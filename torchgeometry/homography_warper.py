@@ -135,7 +135,8 @@ class HomographyWarper(nn.Module):
 
 def homography_warp(patch, dst_H_src, dsize, points=None,
                     padding_mode='zeros'):
-    """Functional API for :class:`torgeometry.HomographyWarper`.
+    """
+    .. note:: Functional API for :class:`torgeometry.HomographyWarper`
 
     Warps patches by homographies.
 
