@@ -19,11 +19,11 @@ class Tester(unittest.TestCase):
         tx, ty, tz = 0., 0., 0.
         offset = 1.  # we will apply a 1unit offset to `i` camera
 
-        pinhole_src = utils.create_pinhole(
+        pinhole_ref = utils.create_pinhole(
             fx, fy, cx, cy, height, width, rx, ry, rx, tx, ty, tz)
-        pinhole_src = pinhole_src.expand(batch_size, -1)
+        pinhole_ref = pinhole_ref.expand(batch_size, -1)
 
-        pinhole_dst = utils.create_pinhole(
+        pinhole_i = utils.create_pinhole(
             fx,
             fy,
             cx,
@@ -36,29 +36,35 @@ class Tester(unittest.TestCase):
             tx + offset,
             ty + offset,
             tz)
-        pinhole_dst = pinhole_dst.expand(batch_size, -1)
+        pinhole_i = pinhole_i.expand(batch_size, -1)
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view(
+        patch_i = torch.from_numpy(board).view(
             1, 1, height, width).expand(batch_size, 1, height, width)
 
         # instantiate warper and compute relative homographies
-        warper = tgm.DepthWarper(pinhole_src, height, width)
+        warper = tgm.DepthWarper(pinhole_i, height, width)
         warper.compute_homographies(
-            pinhole_dst, scale=torch.ones(
+            pinhole_ref, scale=torch.ones(
                 batch_size, 1))
 
         # generate synthetic inverse depth
-        inv_depth_src = torch.ones(batch_size, 1, height, width)
+        inv_depth_ref = torch.ones(batch_size, 1, height, width)
 
         # warpd source patch by depth
-        patch_dst = warper(inv_depth_src, patch_src)
+        patch_ref = warper(inv_depth_ref, patch_i)
 
         # compute error
         res = utils.check_equal_torch(
-            patch_src[..., :-int(offset), :-int(offset)],
-            patch_dst[..., int(offset):, int(offset):])
+            patch_ref[..., :-int(offset), :-int(offset)],
+            patch_i[..., int(offset):, int(offset):])
+        self.assertTrue(res)
+
+        # test functional
+        patch_ref_functional = tgm.depth_warp(pinhole_i, pinhole_ref,
+            inv_depth_ref, patch_i)
+        res = utils.check_equal_torch(patch_ref, patch_ref_functional)
         self.assertTrue(res)
 
 
