@@ -148,8 +148,7 @@ def transform_points(dst_pose_src, points_src):
 
 
 def angle_axis_to_rotation_matrix(angle_axis):
-    """
-    Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
+    """Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
 
     Args:
         angle_axis (Tensor): tensor of 3d vector of axis-angle rotations
@@ -159,7 +158,6 @@ def angle_axis_to_rotation_matrix(angle_axis):
         Tensor: tensor of 4x4 rotation matrices of size (N, 4, 4).
 
     """
-
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
@@ -235,8 +233,7 @@ def rtvec_to_pose(rtvec):
 
 
 def rotation_matrix_to_angle_axis(rotation_matrix):
-    '''
-    Convert 4x4 rotation matrix to 4d quaternion vector
+    """Convert 4x4 rotation matrix to 4d quaternion vector
 
     Args:
         rotation_matrix (Tensor): rotation matrix of size (4, 4).
@@ -244,26 +241,25 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
     Returns:
         Tensor: Rodrigues vector transformation of size (1, 6).
 
-    '''
+    """
     # todo add check that matrix is a valid rotation matrix
     quaternion = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
 
 
-def rotation_matrix_to_angle_axis(rotation_matrix):
-     '''
-     Convert 4x4 rotation matrix to 4d quaternion vector
-     '''
-     quaternion = rotation_matrix_to_quaternion(rotation_matrix)
-     return quaternion_to_angle_axis(quaternion)
-
-
 def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
-    '''
-    Convert 4x4 rotation matrix to 4d quaternion vector
+    """Convert 4x4 rotation matrix to 4d quaternion vector
+
     This algorithm is based on algorithm described in
     https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
-    '''
+
+    Args:
+        rotation_matrix (Tensor): the rotation matrix to convert.
+
+    Return:
+        Tensor: the rotation in quaternion
+    
+    """
     rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
     mask_d2 = rmat_t[:, 2, 2] < eps
@@ -312,12 +308,16 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
 
 
 def quaternion_to_angle_axis(quaternion, eps=1e-6):
-    '''
-    Convert quaternion vector to angle axis of rotation
+    """Convert quaternion vector to angle axis of rotation
+    
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
-    :param quaternion: Tensor vector of length 4
-    :return: angle axis of rotation (vector of length 3)
-    '''
+
+    Args:
+        quaternion (Tensor): vector of length 4
+
+    Return:
+        Tensor: angle axis of rotation (vector of length 3)
+    """
     assert quaternion.size(1) == 4, 'Input must be a vector of length 4'
     normalizer = 1 / torch.norm(quaternion, dim=1)
     q1 = quaternion[:, 1] * normalizer
