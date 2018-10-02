@@ -6,9 +6,8 @@
 
 --------------------------------------------------------------------------------
 
-.. image:: https://travis-ci.com/arraiy/torchgeometry.svg?branch=master
+.. image:: https://travis-ci.com/arraiy/torchgeometry.svg?token=M8pF2LfWb2ZxBDWRRvcP&branch=master
     :target: https://travis-ci.com/arraiy/torchgeometry
-
 
 `Documentation <https://arraiy.github.io/torchgeometry/>`_
 
