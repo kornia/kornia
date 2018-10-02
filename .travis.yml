@@ -27,6 +27,10 @@ install:
   - source activate test-environment
   - python setup.py install
   - pip install --upgrade pytest
+  - pip install codecov
 
 script:
-- pytest test/
+  - pytest test/
+
+after_success:
+  - codecov
