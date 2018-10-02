@@ -1,8 +1,8 @@
-import cv2
-import numpy as np
 import torch
-import torchgeometry as tgm
 import torch.nn as nn
+import torchgeometry as tgm
+
+import numpy as np
 
 
 __all__ = [
@@ -51,8 +51,8 @@ def image_to_tensor(image):
         numpy.ndarray: image of the form (H, W, C).
 
     """
-    if not type(image) == np.array:
-        raise TypeError("Input type is not a numpy.array. Got {}".format(
+    if not type(image) == np.ndarray:
+        raise TypeError("Input type is not a numpy.ndarray. Got {}".format(
             type(image)))
     if len(image.shape) > 3 or len(image.shape) < 2:
         raise ValueError("Input size must be a two or three dimensional array")
@@ -100,6 +100,7 @@ def create_pinhole(intrinsic, extrinsic, height, width):
 
 
 def draw_rectangle(image, dst_homo_src):
+    import cv2
     height, width = image.shape[:2]
     pts_src = torch.FloatTensor([[
         [-1, -1],  # top-left
