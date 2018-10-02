@@ -23,10 +23,15 @@ Pinhole
 
 .. autofunction:: inverse_pose
 .. autofunction:: pinhole_matrix
-.. autofunction:: inv_pinhole_matrix
+.. autofunction:: inverse_pinhole_matrix
 .. autofunction:: scale_pinhole
 .. autofunction:: homography_i_H_ref
 
+.. autoclass:: InversePose
+.. autoclass:: PinholeMatrix
+.. autoclass:: InversePinholeMatrix
+.. autoclass:: ScalePinhole
+.. autoclass:: Homography_i_H_ref
 
 Conversions
 -----------
@@ -42,6 +47,16 @@ Conversions
 .. autofunction:: quaternion_to_angle_axis
 .. autofunction:: rtvec_to_pose
 
+.. autoclass:: RadToDeg
+.. autoclass:: DegToRad
+.. autoclass:: ConvertPointsFromHomogeneous
+.. autoclass:: ConvertPointsToHomogeneous
+.. autoclass:: TransformPoints
+.. autoclass:: AngleAxisToRotationMatrix
+.. autoclass:: RotationMatrixToAngleAxis
+.. autoclass:: RotationMatrixToQuaternion
+.. autoclass:: QuaternionToAngleAxis
+.. autoclass:: RtvecToPose
 
 Utilities
 ---------
@@ -50,12 +65,16 @@ Utilities
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
 
+.. autoclass:: Inverse
 
-Containers
-----------
+Warping
+-------
 
 .. autoclass:: HomographyWarper
     :members:
 
 .. autoclass:: DepthWarper
     :members:
+
+.. autofunction:: homography_warp
+.. autofunction:: depth_warp
