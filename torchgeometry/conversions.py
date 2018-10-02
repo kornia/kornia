@@ -156,6 +156,32 @@ def rtvec_to_pose(rtvec):
     return pose
 
 
+def rotation_matrix_to_quaternion(rotation_matrix):
+    if isinstance(rotation_matrix, np.ndarray):
+        return rotation_matrix_to_quaternion_numpy(rotation_matrix)
+    elif isinstance(rotation_matrix, torch.Tensor):
+        if not (len(rotation_matrix.shape) == 3 and rotation_matrix.shape[1] == 4):
+            raise ValueError("Input must be a three dimensional torch.Tensor.")
+        return rotation_matrix_to_quaternion_torch(rotation_matrix)
+    else:
+        raise NotImplementedError(
+            'Not suported type {}'.format(
+                type(rotation_matrix)))
+
+
+def quaternion_to_angle_axis(quaternion):
+    if isinstance(quaternion, np.ndarray):
+        return quaternion_to_angle_axis_numpy(quaternion)
+    elif isinstance(quaternion, torch.Tensor):
+        if not (len(quaternion.shape) == 2 and quaternion.shape[1] == 4):
+            raise ValueError("Input must be a two dimensional torch.Tensor.")
+        return  quaternion_to_angle_axis_torch(quaternion)
+    else:
+        raise NotImplementedError(
+            'Not suported type {}'.format(
+                type(rotation_matrix)))
+
+
 def rotation_matrix_to_angle_axis(rotation_matrix):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
@@ -172,7 +198,15 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
     return quaternion_to_angle_axis(quaternion)
 
 
-def rotation_matrix_to_quaternion(rotation_matrix):
+# def rotation_matrix_to_angle_axis_torch(rotation_matrix):
+#     '''
+#     Convert 4x4 rotation matrix to 4d quaternion vector
+#     '''
+#     quaternion = rotation_matrix_to_quaternion_torch(rotation_matrix)
+#     return quaternion_to_angle_axis_torch(quaternion)
+
+
+def rotation_matrix_to_quaternion_numpy(rotation_matrix):
     '''
     Convert 4x4 rotation matrix to 4d quaternion vector
 
@@ -183,11 +217,11 @@ def rotation_matrix_to_quaternion(rotation_matrix):
         Tensor: quaternion representation of rotation of size (1, 4).
 
     '''
-    quaternion = torch.zeros(4)
+    quaternion = np.zeros(4, np.float32)
     trace = rotation_matrix[0, 0] + \
         rotation_matrix[1, 1] + rotation_matrix[2, 2]
     if trace >= 0.0:
-        t = torch.sqrt(trace + 1.0)
+        t = np.sqrt(trace + 1.0)
         quaternion[0] = 0.5 * t
         t = 0.5 / t
         quaternion[1] = (rotation_matrix[2, 1] - rotation_matrix[1, 2]) * t
@@ -203,18 +237,18 @@ def rotation_matrix_to_quaternion(rotation_matrix):
 
         j = (i + 1) % 3
         k = (j + 1) % 3
-        t = torch.sqrt(rotation_matrix[i, i] - rotation_matrix[j, j] -
+        t = np.sqrt(rotation_matrix[i, i] - rotation_matrix[j, j] -
                        rotation_matrix[k, k] + 1.0)
         quaternion[i + 1] = 0.5 * t
         t = 0.5 / t
         quaternion[0] = (rotation_matrix[k, j] - rotation_matrix[j, k]) * t
         quaternion[j + 1] = (rotation_matrix[j, i] + rotation_matrix[i, j]) * t
         quaternion[k + 1] = (rotation_matrix[k, i] + rotation_matrix[i, k]) * t
-    quaternion /= torch.norm(quaternion)
+    quaternion /= np.linalg.norm(quaternion)
     return quaternion
 
 
-def quaternion_to_angle_axis(quaternion):
+def quaternion_to_angle_axis_numpy(quaternion):
     '''
     Convert quaternion vector to angle axis of rotation
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
@@ -226,20 +260,20 @@ def quaternion_to_angle_axis(quaternion):
         Tensor: axis-angle rotation of size (1, 3).
         
     '''
-    assert quaternion.size(0) == 4, 'Input must be a vector of length 4'
-    normalizer = 1 / torch.norm(quaternion)
+    assert quaternion.shape[-1] == 4, 'Input must be a vector of length 4'
+    normalizer = 1 / np.linalg.norm(quaternion)
     q1 = quaternion[1] * normalizer
     q2 = quaternion[2] * normalizer
     q3 = quaternion[3] * normalizer
 
     sin_squared = q1 * q1 + q2 * q2 + q3 * q3
-    angle_axis = torch.zeros(3)
+    angle_axis = np.zeros(3)
 
     if sin_squared > 0:
-        sin_theta = torch.sqrt(sin_squared)
+        sin_theta = np.sqrt(sin_squared)
         cos_theta = quaternion[0] * normalizer
-        theta = torch.atan2(-sin_theta, -cos_theta) if cos_theta < 0.0\
-            else torch.atan2(sin_theta, cos_theta)
+        theta = np.arctan2(-sin_theta, -cos_theta) if cos_theta < 0.0\
+                else np.arctan2(sin_theta, cos_theta)
         two_theta = 2 * theta
         k = two_theta / sin_theta
         angle_axis[0] = q1 * k
@@ -252,6 +286,98 @@ def quaternion_to_angle_axis(quaternion):
         angle_axis[2] = q3 * k
     return angle_axis
 
+
+def rotation_matrix_to_quaternion_torch(rotation_matrix, eps=1e-6):
+    '''
+    Convert 4x4 rotation matrix to 4d quaternion vector
+    This algorithm is based on algorithm described in
+    https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
+    '''
+    rmat_t = torch.transpose(rotation_matrix, 1, 2)
+
+    mask_d2 = rmat_t[:, 2, 2] < eps
+
+    mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:,1, 1]
+    mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:,1, 1]
+
+
+    t0 = 1 + rmat_t[:,0, 0] - rmat_t[:,1, 1] - rmat_t[:,2, 2]
+    q0 = torch.stack([rmat_t[:,1, 2] - rmat_t[:, 2, 1],
+                   t0,  rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                   rmat_t[:, 2, 0] + rmat_t[:,0, 2]], -1)
+    t0_rep = t0.repeat(4,1).t()
+
+    t1 = 1 - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
+    q1 = torch.stack([rmat_t[:, 2,0] - rmat_t[:,0, 2],
+                    rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                    t1,  rmat_t[:, 1, 2] + rmat_t[:, 2, 1]], -1)
+    t1_rep = t1.repeat(4,1).t()
+
+    t2 = 1 - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q2 = torch.stack([rmat_t[:, 0, 1] - rmat_t[:, 1, 0],
+                     rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
+                     rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2], -1)
+    t2_rep = t2.repeat(4,1).t()
+
+    t3 = 1 + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q3 = torch.stack([t3,  rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
+                      rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
+                      rmat_t[:, 0, 1] - rmat_t[:, 1, 0]], -1)
+    t3_rep = t3.repeat(4,1).t()
+
+    mask_c0 = mask_d2 * mask_d0_d1
+    mask_c1 = mask_d2 * (1 - mask_d0_d1)
+    mask_c2 = (1 - mask_d2) * mask_d0_nd1
+    mask_c3 = (1 - mask_d2) * (1 - mask_d0_nd1)
+    mask_c0 = mask_c0.view(-1, 1).type_as(q0)
+    mask_c1 = mask_c1.view(-1, 1).type_as(q1)
+    mask_c2 = mask_c2.view(-1, 1).type_as(q2)
+    mask_c3 = mask_c3.view(-1, 1).type_as(q3)
+
+    q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 + t2_rep * mask_c2 + t3_rep * mask_c3)
+    q *= 0.5
+    return q
+
+
+def quaternion_to_angle_axis_torch(quaternion, eps=1e-6):
+    '''
+    Convert quaternion vector to angle axis of rotation
+    Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+    :param quaternion: Tensor vector of length 4
+    :return: angle axis of rotation (vector of length 3)
+    '''
+    assert quaternion.size(1) == 4, 'Input must be a vector of length 4'
+    normalizer = 1 / torch.norm(quaternion, dim=1)
+    q1 = quaternion[:, 1] * normalizer
+    q2 = quaternion[:, 2] * normalizer
+    q3 = quaternion[:, 3] * normalizer
+
+    sin_squared = q1 * q1 + q2 * q2 + q3 * q3
+    mask = (sin_squared > eps).to(sin_squared.device)
+    mask_pos = (mask == True).type_as(sin_squared)
+    mask_neg = (mask == False).type_as(sin_squared)
+    batch_size = quaternion.size(0)
+    angle_axis = torch.zeros(batch_size, 3, dtype=quaternion.dtype).to(quaternion.device)
+
+    sin_theta = torch.sqrt(sin_squared)
+    cos_theta = quaternion[:, 0] * normalizer
+    mask_theta = (cos_theta < eps).view(1, -1)
+    mask_theta_neg = (mask_theta == True).type_as(cos_theta)
+    mask_theta_pos = (mask_theta == False).type_as(cos_theta)
+
+    theta = torch.atan2(-sin_theta, -cos_theta) * mask_theta_neg \
+            + torch.atan2(sin_theta, cos_theta) * mask_theta_pos
+
+    two_theta = 2 * theta
+    k_pos = two_theta / sin_theta
+    k_neg = 2.0
+    k = k_neg * mask_neg + k_pos * mask_pos
+
+    angle_axis[:, 0] = q1 * k
+    angle_axis[:, 1] = q2 * k
+    angle_axis[:, 2] = q3 * k
+    return angle_axis
 
 # TODO: add below funtionalities
 #  - rotation_matrix_to_angle_axis
