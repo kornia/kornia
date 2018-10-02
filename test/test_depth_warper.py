@@ -63,7 +63,7 @@ class Tester(unittest.TestCase):
 
         # test functional
         patch_ref_functional = tgm.depth_warp(pinhole_i, pinhole_ref,
-            inv_depth_ref, patch_i)
+                                              inv_depth_ref, patch_i)
         res = utils.check_equal_torch(patch_ref, patch_ref_functional)
         self.assertTrue(res)
 

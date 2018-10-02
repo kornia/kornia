@@ -50,7 +50,7 @@ class Tester(unittest.TestCase):
             patch_dst_to_src_functional = tgm.homography_warp(
                 patch_dst, tgm.inverse(dst_homo_src_i), (height, width))
             res = utils.check_equal_torch(patch_dst_to_src,
-                patch_dst_to_src_functional)
+                                          patch_dst_to_src_functional)
             self.assertTrue(res)
 
     def test_homography_warper_gradcheck(self):
@@ -79,8 +79,13 @@ class Tester(unittest.TestCase):
         self.assertTrue(res)
 
         # evaluate function gradient
-        res = gradcheck(tgm.homography_warp, (patch_src, dst_homo_src,
-                        (height, width)), raise_exception=True)
+        res = gradcheck(
+            tgm.homography_warp,
+            (patch_src,
+             dst_homo_src,
+             (height,
+              width)),
+            raise_exception=True)
         self.assertTrue(res)
 
 if __name__ == '__main__':
