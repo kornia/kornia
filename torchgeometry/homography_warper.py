@@ -30,18 +30,20 @@ def create_meshgrid(height, width, normalized_coordinates=True):
 # layer api
 
 class HomographyWarper(nn.Module):
-    '''
-    Warps patches by homographies.
-height, width   '''
+    """Warps patches by homographies.
 
-    def __init__(self, height, width, points=None):
-        '''
-        :param width: The width of the image to warp.
-        :param height: The height of the image to warp.
-        :param points: Tensor[3, N] of homogeneous points in normalized image
+    .. math::
+
+        X_{dst} = H_{dst}^{src} * X_{src}
+
+    Args:
+        width (int): The width of the image to warp.
+        height (int): The height of the image to warp.
+        points (Tensor): Tensor[3, N] of homogeneous points in normalized image
                        space [-1, 1] to sample. Optional parameter.
-        '''
-        nn.Module.__init__(self)
+    """
+    def __init__(self, height, width, points=None):
+        super(HomographyWarper, self).__init__()
         if points is not None:
             assert points.size(0) == 3, "Points must be 3xN"
             self.width = points.size(1)
@@ -100,22 +102,33 @@ height, width   '''
         return F.grid_sample(
             image, grid, mode='bilinear', padding_mode=padding_mode)
 
-    def forward(self, patch, dst_H_src, padding_mode='zeros'):
-        """
-        Warps an image from dst into src's reference frame.
-        :param patch: Tensor[X,Y,Height,Width] The image to warp.
-                      Should be from dst.
-        :param dst_H_src: Tensor[3,3] The homography from src to dst.
-        :param padding_mode: Either 'zeros' to replace out of bounds with zeros
+    def forward(self, patch, dst_homo_src, padding_mode='zeros'):
+        """Warps an image or tensor from source into reference frame.
+
+        Args:
+            patch (Tensor): The image or tensor to warp. Should be from source.
+            dst_homo_src (Tensor): The homography or stack of homographies from source to destination.
+            padding_mode (string): Either 'zeros' to replace out of bounds with zeros
                              or 'border' to choose the closest border data.
-        :returns: Tensor[X,Y,Height,Width] patch sampled at locations from src
-                  warped to dst.
+
+        Return:
+            Tensor: Patch sampled at locations from source to destination.
+
+        Shape:
+            - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
+            - Output: :math:`(N, C, H, W)`
+
+        Example:
+            >>> input = torch.rand(1, 3, 32, 32)
+            >>> homography = torch.eye(3).view(1, 3, 3)
+            >>> warper = tgm.HomographyWarper(32, 32)
+            >>> output = warper(input, homography)  # NxCxHxW
         """
-        if not dst_H_src.device == patch.device:
+        if not dst_homo_src.device == patch.device:
             raise TypeError("Patch and homography must be on the same device. \
                             Got patch.device: {} dst_H_src.device: {}."
-                            .format(patch.device, dst_H_src.device))
-        return F.grid_sample(patch, self.warp_grid(dst_H_src), 'bilinear',
+                            .format(patch.device, dst_homo_src.device))
+        return F.grid_sample(patch, self.warp_grid(dst_homo_src), 'bilinear',
                              padding_mode=padding_mode)
 
 # functional api
@@ -123,6 +136,29 @@ height, width   '''
 def homography_warp(patch, dst_H_src, dsize, points=None,
                     padding_mode='zeros'):
     """Functional API for :class:`torgeometry.HomographyWarper`.
+
+    Warps patches by homographies.
+
+    Args:
+        patch (Tensor): The image or tensor to warp. Should be from source.
+        dst_homo_src (Tensor): The homography or stack of homographies from source to destination.
+        dsize (tuple): The height and width of the image to warp.
+        points (Tensor): Tensor[3, N] of homogeneous points in normalized image
+                   space [-1, 1] to sample. Optional parameter.
+        padding_mode (string): Either 'zeros' to replace out of bounds with zeros
+                         or 'border' to choose the closest border data.
+
+    Return:
+        Tensor: Patch sampled at locations from source to destination.
+
+    Shape:
+        - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
+        - Output: :math:`(N, C, H, W)`
+
+    Example:
+        >>> input = torch.rand(1, 3, 32, 32)
+        >>> homography = torch.eye(3).view(1, 3, 3)
+        >>> output = tgm.homography_warp(input, homography, (32, 32))  # NxCxHxW
     """
     height, width = dsize
     warper = HomographyWarper(height, width, points)
