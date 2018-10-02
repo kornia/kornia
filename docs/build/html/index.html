@@ -197,52 +197,89 @@
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of either size (4, 4) or (B, 4, 4).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor with poses.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with same size as input.</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with inverted poses.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pose</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>         <span class="c1"># Nx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pose_inv</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">inverse_pose</span><span class="p">(</span><span class="n">pose</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.pinhole_matrix">
 <code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinholes</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
-<dd><p>Converts vector pinhole representation to 4x4 Tensor</p>
+<dd><p>Returns the pinhole matrix from a pinhole model</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-of size (N, 12).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of pinhole models.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices of size (N, 4, 4).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">pinhole_matrix</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.inverse_pinhole_matrix">
 <code class="descclassname">torchgeometry.</code><code class="descname">inverse_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#inverse_pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
-<dd><p>Invert a set of pinholes</p>
+<dd><p>Returns the inverted pinhole matrix from a pinhole model</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-of size (N, 12).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor with pinhole models.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices of size (N, 4, 4).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix_inv</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">inverse_pinhole_matrix</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -254,18 +291,12 @@ of size (N, 12).</td>
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-of size (N, 12).</li>
-<li><strong>scale</strong> (<em>Tensor</em>) – tensor of scales of form [N, 1]</li>
+<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor with the pinhole model.</li>
+<li><strong>scale</strong> (<em>Tensor</em>) – tensor of scales.</li>
 </ul>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><dl class="docutils">
-<dt>tensor of scaled pinholes of form</dt>
-<dd><p class="first last">[fx fy cx cy h w rx ry rz tx ty tz] of size (N, 12).</p>
-</dd>
-</dl>
-</p>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of scaled pinholes.</p>
 </td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
@@ -273,21 +304,35 @@ of size (N, 12).</li>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span> and <span class="math notranslate nohighlight">\((N, 1)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">scales</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># Nx1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i_scaled</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">scale_pinhole</span><span class="p">(</span><span class="n">pinhole_i</span><span class="p">)</span>  <span class="c1"># Nx12</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.homography_i_H_ref">
 <code class="descclassname">torchgeometry.</code><code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#homography_i_H_ref"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
-<dd><p>Homography from pinhole_ref to pinhole_i</p>
+<dd><p>Homography from reference to ith pinhole</p>
+<div class="math notranslate nohighlight">
+\[H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}\]</div>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-of size (N, 12).</li>
-<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
-of size (N, 12).</li>
+<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor with pinhole model for ith frame.</li>
+<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor with pinhole model for reference frame.</li>
 </ul>
 </td>
 </tr>
@@ -304,6 +349,20 @@ of size (N, 12).</li>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span> and <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>  <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i_H_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">homography_i_H_ref</span><span class="p">(</span><span class="n">pinhole_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="class">
@@ -396,6 +455,19 @@ of size (N, 12).</li>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, D, N)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, D, N - 1)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># BxNx3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">convert_points_from_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># BxNx2</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -406,14 +478,27 @@ of size (N, 12).</li>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of N-dimensional points of size (B, D, N).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor of N-dimensional points of size.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of N+1-dimensional points of size (B, D, N+1).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of N+1-dimensional points.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, D, N)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, D, N + 1)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># BxNx3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">convert_points_to_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># BxNx4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -425,12 +510,12 @@ of size (N, 12).</li>
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
-<li><strong>dst_pose_src</strong> (<em>Tensor</em>) – tensor for transformations of size (B, D+1, D+1).</li>
-<li><strong>points_src</strong> (<em>Tensor</em>) – tensor of points of size (B, N, D).</li>
+<li><strong>dst_pose_src</strong> (<em>Tensor</em>) – tensor for transformations.</li>
+<li><strong>points_src</strong> (<em>Tensor</em>) – tensor of points.</li>
 </ul>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of N-dimensional points of size (B, D, N).</p>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of N-dimensional points.</p>
 </td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
@@ -438,6 +523,20 @@ of size (N, 12).</li>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, D+1, D+1)\)</span> and <span class="math notranslate nohighlight">\((B, D, N)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, N, D)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># BxNx3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pose</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>   <span class="c1"># Bx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">transform_points</span><span class="p">(</span><span class="n">pose</span><span class="p">,</span> <span class="nb">input</span><span class="p">)</span>  <span class="c1"># BxNx3</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -448,33 +547,58 @@ of size (N, 12).</li>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>angle_axis</strong> (<em>Tensor</em>) – tensor of 3d vector of axis-angle rotations
-of size (N, 3).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>angle_axis</strong> (<em>Tensor</em>) – tensor of 3d vector of axis-angle rotations.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of 4x4 rotation matrices of size (N, 4, 4).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of 4x4 rotation matrices.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 3)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># Nx3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">angle_axis_to_rotation_matrix</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
 <dt id="torchgeometry.rotation_matrix_to_angle_axis">
 <code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_angle_axis</code><span class="sig-paren">(</span><em>rotation_matrix</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_angle_axis" title="Permalink to this definition">¶</a></dt>
-<dd><p>Convert 4x4 rotation matrix to 4d quaternion vector</p>
+<dd><p>Convert 4x4 rotation matrix to Rodrigues vector</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>rotation_matrix</strong> (<em>Tensor</em>) – rotation matrix of size (4, 4).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>rotation_matrix</strong> (<em>Tensor</em>) – rotation matrix.</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Rodrigues vector transformation of size (1, 6).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Rodrigues vector transformation.</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 3)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rotation_matrix_to_angle_axis</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx3</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -495,6 +619,19 @@ of size (N, 3).</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rotation_matrix_to_quaternion</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -506,14 +643,27 @@ of size (N, 3).</td>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>quaternion</strong> (<em>Tensor</em>) – vector of length 4</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>quaternion</strong> (<em>Tensor</em>) – batch with quaternions</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">angle axis of rotation (vector of length 3)</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">batch with angle axis of rotation</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 3)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">quaternion_to_angle_axis</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx3</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="function">
@@ -524,14 +674,27 @@ of size (N, 3).</td>
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>rtvec</strong> (<em>Tensor</em>) – Rodrigues vector transformations of size (N, 6).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>rtvec</strong> (<em>Tensor</em>) – Rodrigues vector transformations</td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">transformation matrices of size (N, 4, 4).</td>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">transformation matrices</td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
 </tr>
 </tbody>
 </table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 6)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>  <span class="c1"># Nx6</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rtvec_to_pose</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
 </dd></dl>
 
 <dl class="class">
