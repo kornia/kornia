@@ -602,4 +602,3 @@ class RtvecToPose(nn.Module):
 
     def forward(self, input):
         return rtvec_to_pose(input)
->>>>>>> refactor and add layers api
