@@ -2,7 +2,13 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 
-from .functional import scale_pinhole, homography_i_H_ref
+from .pinhole import scale_pinhole, homography_i_H_ref
+
+
+__all__ = [
+    "depth_warp",
+    "DepthWarper",
+]
 
 
 class DepthWarper(nn.Module):
@@ -112,3 +118,14 @@ accurate sampling of the depth cost volume, per camera.
     def forward(self, inv_depth_ref, data):
         # TODO: add type and value checkings
         return torch.nn.functional.grid_sample(data, self.warp(inv_depth_ref))
+
+
+# functional api
+
+def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i, \
+                 width=None, height=None):
+    """Functional API for :class:`torgeometry.DepthWarper`.
+    """
+    warper = DepthWarper(pinholes_i, width=width, height=height)
+    warper.compute_homographies(pinhole_ref)
+    return warper(inv_depth_ref, patch_i)

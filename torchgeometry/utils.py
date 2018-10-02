@@ -3,13 +3,37 @@ import numpy as np
 import torch
 import numpy as np
 import torchgeometry as tgm
+import torch.nn as nn
+
 
 __all__ = [
     "tensor_to_image",
     "image_to_tensor",
     "draw_rectangle",
     "create_pinhole"
+    "inverse",
+    "Inverse",
 ]
+
+
+def inverse(homography):
+    # TODO: add documentation
+    # NOTE: we expect in the future to have a native Pytorch function
+    """Batched version of torch.inverse(...)
+    """
+    if not len(homography.shape) == 3:
+        raise ValueError("Input size must be a three dimensional tensor. Got {}"
+                         .format(homography.shape))
+    # iterate, compute inverse and stack tensors
+    return torch.stack([torch.inverse(homo) for homo in homography])
+
+
+class Inverse(nn.Module):
+    def __init__(self):
+        super(Inverse, self).__init__()
+
+    def forward(self, input):
+        return inverse(input)
 
 
 def image_to_tensor(image):
