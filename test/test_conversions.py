@@ -11,7 +11,7 @@ from utils import check_equal_torch, check_equal_numpy
 
 class Tester(unittest.TestCase):
 
-    def test_angle_axis_to_rotation_matrix_torch(self):
+    def test_angle_axis_to_rotation_matrix(self):
         # generate input data
         batch_size = 2
         angle_axis = torch.rand(batch_size, 3)
@@ -23,16 +23,6 @@ class Tester(unittest.TestCase):
         rotation_matrix_eye = torch.matmul(
             rotation_matrix, rotation_matrix.transpose(1, 2))
         self.assertTrue(check_equal_torch(rotation_matrix_eye, eye_batch))
-
-    def test_angle_axis_to_rotation_matrix_numpy(self):
-        # generate input data
-        angle_axis = np.random.rand(3)
-
-        # apply transform
-        rotation_matrix = tgm.angle_axis_to_rotation_matrix(angle_axis)
-
-        rotation_matrix_eye = rotation_matrix.dot(rotation_matrix.T)
-        self.assertTrue(check_equal_numpy(rotation_matrix_eye, np.eye(4)))
 
     def test_angle_axis_to_rotation_matrix_gradcheck(self):
         # generate input data
@@ -59,7 +49,7 @@ class Tester(unittest.TestCase):
         self.assertTrue(res)
 
 
-    def test_rotation_matrix_to_angle_axis_torch(self):
+    def test_rotation_matrix_to_angle_axis(self):
         rmat_1 = torch.tensor([[-0.30382753, -0.95095137, -0.05814062, 0.],
                              [-0.71581715,  0.26812278, -0.64476041,   0.],
                              [ 0.62872461, -0.15427791, -0.76217038,   0.],
@@ -86,17 +76,6 @@ class Tester(unittest.TestCase):
         res = gradcheck(tgm.rotation_matrix_to_angle_axis, (rmat,), raise_exception=True)
         self.assertTrue(res)
 
-
-    def test_rotation_matrix_to_angle_axis_numpy(self):
-        rmat = np.asarray([[-0.30382753, -0.95095137, -0.05814062, 0.],
-                             [-0.71581715, 0.26812278, -0.64476041, 0.],
-                             [0.62872461, -0.15427791, -0.76217038, 0.],
-                             [0., 0., 0., 1.]])
-        rvec = np.array([1.50485376, -2.10737739, 0.7214174])
-        self.assertTrue(
-            check_equal_numpy(
-                tgm.rotation_matrix_to_angle_axis(rmat),
-                rvec))
 
     @unittest.skip('')
     def test_rotation_matrix_to_angle_axis_gradcheck(self):
