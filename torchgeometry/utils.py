@@ -67,7 +67,7 @@ def tensor_to_image(tensor):
        the GPU, it will be copied back to CPU.
 
     Args:
-        tensor (Tensor): image of the form (C, H, W).
+        tensor (Tensor): image of the form (1, C, H, W).
 
     Returns:
         numpy.ndarray: image of the form (H, W, C).
@@ -76,10 +76,10 @@ def tensor_to_image(tensor):
     if not torch.is_tensor(tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
+    tensor = torch.squeeze(tensor)
     if len(tensor.shape) > 3 or len(tensor.shape) < 2:
         raise ValueError(
             "Input size must be a two or three dimensional tensor")
-    tensor = torch.squeeze(tensor)
     if len(tensor.shape) == 2:
         tensor = torch.unsqueeze(tensor, dim=0)
     return tensor.permute(1, 2, 0).contiguous().cpu().detach().numpy()
