@@ -311,6 +311,24 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
         >>> input = torch.rand(4, 4, 4)  # Nx4x4
         >>> output = tgm.rotation_matrix_to_quaternion(input)  # Nx4
     """
+    if not torch.is_tensor(rotation_matrix):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(rotation_matrix)))
+
+    if not len(rotation_matrix.shape) > 3:
+        raise ValueError(
+            "Input size must be a three dimensional tensor. Got {}".format(
+                rotation_matrix.shape))
+
+    if not rotation_matrix.shape[-2:] == (4, 4):
+        raise ValueError(
+            "Input size must be a N x 4 x 4  tensor. Got {}".format(
+                rotation_matrix.shape))
+
+    input_shape = rotation_matrix.shape
+    if len(input_shape) == 2:
+        rotation_matrix = rotation_matrix.unsqueeze(0)
+        
     rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
     mask_d2 = rmat_t[:, 2, 2] < eps
@@ -355,6 +373,9 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
                     t2_rep * mask_c2 + t3_rep * mask_c3)
     q *= 0.5
+
+    if len(input_shape) == 2:
+        q = q.squeeze(0)
     return q
 
 
@@ -412,7 +433,6 @@ def quaternion_to_angle_axis(quaternion, eps=1e-6):
     return angle_axis
 
 # TODO: add below funtionalities
-#  - rotation_matrix_to_angle_axis
 #  - pose_to_rtvec
 
 
