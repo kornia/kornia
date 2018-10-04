@@ -44,7 +44,7 @@ class Tester(unittest.TestCase):
             1, 1, height, width).expand(batch_size, 1, height, width)
 
         # instantiate warper and compute relative homographies
-        warper = tgm.DepthWarper(pinhole_i, height, width)
+        warper = tgm.DepthWarper(pinhole_i)
         warper.compute_homographies(
             pinhole_ref, scale=torch.ones(
                 batch_size, 1))
