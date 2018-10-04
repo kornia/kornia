@@ -95,11 +95,6 @@ def convert_points_from_homogeneous(points, eps=1e-6):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
 
-    if not len(points.shape) == 3:
-        raise ValueError(
-            "Input size must be a three dimensional tensor. Got {}".format(
-                points.shape))
-
     return points[..., :-1] / (points[..., -1:] + eps)
 
 
@@ -124,12 +119,10 @@ def convert_points_to_homogeneous(points):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
 
-    if not len(points.shape) == 3:
-        raise ValueError(
-            "Input size must be a three dimensional tensor. Got {}".format(
-                points.shape))
-
-    return torch.cat([points, torch.ones_like(points)[..., :1]], dim=-1)
+    # create shape for ones tensor: Nx(...)xD-1
+    new_shape = points.shape[:-1] + (points.shape[-1].bit_length() - 1,)
+    ones = torch.ones(new_shape, dtype=points.dtype)
+    return torch.cat([points, ones.to(points.device)], dim=-1)
 
 
 def transform_points(dst_pose_src, points_src):
@@ -155,17 +148,16 @@ def transform_points(dst_pose_src, points_src):
         raise TypeError("Input type is not a torch.Tensor")
     if not dst_pose_src.device == points_src.device:
         raise TypeError("Tensor must be in the same device")
-    if not len(dst_pose_src.shape) == 3 or not len(points_src.shape) == 3:
-        raise ValueError("Input size must be a three dimensional tensor")
     if not dst_pose_src.shape[0] == points_src.shape[0]:
         raise ValueError("Input batch size must be the same for both tensors")
-    if not dst_pose_src.shape[2] == (points_src.shape[2] + 1):
-        raise ValueError("Input dimensions must differe by one unit")
+    if not dst_pose_src.shape[-1] == (points_src.shape[-1] + 1):
+        raise ValueError("Last input dimensions must differe by one unit")
     # to homogeneous
     points_src_h = convert_points_to_homogeneous(points_src)  # BxNxD+1
+    points_src_h = torch.unsqueeze(points_src_h, dim=-1)
     # transform coordinates
-    points_dst_h = torch.matmul(dst_pose_src, points_src_h.transpose(1, 2))
-    points_dst_h = points_dst_h.permute(0, 2, 1)  # BxNxD+1
+    points_dst_h = torch.matmul(dst_pose_src, points_src_h)
+    points_dst_h = torch.squeeze(points_dst_h, dim=-1)
     # to euclidean
     points_dst = convert_points_from_homogeneous(points_dst_h)  # BxNxD
     return points_dst
