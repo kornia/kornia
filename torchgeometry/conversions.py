@@ -372,7 +372,7 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
                     t2_rep * mask_c2 + t3_rep * mask_c3)
     q *= 0.5
-    
+
     if len(input_shape) == 2:
         q = q.squeeze(0)
     return q
@@ -437,7 +437,7 @@ def quaternion_to_angle_axis(quaternion, eps=1e-6):
     angle_axis[:, 0] = q1 * k
     angle_axis[:, 1] = q2 * k
     angle_axis[:, 2] = q3 * k
-    
+
     if len(input_shape) == 1:
         angle_axis = angle_axis.squeeze(0)
 
