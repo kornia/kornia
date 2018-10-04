@@ -51,14 +51,12 @@ class Tester(unittest.TestCase):
     def test_rotation_matrix_to_angle_axis(self):
         rmat_1 = torch.tensor([[-0.30382753, -0.95095137, -0.05814062, 0.],
                                [-0.71581715, 0.26812278, -0.64476041, 0.],
-                               [0.62872461, -0.15427791, -0.76217038, 0.],
-                               [0., 0., 0., 1.]])
+                               [0.62872461, -0.15427791, -0.76217038, 0.]])
         rvec_1 = torch.tensor([1.50485376, -2.10737739, 0.7214174])
 
         rmat_2 = torch.tensor([[0.6027768, -0.79275544, -0.09054801, 0.],
                                [-0.67915707, -0.56931658, 0.46327563, 0.],
-                               [-0.41881476, -0.21775548, -0.88157628, 0.],
-                               [0., 0., 0., 1.]])
+                               [-0.41881476, -0.21775548, -0.88157628, 0.]])
         rvec_2 = torch.tensor([-2.44916812, 1.18053411, 0.4085298])
         rmat = torch.stack([rmat_2, rmat_1], dim=0)
         rvec = torch.stack([rvec_2, rvec_1], dim=0)
@@ -70,7 +68,7 @@ class Tester(unittest.TestCase):
     def test_rotation_matrix_to_angle_axis_gradcheck(self):
         # generate input data
         batch_size = 2
-        rmat = torch.rand(batch_size, 4, 4)
+        rmat = torch.rand(batch_size, 3, 4)
         rmat = utils.tensor_to_gradcheck_var(rmat)  # to var
 
         # evaluate function gradient
