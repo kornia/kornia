@@ -44,9 +44,9 @@ class DepthWarper(nn.Module):
         # TODO: add type and value checkings
         pinhole_ref = scale_pinhole(pinhole, scale)
         if self.width is None:
-            self.width = pinhole_ref[..., 5]
+            self.width = pinhole_ref[..., 5:6]
         if self.height is None:
-            self.height = pinhole_ref[..., 4]
+            self.height = pinhole_ref[..., 4:5]
         self._pinhole_ref = pinhole_ref
         # scale pinholes_i and compute homographies
         pinhole_i = scale_pinhole(self._pinholes, scale)
@@ -110,11 +110,14 @@ accurate sampling of the depth cost volume, per camera.
         batch_size = inv_depth_ref.shape[0]
         grid = grid.unsqueeze(0).expand(batch_size, -1, -1)
 
-        flow = torch.matmul(self._i_Hs_ref, grid)
+        flow = torch.matmul(self._i_Hs_ref.to(device), grid)
         assert len(flow.shape) == 3, flow.shape
 
         factor_x = (self.width - 1) / 2
+        factor_x = factor_x.to(device)
+        
         factor_y = (self.height - 1) / 2
+        factor_y = factor_y.to(device)
 
         z = 1. / flow[:, 2]  # Nx(H*W)
         x = (flow[:, 0] * z - factor_x) / factor_x
