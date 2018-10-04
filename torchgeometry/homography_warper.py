@@ -64,11 +64,14 @@ class HomographyWarper(nn.Module):
         :returns: Tensor[1, Height, Width, 2] containing transformed points in
                   normalized images space.
         """
+        grid = self.grid
+        if len(H.shape) > 3:  # local homography case
+            grid = grid.view(*H.shape[:-2], 2)  # 1xHxWx2
         batch_size = H.shape[0]  # expand grid to match the input batch size
-        grid = self.grid.expand(batch_size, *self.grid.shape[-2:])  # Nx(H*W)x2
+        grid = grid.expand(batch_size, *grid.shape[1:])  # Nx(...)x2
         # perform the actual grid transformation,
         # the grid is copied to input device and casted to the same type
-        flow = transform_points(H, grid.to(H.device).type_as(H))    # Nx(H*W)x2
+        flow = transform_points(H, grid.to(H.device).type_as(H))    # Nx(...)x2
         return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
 
     def random_warp(self, patch, dist):
