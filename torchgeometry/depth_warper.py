@@ -115,7 +115,7 @@ accurate sampling of the depth cost volume, per camera.
 
         factor_x = (self.width - 1) / 2
         factor_x = factor_x.to(device)
-        
+
         factor_y = (self.height - 1) / 2
         factor_y = factor_y.to(device)
 
