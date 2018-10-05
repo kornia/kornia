@@ -53,6 +53,27 @@ class Tester(unittest.TestCase):
                                           patch_dst_to_src_functional)
             self.assertTrue(res)
 
+    def test_local_homography_warper(self):
+        # generate input data
+        batch_size = 1
+        height, width = 16, 32
+        eye_size = 3  # identity 3x3
+
+        # create checkerboard
+        board = utils.create_checkerboard(height, width, 4)
+        patch_src = torch.from_numpy(board).view(
+            1, 1, height, width).expand(batch_size, 1, height, width)
+
+        # create local homography
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+        dst_homo_src = dst_homo_src.view(batch_size, -1).unsqueeze(1)
+        dst_homo_src = dst_homo_src.repeat(1, height * width, 1).view(
+            1, height, width, 3, 3)  # NxHxWx3x3
+
+        # warp reference patch
+        patch_src_to_i = tgm.homography_warp(
+            patch_src, dst_homo_src, (height, width))
+
     def test_homography_warper_gradcheck(self):
         # generate input data
         batch_size = 1
