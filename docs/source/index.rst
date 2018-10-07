@@ -20,6 +20,14 @@ TGM v0.1.0 focuses on Image and tensor warping functions such as:
 .. automodule:: torchgeometry
 
 
+Geometric Image Transformations
+-------------------------------
+
+The functions in this section perform various geometrical transformations of 2D images.
+
+.. autofunction:: warp_perspective
+
+
 Pinhole
 --------
 
@@ -46,6 +54,7 @@ Pinhole
 .. autoclass:: ScalePinhole
 .. autoclass:: Homography_i_H_ref
 
+
 Conversions
 -----------
 
@@ -71,6 +80,7 @@ Conversions
 .. autoclass:: QuaternionToAngleAxis
 .. autoclass:: RtvecToPose
 
+
 Utilities
 ---------
 
@@ -79,6 +89,7 @@ Utilities
 .. autofunction:: image_to_tensor
 
 .. autoclass:: Inverse
+
 
 Warping
 -------
