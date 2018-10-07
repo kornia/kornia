@@ -88,6 +88,7 @@
               <!-- Local TOC -->
               <div class="local-toc"><ul>
 <li><a class="reference internal" href="#">torchgeometry</a><ul>
+<li><a class="reference internal" href="#geometric-image-transformations">Geometric Image Transformations</a></li>
 <li><a class="reference internal" href="#pinhole">Pinhole</a></li>
 <li><a class="reference internal" href="#conversions">Conversions</a></li>
 <li><a class="reference internal" href="#utilities">Utilities</a></li>
@@ -175,7 +176,51 @@
 <li>Homography</li>
 <li>Depth</li>
 </ul>
-<span class="target" id="module-torchgeometry"></span><div class="section" id="pinhole">
+<span class="target" id="module-torchgeometry"></span><div class="section" id="geometric-image-transformations">
+<h2>Geometric Image Transformations<a class="headerlink" href="#geometric-image-transformations" title="Permalink to this headline">¶</a></h2>
+<p>The functions in this section perform various geometrical transformations of 2D images.</p>
+<dl class="function">
+<dt id="torchgeometry.warp_perspective">
+<code class="descclassname">torchgeometry.</code><code class="descname">warp_perspective</code><span class="sig-paren">(</span><em>src</em>, <em>M</em>, <em>dsize</em>, <em>flags='bilinear'</em>, <em>border_mode=None</em>, <em>border_value=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#warp_perspective"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.warp_perspective" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies a perspective transformation to an image.</p>
+<p>The function warpPerspective transforms the source image using the specified matrix:</p>
+<div class="math notranslate nohighlight">
+\[dst(x, y) = src \left(\frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} , \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}\right)\]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>src</strong> (<em>Tensor</em>) – input image.</li>
+<li><strong>M</strong> (<em>Tensor</em>) – : transformation matrix.</li>
+<li><strong>dsize</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.7)"><em>tuple</em></a>) – size of the output image (height, width).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the warped input image.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span> and <span class="math notranslate nohighlight">\((B, 3, 3)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">See a working example <a class="reference external" href="../../../examples/warp_perspective.ipynb">here</a>.</p>
+</div>
+</dd></dl>
+
+</div>
+<div class="section" id="pinhole">
 <h2>Pinhole<a class="headerlink" href="#pinhole" title="Permalink to this headline">¶</a></h2>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
@@ -573,7 +618,7 @@
 <dl class="function">
 <dt id="torchgeometry.rotation_matrix_to_angle_axis">
 <code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_angle_axis</code><span class="sig-paren">(</span><em>rotation_matrix</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_angle_axis"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_angle_axis" title="Permalink to this definition">¶</a></dt>
-<dd><p>Convert 4x4 rotation matrix to Rodrigues vector</p>
+<dd><p>Convert 3x4 rotation matrix to Rodrigues vector</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -589,13 +634,13 @@
 <dl class="docutils">
 <dt>Shape:</dt>
 <dd><ul class="first last simple">
-<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Input: <span class="math notranslate nohighlight">\((N, 3, 4)\)</span></li>
 <li>Output: <span class="math notranslate nohighlight">\((N, 3)\)</span></li>
 </ul>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rotation_matrix_to_angle_axis</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx3</span>
 </pre></div>
 </div>
@@ -604,7 +649,7 @@
 <dl class="function">
 <dt id="torchgeometry.rotation_matrix_to_quaternion">
 <code class="descclassname">torchgeometry.</code><code class="descname">rotation_matrix_to_quaternion</code><span class="sig-paren">(</span><em>rotation_matrix</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/conversions.html#rotation_matrix_to_quaternion"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.rotation_matrix_to_quaternion" title="Permalink to this definition">¶</a></dt>
-<dd><p>Convert 4x4 rotation matrix to 4d quaternion vector</p>
+<dd><p>Convert 3x4 rotation matrix to 4d quaternion vector</p>
 <p>This algorithm is based on algorithm described in
 <a class="reference external" href="https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201">https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201</a></p>
 <table class="docutils field-list" frame="void" rules="none">
@@ -622,13 +667,13 @@
 <dl class="docutils">
 <dt>Shape:</dt>
 <dd><ul class="first last simple">
-<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Input: <span class="math notranslate nohighlight">\((N, 3, 4)\)</span></li>
 <li>Output: <span class="math notranslate nohighlight">\((N, 4)\)</span></li>
 </ul>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx3x4</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">rotation_matrix_to_quaternion</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx4</span>
 </pre></div>
 </div>
@@ -779,7 +824,7 @@
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
-<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>tensor</strong> (<em>Tensor</em>) – image of the form (C, H, W).</td>
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>tensor</strong> (<em>Tensor</em>) – image of the form (1, C, H, W).</td>
 </tr>
 <tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">image of the form (H, W, C).</td>
 </tr>
