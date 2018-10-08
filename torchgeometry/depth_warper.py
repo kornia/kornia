@@ -131,7 +131,7 @@ accurate sampling of the depth cost volume, per camera.
 
     def forward(self, inv_depth_ref, patch_i):
         """Warps an image or tensor from ith frame to reference given the
-           inverse depth in the reference frame.
+        inverse depth in the reference frame.
 
         Args:
             inv_depth_ref (Tensor): The inverse depth in the reference frame.
@@ -191,7 +191,7 @@ def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i,
         >>> pinhole_ref = torch.Tensor([1, 12]),      # Nx12
         >>> # warp the ith frame to reference by inverse depth in the reference
         >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
-        >>> img_ref = tgm.depth_warp( \
+        >>> img_ref = tgm.depth_warp(
         >>>     pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW
     """
     warper = DepthWarper(pinholes_i, width=width, height=height)
