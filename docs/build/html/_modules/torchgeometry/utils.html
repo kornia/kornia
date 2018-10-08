@@ -160,9 +160,39 @@
     <span class="s2">&quot;image_to_tensor&quot;</span><span class="p">,</span>
     <span class="s2">&quot;draw_rectangle&quot;</span><span class="p">,</span>
     <span class="s2">&quot;create_pinhole&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;create_meshgrid&quot;</span><span class="p">,</span>
     <span class="s2">&quot;inverse&quot;</span><span class="p">,</span>
     <span class="s2">&quot;Inverse&quot;</span><span class="p">,</span>
 <span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">create_meshgrid</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Generates a coordinate grid for an image.</span>
+
+<span class="sd">    This is normalized to be in the range [-1,1] to be consistent with the</span>
+<span class="sd">    pytorch function grid_sample.</span>
+<span class="sd">    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        height (int): the image height (rows).</span>
+<span class="sd">        width (int): the image width (cols).</span>
+<span class="sd">        normalized_coordinates (bool): wether to used normalized coordinates in</span>
+<span class="sd">        the range [-1, 1] in order to be consistent with the PyTorch function</span>
+<span class="sd">        grid_sample.</span>
+
+<span class="sd">    Return:</span>
+<span class="sd">        Tensor: returns a 1xHxWx2 grid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># generate coordinates</span>
+    <span class="k">if</span> <span class="n">normalized_coordinates</span><span class="p">:</span>
+        <span class="n">xs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
+        <span class="n">ys</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">xs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">width</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
+        <span class="n">ys</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">height</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
+    <span class="c1"># generate grid by stacking coordinates</span>
+    <span class="n">base_grid</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">([</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">]))</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># 2xHxW</span>
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="n">base_grid</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># 1xHxwx2</span>
 
 
 <div class="viewcode-block" id="inverse"><a class="viewcode-back" href="../../index.html#torchgeometry.inverse">[docs]</a><span class="k">def</span> <span class="nf">inverse</span><span class="p">(</span><span class="n">transforms</span><span class="p">):</span>

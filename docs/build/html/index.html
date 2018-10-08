@@ -183,16 +183,20 @@
 <dt id="torchgeometry.warp_perspective">
 <code class="descclassname">torchgeometry.</code><code class="descname">warp_perspective</code><span class="sig-paren">(</span><em>src</em>, <em>M</em>, <em>dsize</em>, <em>flags='bilinear'</em>, <em>border_mode=None</em>, <em>border_value=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#warp_perspective"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.warp_perspective" title="Permalink to this definition">¶</a></dt>
 <dd><p>Applies a perspective transformation to an image.</p>
-<p>The function warpPerspective transforms the source image using the specified matrix:</p>
+<p>The function warpPerspective transforms the source image using
+the specified matrix:</p>
 <div class="math notranslate nohighlight">
-\[dst(x, y) = src \left(\frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} , \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}\right)\]</div>
+\[dst(x, y) = src \left(
+\frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} ,
+\frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
+\right)\]</div>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
 <tbody valign="top">
 <tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
 <li><strong>src</strong> (<em>Tensor</em>) – input image.</li>
-<li><strong>M</strong> (<em>Tensor</em>) – : transformation matrix.</li>
+<li><strong>M</strong> (<em>Tensor</em>) – transformation matrix.</li>
 <li><strong>dsize</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.7)"><em>tuple</em></a>) – size of the output image (height, width).</li>
 </ul>
 </td>
@@ -215,7 +219,7 @@
 </dl>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
-<p class="last">See a working example <a class="reference external" href="../../../examples/warp_perspective.ipynb">here</a>.</p>
+<p class="last">See a working example <a class="reference external" href="https://github.com/arraiy/torchgeometry/blob/master/examples/warp_perspective.ipynb">here</a>.</p>
 </div>
 </dd></dl>
 
@@ -381,12 +385,8 @@
 </ul>
 </td>
 </tr>
-<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first"><dl class="docutils">
-<dt>tensors that convert depth points (u, v, d) from pinhole_ref to</dt>
-<dd><p class="first last">pinhole_i (N, 4, 4).</p>
-</dd>
-</dl>
-</p>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensors that convert depth points (u, v, d) from
+pinhole_ref to pinhole_i.</p>
 </td>
 </tr>
 <tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
@@ -975,10 +975,8 @@ Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
 <dl class="method">
 <dt id="torchgeometry.DepthWarper.forward">
 <code class="descname">forward</code><span class="sig-paren">(</span><em>inv_depth_ref</em>, <em>patch_i</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper.forward"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper.forward" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="docutils">
-<dt>Warps an image or tensor from ith frame to reference given the</dt>
-<dd>inverse depth in the reference frame.</dd>
-</dl>
+<dd><p>Warps an image or tensor from ith frame to reference given the
+inverse depth in the reference frame.</p>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -1110,7 +1108,8 @@ with shape <cite>[1x12]</cite>.</li>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">]),</span>      <span class="c1"># Nx12</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="c1"># warp the ith frame to reference by inverse depth in the reference</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">inv_depth_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>  <span class="c1"># Nx1xHxW</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">depth_warp</span><span class="p">(</span>         <span class="o">&gt;&gt;&gt;</span>     <span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">depth_warp</span><span class="p">(</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
 </pre></div>
 </div>
 </dd></dl>
