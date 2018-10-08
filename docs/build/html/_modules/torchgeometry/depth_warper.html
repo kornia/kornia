@@ -281,7 +281,7 @@
 
 <div class="viewcode-block" id="DepthWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.DepthWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Warps an image or tensor from ith frame to reference given the</span>
-<span class="sd">           inverse depth in the reference frame.</span>
+<span class="sd">        inverse depth in the reference frame.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            inv_depth_ref (Tensor): The inverse depth in the reference frame.</span>
@@ -341,7 +341,7 @@
 <span class="sd">        &gt;&gt;&gt; pinhole_ref = torch.Tensor([1, 12]),      # Nx12</span>
 <span class="sd">        &gt;&gt;&gt; # warp the ith frame to reference by inverse depth in the reference</span>
 <span class="sd">        &gt;&gt;&gt; inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW</span>
-<span class="sd">        &gt;&gt;&gt; img_ref = tgm.depth_warp( \</span>
+<span class="sd">        &gt;&gt;&gt; img_ref = tgm.depth_warp(</span>
 <span class="sd">        &gt;&gt;&gt;     pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">warper</span> <span class="o">=</span> <span class="n">DepthWarper</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="n">height</span><span class="p">)</span>

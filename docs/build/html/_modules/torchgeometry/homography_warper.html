@@ -152,6 +152,7 @@
 <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
 <span class="kn">import</span> <span class="nn">torch.nn.functional</span> <span class="k">as</span> <span class="nn">F</span>
 
+<span class="kn">from</span> <span class="nn">.utils</span> <span class="k">import</span> <span class="n">create_meshgrid</span>
 <span class="kn">from</span> <span class="nn">.conversions</span> <span class="k">import</span> <span class="n">transform_points</span>
 
 
@@ -159,22 +160,6 @@
     <span class="s2">&quot;HomographyWarper&quot;</span><span class="p">,</span>
     <span class="s2">&quot;homography_warp&quot;</span><span class="p">,</span>
 <span class="p">]</span>
-
-
-<span class="k">def</span> <span class="nf">create_meshgrid</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-    <span class="sd">&#39;&#39;&#39;Generates a coordinate grid for an image of width(cols), height(rows).</span>
-<span class="sd">    This is normalized to be in the range [-1,1] to be consistent with the</span>
-<span class="sd">    pytorch function grid_sample.</span>
-<span class="sd">    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample</span>
-<span class="sd">    Returns a 3xN matrix.</span>
-<span class="sd">    &#39;&#39;&#39;</span>
-    <span class="k">if</span> <span class="n">normalized_coordinates</span><span class="p">:</span>
-        <span class="n">xs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
-        <span class="n">ys</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">xs</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">width</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
-        <span class="n">ys</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">height</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">height</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">([</span><span class="n">ys</span><span class="p">,</span> <span class="n">xs</span><span class="p">]))</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">:]</span>
 
 
 <span class="c1"># layer api</span>
@@ -204,8 +189,8 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">width</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">height</span> <span class="o">=</span> <span class="n">height</span>
             <span class="c1"># create base grid to use for computing the flow</span>
-            <span class="n">grid</span> <span class="o">=</span> <span class="n">create_meshgrid</span><span class="p">(</span><span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># 1x(H*W)x2</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">grid</span> <span class="o">=</span> <span class="n">create_meshgrid</span><span class="p">(</span>
+                <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 <div class="viewcode-block" id="HomographyWarper.warp_grid"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper.warp_grid">[docs]</a>    <span class="k">def</span> <span class="nf">warp_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">H</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
@@ -214,11 +199,10 @@
 <span class="sd">        :returns: Tensor[1, Height, Width, 2] containing transformed points in</span>
 <span class="sd">                  normalized images space.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>  <span class="c1"># local homography case</span>
-            <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">*</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># 1xHxWx2</span>
         <span class="n">batch_size</span> <span class="o">=</span> <span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># expand grid to match the input batch size</span>
-        <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">expand</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="o">*</span><span class="n">grid</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>  <span class="c1"># Nx(...)x2</span>
+        <span class="n">grid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># NxHxWx2</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>  <span class="c1"># local homography case</span>
+            <span class="n">grid</span> <span class="o">=</span> <span class="n">grid</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>  <span class="c1"># Nx(H*W)x2</span>
         <span class="c1"># perform the actual grid transformation,</span>
         <span class="c1"># the grid is copied to input device and casted to the same type</span>
         <span class="n">flow</span> <span class="o">=</span> <span class="n">transform_points</span><span class="p">(</span><span class="n">H</span><span class="p">,</span> <span class="n">grid</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">H</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">H</span><span class="p">))</span>    <span class="c1"># Nx(...)x2</span>
@@ -284,8 +268,9 @@
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Patch and homography must be on the same device. </span><span class="se">\</span>
 <span class="s2">                            Got patch.device: </span><span class="si">{}</span><span class="s2"> dst_H_src.device: </span><span class="si">{}</span><span class="s2">.&quot;</span>
                             <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">patch</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="o">.</span><span class="n">device</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp_grid</span><span class="p">(</span><span class="n">dst_homo_src</span><span class="p">),</span> <span class="s1">&#39;bilinear&#39;</span><span class="p">,</span>
-                             <span class="n">padding_mode</span><span class="o">=</span><span class="n">padding_mode</span><span class="p">)</span></div></div>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span>
+            <span class="n">patch</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">warp_grid</span><span class="p">(</span><span class="n">dst_homo_src</span><span class="p">),</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;bilinear&#39;</span><span class="p">,</span>
+            <span class="n">padding_mode</span><span class="o">=</span><span class="n">padding_mode</span><span class="p">)</span></div></div>
 
 <span class="c1"># functional api</span>
 
