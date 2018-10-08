@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .utils import create_meshgrid
 from .conversions import transform_points
 
 
@@ -9,22 +10,6 @@ __all__ = [
     "HomographyWarper",
     "homography_warp",
 ]
-
-
-def create_meshgrid(height, width, normalized_coordinates=True):
-    '''Generates a coordinate grid for an image of width(cols), height(rows).
-    This is normalized to be in the range [-1,1] to be consistent with the
-    pytorch function grid_sample.
-    http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
-    Returns a 3xN matrix.
-    '''
-    if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width)
-        ys = torch.linspace(-1, 1, height)
-    else:
-        xs = torch.linspace(0, width - 1, width)
-        ys = torch.linspace(0, height - 1, height)
-    return torch.stack(torch.meshgrid([ys, xs])).view(1, 2, -1)[:, (1, 0), :]
 
 
 # layer api
@@ -54,8 +39,8 @@ class HomographyWarper(nn.Module):
             self.width = width
             self.height = height
             # create base grid to use for computing the flow
-            grid = create_meshgrid(height, width, normalized_coordinates=True)
-            self.grid = grid.permute(0, 2, 1)  # 1x(H*W)x2
+            self.grid = create_meshgrid(height, width,
+                normalized_coordinates=True)
 
     def warp_grid(self, H):
         """
@@ -64,11 +49,10 @@ class HomographyWarper(nn.Module):
         :returns: Tensor[1, Height, Width, 2] containing transformed points in
                   normalized images space.
         """
-        grid = self.grid
-        if len(H.shape) > 3:  # local homography case
-            grid = grid.view(*H.shape[:-2], 2)  # 1xHxWx2
         batch_size = H.shape[0]  # expand grid to match the input batch size
-        grid = grid.expand(batch_size, *grid.shape[1:])  # Nx(...)x2
+        grid = self.grid.repeat(batch_size, 1, 1, 1)  # NxHxWx2
+        if len(H.shape) == 3:  # local homography case
+            grid = grid.view(batch_size, -1, 2)  # Nx(H*W)x2
         # perform the actual grid transformation,
         # the grid is copied to input device and casted to the same type
         flow = transform_points(H, grid.to(H.device).type_as(H))    # Nx(...)x2
@@ -134,8 +118,9 @@ class HomographyWarper(nn.Module):
             raise TypeError("Patch and homography must be on the same device. \
                             Got patch.device: {} dst_H_src.device: {}."
                             .format(patch.device, dst_homo_src.device))
-        return F.grid_sample(patch, self.warp_grid(dst_homo_src), 'bilinear',
-                             padding_mode=padding_mode)
+        return torch.nn.functional.grid_sample(patch,
+            self.warp_grid(dst_homo_src), mode='bilinear',
+            padding_mode=padding_mode)
 
 # functional api
 
