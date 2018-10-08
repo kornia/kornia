@@ -12,7 +12,7 @@ class Tester(unittest.TestCase):
     def test_warp_perspective(self):
         # generate input data
         batch_size = 1
-        height, width = 2, 4
+        height, width = 16, 32
         alpha = tgm.pi / 2  # 90 deg rotation
 
         # create data patch
@@ -26,13 +26,19 @@ class Tester(unittest.TestCase):
         ]])  # Bx3x3
 
         # apply transformation and inverse
-        import ipdb;ipdb.set_trace()
         _, _, h, w = patch.shape
         patch_warped = tgm.warp_perspective(patch, M, dsize=(height, width))
         patch_warped_inv = tgm.warp_perspective(patch_warped, tgm.inverse(M),
                 dsize=(height, width))
 
-        res = utils.check_equal_torch(patch, patch_warped_inv)
+        # generate mask to compute error
+        mask = torch.ones_like(patch)
+        mask_warped_inv = tgm.warp_perspective(
+            tgm.warp_perspective(patch, M, dsize=(height, width)),
+            tgm.inverse(M), dsize=(height, width))
+
+        res = utils.check_equal_torch(mask_warped_inv * patch,
+                                      mask_warped_inv * patch_warped_inv)
         self.assertTrue(res)
 
     def test_warp_perspective_gradcheck(self):
