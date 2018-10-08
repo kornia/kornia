@@ -39,8 +39,8 @@ class HomographyWarper(nn.Module):
             self.width = width
             self.height = height
             # create base grid to use for computing the flow
-            self.grid = create_meshgrid(height, width,
-                normalized_coordinates=True)
+            self.grid = create_meshgrid(
+                height, width, normalized_coordinates=True)
 
     def warp_grid(self, H):
         """
@@ -118,8 +118,8 @@ class HomographyWarper(nn.Module):
             raise TypeError("Patch and homography must be on the same device. \
                             Got patch.device: {} dst_H_src.device: {}."
                             .format(patch.device, dst_homo_src.device))
-        return torch.nn.functional.grid_sample(patch,
-            self.warp_grid(dst_homo_src), mode='bilinear',
+        return torch.nn.functional.grid_sample(
+            patch, self.warp_grid(dst_homo_src), mode='bilinear',
             padding_mode=padding_mode)
 
 # functional api

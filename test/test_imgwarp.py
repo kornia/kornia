@@ -21,15 +21,15 @@ class Tester(unittest.TestCase):
         # create transformation (rotation)
         M = torch.tensor([[
             [torch.cos(alpha), -torch.sin(alpha), 0.],
-            [torch.sin(alpha),  torch.cos(alpha), 0.],
-            [              0.,                0., 1.],
+            [torch.sin(alpha), torch.cos(alpha), 0.],
+            [0., 0., 1.],
         ]])  # Bx3x3
 
         # apply transformation and inverse
         _, _, h, w = patch.shape
         patch_warped = tgm.warp_perspective(patch, M, dsize=(height, width))
         patch_warped_inv = tgm.warp_perspective(patch_warped, tgm.inverse(M),
-                dsize=(height, width))
+                                                dsize=(height, width))
 
         # generate mask to compute error
         mask = torch.ones_like(patch)
@@ -54,8 +54,8 @@ class Tester(unittest.TestCase):
         # create transformation (rotation)
         M = torch.tensor([[
             [torch.cos(alpha), -torch.sin(alpha), 0.],
-            [torch.sin(alpha),  torch.cos(alpha), 0.],
-            [              0.,                0., 1.],
+            [torch.sin(alpha), torch.cos(alpha), 0.],
+            [0., 0., 1.],
         ]])  # Bx3x3
         M = utils.tensor_to_gradcheck_var(M, requires_grad=False)  # to var
 

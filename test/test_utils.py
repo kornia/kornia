@@ -22,7 +22,7 @@ class Tester(unittest.TestCase):
         self.assertIsInstance(tensor, torch.Tensor)
 
     def test_create_meshgrid(self):
-        height, width = 4, 6 
+        height, width = 4, 6
         normalized_coordinates = False
 
         # create the meshgrid and verify shape
