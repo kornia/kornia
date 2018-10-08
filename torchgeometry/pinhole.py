@@ -163,19 +163,19 @@ def get_optical_pose_base(pinholes):
 
 
 def homography_i_H_ref(pinhole_i, pinhole_ref):
-    """
-    Homography from reference to ith pinhole
+    """Homography from reference to ith pinhole
 
     .. math::
+
         H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
 
     Args:
         pinhole_i (Tensor): tensor with pinhole model for ith frame.
         pinhole_ref (Tensor): tensor with pinhole model for reference frame.
 
-    Return:
-        Tensor: tensors that convert depth points (u, v, d) from pinhole_ref to
-                pinhole_i (N, 4, 4).
+    Returns:
+        Tensor: tensors that convert depth points (u, v, d) from
+        pinhole_ref to pinhole_i.
 
     Shape:
         - Input: :math:`(N, 12)` and :math:`(N, 12)`
