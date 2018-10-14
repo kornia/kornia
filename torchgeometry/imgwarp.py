@@ -98,19 +98,35 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
 
 
 def get_perspective_transform(src, dst):
-    """Calculates a perspective transform from four pairs of the corresponding
+    r"""Calculates a perspective transform from four pairs of the corresponding
     points.
 
     The function calculates the matrix of a perspective transform so that:
 
     .. math ::
 
-        todo
+        \begin{bmatrix}
+        t_{i}x_{i}^{'} \\
+        t_{i}y_{i}^{'} \\
+        t_{i} \\
+        \end{bmatrix}
+        =
+        \textbf{map_matrix} \cdot
+        \begin{bmatrix}
+        x_{i} \\
+        y_{i} \\
+        1 \\
+        \end{bmatrix}
+
+    where
+
+    .. math ::
+        dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3
 
     Args:
         src (Tensor): coordinates of quadrangle vertices in the source image.
         dst (Tensor): coordinates of the corresponding quadrangle vertices in
-        the destination image.
+            the destination image.
 
     Returns:
         Tensor: the perspective transformation.
