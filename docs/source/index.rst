@@ -26,6 +26,7 @@ Geometric Image Transformations
 The functions in this section perform various geometrical transformations of 2D images.
 
 .. autofunction:: warp_perspective
+.. autofunction:: get_rotation_matrix2d
 
 
 Pinhole
