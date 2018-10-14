@@ -149,7 +149,7 @@ class Tester(unittest.TestCase):
 
         # compute transform from source to target
         res = gradcheck(tgm.get_perspective_transform,
-            (points_src, points_dst,), raise_exception=True)
+                        (points_src, points_dst,), raise_exception=True)
         self.assertTrue(res)
 
 
