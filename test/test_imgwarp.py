@@ -64,6 +64,62 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
+    def test_rotation_matrix2d(self):
+        # generate input data
+        batch_size = 1
+        center_base = torch.zeros(batch_size, 2)
+        angle_base = torch.ones(batch_size, 1)
+        scale_base = torch.ones(batch_size, 1)
+
+        # 90 deg rotation
+        center = center_base
+        angle = 90. * angle_base
+        scale = scale_base
+        M = tgm.get_rotation_matrix2d(center, angle, scale)
+
+        self.assertAlmostEqual(M[0, 0, 0].item(), 0.0)
+        self.assertAlmostEqual(M[0, 0, 1].item(), 1.0)
+        self.assertAlmostEqual(M[0, 1, 0].item(), -1.0)
+        self.assertAlmostEqual(M[0, 1, 1].item(), 0.0)
+
+        # 90 deg rotation + 2x scale
+        center = center_base
+        angle = 90. * angle_base
+        scale = 2. * scale_base
+        M = tgm.get_rotation_matrix2d(center, angle, scale)
+
+        self.assertAlmostEqual(M[0, 0, 0].item(), 0.0, 4)
+        self.assertAlmostEqual(M[0, 0, 1].item(), 2.0, 4)
+        self.assertAlmostEqual(M[0, 1, 0].item(), -2.0, 4)
+        self.assertAlmostEqual(M[0, 1, 1].item(), 0.0, 4)
+
+        # 45 deg rotation
+        center = center_base
+        angle = 45. * angle_base
+        scale = scale_base
+        M = tgm.get_rotation_matrix2d(center, angle, scale)
+
+        self.assertAlmostEqual(M[0, 0, 0].item(), 0.7071, 4)
+        self.assertAlmostEqual(M[0, 0, 1].item(), 0.7071, 4)
+        self.assertAlmostEqual(M[0, 1, 0].item(), -0.7071, 4)
+        self.assertAlmostEqual(M[0, 1, 1].item(), 0.7071, 4)
+
+    def test_get_rotation_matrix2d_gradcheck(self):
+        # generate input data
+        batch_size = 1
+        center = torch.zeros(batch_size, 2)
+        angle = torch.ones(batch_size, 1)
+        scale = torch.ones(batch_size, 1)
+
+        center = utils.tensor_to_gradcheck_var(center)  # to var
+        angle = utils.tensor_to_gradcheck_var(angle)  # to var
+        scale = utils.tensor_to_gradcheck_var(scale)  # to var
+
+        # evaluate function gradient
+        res = gradcheck(tgm.get_rotation_matrix2d, (center, angle, scale),
+                        raise_exception=True)
+        self.assertTrue(res)
+
     def test_get_perspective_transform(self):
         # generate input data
         h, w = 64, 32  # height, width
@@ -95,5 +151,7 @@ class Tester(unittest.TestCase):
         res = gradcheck(tgm.get_perspective_transform,
             (points_src, points_dst,), raise_exception=True)
         self.assertTrue(res)
+
+
 if __name__ == '__main__':
     unittest.main()
