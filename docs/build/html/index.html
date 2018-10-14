@@ -224,6 +224,57 @@ the specified matrix:</p>
 </dd></dl>
 
 <dl class="function">
+<dt id="torchgeometry.get_perspective_transform">
+<code class="descclassname">torchgeometry.</code><code class="descname">get_perspective_transform</code><span class="sig-paren">(</span><em>src</em>, <em>dst</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#get_perspective_transform"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.get_perspective_transform" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates a perspective transform from four pairs of the corresponding
+points.</p>
+<p>The function calculates the matrix of a perspective transform so that:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix}
+t_{i}x_{i}^{'} \\
+t_{i}y_{i}^{'} \\
+t_{i} \\
+\end{bmatrix}
+=
+\textbf{map_matrix} \cdot
+\begin{bmatrix}
+x_{i} \\
+y_{i} \\
+1 \\
+\end{bmatrix}\end{split}\]</div>
+<p>where</p>
+<div class="math notranslate nohighlight">
+\[dst(i) = (x_{i}^{'},y_{i}^{'}), src(i) = (x_{i}, y_{i}), i = 0,1,2,3\]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>src</strong> (<em>Tensor</em>) – coordinates of quadrangle vertices in the source image.</li>
+<li><strong>dst</strong> (<em>Tensor</em>) – coordinates of the corresponding quadrangle vertices in
+the destination image.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the perspective transformation.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, 4, 2)\)</span> and <span class="math notranslate nohighlight">\((B, 4, 2)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, 3, 3)\)</span></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
 <dt id="torchgeometry.get_rotation_matrix2d">
 <code class="descclassname">torchgeometry.</code><code class="descname">get_rotation_matrix2d</code><span class="sig-paren">(</span><em>center</em>, <em>angle</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#get_rotation_matrix2d"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.get_rotation_matrix2d" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculates an affine matrix of 2D rotation.</p>
