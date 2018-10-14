@@ -223,6 +223,64 @@ the specified matrix:</p>
 </div>
 </dd></dl>
 
+<dl class="function">
+<dt id="torchgeometry.get_rotation_matrix2d">
+<code class="descclassname">torchgeometry.</code><code class="descname">get_rotation_matrix2d</code><span class="sig-paren">(</span><em>center</em>, <em>angle</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#get_rotation_matrix2d"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.get_rotation_matrix2d" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates an affine matrix of 2D rotation.</p>
+<p>The function calculates the following matrix:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix}
+    \alpha &amp; \beta &amp; (1 - \alpha) \cdot \text{x}
+    - \beta \cdot \text{y} \\
+    -\beta &amp; \alpha &amp; \beta \cdot \text{x}
+    + (1 - \alpha) \cdot \text{y}
+\end{bmatrix}\end{split}\]</div>
+<p>where</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\alpha = \text{scale} \cdot cos(\text{angle}) \\
+\beta = \text{scale} \cdot sin(\text{angle})\end{split}\]</div>
+<p>The transformation maps the rotation center to itself
+If this is not the target, adjust the shift.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>center</strong> (<em>Tensor</em>) – center of the rotation in the source image.</li>
+<li><strong>angle</strong> (<em>Tensor</em>) – rotation angle in degrees. Positive values mean
+counter-clockwise rotation (the coordinate origin is assumed to
+be the top-left corner).</li>
+<li><strong>scale</strong> (<em>Tensor</em>) – isotropic scale factor.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the affine matrix of 2D rotation.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, 2)\)</span>, <span class="math notranslate nohighlight">\((B, 1)\)</span> and <span class="math notranslate nohighlight">\((B, 1)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, 2, 3)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">center</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">scale</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">angle</span> <span class="o">=</span> <span class="mf">45.</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">M</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">get_rotation_matrix2d</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">angle</span><span class="p">,</span> <span class="n">scale</span><span class="p">)</span>
+<span class="go">tensor([[[ 0.7071,  0.7071,  0.0000],</span>
+<span class="go">         [-0.7071,  0.7071,  0.0000]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
 </div>
 <div class="section" id="pinhole">
 <h2>Pinhole<a class="headerlink" href="#pinhole" title="Permalink to this headline">¶</a></h2>
