@@ -13,30 +13,6 @@ __all__ = [
 ]
 
 
-def center_transform(transform, height, width):
-    assert len(transform.shape) == 3, transform.shape
-    # move points from origin
-    center_mat_origin = torch.unsqueeze(
-        torch.eye(
-            3,
-            device=transform.device,
-            dtype=transform.dtype),
-        dim=0)
-    center_mat_origin[..., 0, 2] = float(width) / 2
-    center_mat_origin[..., 1, 2] = float(height) / 2
-    # move points to origin
-    origin_mat_center = torch.unsqueeze(
-        torch.eye(
-            3,
-            device=transform.device,
-            dtype=transform.dtype),
-        dim=0)
-    origin_mat_center[..., 0, 2] = -float(width) / 2
-    origin_mat_center[..., 1, 2] = -float(height) / 2
-    return torch.matmul(center_mat_origin,
-                        torch.matmul(transform, origin_mat_center))
-
-
 def normal_transform_pixel(height, width):
     return torch.tensor([[
         [2. / (width - 1), 0., -1.],
@@ -45,16 +21,23 @@ def normal_transform_pixel(height, width):
 ]) # 1x3x3
 
 
-def normalize_transform_to_pix(transform, height, width):
-    assert len(transform.shape) == 3, transform.shape
-    normal_trans_pix = torch.tensor([[
-        [2. / (width - 1), 0., -1.],
-        [0., 2. / (height - 1), -1.],
-        [0., 0., 1.]]],
-        device=transform.device, dtype=transform.dtype)  # 1x3x3
-    pix_trans_normal = inverse(normal_trans_pix)         # 1x3x3
-    return torch.matmul(normal_trans_pix,
-                        torch.matmul(transform, pix_trans_normal))
+def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
+    # source and destination sizes
+    src_h, src_w = dsize_src
+    dst_h, dst_w = dsize_dst
+    # the devices and types
+    device = dst_pix_trans_src_pix.device
+    dtype = dst_pix_trans_src_pix.dtype
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix = normal_transform_pixel(
+        src_h, src_w).to(device).to(dtype)
+    src_pix_trans_src_norm = inverse(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix = normal_transform_pixel(
+        dst_h, dst_w).to(device).to(dtype)
+    # compute chain transformations
+    dst_norm_trans_src_norm = torch.matmul(dst_norm_trans_dst_pix,
+        torch.matmul(dst_pix_trans_src_pix, src_pix_trans_src_norm))
+    return dst_norm_trans_src_norm
 
 
 def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
@@ -98,12 +81,12 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
     if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(src.shape))
-    # center the transformation and normalize
-    _, _, height, width = src.shape
-    M_new = center_transform(M, height, width)
-    M_new = normalize_transform_to_pix(M_new, height, width)
-    # warp and return
-    return homography_warp(src, M_new, dsize)
+    # compute the transform in normalized cooridnates
+    dsize_src, dsize_dst = (src.shape[-2:]), dsize
+    dst_pix_trans_src_pix = M
+    dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
+        dst_pix_trans_src_pix, dsize_src, dsize_dst)
+    return homography_warp(src, inverse(dst_norm_trans_dst_norm), dsize_dst)
 
 
 def get_perspective_transform(src, dst):

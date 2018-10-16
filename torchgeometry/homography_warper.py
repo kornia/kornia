@@ -52,10 +52,10 @@ class HomographyWarper(nn.Module):
         batch_size = H.shape[0]  # expand grid to match the input batch size
         grid = self.grid.repeat(batch_size, 1, 1, 1)  # NxHxWx2
         if len(H.shape) == 3:  # local homography case
-            grid = grid.view(batch_size, -1, 2)  # Nx(H*W)x2
+            H = H.view(batch_size, 1, 1, 3, 3)        # NxHxWx3x3
         # perform the actual grid transformation,
         # the grid is copied to input device and casted to the same type
-        flow = transform_points(H, grid.to(H.device).type_as(H))    # Nx(...)x2
+        flow = transform_points(H, grid.to(H.device).type_as(H))    # NxHxWx2
         return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
 
     def random_warp(self, patch, dist):
