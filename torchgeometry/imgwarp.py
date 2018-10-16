@@ -7,6 +7,7 @@ from .conversions import deg2rad
 
 __all__ = [
     "warp_perspective",
+    "warp_affine",
     "get_perspective_transform",
     "get_rotation_matrix2d",
     "normal_transform_pixel",
@@ -41,18 +42,26 @@ def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
     return dst_norm_trans_src_norm
 
 
+def transform_warp_impl(src, dst_pix_trans_src_pix, dsize_src, dsize_dst):
+    """Compute the transform in normalized cooridnates and perform the warping.
+    """
+    dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
+        dst_pix_trans_src_pix, dsize_src, dsize_dst)
+    return homography_warp(src, inverse(dst_norm_trans_dst_norm), dsize_dst)
+
+
 def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
                      border_value=0):
     r"""Applies a perspective transformation to an image.
 
-    The function warpPerspective transforms the source image using
+    The function warp_perspective transforms the source image using
     the specified matrix:
 
     .. math::
-        dst(x, y) = src \left(
+        \text{dst} (x, y) = \text{src} \left(
         \frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} ,
         \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
-        \right)
+        \right )
 
     Args:
         src (Tensor): input image.
@@ -82,12 +91,55 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
     if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(src.shape))
-    # compute the transform in normalized cooridnates
-    dsize_src, dsize_dst = (src.shape[-2:]), dsize
-    dst_pix_trans_src_pix = M
-    dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
-        dst_pix_trans_src_pix, dsize_src, dsize_dst)
-    return homography_warp(src, inverse(dst_norm_trans_dst_norm), dsize_dst)
+    # launches the warper
+    return transform_warp_impl(src, M, (src.shape[-2:]), dsize)
+
+
+def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
+                border_value=0):
+    r"""Applies an affine transformation to an image.
+
+    The function warp_affine transforms the source image using
+    the specified matrix:
+
+    .. math::
+        \text{dst}(x, y) = \text{src} \left( M_{11} x + M_{12} y + M_{13} ,
+        M_{21} x + M_{22} y + M_{23} \right )
+
+    Args:
+        src (Tensor): input image.
+        M (Tensor): transformation matrix.
+        dsize (tuple): size of the output image (height, width).
+
+    Returns:
+        Tensor: the warped input image.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)` and :math:`(B, 2, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    .. note::
+       See a working example `here <https://github.com/arraiy/torchgeometry/
+       blob/master/examples/warp_affine.ipynb>`_.
+    """
+    if not torch.is_tensor(src):
+        raise TypeError("Input src type is not a torch.Tensor. Got {}"
+                        .format(type(src)))
+    if not torch.is_tensor(M):
+        raise TypeError("Input M type is not a torch.Tensor. Got {}"
+                        .format(type(M)))
+    if not len(src.shape) == 4:
+        raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
+                         .format(src.shape))
+    if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
+        raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
+                         .format(src.shape))
+    # we generate a 3x3 transformation matrix from 2x3 affine
+    M_3x3 = torch.eye(3, device=src.device, dtype=src.dtype)
+    M_3x3 = torch.unsqueeze(M_3x3, dim=0).repeat(src.shape[0], 1, 1)
+    M_3x3[..., :2, :3] = M
+    # launches the warper
+    return transform_warp_impl(src, M_3x3, (src.shape[-2:]), dsize)
 
 
 def get_perspective_transform(src, dst):
