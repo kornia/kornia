@@ -18,7 +18,7 @@ def normal_transform_pixel(height, width):
         [2. / (width - 1), 0., -1.],
         [0., 2. / (height - 1), -1.],
         [0., 0., 1.]]
-]) # 1x3x3
+    ])  # 1x3x3
 
 
 def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
@@ -35,8 +35,9 @@ def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
     dst_norm_trans_dst_pix = normal_transform_pixel(
         dst_h, dst_w).to(device).to(dtype)
     # compute chain transformations
-    dst_norm_trans_src_norm = torch.matmul(dst_norm_trans_dst_pix,
-        torch.matmul(dst_pix_trans_src_pix, src_pix_trans_src_norm))
+    dst_norm_trans_src_norm = torch.matmul(
+        dst_norm_trans_dst_pix, torch.matmul(
+            dst_pix_trans_src_pix, src_pix_trans_src_norm))
     return dst_norm_trans_src_norm
 
 
