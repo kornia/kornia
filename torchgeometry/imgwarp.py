@@ -9,6 +9,7 @@ __all__ = [
     "warp_perspective",
     "get_perspective_transform",
     "get_rotation_matrix2d",
+    "normal_transform_pixel",
 ]
 
 
@@ -34,6 +35,14 @@ def center_transform(transform, height, width):
     origin_mat_center[..., 1, 2] = -float(height) / 2
     return torch.matmul(center_mat_origin,
                         torch.matmul(transform, origin_mat_center))
+
+
+def normal_transform_pixel(height, width):
+    return torch.tensor([[
+        [2. / (width - 1), 0., -1.],
+        [0., 2. / (height - 1), -1.],
+        [0., 0., 1.]]
+]) # 1x3x3
 
 
 def normalize_transform_to_pix(transform, height, width):
