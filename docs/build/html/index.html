@@ -183,13 +183,13 @@
 <dt id="torchgeometry.warp_perspective">
 <code class="descclassname">torchgeometry.</code><code class="descname">warp_perspective</code><span class="sig-paren">(</span><em>src</em>, <em>M</em>, <em>dsize</em>, <em>flags='bilinear'</em>, <em>border_mode=None</em>, <em>border_value=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#warp_perspective"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.warp_perspective" title="Permalink to this definition">¶</a></dt>
 <dd><p>Applies a perspective transformation to an image.</p>
-<p>The function warpPerspective transforms the source image using
+<p>The function warp_perspective transforms the source image using
 the specified matrix:</p>
 <div class="math notranslate nohighlight">
-\[dst(x, y) = src \left(
+\[\text{dst} (x, y) = \text{src} \left(
 \frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} ,
 \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
-\right)\]</div>
+\right )\]</div>
 <table class="docutils field-list" frame="void" rules="none">
 <col class="field-name" />
 <col class="field-body" />
@@ -220,6 +220,48 @@ the specified matrix:</p>
 <div class="admonition note">
 <p class="first admonition-title">Note</p>
 <p class="last">See a working example <a class="reference external" href="https://github.com/arraiy/torchgeometry/blob/master/examples/warp_perspective.ipynb">here</a>.</p>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.warp_affine">
+<code class="descclassname">torchgeometry.</code><code class="descname">warp_affine</code><span class="sig-paren">(</span><em>src</em>, <em>M</em>, <em>dsize</em>, <em>flags='bilinear'</em>, <em>border_mode=None</em>, <em>border_value=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/imgwarp.html#warp_affine"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.warp_affine" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies an affine transformation to an image.</p>
+<p>The function warp_affine transforms the source image using
+the specified matrix:</p>
+<div class="math notranslate nohighlight">
+\[\text{dst}(x, y) = \text{src} \left( M_{11} x + M_{12} y + M_{13} ,
+M_{21} x + M_{22} y + M_{23} \right )\]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>src</strong> (<em>Tensor</em>) – input image.</li>
+<li><strong>M</strong> (<em>Tensor</em>) – transformation matrix.</li>
+<li><strong>dsize</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.7)"><em>tuple</em></a>) – size of the output image (height, width).</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the warped input image.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span> and <span class="math notranslate nohighlight">\((B, 2, 3)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">See a working example <a class="reference external" href="https://github.com/arraiy/torchgeometry/blob/master/examples/warp_affine.ipynb">here</a>.</p>
 </div>
 </dd></dl>
 
