@@ -65,12 +65,12 @@ class Tester(unittest.TestCase):
 
         # create points grid in normalized coordinates
         grid_src_norm = tgm.create_meshgrid(src_h, src_w,
-            normalized_coordinates=True)
+                                            normalized_coordinates=True)
         grid_src_norm = torch.unsqueeze(grid_src_norm, dim=0)
 
         # create points grid in pixel coordinates
         grid_src_pix = tgm.create_meshgrid(src_h, src_w,
-            normalized_coordinates=False)
+                                           normalized_coordinates=False)
         grid_src_pix = torch.unsqueeze(grid_src_pix, dim=0)
 
         src_norm_trans_src_pix = tgm.normal_transform_pixel(src_h, src_w)
@@ -85,8 +85,9 @@ class Tester(unittest.TestCase):
             dst_norm_trans_dst_pix, grid_dst_pix)
 
         # transform norm grid
-        dst_norm_trans_src_norm = torch.matmul(dst_norm_trans_dst_pix,
-            torch.matmul(dst_pix_trans_src_pix, src_pix_trans_src_norm))
+        dst_norm_trans_src_norm = torch.matmul(
+            dst_norm_trans_dst_pix, torch.matmul(
+                dst_pix_trans_src_pix, src_pix_trans_src_norm))
         grid_dst_norm2 = tgm.transform_points(
             dst_norm_trans_src_norm, grid_src_norm)
 
@@ -96,8 +97,8 @@ class Tester(unittest.TestCase):
 
         # warp tensor
         patch = torch.rand(batch_size, 1, src_h, src_w)
-        patch_warped = tgm.warp_perspective(patch,
-            dst_pix_trans_src_pix, (dst_h, dst_w))
+        patch_warped = tgm.warp_perspective(
+            patch, dst_pix_trans_src_pix, (dst_h, dst_w))
         self.assertTrue(utils.check_equal_torch(
             patch[:, :, :3, 1:3], patch_warped))
 

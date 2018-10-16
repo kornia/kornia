@@ -43,10 +43,10 @@ class Tester(unittest.TestCase):
 
         # create points grid
         grid_norm = tgm.create_meshgrid(height, width,
-            normalized_coordinates=True)
+                                        normalized_coordinates=True)
         grid_norm = torch.unsqueeze(grid_norm, dim=0)
         grid_pix = tgm.create_meshgrid(height, width,
-            normalized_coordinates=False)
+                                       normalized_coordinates=False)
         grid_pix = torch.unsqueeze(grid_pix, dim=0)
 
         # grid from pixel space to normalized
@@ -57,7 +57,6 @@ class Tester(unittest.TestCase):
         grid_norm_to_pix = tgm.transform_points(pix_trans_norm, grid_norm)
         self.assertTrue(utils.check_equal_torch(grid_pix, grid_norm_to_pix))
         self.assertTrue(utils.check_equal_torch(grid_norm, grid_pix_to_norm))
-
 
 
 if __name__ == '__main__':
