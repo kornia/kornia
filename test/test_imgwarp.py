@@ -41,6 +41,67 @@ class Tester(unittest.TestCase):
                                       mask_warped_inv * patch_warped_inv)
         self.assertTrue(res)
 
+    def test_warp_perspective_crop(self):
+        # generate input data
+        batch_size = 1
+        src_h, src_w = 3, 4
+        dst_h, dst_w = 3, 2
+
+        # [x, y] origin
+        # top-left, top-right, bottom-right, bottom-left
+        points_src = torch.FloatTensor([[
+            [1, 0], [2, 0], [2, 2], [1, 2],
+        ]])
+
+        # [x, y] destination
+        # top-left, top-right, bottom-right, bottom-left
+        points_dst = torch.FloatTensor([[
+            [0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1],
+        ]])
+
+        # compute transformation between points
+        dst_pix_trans_src_pix = tgm.get_perspective_transform(
+            points_src, points_dst)
+
+        # create points grid in normalized coordinates
+        grid_src_norm = tgm.create_meshgrid(src_h, src_w,
+                                            normalized_coordinates=True)
+        grid_src_norm = torch.unsqueeze(grid_src_norm, dim=0)
+
+        # create points grid in pixel coordinates
+        grid_src_pix = tgm.create_meshgrid(src_h, src_w,
+                                           normalized_coordinates=False)
+        grid_src_pix = torch.unsqueeze(grid_src_pix, dim=0)
+
+        src_norm_trans_src_pix = tgm.normal_transform_pixel(src_h, src_w)
+        src_pix_trans_src_norm = tgm.inverse(src_norm_trans_src_pix)
+
+        dst_norm_trans_dst_pix = tgm.normal_transform_pixel(dst_h, dst_w)
+
+        # transform pixel grid
+        grid_dst_pix = tgm.transform_points(
+            dst_pix_trans_src_pix, grid_src_pix)
+        grid_dst_norm = tgm.transform_points(
+            dst_norm_trans_dst_pix, grid_dst_pix)
+
+        # transform norm grid
+        dst_norm_trans_src_norm = torch.matmul(
+            dst_norm_trans_dst_pix, torch.matmul(
+                dst_pix_trans_src_pix, src_pix_trans_src_norm))
+        grid_dst_norm2 = tgm.transform_points(
+            dst_norm_trans_src_norm, grid_src_norm)
+
+        # grids should be equal
+        self.assertTrue(utils.check_equal_torch(
+            grid_dst_norm, grid_dst_norm2))
+
+        # warp tensor
+        patch = torch.rand(batch_size, 1, src_h, src_w)
+        patch_warped = tgm.warp_perspective(
+            patch, dst_pix_trans_src_pix, (dst_h, dst_w))
+        self.assertTrue(utils.check_equal_torch(
+            patch[:, :, :3, 1:3], patch_warped))
+
     def test_warp_perspective_gradcheck(self):
         # generate input data
         batch_size = 1
