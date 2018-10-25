@@ -80,8 +80,8 @@ class InvDepth(nn.Module):
         self.w = nn.Parameter(self._init_weights(height, width))
 
     def _init_weights(self, height, width):
-        r1, r2 = self._min_range, self._min_range + (self._max_range -
-                                                     self._min_range) * 0.1
+        r1 = self._min_range
+        r2 = self._min_range + (self._max_range - self._min_range) * 0.1
         w_init = (r1 - r2) * torch.rand(1, 1, height, width) + r2
         return w_init
 
