@@ -129,8 +129,8 @@ class Tester(unittest.TestCase):
         # generate input data
         batch_size = 1
         center_base = torch.zeros(batch_size, 2)
-        angle_base = torch.ones(batch_size, 1)
-        scale_base = torch.ones(batch_size, 1)
+        angle_base = torch.ones(batch_size)
+        scale_base = torch.ones(batch_size)
 
         # 90 deg rotation
         center = center_base
@@ -169,8 +169,8 @@ class Tester(unittest.TestCase):
         # generate input data
         batch_size = 1
         center = torch.zeros(batch_size, 2)
-        angle = torch.ones(batch_size, 1)
-        scale = torch.ones(batch_size, 1)
+        angle = torch.ones(batch_size)
+        scale = torch.ones(batch_size)
 
         center = utils.tensor_to_gradcheck_var(center)  # to var
         angle = utils.tensor_to_gradcheck_var(angle)  # to var

@@ -303,11 +303,11 @@ def get_rotation_matrix2d(center, angle, scale):
     if not (len(center.shape) == 2 and center.shape[1] == 2):
         raise ValueError("Input center must be a Bx2 tensor. Got {}"
                          .format(center.shape))
-    if not (len(angle.shape) == 2 and angle.shape[1] == 1):
-        raise ValueError("Input angle must be a Bx1 tensor. Got {}"
+    if not len(angle.shape) == 1:
+        raise ValueError("Input angle must be a B tensor. Got {}"
                          .format(angle.shape))
-    if not (len(scale.shape) == 2 and scale.shape[1] == 1):
-        raise ValueError("Input scale must be a Bx1 tensor. Got {}"
+    if not len(scale.shape) == 1:
+        raise ValueError("Input scale must be a B tensor. Got {}"
                          .format(scale.shape))
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Got {}"
@@ -318,7 +318,7 @@ def get_rotation_matrix2d(center, angle, scale):
     beta = torch.sin(angle_rad) * scale
 
     # unpack the center to x, y coordinates
-    x, y = torch.chunk(center, chunks=2, dim=1)
+    x, y = center[..., 0], center[..., 1]
 
     # create output tensor
     batch_size, _ = center.shape
