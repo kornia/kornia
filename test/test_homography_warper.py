@@ -37,7 +37,7 @@ class Tester(unittest.TestCase):
 
             # transform the points from dst to ref
             patch_dst = warper(patch_src, dst_homo_src_i)
-            patch_dst_to_src = warper(patch_dst, tgm.inverse(dst_homo_src_i))
+            patch_dst_to_src = warper(patch_dst, torch.inverse(dst_homo_src_i))
 
             # projected should be equal as initial
             error = utils.compute_patch_error(
@@ -48,7 +48,7 @@ class Tester(unittest.TestCase):
 
             # check functional api
             patch_dst_to_src_functional = tgm.homography_warp(
-                patch_dst, tgm.inverse(dst_homo_src_i), (height, width))
+                patch_dst, torch.inverse(dst_homo_src_i), (height, width))
             res = utils.check_equal_torch(patch_dst_to_src,
                                           patch_dst_to_src_functional)
             self.assertTrue(res)
