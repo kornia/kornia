@@ -46,7 +46,8 @@ def transform_warp_impl(src, dst_pix_trans_src_pix, dsize_src, dsize_dst):
     """
     dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
-    return homography_warp(src, torch.inverse(dst_norm_trans_dst_norm), dsize_dst)
+    return homography_warp(src, torch.inverse(
+        dst_norm_trans_dst_norm), dsize_dst)
 
 
 def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
