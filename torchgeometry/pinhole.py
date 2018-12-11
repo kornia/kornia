@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 
-def inverse_pose(pose):
+def inverse_pose(pose, eps=1e-6):
     """Inverts a 4x4 pose.
 
     Args:
@@ -47,12 +47,14 @@ def inverse_pose(pose):
     if len(pose_shape) == 2:
         pose = torch.unsqueeze(pose, dim=0)
 
-    r_mat, t_vec = pose[..., :3, :3], pose[..., :3, 3:4]
+    r_mat = pose[..., :3, 0:3]  # Nx3x3
+    t_vec = pose[..., :3, 3:4]  # Nx3x1
     r_mat_trans = torch.transpose(r_mat, 1, 2)
 
-    pose_inv = torch.zeros_like(pose)
+    pose_inv = torch.zeros_like(pose) + eps
     pose_inv[..., :3, 0:3] = r_mat_trans
     pose_inv[..., :3, 3:4] = torch.matmul(-1.0 * r_mat_trans, t_vec)
+    pose_inv[..., 3, 3] = 1.0
 
     if len(pose_shape) == 2:
         pose_inv = torch.squeeze(pose_inv, dim=0)
