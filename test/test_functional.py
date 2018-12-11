@@ -219,7 +219,6 @@ class Tester(unittest.TestCase):
         res = utils.check_equal_torch(i_H_ref_inv, ref_H_i)
         self.assertTrue(res)
 
-    #@unittest.skip("Jacobian mismatch for output 0 with respect to input 0")
     def test_homography_i_H_ref_gradcheck(self):
         # generate input data
         image_height, image_width = 32., 32.
@@ -250,8 +249,12 @@ class Tester(unittest.TestCase):
         pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
 
         # evaluate function gradient
-        res = gradcheck(tgm.homography_i_H_ref,
-            (pinhole_i + eps, pinhole_ref + eps,), raise_exception=True)
+        res = gradcheck(
+            tgm.homography_i_H_ref,
+            (pinhole_i + eps,
+             pinhole_ref + eps,
+             ),
+            raise_exception=True)
         self.assertTrue(res)
 
 
