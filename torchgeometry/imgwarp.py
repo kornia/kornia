@@ -1,6 +1,5 @@
 import torch
 
-from .utils import inverse
 from .homography_warper import homography_warp
 from .conversions import deg2rad
 
@@ -32,7 +31,7 @@ def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix = normal_transform_pixel(
         src_h, src_w).to(device).to(dtype)
-    src_pix_trans_src_norm = inverse(src_norm_trans_src_pix)
+    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix = normal_transform_pixel(
         dst_h, dst_w).to(device).to(dtype)
     # compute chain transformations
@@ -47,7 +46,7 @@ def transform_warp_impl(src, dst_pix_trans_src_pix, dsize_src, dsize_dst):
     """
     dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
-    return homography_warp(src, inverse(dst_norm_trans_dst_norm), dsize_dst)
+    return homography_warp(src, torch.inverse(dst_norm_trans_dst_norm), dsize_dst)
 
 
 def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,

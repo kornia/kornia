@@ -60,34 +60,6 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
-    def test_inverse(self):
-        # generate input data
-        batch_size = 2
-        eye_size = 3  # identity 3x3
-        homographies = utils.create_random_homography(batch_size, eye_size)
-        homographies_inv = tgm.inverse(homographies)
-
-        # H_inv * H == I
-        res = torch.matmul(homographies_inv, homographies)
-        eye = utils.create_eye_batch(batch_size, eye_size)
-        error = utils.compute_mse(res, eye)
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
-
-        # functional
-        self.assertTrue(
-            torch.allclose(homographies_inv, tgm.Inverse()(homographies)))
-
-    def test_inverse_gradcheck(self):
-        # generate input data
-        batch_size = 2
-        eye_size = 3  # identity 3x3
-        homographies = utils.create_random_homography(batch_size, eye_size)
-        homographies = utils.tensor_to_gradcheck_var(homographies)  # to var
-
-        # evaluate function gradient
-        res = gradcheck(tgm.inverse, (homographies,), raise_exception=True)
-        self.assertTrue(res)
-
     def test_transform_points(self):
         # generate input data
         batch_size = 2
@@ -101,7 +73,7 @@ class Tester(unittest.TestCase):
         points_dst = tgm.transform_points(dst_homo_src, points_src)
 
         # transform the points from ref to dst
-        src_homo_dst = tgm.inverse(dst_homo_src)
+        src_homo_dst = torch.inverse(dst_homo_src)
         points_dst_to_src = tgm.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
@@ -239,7 +211,7 @@ class Tester(unittest.TestCase):
 
         # compute homography from ref to i
         i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
-        i_H_ref_inv = tgm.inverse(i_H_ref)
+        i_H_ref_inv = torch.inverse(i_H_ref)
 
         # compute homography from i to ref
         ref_H_i = tgm.homography_i_H_ref(pinhole_ref, pinhole_i) + eps

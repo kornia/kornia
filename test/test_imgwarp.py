@@ -28,14 +28,14 @@ class Tester(unittest.TestCase):
         # apply transformation and inverse
         _, _, h, w = patch.shape
         patch_warped = tgm.warp_perspective(patch, M, dsize=(height, width))
-        patch_warped_inv = tgm.warp_perspective(patch_warped, tgm.inverse(M),
+        patch_warped_inv = tgm.warp_perspective(patch_warped, torch.inverse(M),
                                                 dsize=(height, width))
 
         # generate mask to compute error
         mask = torch.ones_like(patch)
         mask_warped_inv = tgm.warp_perspective(
             tgm.warp_perspective(patch, M, dsize=(height, width)),
-            tgm.inverse(M), dsize=(height, width))
+            torch.inverse(M), dsize=(height, width))
 
         res = utils.check_equal_torch(mask_warped_inv * patch,
                                       mask_warped_inv * patch_warped_inv)
@@ -74,7 +74,7 @@ class Tester(unittest.TestCase):
         grid_src_pix = torch.unsqueeze(grid_src_pix, dim=0)
 
         src_norm_trans_src_pix = tgm.normal_transform_pixel(src_h, src_w)
-        src_pix_trans_src_norm = tgm.inverse(src_norm_trans_src_pix)
+        src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
 
         dst_norm_trans_dst_pix = tgm.normal_transform_pixel(dst_h, dst_w)
 
