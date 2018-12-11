@@ -183,7 +183,6 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
-    @unittest.skip("")
     def test_inverse_pose(self):
         # generate input data
         batch_size = 1
@@ -196,9 +195,8 @@ class Tester(unittest.TestCase):
         src_pose_dst = tgm.inverse_pose(dst_pose_src)
 
         # H_inv * H == I
-        res = torch.matmul(src_pose_dst, dst_pose_src)
-        error = compute_mse(res, utils.create_eye_batch(batch_size, eye_size))
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
+        eye = torch.matmul(src_pose_dst, dst_pose_src)
+        res = utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
 
     def test_inverse_pose_gradcheck(self):
         # generate input data
@@ -212,7 +210,6 @@ class Tester(unittest.TestCase):
                         raise_exception=True)
         self.assertTrue(res)
 
-    @unittest.skip("Error somewhere in homography_i_H_ref")
     def test_homography_i_H_ref(self):
         # generate input data
         image_height, image_width = 32., 32.
@@ -250,7 +247,7 @@ class Tester(unittest.TestCase):
         res = utils.check_equal_torch(i_H_ref_inv, ref_H_i)
         self.assertTrue(res)
 
-    @unittest.skip("Jacobian mismatch for output 0 with respect to input 0")
+    #@unittest.skip("Jacobian mismatch for output 0 with respect to input 0")
     def test_homography_i_H_ref_gradcheck(self):
         # generate input data
         image_height, image_width = 32., 32.
@@ -259,6 +256,7 @@ class Tester(unittest.TestCase):
         rx, ry, rz = 0., 0., 0.
         tx, ty, tz = 0., 0., 0.
         offset_x = 10.  # we will apply a 10units offset to `i` camera
+        eps = 1e-6
 
         pinhole_ref = utils.create_pinhole(
             fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
@@ -280,8 +278,8 @@ class Tester(unittest.TestCase):
         pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
 
         # evaluate function gradient
-        res = gradcheck(tgm.homography_i_H_ref, (pinhole_i, pinhole_ref,),
-                        raise_exception=True)
+        res = gradcheck(tgm.homography_i_H_ref,
+            (pinhole_i + eps, pinhole_ref + eps,), raise_exception=True)
         self.assertTrue(res)
 
 
