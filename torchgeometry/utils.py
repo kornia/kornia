@@ -11,8 +11,6 @@ __all__ = [
     "draw_rectangle",
     "create_pinhole",
     "create_meshgrid",
-    "inverse",
-    "Inverse",
 ]
 
 
@@ -43,32 +41,6 @@ def create_meshgrid(height, width, normalized_coordinates=True):
     # generate grid by stacking coordinates
     base_grid = torch.stack(torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
     return torch.unsqueeze(base_grid, dim=0).permute(0, 2, 3, 1)  # 1xHxwx2
-
-
-def inverse(transforms):
-    """Batched version of `torch.inverse`
-
-    Args:
-        transforms (Tensor): tensor of transformations of size (B, D, D).
-
-    Returns:
-        Tensor: tensor of inverted transformations of size (B, D, D).
-
-    """
-    if not len(transforms.shape) == 3:
-        raise ValueError(
-            "Input size must be a three dimensional tensor. Got {}".format(
-                transforms.shape))
-    # iterate, compute inverse and stack tensors
-    return torch.stack([torch.inverse(transform) for transform in transforms])
-
-
-class Inverse(nn.Module):
-    def __init__(self):
-        super(Inverse, self).__init__()
-
-    def forward(self, input):
-        return inverse(input)
 
 
 def image_to_tensor(image):

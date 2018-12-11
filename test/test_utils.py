@@ -51,7 +51,7 @@ class Tester(unittest.TestCase):
 
         # grid from pixel space to normalized
         norm_trans_pix = tgm.normal_transform_pixel(height, width)  # 1x3x3
-        pix_trans_norm = tgm.inverse(norm_trans_pix)  # 1x3x3
+        pix_trans_norm = torch.inverse(norm_trans_pix)  # 1x3x3
         # transform grids
         grid_pix_to_norm = tgm.transform_points(norm_trans_pix, grid_pix)
         grid_norm_to_pix = tgm.transform_points(pix_trans_norm, grid_norm)
