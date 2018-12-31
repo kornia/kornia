@@ -1,4 +1,5 @@
 import unittest
+import pytest
 
 import torch
 import torchgeometry as tgm
@@ -7,58 +8,71 @@ from torch.autograd import gradcheck
 import utils  # test utilities
 
 
+@pytest.mark.parametrize("expand", [True, False])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_convert_points_to_homogeneous(batch_size, expand):
+    # generate input data
+    points = torch.rand(2, 3)
+    if expand:
+        points = torch.rand(batch_size, 2, 3)
+
+    # to homogeneous
+    points_h = tgm.convert_points_to_homogeneous(points)
+    assert (points_h[..., -1:] == torch.ones(batch_size, 2, 1)).all()
+
+    # functional
+    assert torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points))
+
+
+@pytest.mark.parametrize("expand", [True, False])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_convert_points_to_homogeneous_gradcheck(batch_size, expand):
+    # generate input data
+    points = torch.rand(2, 3)
+    if expand:
+        points = torch.rand(batch_size, 2, 3)
+    points = utils.tensor_to_gradcheck_var(points)  # to var
+
+    # evaluate function gradient
+    assert gradcheck(tgm.convert_points_to_homogeneous, (points,),
+                     raise_exception=True)
+
+
+@pytest.mark.parametrize("expand", [True, False])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_convert_points_from_homogeneous(batch_size, expand):
+    # generate input data
+    points_h = torch.rand(2, 3)
+    if expand:
+        points_h = torch.rand(batch_size, 2, 3)
+    points_h[..., -1] = 1.0
+
+    # to euclidean
+    points = tgm.convert_points_from_homogeneous(points_h)
+
+    error = utils.compute_mse(points_h[..., :2], points)
+    pytest.approx(error.item(), 0.0)
+
+    # functional
+    assert torch.allclose(points, tgm.ConvertPointsFromHomogeneous()(points_h))
+
+
+@pytest.mark.parametrize("expand", [True, False])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_convert_points_from_homogeneous_gradcheck(batch_size, expand):
+    # generate input data
+    points = torch.rand(2, 3)
+    if expand:
+        points = torch.rand(batch_size, 2, 3)
+    points = utils.tensor_to_gradcheck_var(points)  # to var
+
+    # evaluate function gradient
+    assert gradcheck(tgm.convert_points_from_homogeneous, (points,),
+                     raise_exception=True)
+
 class Tester(unittest.TestCase):
 
-    def test_convert_points_to_homogeneous(self):
-        # generate input data
-        batch_size = 2
-        points = torch.rand(batch_size, 2, 3)
 
-        # to homogeneous
-        points_h = tgm.convert_points_to_homogeneous(points)
-        self.assertTrue((points_h[..., -1] == torch.ones(1, 2, 1)).all())
-
-        # functional
-        self.assertTrue(
-            torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points)))
-
-    def test_convert_points_to_homogeneous_gradcheck(self):
-        # generate input data
-        batch_size = 2
-        points = torch.rand(batch_size, 2, 3)
-        points = utils.tensor_to_gradcheck_var(points)  # to var
-
-        # evaluate function gradient
-        res = gradcheck(tgm.convert_points_to_homogeneous, (points,),
-                        raise_exception=True)
-        self.assertTrue(res)
-
-    def test_convert_points_from_homogeneous(self):
-        # generate input data
-        batch_size = 2
-        points_h = torch.rand(batch_size, 2, 3)
-        points_h[..., -1] = 1.0
-
-        # to euclidean
-        points = tgm.convert_points_from_homogeneous(points_h)
-
-        error = utils.compute_mse(points_h[..., :2], points)
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
-
-        # functional
-        self.assertTrue(torch.allclose(
-            points, tgm.ConvertPointsFromHomogeneous()(points_h)))
-
-    def test_convert_points_from_homogeneous_gradcheck(self):
-        # generate input data
-        batch_size = 2
-        points = torch.rand(batch_size, 2, 3)
-        points = utils.tensor_to_gradcheck_var(points)  # to var
-
-        # evaluate function gradient
-        res = gradcheck(tgm.convert_points_from_homogeneous, (points,),
-                        raise_exception=True)
-        self.assertTrue(res)
 
     def test_transform_points(self):
         # generate input data
