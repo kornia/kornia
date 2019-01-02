@@ -87,11 +87,8 @@ Conversions
 Utilities
 ---------
 
-.. autofunction:: inverse
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
-
-.. autoclass:: Inverse
 
 
 Warping
