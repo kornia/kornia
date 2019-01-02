@@ -7,37 +7,6 @@ from torch.autograd import gradcheck
 
 import utils  # test utilities
 
-@pytest.mark.parametrize("expand", [True, False])
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_convert_points_from_homogeneous(batch_size, expand):
-    # generate input data
-    points_h = torch.rand(2, 3)
-    if expand:
-        points_h = torch.rand(batch_size, 2, 3)
-    points_h[..., -1] = 1.0
-
-    # to euclidean
-    points = tgm.convert_points_from_homogeneous(points_h)
-
-    error = utils.compute_mse(points_h[..., :2], points)
-    pytest.approx(error.item(), 0.0)
-
-    # functional
-    assert torch.allclose(points, tgm.ConvertPointsFromHomogeneous()(points_h))
-
-
-@pytest.mark.parametrize("expand", [True, False])
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_convert_points_from_homogeneous_gradcheck(batch_size, expand):
-    # generate input data
-    points = torch.rand(2, 3)
-    if expand:
-        points = torch.rand(batch_size, 2, 3)
-    points = utils.tensor_to_gradcheck_var(points)  # to var
-
-    # evaluate function gradient
-    assert gradcheck(tgm.convert_points_from_homogeneous, (points,),
-                     raise_exception=True)
 
 class Tester(unittest.TestCase):
 
