@@ -1,4 +1,5 @@
 import unittest
+import pytest
 import numpy as np
 
 import torch
@@ -7,6 +8,31 @@ from torch.autograd import gradcheck
 
 import utils  # test utils
 from utils import check_equal_torch, check_equal_numpy
+from common import TEST_DEVICES
+
+
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_shape", [
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+def test_convert_points_to_homogeneous(batch_shape, device_type):
+    # generate input data
+    points = torch.rand(batch_shape)
+    points = points.to(torch.device(device_type))
+
+    # to homogeneous
+    points_h = tgm.convert_points_to_homogeneous(points)
+
+    assert points_h.shape[-2] == batch_shape[-2]
+    assert (points_h[..., -1] == torch.ones(points_h[..., -1].shape)).all()
+
+    # functional
+    assert torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points))
+
+    # evaluate function gradient
+    points = utils.tensor_to_gradcheck_var(points)  # to var
+    assert gradcheck(tgm.convert_points_to_homogeneous, (points,),
+                     raise_exception=True)
+
 
 
 class Tester(unittest.TestCase):
