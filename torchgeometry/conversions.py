@@ -118,7 +118,9 @@ def convert_points_to_homogeneous(points):
 
 
 def transform_points(dst_pose_src, points_src):
-    """Applies batch of transformations to batch of sets of points.
+    r"""Function that applies transformations to a set of points.
+
+    See :class:`~torchgeometry.TransformPoints` for details.
 
     Args:
         dst_pose_src (Tensor): tensor for transformations.
@@ -131,7 +133,8 @@ def transform_points(dst_pose_src, points_src):
         - Input: :math:`(B, D+1, D+1)` and :math:`(B, D, N)`
         - Output: :math:`(B, N, D)`
 
-    Example:
+    Examples::
+
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> pose = torch.eye(4).view(1, 4, 4)   # Bx4x4
         >>> output = tgm.transform_points(pose, input)  # BxNx3
@@ -146,9 +149,9 @@ def transform_points(dst_pose_src, points_src):
         raise ValueError("Last input dimensions must differe by one unit")
     # to homogeneous
     points_src_h = convert_points_to_homogeneous(points_src)  # BxNxD+1
-    points_src_h = torch.unsqueeze(points_src_h, dim=-1)
     # transform coordinates
-    points_dst_h = torch.matmul(dst_pose_src, points_src_h)
+    points_dst_h = torch.matmul(
+        dst_pose_src.unsqueeze(1), points_src_h.unsqueeze(-1))
     points_dst_h = torch.squeeze(points_dst_h, dim=-1)
     # to euclidean
     points_dst = convert_points_from_homogeneous(points_dst_h)  # BxNxD
@@ -505,11 +508,31 @@ class ConvertPointsToHomogeneous(nn.Module):
 
 
 class TransformPoints(nn.Module):
-    def __init__(self):
-        super(TransformPoints, self).__init__()
+    r"""Creates an object to transform a set of points.
 
-    def forward(self, dst_homo_src, points_src):
-        return transform_points(dst_homo_src, points_src)
+    Args:
+        dst_pose_src (Tensor): tensor for transformations of shape :math:`(B, D+1, D+1)`.
+
+    Returns:
+        Tensor: tensor of N-dimensional points.
+
+    Shape:
+        - Input: :math:`(B, D, N)`
+        - Output: :math:`(B, N, D)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> transform = torch.eye(4).view(1, 4, 4)   # Bx4x4
+        >>> transform_op = tgm.TransformPoints(transform)
+        >>> output = transform_op(input)  # BxNx3
+    """
+    def __init__(self, dst_homo_src):
+        super(TransformPoints, self).__init__()
+        self.dst_homo_src = dst_homo_src
+
+    def forward(self, points_src):
+        return transform_points(self.dst_homo_src, points_src)
 
 
 class AngleAxisToRotationMatrix(nn.Module):
