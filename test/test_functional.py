@@ -6,19 +6,22 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utilities
+from common import TEST_DEVICES
 
 
-@pytest.mark.parametrize("expand", [True, False])
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_convert_points_to_homogeneous(batch_size, expand):
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_shape", [
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+def test_convert_points_to_homogeneous(batch_shape, device_type):
     # generate input data
-    points = torch.rand(2, 3)
-    if expand:
-        points = torch.rand(batch_size, 2, 3)
+    points = torch.rand(batch_shape)
+    points = points.to(torch.device(device_type))
 
     # to homogeneous
     points_h = tgm.convert_points_to_homogeneous(points)
-    assert (points_h[..., -1:] == torch.ones(batch_size, 2, 1)).all()
+
+    assert points_h.shape[-2] == batch_shape[-2]
+    assert (points_h[..., -1] == torch.ones(points_h[..., -1].shape)).all()
 
     # functional
     assert torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points))
