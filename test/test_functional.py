@@ -10,52 +10,6 @@ import utils  # test utilities
 
 class Tester(unittest.TestCase):
 
-
-
-    def test_transform_points(self):
-        # generate input data
-        batch_size = 2
-        num_points = 2
-        num_dims = 2
-        eye_size = 3  # identity 3x3
-        points_src = torch.rand(batch_size, 2, num_dims)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-
-        # transform the points from dst to ref
-        points_dst = tgm.transform_points(dst_homo_src, points_src)
-
-        # transform the points from ref to dst
-        src_homo_dst = torch.inverse(dst_homo_src)
-        points_dst_to_src = tgm.transform_points(src_homo_dst, points_dst)
-
-        # projected should be equal as initial
-        error = utils.compute_mse(points_src, points_dst_to_src)
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
-
-        # functional
-        self.assertTrue(
-            torch.allclose(
-                points_dst,
-                tgm.TransformPoints()(
-                    dst_homo_src,
-                    points_src)))
-
-    def test_transform_points_gradcheck(self):
-        # generate input data
-        batch_size = 2
-        num_points = 2
-        num_dims = 2
-        eye_size = 3  # identity 3x3
-        points_src = torch.rand(batch_size, 2, num_dims)
-        points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-
-        # evaluate function gradient
-        res = gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
-                        raise_exception=True)
-        self.assertTrue(res)
-
     def test_pi(self):
         self.assertAlmostEqual(tgm.pi.item(), 3.141592, places=4)
 
