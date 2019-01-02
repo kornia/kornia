@@ -75,25 +75,21 @@ def deg2rad(tensor):
 
 
 def convert_points_from_homogeneous(points, eps=1e-6):
-    """Converts points from homogeneous to Euclidean space.
+    r"""Function that converts points from homogeneous to Euclidean space.
 
-    Args:
-        points (Tensor): tensor of N-dimensional points of size (B, D, N).
+    See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.
 
-    Returns:
-        Tensor: tensor of N-1-dimensional points of size (B, D, N-1).
+    Examples::
 
-    Shape:
-        - Input: :math:`(B, D, N)`
-        - Output: :math:`(B, D, N - 1)`
-
-    Example:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = tgm.convert_points_from_homogeneous(input)  # BxNx2
     """
     if not torch.is_tensor(points):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
+    if len(points.shape) < 2:
+        raise ValueError("Input must be at least a 2D tensor. Got {}".format(
+            points.shape))
 
     return points[..., :-1] / (points[..., -1:] + eps)
 
@@ -455,6 +451,25 @@ class DegToRad(nn.Module):
 
 
 class ConvertPointsFromHomogeneous(nn.Module):
+    r"""Creates a transformation that converts points from homogeneous to
+    Euclidean space.
+
+    Args:
+        points (Tensor): tensor of N-dimensional points.
+
+    Returns:
+        Tensor: tensor of N-1-dimensional points.
+
+    Shape:
+        - Input: :math:`(B, D, N)` or :math:`(D, N)`
+        - Output: :math:`(B, D, N + 1)` or :math:`(D, N + 1)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> transform = tgm.ConvertPointsFromHomogeneous()
+        >>> output = transform(input)  # BxNx2
+    """
     def __init__(self):
         super(ConvertPointsFromHomogeneous, self).__init__()
 
