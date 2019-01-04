@@ -35,13 +35,15 @@ pi = torch.Tensor([3.141592653589793])
 
 
 def rad2deg(tensor):
-    """Converts angles from radians to degrees.
+    r"""Function that converts angles from radians to degrees.
+
+    See :class:`~torchgeometry.RadToDeg` for details.
 
     Args:
-        tensor (Tensor): Tensor to be converted of unspecified shape.
+        tensor (Tensor): Tensor of arbitrary shape.
 
     Returns:
-        Tensor: Converted tensor with same shape as input.
+        Tensor: Tensor with same shape as input.
 
     Example:
         >>> input = tgm.pi * torch.rand(1, 3, 3)
@@ -55,15 +57,18 @@ def rad2deg(tensor):
 
 
 def deg2rad(tensor):
-    """Converts angles from degrees to radians.
+    r"""Function that converts angles from degrees to radians.
+
+    See :class:`~torchgeometry.DegToRad` for details.
 
     Args:
-        tensor (Tensor): Tensor to be converted of unspecified shape.
+        tensor (Tensor): Tensor of arbitrary shape.
 
     Returns:
-        Tensor: Converted tensor with same shape as input.
+        Tensor: Tensor with same shape as input.
 
-    Example:
+    Examples::
+
         >>> input = 360. * torch.rand(1, 3, 3)
         >>> output = tgm.deg2rad(input)
     """
@@ -438,6 +443,19 @@ def quaternion_to_angle_axis(quaternion, eps=1e-6):
 
 
 class RadToDeg(nn.Module):
+    r"""Creates an object that converts angles from radians to degrees.
+
+    Args:
+        tensor (Tensor): Tensor of arbitrary shape.
+
+    Returns:
+        Tensor: Tensor with same shape as input.
+
+    Examples::
+
+        >>> input = tgm.pi * torch.rand(1, 3, 3)
+        >>> output = tgm.RadToDeg()(input)
+    """
     def __init__(self):
         super(RadToDeg, self).__init__()
 
@@ -446,6 +464,19 @@ class RadToDeg(nn.Module):
 
 
 class DegToRad(nn.Module):
+    r"""Function that converts angles from degrees to radians.
+
+    Args:
+        tensor (Tensor): Tensor of arbitrary shape.
+
+    Returns:
+        Tensor: Tensor with same shape as input.
+
+    Examples::
+
+        >>> input = 360. * torch.rand(1, 3, 3)
+        >>> output = tgm.DegToRad()(input)
+    """
     def __init__(self):
         super(DegToRad, self).__init__()
 

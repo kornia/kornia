@@ -11,6 +11,54 @@ from utils import check_equal_torch, check_equal_numpy
 from common import TEST_DEVICES
 
 
+def test_pi():
+    assert pytest.approx(tgm.pi.item(), 3.141592)
+
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_shape", [
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+def test_rad2deg(batch_shape, device_type):
+    # generate input data
+    x_rad = tgm.pi * torch.rand(batch_shape)
+    x_rad = x_rad.to(torch.device(device_type))
+
+    # convert radians/degrees
+    x_deg = tgm.rad2deg(x_rad)
+    x_deg_to_rad = tgm.deg2rad(x_deg)
+
+    # compute error
+    error = utils.compute_mse(x_rad, x_deg_to_rad)
+    assert pytest.approx(error.item(), 0.0)
+
+    # functional
+    assert torch.allclose(x_deg, tgm.RadToDeg()(x_rad))
+
+    # evaluate function gradient
+    assert gradcheck(tgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
+                     raise_exception=True)
+
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_shape", [
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+def test_deg2rad(batch_shape, device_type):
+    # generate input data
+    x_deg = 180. * torch.rand(batch_shape)
+    x_deg = x_deg.to(torch.device(device_type))
+
+    # convert radians/degrees
+    x_rad = tgm.deg2rad(x_deg)
+    x_rad_to_deg = tgm.rad2deg(x_rad)
+
+    # compute error
+    error = utils.compute_mse(x_deg, x_rad_to_deg)
+    assert pytest.approx(error.item(), 0.0)
+
+    # functional
+    assert torch.allclose(x_rad, tgm.DegToRad()(x_deg))
+
+    assert gradcheck(tgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
+                     raise_exception=True)
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
