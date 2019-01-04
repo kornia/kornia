@@ -10,57 +10,6 @@ import utils  # test utilities
 
 class Tester(unittest.TestCase):
 
-    def test_pi(self):
-        self.assertAlmostEqual(tgm.pi.item(), 3.141592, places=4)
-
-    def test_rad2deg(self):
-        # generate input data
-        x_rad = tgm.pi * torch.rand(2, 3, 4)
-
-        # convert radians/degrees
-        x_deg = tgm.rad2deg(x_rad)
-        x_deg_to_rad = tgm.deg2rad(x_deg)
-
-        # compute error
-        error = utils.compute_mse(x_rad, x_deg_to_rad)
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
-
-        # functional
-        self.assertTrue(torch.allclose(x_deg, tgm.RadToDeg()(x_rad)))
-
-    def test_rad2deg_gradcheck(self):
-        # generate input data
-        x_rad = tgm.pi * torch.rand(2, 3, 4)
-
-        # evaluate function gradient
-        res = gradcheck(tgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
-                        raise_exception=True)
-        self.assertTrue(res)
-
-    def test_deg2rad(self):
-        # generate input data
-        x_deg = 180. * torch.rand(2, 3, 4)
-
-        # convert radians/degrees
-        x_rad = tgm.deg2rad(x_deg)
-        x_rad_to_deg = tgm.rad2deg(x_rad)
-
-        # compute error
-        error = utils.compute_mse(x_deg, x_rad_to_deg)
-        self.assertAlmostEqual(error.item(), 0.0, places=4)
-
-        # functional
-        self.assertTrue(torch.allclose(x_rad, tgm.DegToRad()(x_deg)))
-
-    def test_deg2rad_gradcheck(self):
-        # generate input data
-        x_deg = 180. * torch.rand(2, 3, 4)
-
-        # evaluate function gradient
-        res = gradcheck(tgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
-                        raise_exception=True)
-        self.assertTrue(res)
-
     def test_inverse_pose(self):
         # generate input data
         batch_size = 1
