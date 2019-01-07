@@ -1,4 +1,3 @@
-import unittest
 import pytest
 
 import torch
@@ -24,90 +23,121 @@ def test_inverse_pose(batch_size, device_type):
 
     # H_inv * H == I
     eye = torch.matmul(src_pose_dst, dst_pose_src)
-    res = utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
+    assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
 
     # evaluate function gradient
     dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
     assert gradcheck(tgm.inverse_pose, (dst_pose_src,),
                      raise_exception=True)
 
-class Tester(unittest.TestCase):
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+def test_pinhole_matrix(batch_size, device_type):
+    # generate input data
+    image_height, image_width = 32., 32.
+    cx, cy = image_width / 2, image_height / 2
+    fx, fy = 1., 1.
+    rx, ry, rz = 0., 0., 0.
+    tx, ty, tz = 0., 0., 0.
+    offset_x = 10.  # we will apply a 10units offset to `i` camera
+    eps = 1e-6
 
-    def test_homography_i_H_ref(self):
-        # generate input data
-        image_height, image_width = 32., 32.
-        cx, cy = image_width / 2, image_height / 2
-        fx, fy = 1., 1.
-        rx, ry, rz = 0., 0., 0.
-        tx, ty, tz = 0., 0., 0.
-        offset_x = 10.  # we will apply a 10units offset to `i` camera
-        eps = 1e-6
+    pinhole = utils.create_pinhole(
+        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
+    pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
 
-        pinhole_ref = utils.create_pinhole(
-            fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
+    pinhole_matrix = tgm.pinhole_matrix(pinhole)
 
-        pinhole_i = utils.create_pinhole(
-            fx,
-            fy,
-            cx,
-            cy,
-            image_height,
-            image_width,
-            rx,
-            ry,
-            rx,
-            tx + offset_x,
-            ty,
-            tz)
+    ones = torch.ones(batch_size)
+    assert bool((pinhole_matrix[:, 0, 0] == fx * ones).all())
+    assert bool((pinhole_matrix[:, 1, 1] == fy * ones).all())
+    assert bool((pinhole_matrix[:, 0, 2] == cx * ones).all())
+    assert bool((pinhole_matrix[:, 1, 2] == cy * ones).all())
 
-        # compute homography from ref to i
-        i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
-        i_H_ref_inv = torch.inverse(i_H_ref)
+    # functional
+    assert tgm.PinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
 
-        # compute homography from i to ref
-        ref_H_i = tgm.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
+    # evaluate function gradient
+    pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
+    assert gradcheck(tgm.pinhole_matrix, (pinhole,),
+                     raise_exception=True)
 
-        res = utils.check_equal_torch(i_H_ref_inv, ref_H_i)
-        self.assertTrue(res)
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+def test_inverse_pinhole_matrix(batch_size, device_type):
+    # generate input data
+    image_height, image_width = 32., 32.
+    cx, cy = image_width / 2, image_height / 2
+    fx, fy = 1., 1.
+    rx, ry, rz = 0., 0., 0.
+    tx, ty, tz = 0., 0., 0.
+    offset_x = 10.  # we will apply a 10units offset to `i` camera
+    eps = 1e-6
 
-    def test_homography_i_H_ref_gradcheck(self):
-        # generate input data
-        image_height, image_width = 32., 32.
-        cx, cy = image_width / 2, image_height / 2
-        fx, fy = 1., 1.
-        rx, ry, rz = 0., 0., 0.
-        tx, ty, tz = 0., 0., 0.
-        offset_x = 10.  # we will apply a 10units offset to `i` camera
-        eps = 1e-6
+    pinhole = utils.create_pinhole(
+        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
+    pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
 
-        pinhole_ref = utils.create_pinhole(
-            fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
-        pinhole_ref = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
+    pinhole_matrix = tgm.inverse_pinhole_matrix(pinhole)
 
-        pinhole_i = utils.create_pinhole(
-            fx,
-            fy,
-            cx,
-            cy,
-            image_height,
-            image_width,
-            rx,
-            ry,
-            rx,
-            tx + offset_x,
-            ty,
-            tz)
-        pinhole_i = utils.tensor_to_gradcheck_var(pinhole_ref)  # to var
+    ones = torch.ones(batch_size)
+    assert utils.check_equal_torch(pinhole_matrix[:, 0, 0], (1. / fx) * ones)
+    assert utils.check_equal_torch(pinhole_matrix[:, 1, 1], (1. / fy) * ones)
+    assert utils.check_equal_torch(
+        pinhole_matrix[:, 0, 2], (-1. * cx / fx) * ones)
+    assert utils.check_equal_torch(
+        pinhole_matrix[:, 1, 2], (-1. * cy / fx) * ones)
 
-        # evaluate function gradient
-        res = gradcheck(
-            tgm.homography_i_H_ref,
-            (pinhole_i + eps,
-             pinhole_ref + eps,
-             ),
-            raise_exception=True)
-        self.assertTrue(res)
+    # functional
+    assert tgm.InversePinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
 
+    # evaluate function gradient
+    pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
+    assert gradcheck(tgm.pinhole_matrix, (pinhole,),
+                     raise_exception=True)
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+def test_homography_i_H_ref(batch_size, device_type):
+    # generate input data
+    device = torch.device(device_type)
+    image_height, image_width = 32., 32.
+    cx, cy = image_width / 2, image_height / 2
+    fx, fy = 1., 1.
+    rx, ry, rz = 0., 0., 0.
+    tx, ty, tz = 0., 0., 0.
+    offset_x = 10.  # we will apply a 10units offset to `i` camera
+    eps = 1e-6
+
+    pinhole_ref = utils.create_pinhole(
+        fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
+    pinhole_ref = pinhole_ref.repeat(batch_size, 1).to(device)
+
+    pinhole_i = utils.create_pinhole(
+        fx,
+        fy,
+        cx,
+        cy,
+        image_height,
+        image_width,
+        rx,
+        ry,
+        rx,
+        tx + offset_x,
+        ty,
+        tz)
+    pinhole_i = pinhole_i.repeat(batch_size, 1).to(device)
+
+    # compute homography from ref to i
+    i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
+    i_H_ref_inv = torch.inverse(i_H_ref)
+
+    # compute homography from i to ref
+    ref_H_i = tgm.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
+    assert utils.check_equal_torch(i_H_ref_inv, ref_H_i)
+
+    # evaluate function gradient
+    assert gradcheck(tgm.homography_i_H_ref,
+        (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
+         utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
+        raise_exception=True)
