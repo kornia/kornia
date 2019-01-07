@@ -47,7 +47,7 @@ class Tester(unittest.TestCase):
         warper = tgm.DepthWarper(pinhole_i)
         warper.compute_homographies(
             pinhole_ref, scale=torch.ones(
-                batch_size, 1))
+                batch_size))
 
         # generate synthetic inverse depth
         inv_depth_ref = torch.ones(batch_size, 1, height, width)
