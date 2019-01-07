@@ -40,25 +40,18 @@ def inverse_pose(pose, eps=1e-6):
     if not torch.is_tensor(pose):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(pose)))
-    if not pose.shape[-2:] == (4, 4):
-        raise ValueError("Input size must be a 4x4 tensor. Got {}"
+    if not len(pose.shape) == 3 and pose.shape[-2:] == (4, 4):
+        raise ValueError("Input size must be a Nx4x4 tensor. Got {}"
                          .format(pose.shape))
-    pose_shape = pose.shape
-    if len(pose_shape) == 2:
-        pose = torch.unsqueeze(pose, dim=0)
 
     r_mat = pose[..., :3, 0:3]  # Nx3x3
     t_vec = pose[..., :3, 3:4]  # Nx3x1
     r_mat_trans = torch.transpose(r_mat, 1, 2)
 
-    pose_inv = torch.zeros_like(pose) + eps
+    pose_inv = pose.new_zeros(pose.shape) + eps
     pose_inv[..., :3, 0:3] = r_mat_trans
     pose_inv[..., :3, 3:4] = torch.matmul(-1.0 * r_mat_trans, t_vec)
     pose_inv[..., 3, 3] = 1.0
-
-    if len(pose_shape) == 2:
-        pose_inv = torch.squeeze(pose_inv, dim=0)
-
     return pose_inv
 
 

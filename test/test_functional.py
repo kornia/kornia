@@ -6,36 +6,32 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utilities
+from common import TEST_DEVICES
 
+
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
+@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+def test_inverse_pose(batch_size, device_type):
+    # generate input data
+    eye_size = 4  # identity 4x4
+    dst_pose_src = utils.create_random_homography(batch_size, eye_size)
+    dst_pose_src = dst_pose_src.to(torch.device(device_type))
+    dst_pose_src[:, -1] = 0.0
+    dst_pose_src[:, -1, -1] = 1.0
+
+    # compute the inverse of the pose
+    src_pose_dst = tgm.inverse_pose(dst_pose_src)
+
+    # H_inv * H == I
+    eye = torch.matmul(src_pose_dst, dst_pose_src)
+    res = utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
+
+    # evaluate function gradient
+    dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
+    assert gradcheck(tgm.inverse_pose, (dst_pose_src,),
+                     raise_exception=True)
 
 class Tester(unittest.TestCase):
-
-    def test_inverse_pose(self):
-        # generate input data
-        batch_size = 1
-        eye_size = 4  # identity 4x4
-        dst_pose_src = utils.create_random_homography(batch_size, eye_size)
-        dst_pose_src[:, -1] = 0.0
-        dst_pose_src[:, -1, -1] = 1.0
-
-        # compute the inverse of the pose
-        src_pose_dst = tgm.inverse_pose(dst_pose_src)
-
-        # H_inv * H == I
-        eye = torch.matmul(src_pose_dst, dst_pose_src)
-        res = utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
-
-    def test_inverse_pose_gradcheck(self):
-        # generate input data
-        batch_size = 2
-        eye_size = 4  # identity 4x4
-        dst_pose_src = utils.create_random_homography(batch_size, eye_size)
-        dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
-
-        # evaluate function gradient
-        res = gradcheck(tgm.inverse_pose, (dst_pose_src,),
-                        raise_exception=True)
-        self.assertTrue(res)
 
     def test_homography_i_H_ref(self):
         # generate input data
