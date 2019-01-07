@@ -15,8 +15,6 @@ __all__ = [
     "InversePose",
     "PinholeMatrix",
     "InversePinholeMatrix",
-    "ScalePinhole",
-    "Homography_i_H_ref",
 ]
 
 
@@ -132,14 +130,14 @@ def scale_pinhole(pinholes, scale):
         - Output: :math:`(N, 12)`
 
     Example:
-        >>> pinhole_i = torch.rand(1, 12)    # Nx12
-        >>> scales = 2.0 * torch.ones(1, 1)  # Nx1
+        >>> pinhole_i = torch.rand(1, 12)  # Nx12
+        >>> scales = 2.0 * torch.ones(1)   # N
         >>> pinhole_i_scaled = tgm.scale_pinhole(pinhole_i)  # Nx12
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
-    assert len(scale.shape) == 2 and scale.shape[1] == 1, scale.shape
+    assert len(scale.shape) == 1, scale.shape
     pinholes_scaled = pinholes.clone()
-    pinholes_scaled[..., :6] = pinholes[..., :6] * scale
+    pinholes_scaled[..., :6] = pinholes[..., :6] * scale.unsqueeze(-1)
     return pinholes_scaled
 
 
@@ -270,19 +268,3 @@ class InversePinholeMatrix(nn.Module):
 
     def forward(self, input):
         return inverse_pinhole_matrix(input)
-
-
-class ScalePinhole(nn.Module):
-    def __init__(self):
-        super(ScalePinhole, self).__init__()
-
-    def forward(self, input, scale):
-        return scale_pinhole(input, scale)
-
-
-class Homography_i_H_ref(nn.Module):
-    def __init__(self):
-        super(Homography_i_H_ref, self).__init__()
-
-    def forward(self, pinhole_i, pinhole_ref):
-        return homography_i_H_ref(pinhole_i, pinhole_ref)

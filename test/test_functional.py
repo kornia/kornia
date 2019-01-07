@@ -31,6 +31,25 @@ def test_inverse_pose(batch_size, device_type):
                      raise_exception=True)
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
+#@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+@pytest.mark.parametrize("batch_size", [6])
+def test_scale_pinhole(batch_size, device_type):
+    # generate input data
+    device = torch.device(device_type)
+    pinholes = torch.rand(batch_size, 12).to(device)
+    scales = torch.rand(batch_size).to(device)
+
+    pinholes_scale = tgm.scale_pinhole(pinholes, scales)
+    assert utils.check_equal_torch(
+        pinholes_scale[..., :6] / scales.unsqueeze(-1), pinholes[..., :6])
+
+    # evaluate function gradient
+    pinholes = utils.tensor_to_gradcheck_var(pinholes)  # to var
+    scales = utils.tensor_to_gradcheck_var(scales)  # to var
+    assert gradcheck(tgm.scale_pinhole, (pinholes, scales,),
+                     raise_exception=True)
+
+@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_pinhole_matrix(batch_size, device_type):
     # generate input data
