@@ -63,7 +63,7 @@ class Tester:
     @pytest.mark.parametrize("height", [7, 8])
     @pytest.mark.parametrize("width", [5, 16])
     def test_homography_warper_gradcheck(
-        self, batch_size, channels, height, width, device_type):
+            self, batch_size, channels, height, width, device_type):
         # generate input data
         device = torch.device(device_type)
         eye_size = 3  # identity 3x3

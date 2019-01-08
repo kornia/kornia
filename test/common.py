@@ -10,7 +10,7 @@ def get_test_devices():
     """
     devices = ["cpu"]
     if torch.cuda.is_available():
-            devices.append("cuda")
+        devices.append("cuda")
     return devices
 
 

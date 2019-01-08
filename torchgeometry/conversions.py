@@ -542,7 +542,8 @@ class TransformPoints(nn.Module):
     r"""Creates an object to transform a set of points.
 
     Args:
-        dst_pose_src (Tensor): tensor for transformations of shape :math:`(B, D+1, D+1)`.
+        dst_pose_src (Tensor): tensor for transformations of
+        shape :math:`(B, D+1, D+1)`.
 
     Returns:
         Tensor: tensor of N-dimensional points.
