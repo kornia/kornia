@@ -54,8 +54,6 @@ Pinhole
 .. autoclass:: InversePose
 .. autoclass:: PinholeMatrix
 .. autoclass:: InversePinholeMatrix
-.. autoclass:: ScalePinhole
-.. autoclass:: Homography_i_H_ref
 
 
 Conversions
