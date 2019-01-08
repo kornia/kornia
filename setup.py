@@ -22,6 +22,8 @@ def find_version(*file_paths):
 
 
 readme = open('README.rst').read()
+# remove logo
+long_description = '\n'.join(readme.split('\n')[7:])
 
 
 VERSION = find_version('torchgeometry', '__init__.py')
@@ -38,9 +40,9 @@ setup(
     version=VERSION,
     author='Edgar Riba',
     author_email='edgar.riba@gmail.com',
-    url='https://github.com/arraiy/geometry',
+    url='https://github.com/arraiy/torchgeometry',
     description='differential geometric computer vision for deep learning',
-    long_description=readme,
+    long_description=long_description,
     license='BSD',
 
     # Test

@@ -58,11 +58,23 @@ Run our Jupyter notebooks `examples <https://github.com/arraiy/torchgeometry/tre
 Installation
 ============
 
-From source:
+**From pip:**
+
+.. code:: bash
+
+    pip install torchgeometry
+
+**From source:**
 
 .. code:: bash
 
     python setup.py install
+
+**From source using pip:**
+
+.. code:: bash
+
+    pip install git+https://github.com/arraiy/torchgeometry
 
 Testing
 =======
