@@ -10,15 +10,14 @@ from common import TEST_DEVICES
 
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-@pytest.mark.parametrize("batch_shape", 
-    [(1, 1, 7, 32), (2, 3, 16, 31)])
+@pytest.mark.parametrize("batch_shape",
+                         [(1, 1, 7, 32), (2, 3, 16, 31)])
 def test_warp_perspective_rotation(batch_shape, device_type):
     # generate input data
     batch_size, channels, height, width = batch_shape
     alpha = 0.5 * tgm.pi * torch.ones(batch_size)  # 90 deg rotation
 
     # create data patch
-    #patch = torch.rand(batch_size, 1, height, width)
     device = torch.device(device_type)
     patch = torch.rand(batch_shape).to(device)
 
@@ -47,11 +46,12 @@ def test_warp_perspective_rotation(batch_shape, device_type):
     # evaluate function gradient
     patch = utils.tensor_to_gradcheck_var(patch)  # to var
     M = utils.tensor_to_gradcheck_var(M, requires_grad=False)  # to var
-    assert  gradcheck(tgm.warp_perspective, (patch, M, (height, width,)),
-                      raise_exception=True)
+    assert gradcheck(tgm.warp_perspective, (patch, M, (height, width,)),
+                     raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-@pytest.mark.parametrize("batch_size",  [1, 2, 5])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_get_perspective_transform(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
@@ -78,10 +78,11 @@ def test_get_perspective_transform(batch_size, device_type):
     points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
     points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
     assert gradcheck(tgm.get_perspective_transform,
-                    (points_src, points_dst,), raise_exception=True)
+                     (points_src, points_dst,), raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-@pytest.mark.parametrize("batch_size",  [1, 2, 5])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rotation_matrix2d(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
@@ -95,7 +96,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     scale = scale_base
     M = tgm.get_rotation_matrix2d(center, angle, scale)
 
-    for i in range (batch_size):
+    for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.0)
         pytest.approx(M[i, 0, 1].item(), 1.0)
         pytest.approx(M[i, 1, 0].item(), -1.0)
@@ -107,7 +108,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     scale = 2. * scale_base
     M = tgm.get_rotation_matrix2d(center, angle, scale)
 
-    for i in range (batch_size):
+    for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.0)
         pytest.approx(M[i, 0, 1].item(), 2.0)
         pytest.approx(M[i, 1, 0].item(), -2.0)
@@ -119,7 +120,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     scale = scale_base
     M = tgm.get_rotation_matrix2d(center, angle, scale)
 
-    for i in range (batch_size):
+    for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.7071)
         pytest.approx(M[i, 0, 1].item(), 0.7071)
         pytest.approx(M[i, 1, 0].item(), -0.7071)
@@ -134,8 +135,8 @@ def test_rotation_matrix2d(batch_size, device_type):
 
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-@pytest.mark.parametrize("batch_size",  [1, 2, 5])
-@pytest.mark.parametrize("channels",  [1, 5])
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+@pytest.mark.parametrize("channels", [1, 5])
 def test_warp_perspective_crop(batch_size, device_type, channels):
     # generate input data
     src_h, src_w = 3, 4
@@ -152,7 +153,7 @@ def test_warp_perspective_crop(batch_size, device_type, channels):
     # top-left, top-right, bottom-right, bottom-left
     points_dst = torch.zeros_like(points_src)
     points_dst[:, 1, 0] = dst_w - 1
-    points_dst[:, 2, 0] = dst_w - 1 
+    points_dst[:, 2, 0] = dst_w - 1
     points_dst[:, 2, 1] = dst_h - 1
     points_dst[:, 3, 1] = dst_h - 1
 
