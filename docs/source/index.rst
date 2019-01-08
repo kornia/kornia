@@ -54,8 +54,6 @@ Pinhole
 .. autoclass:: InversePose
 .. autoclass:: PinholeMatrix
 .. autoclass:: InversePinholeMatrix
-.. autoclass:: ScalePinhole
-.. autoclass:: Homography_i_H_ref
 
 
 Conversions
@@ -87,11 +85,8 @@ Conversions
 Utilities
 ---------
 
-.. autofunction:: inverse
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
-
-.. autoclass:: Inverse
 
 
 Warping

@@ -1,29 +1,34 @@
-import unittest
+import pytest
 
 import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
+from common import TEST_DEVICES
 
 
-class Tester(unittest.TestCase):
+class Tester:
 
     num_tests = 10
+    threshold = 0.05
 
-    def test_homography_warper(self):
+    @pytest.mark.parametrize("device_type", TEST_DEVICES)
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_homography_warper(self, batch_size, device_type):
         # generate input data
-        batch_size = 1
         height, width = 128, 64
         eye_size = 3  # identity 3x3
+        device = torch.device(device_type)
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
         patch_src = torch.from_numpy(board).view(
             1, 1, height, width).expand(batch_size, 1, height, width)
+        patch_src = patch_src.to(device)
 
         # create base homography
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
 
         # instantiate warper
         warper = tgm.HomographyWarper(height, width)
@@ -43,47 +48,28 @@ class Tester(unittest.TestCase):
             error = utils.compute_patch_error(
                 patch_dst, patch_dst_to_src, height, width)
 
-            threshold = 0.05
-            self.assertTrue(error.item() < threshold)
+            assert error.item() < self.threshold
 
             # check functional api
             patch_dst_to_src_functional = tgm.homography_warp(
                 patch_dst, torch.inverse(dst_homo_src_i), (height, width))
-            res = utils.check_equal_torch(patch_dst_to_src,
-                                          patch_dst_to_src_functional)
-            self.assertTrue(res)
 
-    def test_local_homography_warper(self):
+            assert utils.check_equal_torch(
+                patch_dst_to_src, patch_dst_to_src_functional)
+
+    @pytest.mark.parametrize("device_type", TEST_DEVICES)
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    @pytest.mark.parametrize("channels", [1, 3])
+    @pytest.mark.parametrize("height", [7, 8])
+    @pytest.mark.parametrize("width", [5, 16])
+    def test_homography_warper_gradcheck(
+            self, batch_size, channels, height, width, device_type):
         # generate input data
-        batch_size = 1
-        height, width = 16, 32
+        device = torch.device(device_type)
         eye_size = 3  # identity 3x3
 
         # create checkerboard
-        board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view(
-            1, 1, height, width).expand(batch_size, 1, height, width)
-
-        # create local homography
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.view(batch_size, -1).unsqueeze(1)
-        dst_homo_src = dst_homo_src.repeat(1, height * width, 1).view(
-            1, height, width, 3, 3)  # NxHxWx3x3
-
-        # warp reference patch
-        patch_src_to_i = tgm.homography_warp(
-            patch_src, dst_homo_src, (height, width))
-
-    def test_homography_warper_gradcheck(self):
-        # generate input data
-        batch_size = 1
-        height, width = 16, 32  # small patch, otherwise the test takes forever
-        eye_size = 3  # identity 3x3
-
-        # create checkerboard
-        board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view(
-            1, 1, height, width).expand(batch_size, 1, height, width)
+        patch_src = torch.rand(batch_size, channels, height, width).to(device)
         patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
 
         # create base homography
@@ -94,20 +80,9 @@ class Tester(unittest.TestCase):
         # instantiate warper
         warper = tgm.HomographyWarper(height, width)
 
-        # evaluate function gradient
-        res = gradcheck(warper, (patch_src, dst_homo_src,),
-                        raise_exception=True)
-        self.assertTrue(res)
+        patch_dst = warper(patch_src, dst_homo_src)
+        assert patch_dst.shape == (batch_size, channels, height, width)
 
         # evaluate function gradient
-        res = gradcheck(
-            tgm.homography_warp,
-            (patch_src,
-             dst_homo_src,
-             (height,
-              width)),
-            raise_exception=True)
-        self.assertTrue(res)
-
-if __name__ == '__main__':
-    unittest.main()
+        assert gradcheck(warper, (patch_src, dst_homo_src,),
+                         raise_exception=True)
