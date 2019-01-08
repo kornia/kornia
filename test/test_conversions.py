@@ -12,9 +12,10 @@ from common import TEST_DEVICES
 def test_pi():
     assert pytest.approx(tgm.pi.item(), 3.141592)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_rad2deg(batch_shape, device_type):
     # generate input data
     x_rad = tgm.pi * torch.rand(batch_shape)
@@ -35,9 +36,10 @@ def test_rad2deg(batch_shape, device_type):
     assert gradcheck(tgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
                      raise_exception=True)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_deg2rad(batch_shape, device_type):
     # generate input data
     x_deg = 180. * torch.rand(batch_shape)
@@ -57,9 +59,10 @@ def test_deg2rad(batch_shape, device_type):
     assert gradcheck(tgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_convert_points_to_homogeneous(batch_shape, device_type):
     # generate input data
     points = torch.rand(batch_shape)
@@ -79,9 +82,10 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
     assert gradcheck(tgm.convert_points_to_homogeneous, (points,),
                      raise_exception=True)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3),])
+    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_convert_points_from_homogeneous(batch_shape, device_type):
     # generate input data
     points_h = torch.rand(batch_shape)
@@ -101,6 +105,7 @@ def test_convert_points_from_homogeneous(batch_shape, device_type):
     points = utils.tensor_to_gradcheck_var(points)  # to var
     assert gradcheck(tgm.convert_points_from_homogeneous, (points,),
                      raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -128,13 +133,14 @@ def test_transform_points(batch_size, num_points, num_dims, device_type):
 
     # functional
     assert torch.allclose(points_dst,
-        tgm.TransformPoints(dst_homo_src)(points_src))
+                          tgm.TransformPoints(dst_homo_src)(points_src))
 
     # evaluate function gradient
     points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
     dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
     assert gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
                      raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -156,6 +162,7 @@ def test_angle_axis_to_rotation_matrix(batch_size, device_type):
     assert gradcheck(tgm.angle_axis_to_rotation_matrix, (angle_axis,),
                      raise_exception=True)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rtvec_to_pose_gradcheck(batch_size, device_type):
@@ -165,6 +172,7 @@ def test_rtvec_to_pose_gradcheck(batch_size, device_type):
     # evaluate function gradient
     rtvec = utils.tensor_to_gradcheck_var(rtvec)  # to var
     assert gradcheck(tgm.rtvec_to_pose, (rtvec,), raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -176,6 +184,7 @@ def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
     rmat = utils.tensor_to_gradcheck_var(rmat)  # to var
     assert gradcheck(tgm.rotation_matrix_to_angle_axis,
                      (rmat,), raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 def test_rotation_matrix_to_angle_axis(device_type):
