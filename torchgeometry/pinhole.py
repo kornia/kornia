@@ -15,13 +15,11 @@ __all__ = [
     "InversePose",
     "PinholeMatrix",
     "InversePinholeMatrix",
-    "ScalePinhole",
-    "Homography_i_H_ref",
 ]
 
 
 def inverse_pose(pose, eps=1e-6):
-    """Inverts a 4x4 pose.
+    r"""Function that inverts a 4x4 pose.
 
     Args:
         points (Tensor): tensor with poses.
@@ -40,30 +38,23 @@ def inverse_pose(pose, eps=1e-6):
     if not torch.is_tensor(pose):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(pose)))
-    if not pose.shape[-2:] == (4, 4):
-        raise ValueError("Input size must be a 4x4 tensor. Got {}"
+    if not len(pose.shape) == 3 and pose.shape[-2:] == (4, 4):
+        raise ValueError("Input size must be a Nx4x4 tensor. Got {}"
                          .format(pose.shape))
-    pose_shape = pose.shape
-    if len(pose_shape) == 2:
-        pose = torch.unsqueeze(pose, dim=0)
 
     r_mat = pose[..., :3, 0:3]  # Nx3x3
     t_vec = pose[..., :3, 3:4]  # Nx3x1
     r_mat_trans = torch.transpose(r_mat, 1, 2)
 
-    pose_inv = torch.zeros_like(pose) + eps
+    pose_inv = pose.new_zeros(pose.shape) + eps
     pose_inv[..., :3, 0:3] = r_mat_trans
     pose_inv[..., :3, 3:4] = torch.matmul(-1.0 * r_mat_trans, t_vec)
     pose_inv[..., 3, 3] = 1.0
-
-    if len(pose_shape) == 2:
-        pose_inv = torch.squeeze(pose_inv, dim=0)
-
     return pose_inv
 
 
-def pinhole_matrix(pinholes):
-    """Returns the pinhole matrix from a pinhole model
+def pinhole_matrix(pinholes, eps=1e-6):
+    r"""Function that returns the pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor of pinhole models.
@@ -83,18 +74,18 @@ def pinhole_matrix(pinholes):
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
     # create output container
-    k = torch.eye(4, device=pinholes.device, dtype=pinholes.dtype)
+    k = torch.eye(4, device=pinholes.device, dtype=pinholes.dtype) + eps
     k = k.view(1, 4, 4).repeat(pinholes.shape[0], 1, 1)  # Nx4x4
     # fill output with pinhole values
-    k[..., 0, 0] = fx
-    k[..., 0, 2] = cx
-    k[..., 1, 1] = fy
-    k[..., 1, 2] = cy
+    k[..., 0, 0:1] = fx
+    k[..., 0, 2:3] = cx
+    k[..., 1, 1:2] = fy
+    k[..., 1, 2:3] = cy
     return k
 
 
 def inverse_pinhole_matrix(pinhole, eps=1e-6):
-    """Returns the inverted pinhole matrix from a pinhole model
+    r"""Returns the inverted pinhole matrix from a pinhole model
 
     Args:
         pinholes (Tensor): tensor with pinhole models.
@@ -117,15 +108,15 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
     k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
     k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)  # Nx4x4
     # fill output with inverse values
-    k[..., 0, 0] = 1. / (fx + eps)
-    k[..., 1, 1] = 1. / (fy + eps)
-    k[..., 0, 2] = -1. * cx / (fx + eps)
-    k[..., 1, 2] = -1. * cy / (fy + eps)
+    k[..., 0, 0:1] = 1. / (fx + eps)
+    k[..., 1, 1:2] = 1. / (fy + eps)
+    k[..., 0, 2:3] = -1. * cx / (fx + eps)
+    k[..., 1, 2:3] = -1. * cy / (fy + eps)
     return k
 
 
 def scale_pinhole(pinholes, scale):
-    """Scales the pinhole matrix for each pinhole model.
+    r"""Scales the pinhole matrix for each pinhole model.
 
     Args:
         pinholes (Tensor): tensor with the pinhole model.
@@ -139,14 +130,14 @@ def scale_pinhole(pinholes, scale):
         - Output: :math:`(N, 12)`
 
     Example:
-        >>> pinhole_i = torch.rand(1, 12)    # Nx12
-        >>> scales = 2.0 * torch.ones(1, 1)  # Nx1
+        >>> pinhole_i = torch.rand(1, 12)  # Nx12
+        >>> scales = 2.0 * torch.ones(1)   # N
         >>> pinhole_i_scaled = tgm.scale_pinhole(pinhole_i)  # Nx12
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
-    assert len(scale.shape) == 2 and scale.shape[1] == 1, scale.shape
+    assert len(scale.shape) == 1, scale.shape
     pinholes_scaled = pinholes.clone()
-    pinholes_scaled[..., :6] = pinholes[..., :6] * scale
+    pinholes_scaled[..., :6] = pinholes[..., :6] * scale.unsqueeze(-1)
     return pinholes_scaled
 
 
@@ -167,7 +158,7 @@ def get_optical_pose_base(pinholes):
 
 
 def homography_i_H_ref(pinhole_i, pinhole_ref):
-    """Homography from reference to ith pinhole
+    r"""Homography from reference to ith pinhole
 
     .. math::
 
@@ -205,6 +196,23 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
 
 
 class InversePose(nn.Module):
+    r"""Creates a transformation that inverts a 4x4 pose.
+
+    Args:
+        points (Tensor): tensor with poses.
+
+    Returns:
+        Tensor: tensor with inverted poses.
+
+    Shape:
+        - Input: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pose = torch.rand(1, 4, 4)  # Nx4x4
+        >>> transform = tgm.InversePose()
+        >>> pose_inv = transform(pose)  # Nx4x4
+    """
     def __init__(self):
         super(InversePose, self).__init__()
 
@@ -213,6 +221,23 @@ class InversePose(nn.Module):
 
 
 class PinholeMatrix(nn.Module):
+    r"""Creates an object that returns the pinhole matrix from a pinhole model
+
+    Args:
+        pinholes (Tensor): tensor of pinhole models.
+
+    Returns:
+        Tensor: tensor of pinhole matrices.
+
+    Shape:
+        - Input: :math:`(N, 12)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pinhole = torch.rand(1, 12)          # Nx12
+        >>> transform = tgm.PinholeMatrix()
+        >>> pinhole_matrix = transform(pinhole)  # Nx4x4
+    """
     def __init__(self):
         super(PinholeMatrix, self).__init__()
 
@@ -221,24 +246,25 @@ class PinholeMatrix(nn.Module):
 
 
 class InversePinholeMatrix(nn.Module):
+    r"""Returns and object that inverts a pinhole matrix from a pinhole model
+
+    Args:
+        pinholes (Tensor): tensor with pinhole models.
+
+    Returns:
+        Tensor: tensor of inverted pinhole matrices.
+
+    Shape:
+        - Input: :math:`(N, 12)`
+        - Output: :math:`(N, 4, 4)`
+
+    Example:
+        >>> pinhole = torch.rand(1, 12)              # Nx12
+        >>> transform = tgm.InversePinholeMatrix()
+        >>> pinhole_matrix_inv = transform(pinhole)  # Nx4x4
+    """
     def __init__(self):
         super(InversePinholeMatrix, self).__init__()
 
     def forward(self, input):
         return inverse_pinhole_matrix(input)
-
-
-class ScalePinhole(nn.Module):
-    def __init__(self):
-        super(ScalePinhole, self).__init__()
-
-    def forward(self, input, scale):
-        return scale_pinhole(input, scale)
-
-
-class Homography_i_H_ref(nn.Module):
-    def __init__(self):
-        super(Homography_i_H_ref, self).__init__()
-
-    def forward(self, pinhole_i, pinhole_ref):
-        return homography_i_H_ref(pinhole_i, pinhole_ref)
