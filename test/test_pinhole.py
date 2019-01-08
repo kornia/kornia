@@ -30,8 +30,9 @@ def test_inverse_pose(batch_size, device_type):
     assert gradcheck(tgm.inverse_pose, (dst_pose_src,),
                      raise_exception=True)
 
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-#@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+# @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 @pytest.mark.parametrize("batch_size", [6])
 def test_scale_pinhole(batch_size, device_type):
     # generate input data
@@ -48,6 +49,7 @@ def test_scale_pinhole(batch_size, device_type):
     scales = utils.tensor_to_gradcheck_var(scales)  # to var
     assert gradcheck(tgm.scale_pinhole, (pinholes, scales,),
                      raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
@@ -80,6 +82,7 @@ def test_pinhole_matrix(batch_size, device_type):
     pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
     assert gradcheck(tgm.pinhole_matrix, (pinhole,),
                      raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
@@ -114,6 +117,7 @@ def test_inverse_pinhole_matrix(batch_size, device_type):
     pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
     assert gradcheck(tgm.pinhole_matrix, (pinhole,),
                      raise_exception=True)
+
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
@@ -157,6 +161,6 @@ def test_homography_i_H_ref(batch_size, device_type):
 
     # evaluate function gradient
     assert gradcheck(tgm.homography_i_H_ref,
-        (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
-         utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
-        raise_exception=True)
+                     (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
+                      utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
+                     raise_exception=True)
