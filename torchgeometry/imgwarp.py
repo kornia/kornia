@@ -280,13 +280,13 @@ def get_rotation_matrix2d(center, angle, scale):
         Tensor: the affine matrix of 2D rotation.
 
     Shape:
-        - Input: :math:`(B, 2)`, :math:`(B, 1)` and :math:`(B, 1)`
+        - Input: :math:`(B, 2)`, :math:`(B)` and :math:`(B)`
         - Output: :math:`(B, 2, 3)`
 
     Example:
         >>> center = torch.zeros(1, 2)
-        >>> scale = torch.ones(1, 1)
-        >>> angle = 45. * torch.ones(1, 1)
+        >>> scale = torch.ones(1)
+        >>> angle = 45. * torch.ones(1)
         >>> M = tgm.get_rotation_matrix2d(center, angle, scale)
         tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])

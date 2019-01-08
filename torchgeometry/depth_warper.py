@@ -39,7 +39,7 @@ class DepthWarper(nn.Module):
         if scale is None:
             batch_size = pinhole.shape[0]
             scale = torch.ones(
-                batch_size, 1).to(
+                batch_size).to(
                 pinhole.device).type_as(pinhole)
         # TODO: add type and value checkings
         pinhole_ref = scale_pinhole(pinhole, scale)
