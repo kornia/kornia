@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Python Module Index &mdash; Torchgeometry master documentation</title>
+  <title>torchgeometry.image &mdash; PyTorch Geometry master documentation</title>
   
 
   
@@ -30,13 +30,8 @@
   <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
- 
-
-    <script type="text/javascript">
-      DOCUMENTATION_OPTIONS.COLLAPSE_INDEX = true;
-    </script>
-
-
+    <link rel="next" title="torchgeometry.utils" href="utils.html" />
+    <link rel="prev" title="Warping" href="warping.html" /> 
 
   
   <script src="_static/js/modernizr.min.js"></script>
@@ -68,7 +63,7 @@
             
             
               <div class="version">
-                master (0.1.0 )
+                master (0.1.2rc1 )
               </div>
             
           
@@ -92,8 +87,21 @@
               
             
             
-              <!-- Local TOC -->
-              <div class="local-toc"></div>
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="warping.html">Warping</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
             
           
         </div>
@@ -106,7 +114,7 @@
       <nav class="wy-nav-top" aria-label="top navigation">
         
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="index.html">Torchgeometry</a>
+          <a href="index.html">PyTorch Geometry</a>
         
       </nav>
 
@@ -137,10 +145,14 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>Python Module Index</li>
+      <li>torchgeometry.image</li>
     
     
       <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/image.rst.txt" rel="nofollow"> View page source</a>
+          
         
       </li>
     
@@ -152,29 +164,54 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
+  
+<style>
+/* CSS overrides for sphinx_rtd_theme */
 
-   <h1>Python Module Index</h1>
+/* 24px margin */
+.nbinput.nblast,
+.nboutput.nblast {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
 
-   <div class="modindex-jumpbox">
-   <a href="#cap-t"><strong>t</strong></a>
-   </div>
+/* ... except between code cells! */
+.nblast + .nbinput {
+    margin-top: -19px;
+}
 
-   <table class="indextable modindextable">
-     <tr class="pcap"><td></td><td>&#160;</td><td></td></tr>
-     <tr class="cap" id="cap-t"><td></td><td>
-       <strong>t</strong></td><td></td></tr>
-     <tr>
-       <td></td>
-       <td>
-       <a href="index.html#module-torchgeometry"><code class="xref">torchgeometry</code></a></td><td>
-       <em></em></td></tr>
-   </table>
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<div class="section" id="torchgeometry-image">
+<h1>torchgeometry.image<a class="headerlink" href="#torchgeometry-image" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
+<dt id="torchgeometry.image.get_gaussian_kernel">
+<code class="descclassname">torchgeometry.image.</code><code class="descname">get_gaussian_kernel</code><span class="sig-paren">(</span><em>ksize: int</em>, <em>sigma: float</em><span class="sig-paren">)</span> &#x2192; torch.Tensor<a class="reference internal" href="_modules/torchgeometry/image/gaussian.html#get_gaussian_kernel"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image.get_gaussian_kernel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function that returns Gaussian filter coefficients.</p>
+</dd></dl>
+
+</div>
 
 
            </div>
            
           </div>
           <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="utils.html" class="btn btn-neutral float-right" title="torchgeometry.utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="warping.html" class="btn btn-neutral" title="Warping" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
   
 
   <hr/>
@@ -207,6 +244,7 @@
         <script type="text/javascript" src="_static/underscore.js"></script>
         <script type="text/javascript" src="_static/doctools.js"></script>
         <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
     
 
   

@@ -1,0 +1,329 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>torchgeometry.image.gaussian &mdash; PyTorch Geometry master documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="../../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
+  <link rel="stylesheet" href="../../../_static/css/pytorch_theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+
+  
+  <script src="../../../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../../../index.html">
+          
+
+          
+            
+            <img src="../../../_static/torchgeometry_logo.svg" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                master (0.1.2rc1 )
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../warping.html">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">PyTorch Geometry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../../index.html">Module code</a> &raquo;</li>
+        
+      <li>torchgeometry.image.gaussian</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for torchgeometry.image.gaussian</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">typing</span> <span class="k">import</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">from</span> <span class="nn">torch.nn.functional</span> <span class="k">import</span> <span class="n">conv2d</span>
+
+<span class="c1"># NOTE: remove after implementing `getGaussianKernel` in pytorch</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="c1">#import scipy.stats as st</span>
+
+<span class="k">def</span> <span class="nf">gaussian</span><span class="p">(</span><span class="n">window_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">gauss</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+        <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">window_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">gauss</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">gauss</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">window_size</span><span class="p">)])</span>
+    <span class="k">return</span> <span class="n">gauss</span> <span class="o">/</span> <span class="n">gauss</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+<div class="viewcode-block" id="get_gaussian_kernel"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.get_gaussian_kernel">[docs]</a><span class="k">def</span> <span class="nf">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">sigma</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that returns Gaussian filter coefficients.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ksize must be an odd positive integer. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
+    <span class="n">window_1d</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">gaussian</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">window_1d</span></div>
+
+<span class="k">def</span> <span class="nf">get_gaussian_kernel2d</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+                          <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="n">ksize_x</span><span class="p">,</span> <span class="n">ksize_y</span> <span class="o">=</span> <span class="n">ksize</span>
+    <span class="n">sigma_x</span><span class="p">,</span> <span class="n">sigma_y</span> <span class="o">=</span> <span class="n">sigma</span>
+    <span class="n">kernel_x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize_x</span><span class="p">,</span> <span class="n">sigma_x</span><span class="p">)</span>
+    <span class="n">kernel_y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize_y</span><span class="p">,</span> <span class="n">sigma_y</span><span class="p">)</span>
+    <span class="n">kernel_2d</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span>
+        <span class="n">kernel_x</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">kernel_y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">kernel_2d</span>
+
+<span class="sd">&#39;&#39;&#39;class GaussianBlur(nn.Module):                                          </span>
+<span class="sd">    r&quot;&quot;&quot;Class that represents the Gaussian Blur operator.</span>
+<span class="sd">    It smooths a given tensor with a gaussian kernel by convolving</span>
+<span class="sd">    to each channel. It suports batched operation.</span>
+<span class="sd">    Arguments:</span>
+<span class="sd">        kernel_size (int): the size of the kernel.</span>
+<span class="sd">        sigma (float): the standard deviation of the kernel.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    def __init__(self, kernel_size, sigma):</span>
+<span class="sd">        super(GaussianBlur, self).__init__()</span>
+<span class="sd">        self.kernel_size = kernel_size</span>
+<span class="sd">        self.sigma = sigma</span>
+<span class="sd">        self.kernel = self.create_gaussian_kernel(kernel_size, sigma)</span>
+<span class="sd">        self._padding = (kernel_size - 1) // 2</span>
+
+<span class="sd">    # TODO: implement in pure pytorch as `getGaussianKernel()`</span>
+<span class="sd">    @staticmethod</span>
+<span class="sd">    def create_gaussian_kernel(kernlen=21, nsig=3):</span>
+<span class="sd">        &quot;&quot;&quot;Returns a 2D Gaussian kernel array.&quot;&quot;&quot;</span>
+<span class="sd">        interval = (2*nsig+1.)/(kernlen)</span>
+<span class="sd">        x = np.linspace(-nsig-interval/2., nsig+interval/2., kernlen+1)</span>
+<span class="sd">        kern1d = np.diff(st.norm.cdf(x))</span>
+<span class="sd">        kernel_raw = np.sqrt(np.outer(kern1d, kern1d))</span>
+<span class="sd">        kernel = kernel_raw/kernel_raw.sum()</span>
+<span class="sd">        return torch.from_numpy(kernel).view(1, 1, *kernel.shape)</span>
+
+<span class="sd">    def forward(self, x):</span>
+<span class="sd">        if not torch.is_tensor(x):</span>
+<span class="sd">            raise TypeError(&quot;Input x type is not a torch.Tensor. Got {}&quot;</span>
+<span class="sd">                            .format(type(x)))</span>
+<span class="sd">        if not len(x.shape) == 4:</span>
+<span class="sd">            raise ValueError(&quot;Invalid input shape, we expect BxCxHxW. Got: {}&quot;</span>
+<span class="sd">                             .format(x.shape))</span>
+<span class="sd">        # prepare kernel</span>
+<span class="sd">        b, c, h, w = x.shape</span>
+<span class="sd">        kernel = self.kernel.to(x.device).to(x.dtype)</span>
+<span class="sd">        kernel = kernel.repeat(c, 1, 1, 1)</span>
+
+<span class="sd">        # convolve image with gaussian kernel</span>
+<span class="sd">        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)</span>
+
+
+<span class="sd">######################</span>
+<span class="sd"># functional interface</span>
+<span class="sd">######################</span>
+
+
+<span class="sd">def _gaussian_blur(src, ksize, sigma):</span>
+<span class="sd">    if not isinstance(src, Image):</span>
+<span class="sd">        raise TypeError(</span>
+<span class="sd">            &quot;Input must be a torch.Image. Got: {}&quot;.format(type(src)))</span>
+<span class="sd">    # gaussian kernel</span>
+<span class="sd">    gauss_op = GaussianBlur(ksize, sigma)</span>
+<span class="sd">    dst_data = gauss_op(torch.unsqueeze(src.to_tensor().float(), dim=0))</span>
+
+<span class="sd">    # copy and return output</span>
+<span class="sd">    dst = src.clone()</span>
+<span class="sd">    return dst.copy_(torch.squeeze(dst_data.to(src.dtype), dim=0))</span>
+
+
+<span class="sd">def gaussian_blur(src, ksize, sigma):</span>
+<span class="sd">    r&quot;&quot;&quot;Interface to call the Gaussian Blur operator.</span>
+<span class="sd">    It smooths a given tensor with a gaussian kernel by convolving</span>
+<span class="sd">    to each channel. It suports batched operation.</span>
+<span class="sd">    Arguments:</span>
+<span class="sd">        src (Image or Tensor): the object representing the image/tensor.</span>
+<span class="sd">        ksize (int): the size of the kernel.</span>
+<span class="sd">        sigma (float): the standard deviation of the kernel.</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Image/Tensor: the smoothed image/tensor.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    if isinstance(src, torch.Tensor):</span>
+<span class="sd">        return GaussianBlur(ksize, sigma)(src)</span>
+
+<span class="sd">    if not isinstance(src, Image):</span>
+<span class="sd">        raise TypeError(&quot;Unsupported input type: {}&quot;.format(type(src)))</span>
+<span class="sd">return _gaussian_blur(src, ksize, sigma)&#39;&#39;&#39;</span>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Arraiy, Inc.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../../" src="../../../_static/documentation_options.js"></script>
+        <script type="text/javascript" src="../../../_static/jquery.js"></script>
+        <script type="text/javascript" src="../../../_static/underscore.js"></script>
+        <script type="text/javascript" src="../../../_static/doctools.js"></script>
+        <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
+    
+
+  
+
+  <script type="text/javascript" src="../../../_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

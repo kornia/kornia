@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchgeometry.depth_warper &mdash; Torchgeometry master documentation</title>
+  <title>torchgeometry.depth_warper &mdash; PyTorch Geometry master documentation</title>
   
 
   
@@ -61,7 +61,7 @@
             
             
               <div class="version">
-                master (0.1.0 )
+                master (0.1.2rc1 )
               </div>
             
           
@@ -85,8 +85,21 @@
               
             
             
-              <!-- Local TOC -->
-              <div class="local-toc"></div>
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warping.html">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
             
           
         </div>
@@ -99,7 +112,7 @@
       <nav class="wy-nav-top" aria-label="top navigation">
         
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../../index.html">Torchgeometry</a>
+          <a href="../../index.html">PyTorch Geometry</a>
         
       </nav>
 
@@ -161,7 +174,7 @@
 <span class="p">]</span>
 
 
-<div class="viewcode-block" id="DepthWarper"><a class="viewcode-back" href="../../index.html#torchgeometry.DepthWarper">[docs]</a><span class="k">class</span> <span class="nc">DepthWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<div class="viewcode-block" id="DepthWarper"><a class="viewcode-back" href="../../warping.html#torchgeometry.DepthWarper">[docs]</a><span class="k">class</span> <span class="nc">DepthWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Warps a patch by inverse depth.</span>
 
 <span class="sd">    .. math::</span>
@@ -210,7 +223,7 @@
         <span class="n">y</span> <span class="o">=</span> <span class="p">(</span><span class="n">flow</span><span class="p">[:,</span> <span class="p">:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span>
 
-<div class="viewcode-block" id="DepthWarper.compute_subpixel_step"><a class="viewcode-back" href="../../index.html#torchgeometry.DepthWarper.compute_subpixel_step">[docs]</a>    <span class="k">def</span> <span class="nf">compute_subpixel_step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<div class="viewcode-block" id="DepthWarper.compute_subpixel_step"><a class="viewcode-back" href="../../warping.html#torchgeometry.DepthWarper.compute_subpixel_step">[docs]</a>    <span class="k">def</span> <span class="nf">compute_subpixel_step</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;This computes the required inverse depth step to achieve sub pixel</span>
 <span class="sd">accurate sampling of the depth cost volume, per camera.</span>
 <span class="sd">        Szeliski, Richard, and Daniel Scharstein.</span>
@@ -279,7 +292,7 @@
         <span class="n">flows</span> <span class="o">=</span> <span class="n">flow</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>  <span class="c1"># Nx2xHxW</span>
         <span class="k">return</span> <span class="n">flows</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># NxHxWx2</span>
 
-<div class="viewcode-block" id="DepthWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.DepthWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">):</span>
+<div class="viewcode-block" id="DepthWarper.forward"><a class="viewcode-back" href="../../warping.html#torchgeometry.DepthWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Warps an image or tensor from ith frame to reference given the</span>
 <span class="sd">        inverse depth in the reference frame.</span>
 
@@ -314,7 +327,7 @@
 
 <span class="c1"># functional api</span>
 
-<div class="viewcode-block" id="depth_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.depth_warp">[docs]</a><span class="k">def</span> <span class="nf">depth_warp</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">,</span>
+<div class="viewcode-block" id="depth_warp"><a class="viewcode-back" href="../../warping.html#torchgeometry.depth_warp">[docs]</a><span class="k">def</span> <span class="nf">depth_warp</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">patch_i</span><span class="p">,</span>
                <span class="n">width</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    .. note::</span>
@@ -385,6 +398,7 @@
         <script type="text/javascript" src="../../_static/underscore.js"></script>
         <script type="text/javascript" src="../../_static/doctools.js"></script>
         <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
     
 
   

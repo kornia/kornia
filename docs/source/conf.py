@@ -22,6 +22,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'nbsphinx',
 ]
 
 napoleon_use_ivar = True
@@ -36,15 +37,15 @@ templates_path = ['_templates']
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = '.rst'
+source_suffix = ['.rst', '.ipynb']
 
 # The master toctree document.
 master_doc = 'index'
 
 # General information about the project.
-project = 'Torchgeometry'
-copyright = '2018, Arraiy, Inc.'
-author = 'Arraiy, Inc.'
+project = u'PyTorch Geometry'
+copyright = u'2018, Arraiy, Inc.'
+author = u'Arraiy, Inc.'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -67,7 +68,7 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
-exclude_patterns = []
+exclude_patterns = ['.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
@@ -112,7 +113,7 @@ html_context = {
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'PyTorchdoc'
+htmlhelp_basename = 'PyTorchGeometry'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -140,7 +141,7 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
     (master_doc, 'pytorch.tex', 'torchgeometry Documentation',
-     'Torch Contributors', 'manual'),
+     'Arraiy', 'manual'),
 ]
 
 

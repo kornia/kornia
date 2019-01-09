@@ -1,0 +1,823 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>torchgeometry.conversions &mdash; PyTorch Geometry master documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="../../_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
+  <link rel="stylesheet" href="../../_static/css/pytorch_theme.css" type="text/css" />
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+
+  
+  <script src="../../_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="../../index.html">
+          
+
+          
+            
+            <img src="../../_static/torchgeometry_logo.svg" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                master (0.1.2rc1 )
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warping.html">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">PyTorch Geometry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="../../index.html">Docs</a> &raquo;</li>
+        
+          <li><a href="../index.html">Module code</a> &raquo;</li>
+        
+      <li>torchgeometry.conversions</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <h1>Source code for torchgeometry.conversions</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="c1"># functional api</span>
+    <span class="s2">&quot;pi&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;rad2deg&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;deg2rad&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;convert_points_from_homogeneous&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;convert_points_to_homogeneous&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;transform_points&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;angle_axis_to_rotation_matrix&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;rotation_matrix_to_angle_axis&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;rotation_matrix_to_quaternion&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;quaternion_to_angle_axis&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;rtvec_to_pose&quot;</span><span class="p">,</span>
+    <span class="c1"># layer api</span>
+    <span class="s2">&quot;RadToDeg&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;DegToRad&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ConvertPointsFromHomogeneous&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;ConvertPointsToHomogeneous&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;TransformPoints&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;AngleAxisToRotationMatrix&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RotationMatrixToAngleAxis&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RotationMatrixToQuaternion&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;QuaternionToAngleAxis&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;RtvecToPose&quot;</span><span class="p">,</span>
+<span class="p">]</span>
+
+
+<span class="sd">&quot;&quot;&quot;Constant with number pi</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="n">pi</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mf">3.141592653589793</span><span class="p">])</span>
+
+
+<div class="viewcode-block" id="rad2deg"><a class="viewcode-back" href="../../conversions.html#torchgeometry.rad2deg">[docs]</a><span class="k">def</span> <span class="nf">rad2deg</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that converts angles from radians to degrees.</span>
+
+<span class="sd">    See :class:`~torchgeometry.RadToDeg` for details.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tensor (Tensor): Tensor of arbitrary shape.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: Tensor with same shape as input.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = tgm.pi * torch.rand(1, 3, 3)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.rad2deg(input)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+                        <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">tensor</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="mf">180.</span> <span class="o">*</span> <span class="n">tensor</span> <span class="o">/</span> <span class="n">pi</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">type</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="deg2rad"><a class="viewcode-back" href="../../conversions.html#torchgeometry.deg2rad">[docs]</a><span class="k">def</span> <span class="nf">deg2rad</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that converts angles from degrees to radians.</span>
+
+<span class="sd">    See :class:`~torchgeometry.DegToRad` for details.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tensor (Tensor): Tensor of arbitrary shape.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: Tensor with same shape as input.</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = 360. * torch.rand(1, 3, 3)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.deg2rad(input)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">tensor</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+                        <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">tensor</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="n">tensor</span> <span class="o">*</span> <span class="n">pi</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">type</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">/</span> <span class="mf">180.</span></div>
+
+
+<div class="viewcode-block" id="convert_points_from_homogeneous"><a class="viewcode-back" href="../../conversions.html#torchgeometry.convert_points_from_homogeneous">[docs]</a><span class="k">def</span> <span class="nf">convert_points_from_homogeneous</span><span class="p">(</span><span class="n">points</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that converts points from homogeneous to Euclidean space.</span>
+
+<span class="sd">    See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.convert_points_from_homogeneous(input)  # BxNx2</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="nb">type</span><span class="p">(</span><span class="n">points</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input must be at least a 2D tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">points</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="n">points</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">+</span> <span class="n">eps</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="convert_points_to_homogeneous"><a class="viewcode-back" href="../../conversions.html#torchgeometry.convert_points_to_homogeneous">[docs]</a><span class="k">def</span> <span class="nf">convert_points_to_homogeneous</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that converts points from Euclidean to homogeneous space.</span>
+
+<span class="sd">    See :class:`~torchgeometry.ConvertPointsToHomogeneous` for details.</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.convert_points_to_homogeneous(input)  # BxNx4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">points</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="nb">type</span><span class="p">(</span><span class="n">points</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input must be at least a 2D tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+
+    <span class="c1"># create shape for ones tensor: Nx(...)xD-1</span>
+    <span class="n">new_shape</span> <span class="o">=</span> <span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">bit_length</span><span class="p">()</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,)</span>
+    <span class="n">ones</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">new_shape</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">points</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">points</span><span class="p">,</span> <span class="n">ones</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">points</span><span class="o">.</span><span class="n">device</span><span class="p">)],</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="transform_points"><a class="viewcode-back" href="../../conversions.html#torchgeometry.transform_points">[docs]</a><span class="k">def</span> <span class="nf">transform_points</span><span class="p">(</span><span class="n">dst_pose_src</span><span class="p">,</span> <span class="n">points_src</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that applies transformations to a set of points.</span>
+
+<span class="sd">    See :class:`~torchgeometry.TransformPoints` for details.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        dst_pose_src (Tensor): tensor for transformations.</span>
+<span class="sd">        points_src (Tensor): tensor of points.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: tensor of N-dimensional points.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, D+1, D+1)` and :math:`(B, D, N)`</span>
+<span class="sd">        - Output: :math:`(B, N, D)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; pose = torch.eye(4).view(1, 4, 4)   # Bx4x4</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.transform_points(pose, input)  # BxNx3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">dst_pose_src</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">points_src</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">dst_pose_src</span><span class="o">.</span><span class="n">device</span> <span class="o">==</span> <span class="n">points_src</span><span class="o">.</span><span class="n">device</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Tensor must be in the same device&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">dst_pose_src</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">points_src</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input batch size must be the same for both tensors&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">dst_pose_src</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="p">(</span><span class="n">points_src</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Last input dimensions must differe by one unit&quot;</span><span class="p">)</span>
+    <span class="c1"># to homogeneous</span>
+    <span class="n">points_src_h</span> <span class="o">=</span> <span class="n">convert_points_to_homogeneous</span><span class="p">(</span><span class="n">points_src</span><span class="p">)</span>  <span class="c1"># BxNxD+1</span>
+    <span class="c1"># transform coordinates</span>
+    <span class="n">points_dst_h</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span>
+        <span class="n">dst_pose_src</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span> <span class="n">points_src_h</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">points_dst_h</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">points_dst_h</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># to euclidean</span>
+    <span class="n">points_dst</span> <span class="o">=</span> <span class="n">convert_points_from_homogeneous</span><span class="p">(</span><span class="n">points_dst_h</span><span class="p">)</span>  <span class="c1"># BxNxD</span>
+    <span class="k">return</span> <span class="n">points_dst</span></div>
+
+
+<div class="viewcode-block" id="angle_axis_to_rotation_matrix"><a class="viewcode-back" href="../../conversions.html#torchgeometry.angle_axis_to_rotation_matrix">[docs]</a><span class="k">def</span> <span class="nf">angle_axis_to_rotation_matrix</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert 3d vector of axis-angle rotation to 4x4 rotation matrix</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        angle_axis (Tensor): tensor of 3d vector of axis-angle rotations.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: tensor of 4x4 rotation matrices.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, 3)`</span>
+<span class="sd">        - Output: :math:`(N, 4, 4)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(1, 3)  # Nx3</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.angle_axis_to_rotation_matrix(input)  # Nx4x4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">_compute_rotation_matrix</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">,</span> <span class="n">theta2</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+        <span class="c1"># We want to be careful to only evaluate the square root if the</span>
+        <span class="c1"># norm of the angle_axis vector is greater than zero. Otherwise</span>
+        <span class="c1"># we get a division by zero.</span>
+        <span class="n">k_one</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">theta2</span><span class="p">)</span>
+        <span class="n">wxyz</span> <span class="o">=</span> <span class="n">angle_axis</span> <span class="o">/</span> <span class="p">(</span><span class="n">theta</span> <span class="o">+</span> <span class="n">eps</span><span class="p">)</span>
+        <span class="n">wx</span><span class="p">,</span> <span class="n">wy</span><span class="p">,</span> <span class="n">wz</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">chunk</span><span class="p">(</span><span class="n">wxyz</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+        <span class="n">sin_theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+
+        <span class="n">r00</span> <span class="o">=</span> <span class="n">cos_theta</span> <span class="o">+</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">wx</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r10</span> <span class="o">=</span> <span class="n">wz</span> <span class="o">*</span> <span class="n">sin_theta</span> <span class="o">+</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">wy</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r20</span> <span class="o">=</span> <span class="o">-</span><span class="n">wy</span> <span class="o">*</span> <span class="n">sin_theta</span> <span class="o">+</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">wz</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r01</span> <span class="o">=</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">wy</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span> <span class="o">-</span> <span class="n">wz</span> <span class="o">*</span> <span class="n">sin_theta</span>
+        <span class="n">r11</span> <span class="o">=</span> <span class="n">cos_theta</span> <span class="o">+</span> <span class="n">wy</span> <span class="o">*</span> <span class="n">wy</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r21</span> <span class="o">=</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">sin_theta</span> <span class="o">+</span> <span class="n">wy</span> <span class="o">*</span> <span class="n">wz</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r02</span> <span class="o">=</span> <span class="n">wy</span> <span class="o">*</span> <span class="n">sin_theta</span> <span class="o">+</span> <span class="n">wx</span> <span class="o">*</span> <span class="n">wz</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r12</span> <span class="o">=</span> <span class="o">-</span><span class="n">wx</span> <span class="o">*</span> <span class="n">sin_theta</span> <span class="o">+</span> <span class="n">wy</span> <span class="o">*</span> <span class="n">wz</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">r22</span> <span class="o">=</span> <span class="n">cos_theta</span> <span class="o">+</span> <span class="n">wz</span> <span class="o">*</span> <span class="n">wz</span> <span class="o">*</span> <span class="p">(</span><span class="n">k_one</span> <span class="o">-</span> <span class="n">cos_theta</span><span class="p">)</span>
+        <span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">r00</span><span class="p">,</span> <span class="n">r01</span><span class="p">,</span> <span class="n">r02</span><span class="p">,</span> <span class="n">r10</span><span class="p">,</span> <span class="n">r11</span><span class="p">,</span> <span class="n">r12</span><span class="p">,</span> <span class="n">r20</span><span class="p">,</span> <span class="n">r21</span><span class="p">,</span> <span class="n">r22</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_compute_rotation_matrix_taylor</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">):</span>
+        <span class="n">rx</span><span class="p">,</span> <span class="n">ry</span><span class="p">,</span> <span class="n">rz</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">chunk</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">k_one</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones_like</span><span class="p">(</span><span class="n">rx</span><span class="p">)</span>
+        <span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">k_one</span><span class="p">,</span> <span class="o">-</span><span class="n">rz</span><span class="p">,</span> <span class="n">ry</span><span class="p">,</span> <span class="n">rz</span><span class="p">,</span> <span class="n">k_one</span><span class="p">,</span> <span class="o">-</span><span class="n">rx</span><span class="p">,</span> <span class="o">-</span><span class="n">ry</span><span class="p">,</span> <span class="n">rx</span><span class="p">,</span> <span class="n">k_one</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+    <span class="c1"># stolen from ceres/rotation.h</span>
+
+    <span class="n">_angle_axis</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">theta2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span><span class="n">_angle_axis</span><span class="p">,</span> <span class="n">_angle_axis</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+    <span class="n">theta2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="n">theta2</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># compute rotation matrices</span>
+    <span class="n">rotation_matrix_normal</span> <span class="o">=</span> <span class="n">_compute_rotation_matrix</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">,</span> <span class="n">theta2</span><span class="p">)</span>
+    <span class="n">rotation_matrix_taylor</span> <span class="o">=</span> <span class="n">_compute_rotation_matrix_taylor</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">)</span>
+
+    <span class="c1"># create mask to handle both cases</span>
+    <span class="n">eps</span> <span class="o">=</span> <span class="mf">1e-6</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">theta2</span> <span class="o">&gt;</span> <span class="n">eps</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">theta2</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">mask_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">theta2</span><span class="p">)</span>
+    <span class="n">mask_neg</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask</span> <span class="o">==</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">theta2</span><span class="p">)</span>  <span class="c1"># noqa</span>
+
+    <span class="c1"># create output pose matrix</span>
+    <span class="n">batch_size</span> <span class="o">=</span> <span class="n">angle_axis</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">angle_axis</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">angle_axis</span><span class="p">)</span>
+    <span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># fill output matrix with masked values</span>
+    <span class="n">rotation_matrix</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">3</span><span class="p">,</span> <span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> \
+        <span class="n">mask_pos</span> <span class="o">*</span> <span class="n">rotation_matrix_normal</span> <span class="o">+</span> <span class="n">mask_neg</span> <span class="o">*</span> <span class="n">rotation_matrix_taylor</span>
+    <span class="k">return</span> <span class="n">rotation_matrix</span>  <span class="c1"># Nx4x4</span></div>
+
+
+<div class="viewcode-block" id="rtvec_to_pose"><a class="viewcode-back" href="../../conversions.html#torchgeometry.rtvec_to_pose">[docs]</a><span class="k">def</span> <span class="nf">rtvec_to_pose</span><span class="p">(</span><span class="n">rtvec</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Convert axis-angle rotation and translation vector to 4x4 pose matrix</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        rtvec (Tensor): Rodrigues vector transformations</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: transformation matrices</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, 6)`</span>
+<span class="sd">        - Output: :math:`(N, 4, 4)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(3, 6)  # Nx6</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.rtvec_to_pose(input)  # Nx4x4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="n">rtvec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">6</span><span class="p">,</span> <span class="s1">&#39;rtvec=[rx, ry, rz, tx, ty, tz]&#39;</span>
+    <span class="n">pose</span> <span class="o">=</span> <span class="n">angle_axis_to_rotation_matrix</span><span class="p">(</span><span class="n">rtvec</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">3</span><span class="p">])</span>
+    <span class="n">pose</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">rtvec</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">3</span><span class="p">:]</span>
+    <span class="k">return</span> <span class="n">pose</span></div>
+
+
+<div class="viewcode-block" id="rotation_matrix_to_angle_axis"><a class="viewcode-back" href="../../conversions.html#torchgeometry.rotation_matrix_to_angle_axis">[docs]</a><span class="k">def</span> <span class="nf">rotation_matrix_to_angle_axis</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert 3x4 rotation matrix to Rodrigues vector</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        rotation_matrix (Tensor): rotation matrix.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: Rodrigues vector transformation.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, 3, 4)`</span>
+<span class="sd">        - Output: :math:`(N, 3)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 3, 4)  # Nx4x4</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.rotation_matrix_to_angle_axis(input)  # Nx3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># todo add check that matrix is a valid rotation matrix</span>
+    <span class="n">quaternion</span> <span class="o">=</span> <span class="n">rotation_matrix_to_quaternion</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">quaternion_to_angle_axis</span><span class="p">(</span><span class="n">quaternion</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="rotation_matrix_to_quaternion"><a class="viewcode-back" href="../../conversions.html#torchgeometry.rotation_matrix_to_quaternion">[docs]</a><span class="k">def</span> <span class="nf">rotation_matrix_to_quaternion</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert 3x4 rotation matrix to 4d quaternion vector</span>
+
+<span class="sd">    This algorithm is based on algorithm described in</span>
+<span class="sd">    https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        rotation_matrix (Tensor): the rotation matrix to convert.</span>
+
+<span class="sd">    Return:</span>
+<span class="sd">        Tensor: the rotation in quaternion</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, 3, 4)`</span>
+<span class="sd">        - Output: :math:`(N, 4)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(4, 3, 4)  # Nx3x4</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.rotation_matrix_to_quaternion(input)  # Nx4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="nb">type</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">)))</span>
+
+    <span class="n">input_shape</span> <span class="o">=</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">rotation_matrix</span> <span class="o">=</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Input size must be a three dimensional tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span> <span class="o">==</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">&quot;Input size must be a N x 3 x 4  tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">rotation_matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+
+    <span class="n">rmat_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">rotation_matrix</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">mask_d2</span> <span class="o">=</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">eps</span>
+
+    <span class="n">mask_d0_d1</span> <span class="o">=</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="n">mask_d0_nd1</span> <span class="o">=</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="o">-</span><span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+    <span class="n">t0</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">q0</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+                      <span class="n">t0</span><span class="p">,</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">]],</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">t0_rep</span> <span class="o">=</span> <span class="n">t0</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">()</span>
+
+    <span class="n">t1</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">q1</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+                      <span class="n">t1</span><span class="p">,</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]],</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">t1_rep</span> <span class="o">=</span> <span class="n">t1</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">()</span>
+
+    <span class="n">t2</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">q2</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">t2</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">t2_rep</span> <span class="o">=</span> <span class="n">t2</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">()</span>
+
+    <span class="n">t3</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="n">q3</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">t3</span><span class="p">,</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+                      <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">rmat_t</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">t3_rep</span> <span class="o">=</span> <span class="n">t3</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">()</span>
+
+    <span class="n">mask_c0</span> <span class="o">=</span> <span class="n">mask_d2</span> <span class="o">*</span> <span class="n">mask_d0_d1</span>
+    <span class="n">mask_c1</span> <span class="o">=</span> <span class="n">mask_d2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mask_d0_d1</span><span class="p">)</span>
+    <span class="n">mask_c2</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mask_d2</span><span class="p">)</span> <span class="o">*</span> <span class="n">mask_d0_nd1</span>
+    <span class="n">mask_c3</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mask_d2</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mask_d0_nd1</span><span class="p">)</span>
+    <span class="n">mask_c0</span> <span class="o">=</span> <span class="n">mask_c0</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">q0</span><span class="p">)</span>
+    <span class="n">mask_c1</span> <span class="o">=</span> <span class="n">mask_c1</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">q1</span><span class="p">)</span>
+    <span class="n">mask_c2</span> <span class="o">=</span> <span class="n">mask_c2</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">q2</span><span class="p">)</span>
+    <span class="n">mask_c3</span> <span class="o">=</span> <span class="n">mask_c3</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">q3</span><span class="p">)</span>
+
+    <span class="n">q</span> <span class="o">=</span> <span class="n">q0</span> <span class="o">*</span> <span class="n">mask_c0</span> <span class="o">+</span> <span class="n">q1</span> <span class="o">*</span> <span class="n">mask_c1</span> <span class="o">+</span> <span class="n">q2</span> <span class="o">*</span> <span class="n">mask_c2</span> <span class="o">+</span> <span class="n">q3</span> <span class="o">*</span> <span class="n">mask_c3</span>
+    <span class="n">q</span> <span class="o">/=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">t0_rep</span> <span class="o">*</span> <span class="n">mask_c0</span> <span class="o">+</span> <span class="n">t1_rep</span> <span class="o">*</span> <span class="n">mask_c1</span> <span class="o">+</span>  <span class="c1"># noqa</span>
+                    <span class="n">t2_rep</span> <span class="o">*</span> <span class="n">mask_c2</span> <span class="o">+</span> <span class="n">t3_rep</span> <span class="o">*</span> <span class="n">mask_c3</span><span class="p">)</span>
+    <span class="n">q</span> <span class="o">*=</span> <span class="mf">0.5</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="n">q</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">q</span></div>
+
+
+<div class="viewcode-block" id="quaternion_to_angle_axis"><a class="viewcode-back" href="../../conversions.html#torchgeometry.quaternion_to_angle_axis">[docs]</a><span class="k">def</span> <span class="nf">quaternion_to_angle_axis</span><span class="p">(</span><span class="n">quaternion</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Convert quaternion vector to angle axis of rotation</span>
+
+<span class="sd">    Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        quaternion (Tensor): batch with quaternions</span>
+
+<span class="sd">    Return:</span>
+<span class="sd">        Tensor: batch with angle axis of rotation</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(N, 4)`</span>
+<span class="sd">        - Output: :math:`(N, 3)`</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4)  # Nx4</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.quaternion_to_angle_axis(input)  # Nx3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">quaternion</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="nb">type</span><span class="p">(</span><span class="n">quaternion</span><span class="p">)))</span>
+
+    <span class="n">input_shape</span> <span class="o">=</span> <span class="n">quaternion</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">quaternion</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="n">quaternion</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">assert</span> <span class="n">quaternion</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">,</span> <span class="s1">&#39;Input must be a vector of length 4&#39;</span>
+    <span class="n">normalizer</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">quaternion</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">q1</span> <span class="o">=</span> <span class="n">quaternion</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">normalizer</span>
+    <span class="n">q2</span> <span class="o">=</span> <span class="n">quaternion</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="n">normalizer</span>
+    <span class="n">q3</span> <span class="o">=</span> <span class="n">quaternion</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">]</span> <span class="o">*</span> <span class="n">normalizer</span>
+
+    <span class="n">sin_squared</span> <span class="o">=</span> <span class="n">q1</span> <span class="o">*</span> <span class="n">q1</span> <span class="o">+</span> <span class="n">q2</span> <span class="o">*</span> <span class="n">q2</span> <span class="o">+</span> <span class="n">q3</span> <span class="o">*</span> <span class="n">q3</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">sin_squared</span> <span class="o">&gt;</span> <span class="n">eps</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">sin_squared</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">mask_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">sin_squared</span><span class="p">)</span>
+    <span class="n">mask_neg</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask</span> <span class="o">==</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">sin_squared</span><span class="p">)</span>  <span class="c1"># noqa</span>
+    <span class="n">batch_size</span> <span class="o">=</span> <span class="n">quaternion</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">angle_axis</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+        <span class="n">batch_size</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">quaternion</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span>
+        <span class="n">quaternion</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">sin_theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">sin_squared</span><span class="p">)</span>
+    <span class="n">cos_theta</span> <span class="o">=</span> <span class="n">quaternion</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">normalizer</span>
+    <span class="n">mask_theta</span> <span class="o">=</span> <span class="p">(</span><span class="n">cos_theta</span> <span class="o">&lt;</span> <span class="n">eps</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">mask_theta_neg</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask_theta</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">)</span>
+    <span class="n">mask_theta_pos</span> <span class="o">=</span> <span class="p">(</span><span class="n">mask_theta</span> <span class="o">==</span> <span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">type_as</span><span class="p">(</span><span class="n">cos_theta</span><span class="p">)</span>  <span class="c1"># noqa</span>
+
+    <span class="n">theta</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">atan2</span><span class="p">(</span><span class="o">-</span><span class="n">sin_theta</span><span class="p">,</span> <span class="o">-</span><span class="n">cos_theta</span><span class="p">)</span> <span class="o">*</span> <span class="n">mask_theta_neg</span> \
+        <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">atan2</span><span class="p">(</span><span class="n">sin_theta</span><span class="p">,</span> <span class="n">cos_theta</span><span class="p">)</span> <span class="o">*</span> <span class="n">mask_theta_pos</span>
+
+    <span class="n">two_theta</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">theta</span>
+    <span class="n">k_pos</span> <span class="o">=</span> <span class="n">two_theta</span> <span class="o">/</span> <span class="n">sin_theta</span>
+    <span class="n">k_neg</span> <span class="o">=</span> <span class="mf">2.0</span>
+    <span class="n">k</span> <span class="o">=</span> <span class="n">k_neg</span> <span class="o">*</span> <span class="n">mask_neg</span> <span class="o">+</span> <span class="n">k_pos</span> <span class="o">*</span> <span class="n">mask_pos</span>
+
+    <span class="n">angle_axis</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">q1</span> <span class="o">*</span> <span class="n">k</span>
+    <span class="n">angle_axis</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">q2</span> <span class="o">*</span> <span class="n">k</span>
+    <span class="n">angle_axis</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">q3</span> <span class="o">*</span> <span class="n">k</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">angle_axis</span> <span class="o">=</span> <span class="n">angle_axis</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">angle_axis</span></div>
+
+<span class="c1"># TODO: add below funtionalities</span>
+<span class="c1">#  - pose_to_rtvec</span>
+
+
+<span class="c1"># layer api</span>
+
+
+<div class="viewcode-block" id="RadToDeg"><a class="viewcode-back" href="../../conversions.html#torchgeometry.RadToDeg">[docs]</a><span class="k">class</span> <span class="nc">RadToDeg</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates an object that converts angles from radians to degrees.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tensor (Tensor): Tensor of arbitrary shape.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: Tensor with same shape as input.</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = tgm.pi * torch.rand(1, 3, 3)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.RadToDeg()(input)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RadToDeg</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">rad2deg</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DegToRad"><a class="viewcode-back" href="../../conversions.html#torchgeometry.DegToRad">[docs]</a><span class="k">class</span> <span class="nc">DegToRad</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that converts angles from degrees to radians.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tensor (Tensor): Tensor of arbitrary shape.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: Tensor with same shape as input.</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = 360. * torch.rand(1, 3, 3)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.DegToRad()(input)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">DegToRad</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">deg2rad</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConvertPointsFromHomogeneous"><a class="viewcode-back" href="../../conversions.html#torchgeometry.ConvertPointsFromHomogeneous">[docs]</a><span class="k">class</span> <span class="nc">ConvertPointsFromHomogeneous</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates a transformation that converts points from homogeneous to</span>
+<span class="sd">    Euclidean space.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        points (Tensor): tensor of N-dimensional points.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: tensor of N-1-dimensional points.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, D, N)` or :math:`(D, N)`</span>
+<span class="sd">        - Output: :math:`(B, D, N + 1)` or :math:`(D, N + 1)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; transform = tgm.ConvertPointsFromHomogeneous()</span>
+<span class="sd">        &gt;&gt;&gt; output = transform(input)  # BxNx2</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ConvertPointsFromHomogeneous</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">convert_points_from_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ConvertPointsToHomogeneous"><a class="viewcode-back" href="../../conversions.html#torchgeometry.ConvertPointsToHomogeneous">[docs]</a><span class="k">class</span> <span class="nc">ConvertPointsToHomogeneous</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates a transformation to convert points from Euclidean to</span>
+<span class="sd">    homogeneous space.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        points (Tensor): tensor of N-dimensional points.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: tensor of N+1-dimensional points.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, D, N)` or :math:`(D, N)`</span>
+<span class="sd">        - Output: :math:`(B, D, N + 1)` or :math:`(D, N + 1)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; transform = tgm.ConvertPointsToHomogeneous()</span>
+<span class="sd">        &gt;&gt;&gt; output = transform(input)  # BxNx4</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ConvertPointsToHomogeneous</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">convert_points_to_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TransformPoints"><a class="viewcode-back" href="../../conversions.html#torchgeometry.TransformPoints">[docs]</a><span class="k">class</span> <span class="nc">TransformPoints</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates an object to transform a set of points.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        dst_pose_src (Tensor): tensor for transformations of</span>
+<span class="sd">        shape :math:`(B, D+1, D+1)`.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: tensor of N-dimensional points.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, D, N)`</span>
+<span class="sd">        - Output: :math:`(B, N, D)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 3)  # BxNx3</span>
+<span class="sd">        &gt;&gt;&gt; transform = torch.eye(4).view(1, 4, 4)   # Bx4x4</span>
+<span class="sd">        &gt;&gt;&gt; transform_op = tgm.TransformPoints(transform)</span>
+<span class="sd">        &gt;&gt;&gt; output = transform_op(input)  # BxNx3</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">TransformPoints</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dst_homo_src</span> <span class="o">=</span> <span class="n">dst_homo_src</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">points_src</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">transform_points</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dst_homo_src</span><span class="p">,</span> <span class="n">points_src</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="AngleAxisToRotationMatrix"><a class="viewcode-back" href="../../conversions.html#torchgeometry.AngleAxisToRotationMatrix">[docs]</a><span class="k">class</span> <span class="nc">AngleAxisToRotationMatrix</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">AngleAxisToRotationMatrix</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">angle_axis_to_rotation_matrix</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RotationMatrixToAngleAxis"><a class="viewcode-back" href="../../conversions.html#torchgeometry.RotationMatrixToAngleAxis">[docs]</a><span class="k">class</span> <span class="nc">RotationMatrixToAngleAxis</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RotationMatrixToAngleAxis</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">rotation_matrix_to_angle_axis</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RotationMatrixToQuaternion"><a class="viewcode-back" href="../../conversions.html#torchgeometry.RotationMatrixToQuaternion">[docs]</a><span class="k">class</span> <span class="nc">RotationMatrixToQuaternion</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RotationMatrixToQuaterion</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">rotation_matrix_to_quaterion</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="QuaternionToAngleAxis"><a class="viewcode-back" href="../../conversions.html#torchgeometry.QuaternionToAngleAxis">[docs]</a><span class="k">class</span> <span class="nc">QuaternionToAngleAxis</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">QuaternionToAngleAxis</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">quaterion_to_angle_axis</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="RtvecToPose"><a class="viewcode-back" href="../../conversions.html#torchgeometry.RtvecToPose">[docs]</a><span class="k">class</span> <span class="nc">RtvecToPose</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">RtvecToPose</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">rtvec_to_pose</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span></div>
+</pre></div>
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Arraiy, Inc.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="../../" src="../../_static/documentation_options.js"></script>
+        <script type="text/javascript" src="../../_static/jquery.js"></script>
+        <script type="text/javascript" src="../../_static/underscore.js"></script>
+        <script type="text/javascript" src="../../_static/doctools.js"></script>
+        <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
+    
+
+  
+
+  <script type="text/javascript" src="../../_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

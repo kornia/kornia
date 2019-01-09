@@ -1,0 +1,509 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Warping &mdash; PyTorch Geometry master documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
+  <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="torchgeometry.image" href="image.html" />
+    <link rel="prev" title="Conversions" href="conversions.html" /> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html">
+          
+
+          
+            
+            <img src="_static/torchgeometry_logo.svg" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                master (0.1.2rc1 )
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PyTorch Geometry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>Warping</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/warping.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  
+<style>
+/* CSS overrides for sphinx_rtd_theme */
+
+/* 24px margin */
+.nbinput.nblast,
+.nboutput.nblast {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast + .nbinput {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<div class="section" id="warping">
+<h1>Warping<a class="headerlink" href="#warping" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="torchgeometry.HomographyWarper">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">HomographyWarper</code><span class="sig-paren">(</span><em>height</em>, <em>width</em>, <em>points=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#HomographyWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.HomographyWarper" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps patches by homographies.</p>
+<div class="math notranslate nohighlight">
+\[X_{dst} = H_{dst}^{src} * X_{src}\]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>width</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a>) – The width of the image to warp.</li>
+<li><strong>height</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a>) – The height of the image to warp.</li>
+<li><strong>points</strong> (<em>Tensor</em>) – Tensor[3, N] of homogeneous points in normalized image
+space [-1, 1] to sample. Optional parameter.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="method">
+<dt id="torchgeometry.HomographyWarper.forward">
+<code class="descname">forward</code><span class="sig-paren">(</span><em>patch</em>, <em>dst_homo_src</em>, <em>padding_mode='zeros'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#HomographyWarper.forward"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.HomographyWarper.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps an image or tensor from source into reference frame.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>patch</strong> (<em>Tensor</em>) – The image or tensor to warp. Should be from source.</li>
+<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies
+from source to destination.</li>
+<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with
+zeros or ‘border’ to choose the closest
+border data.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">Patch sampled at locations from source to destination.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, C, H, W)\)</span> and <span class="math notranslate nohighlight">\((N, 3, 3)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">homography</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">warper</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">HomographyWarper</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">warper</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">homography</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="method">
+<dt id="torchgeometry.HomographyWarper.warp_grid">
+<code class="descname">warp_grid</code><span class="sig-paren">(</span><em>H</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#HomographyWarper.warp_grid"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.HomographyWarper.warp_grid" title="Permalink to this definition">¶</a></dt>
+<dd><table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>H</strong> – Homography or homographies (stacked) to transform all points
+in the grid.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">Tensor[1, Height, Width, 2] containing transformed points in
+normalized images space.</td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.DepthWarper">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">DepthWarper</code><span class="sig-paren">(</span><em>pinholes</em>, <em>width=None</em>, <em>height=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps a patch by inverse depth.</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}\\I_{ref} = \omega(I_{i}, H_{ref}^{i}, \xi_{ref})\end{aligned}\end{align} \]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first last simple">
+<li><strong>pinholes</strong> (<em>Tensor</em>) – The pinhole models for ith frame with shape <cite>[Nx12]</cite>.</li>
+<li><strong>width</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a>) – The width of the image to warp. Optional.</li>
+<li><strong>height</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a>) – The height of the image to warp. Optional.</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="method">
+<dt id="torchgeometry.DepthWarper.compute_subpixel_step">
+<code class="descname">compute_subpixel_step</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper.compute_subpixel_step"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper.compute_subpixel_step" title="Permalink to this definition">¶</a></dt>
+<dd><p>This computes the required inverse depth step to achieve sub pixel
+accurate sampling of the depth cost volume, per camera.</p>
+<blockquote>
+<div>Szeliski, Richard, and Daniel Scharstein.
+“Symmetric sub-pixel stereo matching.” European Conference on Computer
+Vision. Springer Berlin Heidelberg, 2002.</div></blockquote>
+</dd></dl>
+
+<dl class="method">
+<dt id="torchgeometry.DepthWarper.forward">
+<code class="descname">forward</code><span class="sig-paren">(</span><em>inv_depth_ref</em>, <em>patch_i</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#DepthWarper.forward"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.DepthWarper.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Warps an image or tensor from ith frame to reference given the
+inverse depth in the reference frame.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>inv_depth_ref</strong> (<em>Tensor</em>) – The inverse depth in the reference frame.</li>
+<li><strong>patch_i</strong> (<em>Tensor</em>) – The patch in the it frame.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">The warped data from ith frame to reference.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 1, H, W)\)</span> and <span class="math notranslate nohighlight">\((N, C, H, W)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># image in ith frame</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>       <span class="c1"># NxCxHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># pinholes models for camera i and reference</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinholes_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">])</span>     <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">]),</span>   <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># create the depth warper and compute the homographies</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">warper</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">DepthWarper</span><span class="p">(</span><span class="n">pinholes_i</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">warper</span><span class="o">.</span><span class="n">compute_homographies</span><span class="p">(</span><span class="n">pinhole_ref</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># warp the ith frame to reference by inverse depth</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">inv_depth_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>  <span class="c1"># Nx1xHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">warper</span><span class="p">(</span><span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>    <span class="c1"># NxCxHxW</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.homography_warp">
+<code class="descclassname">torchgeometry.</code><code class="descname">homography_warp</code><span class="sig-paren">(</span><em>patch</em>, <em>dst_H_src</em>, <em>dsize</em>, <em>points=None</em>, <em>padding_mode='zeros'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/homography_warper.html#homography_warp"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_warp" title="Permalink to this definition">¶</a></dt>
+<dd><div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Functional API for <code class="xref py py-class docutils literal notranslate"><span class="pre">torgeometry.HomographyWarper</span></code></p>
+</div>
+<p>Warps patches by homographies.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>patch</strong> (<em>Tensor</em>) – The image or tensor to warp. Should be from source.</li>
+<li><strong>dst_homo_src</strong> (<em>Tensor</em>) – The homography or stack of homographies from
+source to destination.</li>
+<li><strong>dsize</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.7)"><em>tuple</em></a>) – The height and width of the image to warp.</li>
+<li><strong>points</strong> (<em>Tensor</em>) – Tensor[3, N] of homogeneous points in normalized image
+space [-1, 1] to sample. Optional parameter.</li>
+<li><strong>padding_mode</strong> (<em>string</em>) – Either ‘zeros’ to replace out of bounds with
+zeros or ‘border’ to choose the closest border
+data.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">Patch sampled at locations from source to destination.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, C, H, W)\)</span> and <span class="math notranslate nohighlight">\((N, 3, 3)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">homography</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">homography_warp</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">homography</span><span class="p">,</span> <span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">))</span>  <span class="c1"># NxCxHxW</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.depth_warp">
+<code class="descclassname">torchgeometry.</code><code class="descname">depth_warp</code><span class="sig-paren">(</span><em>pinholes_i</em>, <em>pinhole_ref</em>, <em>inv_depth_ref</em>, <em>patch_i</em>, <em>width=None</em>, <em>height=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/depth_warper.html#depth_warp"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.depth_warp" title="Permalink to this definition">¶</a></dt>
+<dd><div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p class="last">Functional API for <code class="xref py py-class docutils literal notranslate"><span class="pre">torgeometry.DepthWarper</span></code></p>
+</div>
+<p>Warps a patch by inverse depth.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pinholes_i</strong> (<em>Tensor</em>) – The pinhole models for ith frame with
+shape <cite>[Nx12]</cite>.</li>
+<li><strong>pinholes_ref</strong> (<em>Tensor</em>) – The pinhole models for the reference frame
+with shape <cite>[1x12]</cite>.</li>
+<li><strong>inv_depth_ref</strong> (<em>Tensor</em>) – The inverse depth in the reference frame.</li>
+<li><strong>patch_i</strong> (<em>Tensor</em>) – The patch data in the ith frame.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">The warped data from ith frame to reference.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># image in ith frame</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>          <span class="c1"># NxCxHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># pinholes models for camera i and reference</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinholes_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">])</span>        <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">]),</span>      <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># warp the ith frame to reference by inverse depth in the reference</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">inv_depth_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">32</span><span class="p">,</span> <span class="mi">32</span><span class="p">)</span>  <span class="c1"># Nx1xHxW</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">img_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">depth_warp</span><span class="p">(</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="n">pinholes_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">,</span> <span class="n">inv_depth_ref</span><span class="p">,</span> <span class="n">img_i</span><span class="p">)</span>  <span class="c1"># NxCxHxW</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="image.html" class="btn btn-neutral float-right" title="torchgeometry.image" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="conversions.html" class="btn btn-neutral" title="Conversions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Arraiy, Inc.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script type="text/javascript" src="_static/jquery.js"></script>
+        <script type="text/javascript" src="_static/underscore.js"></script>
+        <script type="text/javascript" src="_static/doctools.js"></script>
+        <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
+    
+
+  
+
+  <script type="text/javascript" src="_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

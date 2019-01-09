@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Search &mdash; PyTorch Geometry master documentation</title>
+  <title>torchgeometry.utils &mdash; PyTorch Geometry master documentation</title>
   
 
   
@@ -29,7 +29,9 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
   <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="#" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Rotate image using warp affine transform" href="warp_affine.html" />
+    <link rel="prev" title="torchgeometry.image" href="image.html" /> 
 
   
   <script src="_static/js/modernizr.min.js"></script>
@@ -68,7 +70,7 @@
 
           
 <div role="search">
-  <form id="rtd-search-form" class="wy-form" action="#" method="get">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
     <input type="text" name="q" placeholder="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
@@ -86,13 +88,13 @@
             
             
               <p class="caption"><span class="caption-text">Package Reference</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="geometric.html">Geometric Image Transformations</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pinhole.html">Pinhole</a></li>
 <li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="warping.html">Warping</a></li>
 <li class="toctree-l1"><a class="reference internal" href="image.html">torchgeometry.image</a></li>
-<li class="toctree-l1"><a class="reference internal" href="utils.html">torchgeometry.utils</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">torchgeometry.utils</a></li>
 </ul>
 <p class="caption"><span class="caption-text">Tutorials</span></p>
 <ul>
@@ -143,12 +145,14 @@
     
       <li><a href="index.html">Docs</a> &raquo;</li>
         
-      <li>Search</li>
+      <li>torchgeometry.utils</li>
     
     
       <li class="wy-breadcrumbs-aside">
         
             
+            <a href="_sources/utils.rst.txt" rel="nofollow"> View page source</a>
+          
         
       </li>
     
@@ -160,24 +164,87 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
             
-  <noscript>
-  <div id="fallback" class="admonition warning">
-    <p class="last">
-      Please activate JavaScript to enable the search
-      functionality.
-    </p>
-  </div>
-  </noscript>
+  
+<style>
+/* CSS overrides for sphinx_rtd_theme */
 
-  
-  <div id="search-results">
-  
-  </div>
+/* 24px margin */
+.nbinput.nblast,
+.nboutput.nblast {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast + .nbinput {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<div class="section" id="torchgeometry-utils">
+<h1>torchgeometry.utils<a class="headerlink" href="#torchgeometry-utils" title="Permalink to this headline">¶</a></h1>
+<dl class="function">
+<dt id="torchgeometry.utils.tensor_to_image">
+<code class="descclassname">torchgeometry.utils.</code><code class="descname">tensor_to_image</code><span class="sig-paren">(</span><em>tensor</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#tensor_to_image"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.utils.tensor_to_image" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="docutils">
+<dt>Converts a torch.Tensor image to a numpy image. In case the tensor is in</dt>
+<dd>the GPU, it will be copied back to CPU.</dd>
+</dl>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>tensor</strong> (<em>Tensor</em>) – image of the form (1, C, H, W).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">image of the form (H, W, C).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><a class="reference external" href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.15)">numpy.ndarray</a></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.utils.image_to_tensor">
+<code class="descclassname">torchgeometry.utils.</code><code class="descname">image_to_tensor</code><span class="sig-paren">(</span><em>image</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/utils.html#image_to_tensor"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.utils.image_to_tensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts a numpy image to a torch.Tensor image.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>image</strong> (<a class="reference external" href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.15)"><em>numpy.ndarray</em></a>) – image of the form (H, W, C).</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">image of the form (H, W, C).</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><a class="reference external" href="https://docs.scipy.org/doc/numpy/reference/generated/numpy.ndarray.html#numpy.ndarray" title="(in NumPy v1.15)">numpy.ndarray</a></td>
+</tr>
+</tbody>
+</table>
+</dd></dl>
+
+</div>
+
 
            </div>
            
           </div>
           <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="warp_affine.html" class="btn btn-neutral float-right" title="Rotate image using warp affine transform" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="image.html" class="btn btn-neutral" title="torchgeometry.image" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
   
 
   <hr/>
@@ -211,7 +278,6 @@
         <script type="text/javascript" src="_static/doctools.js"></script>
         <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
         <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
-        <script type="text/javascript" src="_static/searchtools.js"></script>
     
 
   
@@ -222,14 +288,7 @@
       jQuery(function () {
           SphinxRtdTheme.Navigation.enable(true);
       });
-  </script>
-  <script type="text/javascript">
-    jQuery(function() { Search.loadIndex("searchindex.js"); });
-  </script>
-  
-  <script type="text/javascript" id="searchindexloader"></script>
-   
-
+  </script> 
 
 </body>
 </html>

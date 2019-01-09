@@ -8,7 +8,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchgeometry.homography_warper &mdash; Torchgeometry master documentation</title>
+  <title>torchgeometry.homography_warper &mdash; PyTorch Geometry master documentation</title>
   
 
   
@@ -61,7 +61,7 @@
             
             
               <div class="version">
-                master (0.1.0 )
+                master (0.1.2rc1 )
               </div>
             
           
@@ -85,8 +85,21 @@
               
             
             
-              <!-- Local TOC -->
-              <div class="local-toc"></div>
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pinhole.html">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warping.html">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
             
           
         </div>
@@ -99,7 +112,7 @@
       <nav class="wy-nav-top" aria-label="top navigation">
         
           <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
-          <a href="../../index.html">Torchgeometry</a>
+          <a href="../../index.html">PyTorch Geometry</a>
         
       </nav>
 
@@ -164,7 +177,7 @@
 
 <span class="c1"># layer api</span>
 
-<div class="viewcode-block" id="HomographyWarper"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper">[docs]</a><span class="k">class</span> <span class="nc">HomographyWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<div class="viewcode-block" id="HomographyWarper"><a class="viewcode-back" href="../../warping.html#torchgeometry.HomographyWarper">[docs]</a><span class="k">class</span> <span class="nc">HomographyWarper</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;Warps patches by homographies.</span>
 
 <span class="sd">    .. math::</span>
@@ -192,7 +205,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">grid</span> <span class="o">=</span> <span class="n">create_meshgrid</span><span class="p">(</span>
                 <span class="n">height</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="n">normalized_coordinates</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-<div class="viewcode-block" id="HomographyWarper.warp_grid"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper.warp_grid">[docs]</a>    <span class="k">def</span> <span class="nf">warp_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">H</span><span class="p">):</span>
+<div class="viewcode-block" id="HomographyWarper.warp_grid"><a class="viewcode-back" href="../../warping.html#torchgeometry.HomographyWarper.warp_grid">[docs]</a>    <span class="k">def</span> <span class="nf">warp_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">H</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        :param H: Homography or homographies (stacked) to transform all points</span>
 <span class="sd">                  in the grid.</span>
@@ -240,7 +253,7 @@
         <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">grid_sample</span><span class="p">(</span>
             <span class="n">image</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;bilinear&#39;</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="n">padding_mode</span><span class="p">)</span>
 
-<div class="viewcode-block" id="HomographyWarper.forward"><a class="viewcode-back" href="../../index.html#torchgeometry.HomographyWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">patch</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
+<div class="viewcode-block" id="HomographyWarper.forward"><a class="viewcode-back" href="../../warping.html#torchgeometry.HomographyWarper.forward">[docs]</a>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">patch</span><span class="p">,</span> <span class="n">dst_homo_src</span><span class="p">,</span> <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
         <span class="sd">&quot;&quot;&quot;Warps an image or tensor from source into reference frame.</span>
 
 <span class="sd">        Args:</span>
@@ -275,7 +288,7 @@
 <span class="c1"># functional api</span>
 
 
-<div class="viewcode-block" id="homography_warp"><a class="viewcode-back" href="../../index.html#torchgeometry.homography_warp">[docs]</a><span class="k">def</span> <span class="nf">homography_warp</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">dsize</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<div class="viewcode-block" id="homography_warp"><a class="viewcode-back" href="../../warping.html#torchgeometry.homography_warp">[docs]</a><span class="k">def</span> <span class="nf">homography_warp</span><span class="p">(</span><span class="n">patch</span><span class="p">,</span> <span class="n">dst_H_src</span><span class="p">,</span> <span class="n">dsize</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                     <span class="n">padding_mode</span><span class="o">=</span><span class="s1">&#39;zeros&#39;</span><span class="p">):</span>
     <span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    .. note:: Functional API for :class:`torgeometry.HomographyWarper`</span>
@@ -346,6 +359,7 @@
         <script type="text/javascript" src="../../_static/underscore.js"></script>
         <script type="text/javascript" src="../../_static/doctools.js"></script>
         <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
     
 
   

@@ -1,0 +1,535 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>Pinhole &mdash; PyTorch Geometry master documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+
+  
+  
+    
+
+  
+
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Lato" type="text/css" />
+  <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Conversions" href="conversions.html" />
+    <link rel="prev" title="Geometric Image Transformations" href="geometric.html" /> 
+
+  
+  <script src="_static/js/modernizr.min.js"></script>
+
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search">
+          
+
+          
+            <a href="index.html">
+          
+
+          
+            
+            <img src="_static/torchgeometry_logo.svg" class="logo" alt="Logo"/>
+          
+          </a>
+
+          
+            
+            
+              <div class="version">
+                master (0.1.2rc1 )
+              </div>
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Package Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="geometric.html">Geometric Image Transformations</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Pinhole</a></li>
+<li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="warping.html">Warping</a></li>
+<li class="toctree-l1"><a class="reference internal" href="image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">torchgeometry.utils</a></li>
+</ul>
+<p class="caption"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="warp_affine.html">Rotate image using warp affine transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="warp_perspective.html">Warp image using perspective transform</a></li>
+</ul>
+
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">PyTorch Geometry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html">Docs</a> &raquo;</li>
+        
+      <li>Pinhole</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="_sources/pinhole.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  
+<style>
+/* CSS overrides for sphinx_rtd_theme */
+
+/* 24px margin */
+.nbinput.nblast,
+.nboutput.nblast {
+    margin-bottom: 19px;  /* padding has already 5px */
+}
+
+/* ... except between code cells! */
+.nblast + .nbinput {
+    margin-top: -19px;
+}
+
+.admonition > p:before {
+    margin-right: 4px;  /* make room for the exclamation icon */
+}
+
+/* Fix math alignment, see https://github.com/rtfd/sphinx_rtd_theme/pull/686 */
+.math {
+    text-align: unset;
+}
+</style>
+<div class="section" id="pinhole">
+<h1>Pinhole<a class="headerlink" href="#pinhole" title="Permalink to this headline">¶</a></h1>
+<div class="admonition note">
+<p class="first admonition-title">Note</p>
+<p>The pinhole model is represented in a single vector as follows:</p>
+<div class="math notranslate nohighlight">
+\[pinhole = (f_x, f_y, c_x, c_y, height, width, r_x, r_y, r_z, t_x, t_y, t_z)\]</div>
+<dl class="last docutils">
+<dt>where:</dt>
+<dd><p class="first"><span class="math notranslate nohighlight">\((r_x, r_y, r_z)\)</span> is the rotation vector in angle-axis convention.</p>
+<p class="last"><span class="math notranslate nohighlight">\((t_x, t_y, t_z)\)</span> is the translation vector.</p>
+</dd>
+</dl>
+</div>
+<dl class="function">
+<dt id="torchgeometry.inverse_pose">
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse_pose</code><span class="sig-paren">(</span><em>pose</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#inverse_pose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse_pose" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function that inverts a 4x4 pose.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor with poses.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with inverted poses.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pose</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>         <span class="c1"># Nx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pose_inv</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">inverse_pose</span><span class="p">(</span><span class="n">pose</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.pinhole_matrix">
+<code class="descclassname">torchgeometry.</code><code class="descname">pinhole_matrix</code><span class="sig-paren">(</span><em>pinholes</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function that returns the pinhole matrix from a pinhole model</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of pinhole models.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">pinhole_matrix</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.inverse_pinhole_matrix">
+<code class="descclassname">torchgeometry.</code><code class="descname">inverse_pinhole_matrix</code><span class="sig-paren">(</span><em>pinhole</em>, <em>eps=1e-06</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#inverse_pinhole_matrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.inverse_pinhole_matrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns the inverted pinhole matrix from a pinhole model</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor with pinhole models.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix_inv</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">inverse_pinhole_matrix</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.scale_pinhole">
+<code class="descclassname">torchgeometry.</code><code class="descname">scale_pinhole</code><span class="sig-paren">(</span><em>pinholes</em>, <em>scale</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#scale_pinhole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.scale_pinhole" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scales the pinhole matrix for each pinhole model.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pinholes</strong> (<em>Tensor</em>) – tensor with the pinhole model.</li>
+<li><strong>scale</strong> (<em>Tensor</em>) – tensor of scales.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensor of scaled pinholes.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span> and <span class="math notranslate nohighlight">\((N, 1)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>  <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">scales</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>   <span class="c1"># N</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i_scaled</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">scale_pinhole</span><span class="p">(</span><span class="n">pinhole_i</span><span class="p">)</span>  <span class="c1"># Nx12</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.homography_i_H_ref">
+<code class="descclassname">torchgeometry.</code><code class="descname">homography_i_H_ref</code><span class="sig-paren">(</span><em>pinhole_i</em>, <em>pinhole_ref</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/pinhole.html#homography_i_H_ref"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.homography_i_H_ref" title="Permalink to this definition">¶</a></dt>
+<dd><p>Homography from reference to ith pinhole</p>
+<div class="math notranslate nohighlight">
+\[H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}\]</div>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>pinhole_i</strong> (<em>Tensor</em>) – tensor with pinhole model for ith frame.</li>
+<li><strong>pinhole_ref</strong> (<em>Tensor</em>) – tensor with pinhole model for reference frame.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">tensors that convert depth points (u, v, d) from
+pinhole_ref to pinhole_i.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span> and <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>    <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_ref</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>  <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i_H_ref</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">homography_i_H_ref</span><span class="p">(</span><span class="n">pinhole_i</span><span class="p">,</span> <span class="n">pinhole_ref</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.InversePose">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">InversePose</code><a class="reference internal" href="_modules/torchgeometry/pinhole.html#InversePose"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.InversePose" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a transformation that inverts a 4x4 pose.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>points</strong> (<em>Tensor</em>) – tensor with poses.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor with inverted poses.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pose</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transform</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">InversePose</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pose_inv</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">pose</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.PinholeMatrix">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">PinholeMatrix</code><a class="reference internal" href="_modules/torchgeometry/pinhole.html#PinholeMatrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.PinholeMatrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates an object that returns the pinhole matrix from a pinhole model</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor of pinhole models.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of pinhole matrices.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>          <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transform</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">PinholeMatrix</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.InversePinholeMatrix">
+<em class="property">class </em><code class="descclassname">torchgeometry.</code><code class="descname">InversePinholeMatrix</code><a class="reference internal" href="_modules/torchgeometry/pinhole.html#InversePinholeMatrix"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.InversePinholeMatrix" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns and object that inverts a pinhole matrix from a pinhole model</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><strong>pinholes</strong> (<em>Tensor</em>) – tensor with pinhole models.</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body">tensor of inverted pinhole matrices.</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body">Tensor</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((N, 12)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((N, 4, 4)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">12</span><span class="p">)</span>              <span class="c1"># Nx12</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">transform</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">InversePinholeMatrix</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pinhole_matrix_inv</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">pinhole</span><span class="p">)</span>  <span class="c1"># Nx4x4</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+      
+        <a href="conversions.html" class="btn btn-neutral float-right" title="Conversions" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+      
+      
+        <a href="geometric.html" class="btn btn-neutral" title="Geometric Image Transformations" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>
+      
+    </div>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2018, Arraiy, Inc.
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  
+
+    
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script type="text/javascript" src="_static/jquery.js"></script>
+        <script type="text/javascript" src="_static/underscore.js"></script>
+        <script type="text/javascript" src="_static/doctools.js"></script>
+        <script async="async" type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+        <script type="text/x-mathjax-config">MathJax.Hub.Config({"tex2jax": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true, "ignoreClass": "document", "processClass": "math|output_area"}})</script>
+    
+
+  
+
+  <script type="text/javascript" src="_static/js/theme.js"></script>
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
