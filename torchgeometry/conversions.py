@@ -361,8 +361,8 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     mask_c3 = mask_c3.view(-1, 1).type_as(q3)
 
     q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
-    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
-                    t2_rep * mask_c2 + t3_rep * mask_c3)
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1  # noqa
+                    + t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
     q *= 0.5
 
     if len(input_shape) == 2:
@@ -456,6 +456,7 @@ class RadToDeg(nn.Module):
         >>> input = tgm.pi * torch.rand(1, 3, 3)
         >>> output = tgm.RadToDeg()(input)
     """
+
     def __init__(self):
         super(RadToDeg, self).__init__()
 
@@ -477,6 +478,7 @@ class DegToRad(nn.Module):
         >>> input = 360. * torch.rand(1, 3, 3)
         >>> output = tgm.DegToRad()(input)
     """
+
     def __init__(self):
         super(DegToRad, self).__init__()
 
@@ -504,6 +506,7 @@ class ConvertPointsFromHomogeneous(nn.Module):
         >>> transform = tgm.ConvertPointsFromHomogeneous()
         >>> output = transform(input)  # BxNx2
     """
+
     def __init__(self):
         super(ConvertPointsFromHomogeneous, self).__init__()
 
@@ -531,6 +534,7 @@ class ConvertPointsToHomogeneous(nn.Module):
         >>> transform = tgm.ConvertPointsToHomogeneous()
         >>> output = transform(input)  # BxNx4
     """
+
     def __init__(self):
         super(ConvertPointsToHomogeneous, self).__init__()
 
@@ -559,6 +563,7 @@ class TransformPoints(nn.Module):
         >>> transform_op = tgm.TransformPoints(transform)
         >>> output = transform_op(input)  # BxNx3
     """
+
     def __init__(self, dst_homo_src):
         super(TransformPoints, self).__init__()
         self.dst_homo_src = dst_homo_src

@@ -5,5 +5,7 @@ from .conversions import *
 from .utils import *
 from .imgwarp import *
 
+from torchgeometry import image
+
 
 __version__ = '0.1.2rc1'  # the current version of the lib
