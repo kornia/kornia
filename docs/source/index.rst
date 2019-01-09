@@ -34,6 +34,7 @@ TGM focuses on Image and tensor warping functions such as:
 
    warp_affine
    warp_perspective
+   gaussian_blur
 
 Indices and tables
 ==================
