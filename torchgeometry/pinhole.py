@@ -213,6 +213,7 @@ class InversePose(nn.Module):
         >>> transform = tgm.InversePose()
         >>> pose_inv = transform(pose)  # Nx4x4
     """
+
     def __init__(self):
         super(InversePose, self).__init__()
 
@@ -238,6 +239,7 @@ class PinholeMatrix(nn.Module):
         >>> transform = tgm.PinholeMatrix()
         >>> pinhole_matrix = transform(pinhole)  # Nx4x4
     """
+
     def __init__(self):
         super(PinholeMatrix, self).__init__()
 
@@ -263,6 +265,7 @@ class InversePinholeMatrix(nn.Module):
         >>> transform = tgm.InversePinholeMatrix()
         >>> pinhole_matrix_inv = transform(pinhole)  # Nx4x4
     """
+
     def __init__(self):
         super(InversePinholeMatrix, self).__init__()
 

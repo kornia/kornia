@@ -6,10 +6,10 @@ notifications:
 matrix:
   include:
     - env: LINT_CHECK
-      python: "2.7"
+      python: "3.6"
       install: pip install flake8
       script: flake8
-    - python: "3.5"
+    - python: "3.6"
 
 install:
   - sudo apt-get update
