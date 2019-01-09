@@ -98,6 +98,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../warp_affine.html">Rotate image using warp affine transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../warp_perspective.html">Warp image using perspective transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gaussian_blur.html">Blur image using GaussianBlur operator</a></li>
 </ul>
 
             
@@ -167,19 +168,33 @@
 <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
 <span class="kn">from</span> <span class="nn">torch.nn.functional</span> <span class="k">import</span> <span class="n">conv2d</span>
 
-<span class="c1"># NOTE: remove after implementing `getGaussianKernel` in pytorch</span>
-<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
-<span class="c1">#import scipy.stats as st</span>
-
 <span class="k">def</span> <span class="nf">gaussian</span><span class="p">(</span><span class="n">window_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
-    <span class="k">def</span> <span class="nf">gauss</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">gauss_fcn</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
         <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">window_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
     <span class="n">gauss</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
-        <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">gauss</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">window_size</span><span class="p">)])</span>
+        <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">gauss_fcn</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">window_size</span><span class="p">)])</span>
     <span class="k">return</span> <span class="n">gauss</span> <span class="o">/</span> <span class="n">gauss</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
 
 <div class="viewcode-block" id="get_gaussian_kernel"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.get_gaussian_kernel">[docs]</a><span class="k">def</span> <span class="nf">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">sigma</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that returns Gaussian filter coefficients.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ksize (int): filter size. It should be odd and positive.</span>
+<span class="sd">        sigma (float): gaussian standard deviation.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: 1D tensor with gaussian filter coefficients.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Output: :math:`(ksize,)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; tgm.image.get_gaussian_kernel(3, 2.5)</span>
+<span class="sd">        &gt;&gt;&gt; tensor([0.3243, 0.3513, 0.3243])</span>
+
+<span class="sd">        &gt;&gt;&gt; tgm.image.get_gaussian_kernel(5, 1.5)</span>
+<span class="sd">        &gt;&gt;&gt; tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ksize must be an odd positive integer. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
@@ -187,93 +202,134 @@
     <span class="n">window_1d</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">gaussian</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">window_1d</span></div>
 
-<span class="k">def</span> <span class="nf">get_gaussian_kernel2d</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+<div class="viewcode-block" id="get_gaussian_kernel2d"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.get_gaussian_kernel2d">[docs]</a><span class="k">def</span> <span class="nf">get_gaussian_kernel2d</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
                           <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that returns Gaussian filter matrix coefficients.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ksize (Tuple[int, int]): filter sizes in the x and y direction.</span>
+<span class="sd">         Sizes should be odd and positive.</span>
+<span class="sd">        sigma (Tuple[int, int]): gaussian standard deviation in the x and y</span>
+<span class="sd">         direction.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: 2D tensor with gaussian filter matrix coefficients.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Output: :math:`(ksize_x, ksize_y)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; tgm.image.get_gaussian_kernel2d((3, 3), (1.5, 1.5))</span>
+<span class="sd">        &gt;&gt;&gt; tensor([[0.0947, 0.1183, 0.0947],</span>
+<span class="sd">                    [0.1183, 0.1478, 0.1183],</span>
+<span class="sd">                    [0.0947, 0.1183, 0.0947]])</span>
+
+<span class="sd">        &gt;&gt;&gt; tgm.image.get_gaussian_kernel((3, 5), (1.5, 1.5))</span>
+<span class="sd">        &gt;&gt;&gt; tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],</span>
+<span class="sd">                    [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],</span>
+<span class="sd">                    [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">ksize</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ksize must be a tuple of length two. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">sigma</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;sigma must be a tuple of length two. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sigma</span><span class="p">))</span>
     <span class="n">ksize_x</span><span class="p">,</span> <span class="n">ksize_y</span> <span class="o">=</span> <span class="n">ksize</span>
     <span class="n">sigma_x</span><span class="p">,</span> <span class="n">sigma_y</span> <span class="o">=</span> <span class="n">sigma</span>
     <span class="n">kernel_x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize_x</span><span class="p">,</span> <span class="n">sigma_x</span><span class="p">)</span>
     <span class="n">kernel_y</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize_y</span><span class="p">,</span> <span class="n">sigma_y</span><span class="p">)</span>
     <span class="n">kernel_2d</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">matmul</span><span class="p">(</span>
         <span class="n">kernel_x</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">kernel_y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">())</span>
-    <span class="k">return</span> <span class="n">kernel_2d</span>
+    <span class="k">return</span> <span class="n">kernel_2d</span></div>
 
-<span class="sd">&#39;&#39;&#39;class GaussianBlur(nn.Module):                                          </span>
-<span class="sd">    r&quot;&quot;&quot;Class that represents the Gaussian Blur operator.</span>
-<span class="sd">    It smooths a given tensor with a gaussian kernel by convolving</span>
-<span class="sd">    to each channel. It suports batched operation.</span>
+<div class="viewcode-block" id="GaussianBlur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.GaussianBlur">[docs]</a><span class="k">class</span> <span class="nc">GaussianBlur</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>                                          
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates an operator that blurs a tensor using a Gaussian filter.</span>
+<span class="sd">    </span>
+<span class="sd">    The operator smooths the given tensor with a gaussian kernel by convolving</span>
+<span class="sd">    it to each channel. It suports batched operation.</span>
+
 <span class="sd">    Arguments:</span>
-<span class="sd">        kernel_size (int): the size of the kernel.</span>
-<span class="sd">        sigma (float): the standard deviation of the kernel.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-<span class="sd">    def __init__(self, kernel_size, sigma):</span>
-<span class="sd">        super(GaussianBlur, self).__init__()</span>
-<span class="sd">        self.kernel_size = kernel_size</span>
-<span class="sd">        self.sigma = sigma</span>
-<span class="sd">        self.kernel = self.create_gaussian_kernel(kernel_size, sigma)</span>
-<span class="sd">        self._padding = (kernel_size - 1) // 2</span>
+<span class="sd">        kernel_size (Tuple[int, int]): the size of the kernel.</span>
+<span class="sd">        sigma (Tuple[float, float]): the standard deviation of the kernel.</span>
 
-<span class="sd">    # TODO: implement in pure pytorch as `getGaussianKernel()`</span>
-<span class="sd">    @staticmethod</span>
-<span class="sd">    def create_gaussian_kernel(kernlen=21, nsig=3):</span>
-<span class="sd">        &quot;&quot;&quot;Returns a 2D Gaussian kernel array.&quot;&quot;&quot;</span>
-<span class="sd">        interval = (2*nsig+1.)/(kernlen)</span>
-<span class="sd">        x = np.linspace(-nsig-interval/2., nsig+interval/2., kernlen+1)</span>
-<span class="sd">        kern1d = np.diff(st.norm.cdf(x))</span>
-<span class="sd">        kernel_raw = np.sqrt(np.outer(kern1d, kern1d))</span>
-<span class="sd">        kernel = kernel_raw/kernel_raw.sum()</span>
-<span class="sd">        return torch.from_numpy(kernel).view(1, 1, *kernel.shape)</span>
-
-<span class="sd">    def forward(self, x):</span>
-<span class="sd">        if not torch.is_tensor(x):</span>
-<span class="sd">            raise TypeError(&quot;Input x type is not a torch.Tensor. Got {}&quot;</span>
-<span class="sd">                            .format(type(x)))</span>
-<span class="sd">        if not len(x.shape) == 4:</span>
-<span class="sd">            raise ValueError(&quot;Invalid input shape, we expect BxCxHxW. Got: {}&quot;</span>
-<span class="sd">                             .format(x.shape))</span>
-<span class="sd">        # prepare kernel</span>
-<span class="sd">        b, c, h, w = x.shape</span>
-<span class="sd">        kernel = self.kernel.to(x.device).to(x.dtype)</span>
-<span class="sd">        kernel = kernel.repeat(c, 1, 1, 1)</span>
-
-<span class="sd">        # convolve image with gaussian kernel</span>
-<span class="sd">        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)</span>
-
-
-<span class="sd">######################</span>
-<span class="sd"># functional interface</span>
-<span class="sd">######################</span>
-
-
-<span class="sd">def _gaussian_blur(src, ksize, sigma):</span>
-<span class="sd">    if not isinstance(src, Image):</span>
-<span class="sd">        raise TypeError(</span>
-<span class="sd">            &quot;Input must be a torch.Image. Got: {}&quot;.format(type(src)))</span>
-<span class="sd">    # gaussian kernel</span>
-<span class="sd">    gauss_op = GaussianBlur(ksize, sigma)</span>
-<span class="sd">    dst_data = gauss_op(torch.unsqueeze(src.to_tensor().float(), dim=0))</span>
-
-<span class="sd">    # copy and return output</span>
-<span class="sd">    dst = src.clone()</span>
-<span class="sd">    return dst.copy_(torch.squeeze(dst_data.to(src.dtype), dim=0))</span>
-
-
-<span class="sd">def gaussian_blur(src, ksize, sigma):</span>
-<span class="sd">    r&quot;&quot;&quot;Interface to call the Gaussian Blur operator.</span>
-<span class="sd">    It smooths a given tensor with a gaussian kernel by convolving</span>
-<span class="sd">    to each channel. It suports batched operation.</span>
-<span class="sd">    Arguments:</span>
-<span class="sd">        src (Image or Tensor): the object representing the image/tensor.</span>
-<span class="sd">        ksize (int): the size of the kernel.</span>
-<span class="sd">        sigma (float): the standard deviation of the kernel.</span>
 <span class="sd">    Returns:</span>
-<span class="sd">        Image/Tensor: the smoothed image/tensor.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-<span class="sd">    if isinstance(src, torch.Tensor):</span>
-<span class="sd">        return GaussianBlur(ksize, sigma)(src)</span>
+<span class="sd">        Tensor: the blurred tensor.</span>
 
-<span class="sd">    if not isinstance(src, Image):</span>
-<span class="sd">        raise TypeError(&quot;Unsupported input type: {}&quot;.format(type(src)))</span>
-<span class="sd">return _gaussian_blur(src, ksize, sigma)&#39;&#39;&#39;</span>
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, C, H, W)`</span>
+<span class="sd">        - Output: :math:`(B, C, H, W)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 5, 5)</span>
+<span class="sd">        &gt;&gt;&gt; gauss = tgm.image.GaussianBlur((3, 3), (1.5, 1.5))</span>
+<span class="sd">        &gt;&gt;&gt; output = gauss(input)  # 2x4x5x5</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">GaussianBlur</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">kernel_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">sigma</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_padding</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_zero_padding</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_gaussian_kernel</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">create_gaussian_kernel</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Returns a 2D Gaussian kernel array.&quot;&quot;&quot;</span>
+        <span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel2d</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">kernel</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span> <span class="nf">compute_zero_padding</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+        <span class="sd">&quot;&quot;&quot;Computes zero padding tuple.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">([(</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">kernel_size</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">torch</span><span class="o">.</span><span class="n">is_tensor</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input x type is not a torch.Tensor. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
+                            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Invalid input shape, we expect BxCxHxW. Got: </span><span class="si">{}</span><span class="s2">&quot;</span>
+                             <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+        <span class="c1"># prepare kernel</span>
+        <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">w</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">device</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">kernel</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># convolve tensor with gaussian kernel</span>
+        <span class="k">return</span> <span class="n">conv2d</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">kernel</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_padding</span><span class="p">,</span> <span class="n">stride</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">groups</span><span class="o">=</span><span class="n">c</span><span class="p">)</span></div>
+
+
+<span class="c1">######################</span>
+<span class="c1"># functional interface</span>
+<span class="c1">######################</span>
+
+
+<div class="viewcode-block" id="gaussian_blur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.gaussian_blur">[docs]</a><span class="k">def</span> <span class="nf">gaussian_blur</span><span class="p">(</span><span class="n">src</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+    <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that blurs a tensor using a Gaussian filter.</span>
+<span class="sd">    </span>
+<span class="sd">    The operator smooths the given tensor with a gaussian kernel by convolving</span>
+<span class="sd">    it to each channel. It suports batched operation.</span>
+
+<span class="sd">    Arguments:</span>
+<span class="sd">        src (Tensor): the input tensor.</span>
+<span class="sd">        kernel_size (Tuple[int, int]): the size of the kernel.</span>
+<span class="sd">        sigma (Tuple[float, float]): the standard deviation of the kernel.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Tensor: the blurred tensor.</span>
+
+<span class="sd">    Shape:</span>
+<span class="sd">        - Input: :math:`(B, C, H, W)`</span>
+<span class="sd">        - Output: :math:`(B, C, H, W)`</span>
+
+<span class="sd">    Examples::</span>
+
+<span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 5, 5)</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.image.gaussian_blur(input, (3, 3), (1.5, 1.5))  # 2x4x5x5</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">GaussianBlur</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)(</span><span class="n">src</span><span class="p">)</span></div>
 </pre></div>
 
            </div>

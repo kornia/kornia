@@ -194,6 +194,164 @@
 <dt id="torchgeometry.image.get_gaussian_kernel">
 <code class="descclassname">torchgeometry.image.</code><code class="descname">get_gaussian_kernel</code><span class="sig-paren">(</span><em>ksize: int</em>, <em>sigma: float</em><span class="sig-paren">)</span> &#x2192; torch.Tensor<a class="reference internal" href="_modules/torchgeometry/image/gaussian.html#get_gaussian_kernel"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image.get_gaussian_kernel" title="Permalink to this definition">¶</a></dt>
 <dd><p>Function that returns Gaussian filter coefficients.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>ksize</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a>) – filter size. It should be odd and positive.</li>
+<li><strong>sigma</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.7)"><em>float</em></a>) – gaussian standard deviation.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">1D tensor with gaussian filter coefficients.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Output: <span class="math notranslate nohighlight">\((ksize,)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tensor</span><span class="p">([</span><span class="mf">0.3243</span><span class="p">,</span> <span class="mf">0.3513</span><span class="p">,</span> <span class="mf">0.3243</span><span class="p">])</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tensor</span><span class="p">([</span><span class="mf">0.1201</span><span class="p">,</span> <span class="mf">0.2339</span><span class="p">,</span> <span class="mf">0.2921</span><span class="p">,</span> <span class="mf">0.2339</span><span class="p">,</span> <span class="mf">0.1201</span><span class="p">])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.image.get_gaussian_kernel2d">
+<code class="descclassname">torchgeometry.image.</code><code class="descname">get_gaussian_kernel2d</code><span class="sig-paren">(</span><em>ksize: Tuple[int, int], sigma: Tuple[float, float]</em><span class="sig-paren">)</span> &#x2192; torch.Tensor<a class="reference internal" href="_modules/torchgeometry/image/gaussian.html#get_gaussian_kernel2d"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image.get_gaussian_kernel2d" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function that returns Gaussian filter matrix coefficients.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>ksize</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>]</em>) – filter sizes in the x and y direction.
+Sizes should be odd and positive.</li>
+<li><strong>sigma</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>]</em>) – gaussian standard deviation in the x and y
+direction.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">2D tensor with gaussian filter matrix coefficients.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Output: <span class="math notranslate nohighlight">\((ksize_x, ksize_y)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_gaussian_kernel2d</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.0947</span><span class="p">,</span> <span class="mf">0.1183</span><span class="p">,</span> <span class="mf">0.0947</span><span class="p">],</span>
+<span class="go">            [0.1183, 0.1478, 0.1183],</span>
+<span class="go">            [0.0947, 0.1183, 0.0947]])</span>
+
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">get_gaussian_kernel</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.0370</span><span class="p">,</span> <span class="mf">0.0720</span><span class="p">,</span> <span class="mf">0.0899</span><span class="p">,</span> <span class="mf">0.0720</span><span class="p">,</span> <span class="mf">0.0370</span><span class="p">],</span>
+<span class="go">            [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],</span>
+<span class="go">            [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="torchgeometry.image.gaussian_blur">
+<code class="descclassname">torchgeometry.image.</code><code class="descname">gaussian_blur</code><span class="sig-paren">(</span><em>src: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float]</em><span class="sig-paren">)</span> &#x2192; torch.Tensor<a class="reference internal" href="_modules/torchgeometry/image/gaussian.html#gaussian_blur"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image.gaussian_blur" title="Permalink to this definition">¶</a></dt>
+<dd><p>Function that blurs a tensor using a Gaussian filter.</p>
+<p>The operator smooths the given tensor with a gaussian kernel by convolving
+it to each channel. It suports batched operation.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>src</strong> (<em>Tensor</em>) – the input tensor.</li>
+<li><strong>kernel_size</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>]</em>) – the size of the kernel.</li>
+<li><strong>sigma</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.7)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.7)"><em>float</em></a><em>]</em>) – the standard deviation of the kernel.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the blurred tensor.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">gaussian_blur</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>  <span class="c1"># 2x4x5x5</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="class">
+<dt id="torchgeometry.image.GaussianBlur">
+<em class="property">class </em><code class="descclassname">torchgeometry.image.</code><code class="descname">GaussianBlur</code><span class="sig-paren">(</span><em>kernel_size: Tuple[int, int], sigma: Tuple[float, float]</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchgeometry/image/gaussian.html#GaussianBlur"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#torchgeometry.image.GaussianBlur" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates an operator that blurs a tensor using a Gaussian filter.</p>
+<p>The operator smooths the given tensor with a gaussian kernel by convolving
+it to each channel. It suports batched operation.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>kernel_size</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.7)"><em>int</em></a><em>]</em>) – the size of the kernel.</li>
+<li><strong>sigma</strong> (<em>Tuple</em><em>[</em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.7)"><em>float</em></a><em>, </em><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.7)"><em>float</em></a><em>]</em>) – the standard deviation of the kernel.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first">the blurred tensor.</p>
+</td>
+</tr>
+<tr class="field-odd field"><th class="field-name">Return type:</th><td class="field-body"><p class="first last">Tensor</p>
+</td>
+</tr>
+</tbody>
+</table>
+<dl class="docutils">
+<dt>Shape:</dt>
+<dd><ul class="first last simple">
+<li>Input: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+<li>Output: <span class="math notranslate nohighlight">\((B, C, H, W)\)</span></li>
+</ul>
+</dd>
+</dl>
+<p>Examples:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gauss</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">GaussianBlur</span><span class="p">((</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">gauss</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># 2x4x5x5</span>
+</pre></div>
+</div>
 </dd></dl>
 
 </div>
