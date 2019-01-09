@@ -27,6 +27,7 @@ $sdk_dir/.dev_env/bin/conda install -y \
   opencv \
   sphinx \
   sphinx_rtd_theme \
+  nbsphinx \
   -c pytorch
 
 $sdk_dir/.dev_env/bin/conda  clean -ya
