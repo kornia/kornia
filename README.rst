@@ -8,6 +8,9 @@
 
 .. image:: https://travis-ci.com/arraiy/torchgeometry.svg?token=M8pF2LfWb2ZxBDWRRvcP&branch=master
     :target: https://travis-ci.com/arraiy/torchgeometry
+    
+.. image:: https://badge.fury.io/py/torchgeometry.svg
+    :target: https://badge.fury.io/py/torchgeometry
 
 `Documentation <https://arraiy.github.io/torchgeometry/>`_
 
