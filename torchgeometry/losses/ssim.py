@@ -6,20 +6,26 @@ import torch.nn.functional as F
 
 from torchgeometry.image import get_gaussian_kernel2d
 
+
 class SSIM(nn.Module):
-    r"""Creates a criterion that measures the Structural Similarity (SSIM) index between each element in the input `x` and target `y`.
+    r"""Creates a criterion that measures the Structural Similarity (SSIM)
+    index between each element in the input `x` and target `y`.
 
     The index can be described as:
 
     .. math::
 
-      \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}{(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
+      \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
+      {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
 
     where:
-      - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to stabilize the division with weak denominator.
-      - :math:`L` is the dynamic range of the pixel-values (typically this is :math:`2^{\#\text{bits per pixel}}-1`).
+      - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
+        stabilize the division with weak denominator.
+      - :math:`L` is the dynamic range of the pixel-values (typically this is
+        :math:`2^{\#\text{bits per pixel}}-1`).
 
-    the loss, or the Structural dissimilarity (DSSIM) can be finally described as:
+    the loss, or the Structural dissimilarity (DSSIM) can be finally described
+    as:
 
     .. math::
 
@@ -28,10 +34,10 @@ class SSIM(nn.Module):
     Arguments:
         window_size (int): the size of the kernel.
         max_val (float): the dynamic range of the images. Default: 1.
-        reduction (str, optional): Specifies the reduction to apply to the output:
-         'none' | 'mean' | 'sum'. 'none': no reduction will be applied,
-         'mean': the sum of the output will be divided by the number of
-         elements in the output, 'sum': the output will be summed. Default: 'none'.
+        reduction (str, optional): Specifies the reduction to apply to the
+         output: 'none' | 'mean' | 'sum'. 'none': no reduction will be applied,
+         'mean': the sum of the output will be divided by the number of elements
+         in the output, 'sum': the output will be summed. Default: 'none'.
 
     Returns:
         Tensor: the ssim index.
@@ -49,7 +55,11 @@ class SSIM(nn.Module):
         >>> loss = ssim(input1, input2)  # 1x4x5x5
     """
 
-    def __init__(self, window_size: int, reduction: str = 'none', max_val: float = 1.0) -> None:
+    def __init__(
+            self,
+            window_size: int,
+            reduction: str = 'none',
+            max_val: float = 1.0) -> None:
         super(SSIM, self).__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val
@@ -59,7 +69,7 @@ class SSIM(nn.Module):
             (window_size, window_size), (1.5, 1.5))
         self.padding: int = self.compute_zero_padding(window_size)
 
-        self.C1: float  = (0.01 * self.max_val) ** 2
+        self.C1: float = (0.01 * self.max_val) ** 2
         self.C2: float = (0.03 * self.max_val) ** 2
 
     @staticmethod
@@ -67,7 +77,11 @@ class SSIM(nn.Module):
         """Computes zero padding."""
         return (kernel_size - 1) // 2
 
-    def filter2D(self, input: torch.Tensor, kernel: torch.Tensor, channel: int) -> torch.Tensor:
+    def filter2D(
+            self,
+            input: torch.Tensor,
+            kernel: torch.Tensor,
+            channel: int) -> torch.Tensor:
         return F.conv2d(input, kernel, padding=self.padding, groups=channel)
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
@@ -129,9 +143,15 @@ class SSIM(nn.Module):
 ######################
 
 
-def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int, reduction: str = 'none', max_val: float = 1.0) -> torch.Tensor:
-    r"""Function that measures the Structural Similarity (SSIM) index between each element in the input `x` and target `y`.
+def ssim(
+        img1: torch.Tensor,
+        img2: torch.Tensor,
+        window_size: int,
+        reduction: str = 'none',
+        max_val: float = 1.0) -> torch.Tensor:
+    r"""Function that measures the Structural Similarity (SSIM) index between
+    each element in the input `x` and target `y`.
 
     See :class:`torchgeometry.losses.SSIM` for details.
     """
-    return SSIM(window_size, window_size, reduction, max_val)(img1, img2)
+    return SSIM(window_size, reduction, max_val)(img1, img2)
