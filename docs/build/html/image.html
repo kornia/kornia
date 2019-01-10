@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="_static/css/pytorch_theme.css" type="text/css" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="torchgeometry.utils" href="utils.html" />
+    <link rel="next" title="torchgeometry.losses" href="losses.html" />
     <link rel="prev" title="Warping" href="warping.html" /> 
 
   
@@ -94,12 +94,14 @@
 <li class="toctree-l1"><a class="reference internal" href="conversions.html">Conversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="warping.html">Warping</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="losses.html">torchgeometry.losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="utils.html">torchgeometry.utils</a></li>
 </ul>
 <p class="caption"><span class="caption-text">Tutorials</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="warp_affine.html">Rotate image using warp affine transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="warp_perspective.html">Warp image using perspective transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gaussian_blur.html">Blur image using GaussianBlur operator</a></li>
 </ul>
 
             
@@ -309,7 +311,7 @@ it to each channel. It suports batched operation.</p>
 </dl>
 <p>Examples:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">gaussian_blur</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>  <span class="c1"># 2x4x5x5</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">tgm</span><span class="o">.</span><span class="n">image</span><span class="o">.</span><span class="n">gaussian_blur</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">))</span>
 </pre></div>
 </div>
 </dd></dl>
@@ -364,7 +366,7 @@ it to each channel. It suports batched operation.</p>
   
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
       
-        <a href="utils.html" class="btn btn-neutral float-right" title="torchgeometry.utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
+        <a href="losses.html" class="btn btn-neutral float-right" title="torchgeometry.losses" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right"></span></a>
       
       
         <a href="warping.html" class="btn btn-neutral" title="Warping" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left"></span> Previous</a>

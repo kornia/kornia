@@ -25,6 +25,7 @@ TGM focuses on Image and tensor warping functions such as:
    conversions
    warping
    image
+   losses
    utils
 
 

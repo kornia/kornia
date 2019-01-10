@@ -92,6 +92,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../conversions.html">Conversions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../warping.html">Warping</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../image.html">torchgeometry.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../losses.html">torchgeometry.losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../utils.html">torchgeometry.utils</a></li>
 </ul>
 <p class="caption"><span class="caption-text">Tutorials</span></p>
@@ -168,12 +169,14 @@
 <span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
 <span class="kn">from</span> <span class="nn">torch.nn.functional</span> <span class="k">import</span> <span class="n">conv2d</span>
 
+
 <span class="k">def</span> <span class="nf">gaussian</span><span class="p">(</span><span class="n">window_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
     <span class="k">def</span> <span class="nf">gauss_fcn</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
         <span class="k">return</span> <span class="o">-</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">window_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span><span class="o">**</span><span class="mi">2</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">sigma</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
     <span class="n">gauss</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
         <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">gauss_fcn</span><span class="p">(</span><span class="n">x</span><span class="p">)))</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">window_size</span><span class="p">)])</span>
     <span class="k">return</span> <span class="n">gauss</span> <span class="o">/</span> <span class="n">gauss</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
 
 <div class="viewcode-block" id="get_gaussian_kernel"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.get_gaussian_kernel">[docs]</a><span class="k">def</span> <span class="nf">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">sigma</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that returns Gaussian filter coefficients.</span>
@@ -198,9 +201,10 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">ksize</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ksize must be an odd positive integer. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
-            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
+                        <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
     <span class="n">window_1d</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">gaussian</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">window_1d</span></div>
+
 
 <div class="viewcode-block" id="get_gaussian_kernel2d"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.get_gaussian_kernel2d">[docs]</a><span class="k">def</span> <span class="nf">get_gaussian_kernel2d</span><span class="p">(</span><span class="n">ksize</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
                           <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
@@ -232,10 +236,10 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ksize</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">ksize</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;ksize must be a tuple of length two. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
-            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
+                        <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ksize</span><span class="p">))</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">sigma</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;sigma must be a tuple of length two. Got </span><span class="si">{}</span><span class="s2">&quot;</span>
-            <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sigma</span><span class="p">))</span>
+                        <span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sigma</span><span class="p">))</span>
     <span class="n">ksize_x</span><span class="p">,</span> <span class="n">ksize_y</span> <span class="o">=</span> <span class="n">ksize</span>
     <span class="n">sigma_x</span><span class="p">,</span> <span class="n">sigma_y</span> <span class="o">=</span> <span class="n">sigma</span>
     <span class="n">kernel_x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="n">get_gaussian_kernel</span><span class="p">(</span><span class="n">ksize_x</span><span class="p">,</span> <span class="n">sigma_x</span><span class="p">)</span>
@@ -244,9 +248,10 @@
         <span class="n">kernel_x</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">kernel_y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">t</span><span class="p">())</span>
     <span class="k">return</span> <span class="n">kernel_2d</span></div>
 
-<div class="viewcode-block" id="GaussianBlur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.GaussianBlur">[docs]</a><span class="k">class</span> <span class="nc">GaussianBlur</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>                                          
+
+<div class="viewcode-block" id="GaussianBlur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.GaussianBlur">[docs]</a><span class="k">class</span> <span class="nc">GaussianBlur</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Creates an operator that blurs a tensor using a Gaussian filter.</span>
-<span class="sd">    </span>
+
 <span class="sd">    The operator smooths the given tensor with a gaussian kernel by convolving</span>
 <span class="sd">    it to each channel. It suports batched operation.</span>
 
@@ -267,12 +272,15 @@
 <span class="sd">        &gt;&gt;&gt; gauss = tgm.image.GaussianBlur((3, 3), (1.5, 1.5))</span>
 <span class="sd">        &gt;&gt;&gt; output = gauss(input)  # 2x4x5x5</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+                 <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="nb">super</span><span class="p">(</span><span class="n">GaussianBlur</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="n">kernel_size</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">sigma</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_padding</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute_zero_padding</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_gaussian_kernel</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_gaussian_kernel</span><span class="p">(</span>
+            <span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span> <span class="nf">create_gaussian_kernel</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
@@ -306,9 +314,13 @@
 <span class="c1">######################</span>
 
 
-<div class="viewcode-block" id="gaussian_blur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.gaussian_blur">[docs]</a><span class="k">def</span> <span class="nf">gaussian_blur</span><span class="p">(</span><span class="n">src</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<div class="viewcode-block" id="gaussian_blur"><a class="viewcode-back" href="../../../image.html#torchgeometry.image.gaussian_blur">[docs]</a><span class="k">def</span> <span class="nf">gaussian_blur</span><span class="p">(</span><span class="n">src</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+                  <span class="n">kernel_size</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span>
+                                     <span class="nb">int</span><span class="p">],</span>
+                  <span class="n">sigma</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span>
+                               <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
     <span class="sa">r</span><span class="sd">&quot;&quot;&quot;Function that blurs a tensor using a Gaussian filter.</span>
-<span class="sd">    </span>
+
 <span class="sd">    The operator smooths the given tensor with a gaussian kernel by convolving</span>
 <span class="sd">    it to each channel. It suports batched operation.</span>
 
@@ -327,7 +339,7 @@
 <span class="sd">    Examples::</span>
 
 <span class="sd">        &gt;&gt;&gt; input = torch.rand(2, 4, 5, 5)</span>
-<span class="sd">        &gt;&gt;&gt; output = tgm.image.gaussian_blur(input, (3, 3), (1.5, 1.5))  # 2x4x5x5</span>
+<span class="sd">        &gt;&gt;&gt; output = tgm.image.gaussian_blur(input, (3, 3), (1.5, 1.5))</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">GaussianBlur</span><span class="p">(</span><span class="n">kernel_size</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)(</span><span class="n">src</span><span class="p">)</span></div>
 </pre></div>
