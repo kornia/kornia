@@ -31,8 +31,9 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     assert pytest.approx(ssim(img2, img2).sum().item(), 0.0)
 
     # functional
-    ssim_loss_val2 = tgm.losses.ssim(img1, img2, window_size, reduction_type)
-    assert bool((ssim_loss_val == ssim_loss_val2).all())
+    assert utils.check_equal_torch(
+        ssim_loss_val, tgm.losses.ssim(
+            img1, img2, window_size, reduction_type))
 
     # evaluate function gradient
     img1 = utils.tensor_to_gradcheck_var(img1)  # to var
