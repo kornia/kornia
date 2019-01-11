@@ -115,8 +115,15 @@ def convert_points_to_homogeneous(points):
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
+    if torch.is_tensor(points.shape[-1]):
+        last_dim_bit_length = torch.floor(torch.log2(points.shape[-1].float())) + 1
+        last_dim_bit_length = last_dim_bit_length.long()
+    else:
+        last_dim_bit_length = points.shape[-1].bit_length()
+
     # create shape for ones tensor: Nx(...)xD-1
-    new_shape = points.shape[:-1] + (points.shape[-1].bit_length() - 1,)
+    # new_shape = points.shape[:-1] + (int(points.shape[-1]).bit_length() - 1,)
+    new_shape = points.shape[:-1] + (last_dim_bit_length - 1,)
     ones = torch.ones(new_shape, dtype=points.dtype)
     return torch.cat([points, ones.to(points.device)], dim=-1)
 

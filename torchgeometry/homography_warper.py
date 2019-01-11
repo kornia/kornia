@@ -26,10 +26,16 @@ class HomographyWarper(nn.Module):
         height (int): The height of the image to warp.
         points (Tensor): Tensor[3, N] of homogeneous points in normalized image
                        space [-1, 1] to sample. Optional parameter.
+        padding_mode (string): Either 'zeros' to replace out of bounds with
+                               zeros or 'border' to choose the closest
+                               border data.
     """
 
-    def __init__(self, height, width, points=None):
+    def __init__(self, height, width, points=None, padding_mode='zeros'):
         super(HomographyWarper, self).__init__()
+
+        self.padding_mode = padding_mode
+
         if points is not None:
             assert points.size(0) == 3, "Points must be 3xN"
             self.width = points.size(1)
@@ -61,7 +67,7 @@ class HomographyWarper(nn.Module):
     def random_warp(self, patch, dist):
         return self(patch, random_homography(dist))
 
-    def crop_and_warp(self, H, image, roi, padding_mode='zeros'):
+    def crop_and_warp(self, H, image, roi):
         grid = self.warp_grid(H)
         assert len(image.shape) == 4, image.shape
 
@@ -88,18 +94,15 @@ class HomographyWarper(nn.Module):
             b = b.cuda()
         grid = grid * a + b
         return F.grid_sample(
-            image, grid, mode='bilinear', padding_mode=padding_mode)
+            image, grid, mode='bilinear', padding_mode=self.padding_mode)
 
-    def forward(self, patch, dst_homo_src, padding_mode='zeros'):
+    def forward(self, patch, dst_homo_src):
         """Warps an image or tensor from source into reference frame.
 
         Args:
             patch (Tensor): The image or tensor to warp. Should be from source.
             dst_homo_src (Tensor): The homography or stack of homographies
                                    from source to destination.
-            padding_mode (string): Either 'zeros' to replace out of bounds with
-                                   zeros or 'border' to choose the closest
-                                   border data.
 
         Return:
             Tensor: Patch sampled at locations from source to destination.
@@ -120,7 +123,7 @@ class HomographyWarper(nn.Module):
                             .format(patch.device, dst_homo_src.device))
         return torch.nn.functional.grid_sample(
             patch, self.warp_grid(dst_homo_src), mode='bilinear',
-            padding_mode=padding_mode)
+            padding_mode=self.padding_mode)
 
 # functional api
 
@@ -156,5 +159,5 @@ def homography_warp(patch, dst_H_src, dsize, points=None,
         >>> output = tgm.homography_warp(input, homography, (32, 32))  # NxCxHxW
     """
     height, width = dsize
-    warper = HomographyWarper(height, width, points)
-    return warper(patch, dst_H_src, padding_mode)
+    warper = HomographyWarper(height, width, points, padding_mode)
+    return warper(patch, dst_H_src)
