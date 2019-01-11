@@ -116,7 +116,8 @@ def convert_points_to_homogeneous(points):
             points.shape))
 
     if torch.is_tensor(points.shape[-1]):
-        last_dim_bit_length = torch.floor(torch.log2(points.shape[-1].float())) + 1
+        last_dim_shape = points.shape[-1].float()
+        last_dim_bit_length = torch.floor(torch.log2(last_dim_shape)) + 1
         last_dim_bit_length = last_dim_bit_length.long()
     else:
         last_dim_bit_length = points.shape[-1].bit_length()
