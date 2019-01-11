@@ -4,7 +4,6 @@ from common import TEST_DEVICES
 import torch
 import torchgeometry as tgm
 import torch.nn as nn
-import torchvision.models as models
 
 
 class WarpPerspective(nn.Module):
@@ -44,17 +43,26 @@ class LocalizationNetwork(nn.Module):
     def __init__(self, output_size, pretrained=True, affine=True):
         super(LocalizationNetwork, self).__init__()
 
-        self.cnn = models.__dict__['alexnet'](pretrained=pretrained)
-        self.cnn = nn.Sequential(*list(self.cnn.children())[0])
-        self.cnn = nn.Sequential(*list(self.cnn.children())[:-1])
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
 
         self.affine = affine
 
         if self.affine:
-            self.linear = nn.Linear(256 * 3 * 3, 6)
+            self.linear = nn.Linear(32 * 16 * 16, 6)
             self.warper = WarpAffine(output_size)
         else:
-            self.linear = nn.Linear(256 * 3 * 3, 9)
+            self.linear = nn.Linear(32 * 16 * 16, 9)
             self.warper = WarpPerspective(output_size)
 
     def forward(self, x):
