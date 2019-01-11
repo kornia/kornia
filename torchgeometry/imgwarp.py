@@ -16,11 +16,9 @@ __all__ = [
 
 def normal_transform_pixel(height, width):
 
-    tr_mat = torch.Tensor([
-        [1.0, 0.0, -1.0],
-        [0.0, 1.0, -1.0],
-        [0.0, 0.0, 1.0]
-    ]) # 1x3x3
+    tr_mat = torch.Tensor([[1.0, 0.0, -1.0],
+                           [0.0, 1.0, -1.0],
+                           [0.0, 0.0, 1.0]])  # 1x3x3
 
     tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
     tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
