@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 from .homography_warper import homography_warp
 from .conversions import deg2rad
@@ -14,11 +15,19 @@ __all__ = [
 
 
 def normal_transform_pixel(height, width):
-    return torch.tensor([[
-        [2. / (width - 1), 0., -1.],
-        [0., 2. / (height - 1), -1.],
-        [0., 0., 1.]]
-    ])  # 1x3x3
+
+    tr_mat = torch.Tensor([
+        [1.0, 0.0, -1.0],
+        [0.0, 1.0, -1.0],
+        [0.0, 0.0, 1.0]
+    ]) # 1x3x3
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
+
+    tr_mat = tr_mat.unsqueeze(0)
+
+    return tr_mat
 
 
 def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
@@ -135,9 +144,9 @@ def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(src.shape))
     # we generate a 3x3 transformation matrix from 2x3 affine
-    M_3x3 = torch.eye(3, device=src.device, dtype=src.dtype)
-    M_3x3 = torch.unsqueeze(M_3x3, dim=0).repeat(src.shape[0], 1, 1)
-    M_3x3[..., :2, :3] = M
+    M_3x3 = F.pad(M, (0, 0, 0, 1, 0, 0))
+    M_3x3[:, 2, 2] += 1.0
+
     # launches the warper
     return transform_warp_impl(src, M_3x3, (src.shape[-2:]), dsize)
 
