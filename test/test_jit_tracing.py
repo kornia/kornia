@@ -17,7 +17,8 @@ class WarpPerspective(nn.Module):
     def forward(self, x, M):
 
         x = tgm.warp_perspective(x, M,
-            dsize=(self.output_height, self.output_width))
+                                 dsize=(self.output_height,
+                                        self.output_width))
 
         return x
 
@@ -32,7 +33,8 @@ class WarpAffine(nn.Module):
     def forward(self, x, M):
 
         x = tgm.warp_affine(x, M,
-            dsize=(self.output_height, self.output_width))
+                            dsize=(self.output_height,
+                                   self.output_width))
 
         return x
 
@@ -54,10 +56,6 @@ class LocalizationNetwork(nn.Module):
         else:
             self.linear = nn.Linear(256 * 3 * 3, 9)
             self.warper = WarpPerspective(output_size)
-
-        #self.linear.weight.data.zero_()
-        #self.linear.bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0, 0, 0, 1], dtype=torch.float))
-        #self.linear.bias.data.copy_(torch.tensor([1, 0, 0, 0, 1, 0], dtype=torch.float))
 
     def forward(self, x):
         bs = x.size(0)
