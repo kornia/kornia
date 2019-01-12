@@ -14,11 +14,9 @@ class WarpPerspective(nn.Module):
         self.output_height, self.output_width = output_size
 
     def forward(self, x, M):
-
         x = tgm.warp_perspective(x, M,
                                  dsize=(self.output_height,
                                         self.output_width))
-
         return x
 
 
@@ -30,11 +28,9 @@ class WarpAffine(nn.Module):
         self.output_height, self.output_width = output_size
 
     def forward(self, x, M):
-
         x = tgm.warp_affine(x, M,
                             dsize=(self.output_height,
                                    self.output_width))
-
         return x
 
 
@@ -44,14 +40,7 @@ class LocalizationNetwork(nn.Module):
         super(LocalizationNetwork, self).__init__()
 
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(2, 3, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
@@ -59,41 +48,34 @@ class LocalizationNetwork(nn.Module):
         self.affine = affine
 
         if self.affine:
-            self.linear = nn.Linear(32 * 16 * 16, 6)
+            self.linear = nn.Linear(3 * 2 * 2, 6)
             self.warper = WarpAffine(output_size)
         else:
-            self.linear = nn.Linear(32 * 16 * 16, 9)
+            self.linear = nn.Linear(3 * 2 * 2, 9)
             self.warper = WarpPerspective(output_size)
 
     def forward(self, x):
-        bs = x.size(0)
+        batch_size = x.size(0)
 
-        inp_height = x.size(2)
-        inp_width = x.size(3)
-
-        x_down = nn.functional.interpolate(x, size=(64, 64), mode='bilinear')
-
-        M = self.linear(self.cnn(x_down).view(bs, -1))
+        M = self.linear(self.cnn(x).view(batch_size, -1))
         if self.affine:
             M = M.view(-1, 2, 3)
         else:
             M = M.view(-1, 3, 3)
 
         out = self.warper(x, M)
-
         return (out, M)
 
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_jit_tracing(device_type, affine):
-
-    net = LocalizationNetwork((128, 128), pretrained=False, affine=affine)
+    net = LocalizationNetwork((4, 4), pretrained=False, affine=affine)
     net.eval()
 
     net = net.to(torch.device(device_type))
 
-    dummy_input = torch.randn(1, 3, 128, 128)
+    dummy_input = torch.randn(1, 2, 4, 4)
     dummy_input = dummy_input.to(torch.device(device_type))
 
     output = net(dummy_input)
