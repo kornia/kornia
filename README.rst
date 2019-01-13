@@ -76,4 +76,4 @@ If you are using torchgeometry in your research-related documents, it is recomme
 
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiy/torchgeometry/CONTRIBUTING.rst>`_ notes.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiy/torchgeometry/blob/master/CONTRIBUTING.rst>`_ notes.
