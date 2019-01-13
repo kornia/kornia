@@ -18,46 +18,6 @@ The *PyTorch Geometry* package is a geometric computer vision library for `PyTor
 
 It consists of a set of routines and differentiable modules to solve generic geometry computer vision problems. At its core, the package uses *PyTorch* as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
 
-Development Setup
-=================
-
-Assuming that you are on ubuntu 16.04, with nvidia-drivers installed.
-
-In bash, source the ``path.bash.inc`` script.  This will install a
-local conda environment under ``./.dev_env``, which includes pytorch
-and some dependencies (no root required).
-
-.. code:: bash
-
-   source ./path.bash.inc
-   python -c "import torchgeometry; print(torchgeometry.__version__)"
-
-
-To install, or update the conda environment run ``setup_dev_env.sh``
-
-.. code:: bash
-
-   ./setup_dev_env.sh
-
-Quick Usage
-===========
-
-.. code:: python
-
- import torch
- import torchgeometry as tgm
-
- x_rad = tgm.pi * torch.rand(1, 3, 3)
- x_deg = tgm.rad2deg(x_rad)
-
- torch.allclose(x_rad, tgm.deg2rad(x_deg))  # True
-
-Examples
-========
-
-Run our Jupyter notebooks `examples <https://github.com/arraiy/torchgeometry/tree/master/examples/>`_ to learn to use the library.
-
-
 Installation
 ============
 
@@ -79,12 +39,24 @@ Installation
 
     pip install git+https://github.com/arraiy/torchgeometry
 
-Testing
-=======
+Quick Usage
+===========
 
-.. code:: bash
+.. code:: python
 
-    python setup.py test
+ import torch
+ import torchgeometry as tgm
+
+ x_rad = tgm.pi * torch.rand(1, 3, 3)
+ x_deg = tgm.rad2deg(x_rad)
+
+ torch.allclose(x_rad, tgm.deg2rad(x_deg))  # True
+
+Examples
+========
+
+Run our Jupyter notebooks `examples <https://github.com/arraiy/torchgeometry/tree/master/examples/>`_ to learn to use the library.
+
 
 Cite
 ============
@@ -102,11 +74,6 @@ If you are using torchgeometry in your research-related documents, it is recomme
  }
 
 
-Future work
-============
-The `roadmap <https://github.com/arraiy/torchgeometry/issues/1>`_ will add more functions to allow developers to solve geometric problems.
-
-
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiy/torchgeometry/CONTRIBUTING.rst>`_ notes.
