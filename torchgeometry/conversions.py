@@ -117,6 +117,7 @@ def convert_points_to_homogeneous(points):
 
     return nn.functional.pad(points, (0, 1), "constant", 1.0)
 
+
 def transform_points(dst_pose_src, points_src):
     r"""Function that applies transformations to a set of points.
 
