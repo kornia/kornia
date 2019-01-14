@@ -115,10 +115,7 @@ def convert_points_to_homogeneous(points):
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    # create shape for ones tensor: Nx(...)xD-1
-    new_shape = points.shape[:-1] + (points.shape[-1].bit_length() - 1,)
-    ones = torch.ones(new_shape, dtype=points.dtype)
-    return torch.cat([points, ones.to(points.device)], dim=-1)
+    return nn.functional.pad(points, (0, 1), "constant", 1.0)
 
 
 def transform_points(dst_pose_src, points_src):
