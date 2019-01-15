@@ -9,6 +9,10 @@ matrix:
       python: "3.6"
       install: pip install flake8
       script: flake8
+    - env: MYPY_TYPE_CHECK
+      python: "3.6"
+      install: pip install mypy mypy-extensions 
+      script: mypy @mypy_files.txt --ignore-missing-imports
     - python: "3.6"
 
 install:
