@@ -29,6 +29,7 @@ $sdk_dir/.dev_env/bin/conda install -y \
   sphinx_rtd_theme \
   nbsphinx \
   mypy \
+  mypy-extensions \
   -c pytorch
 
 $sdk_dir/.dev_env/bin/conda  clean -ya

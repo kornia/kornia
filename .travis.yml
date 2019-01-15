@@ -1,15 +1,19 @@
 language: python
 
-sudo: true
+sudo: false
+cache:
+  - $HOME/download # Sufficient to add miniconda.sh to TRAVIS cache.
+  - $HOME/miniconda
+  - $HOME/.cache/pip
 
 notifications:
   email: false
 
 stages:
+  - docs
   - lint check
   - static check
   - test
-  - docs
 
 before_install:
   - sudo apt-get update
@@ -21,14 +25,10 @@ before_install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytorch scipy -c pytorch
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytorch -c pytorch
   - source activate test-environment
   # Install current torchgeometry
   - python setup.py install
-
-install:
-  - pip install --upgrade pytest
-  - pip install codecov
 
 after_success:
   - codecov
@@ -39,22 +39,26 @@ jobs:
     - stage: lint check
       python: "3.6"
       before_install: # Nothing to do
-      install: pip install flake8
+      install:
+        - pip install flake8
       script: python scripts/verify.py --check lint
 
     - stage: static check
       python: "3.6"
-      install: pip install mypy mypy-extensions 
+      install:
+        - pip install mypy mypy-extensions
       script: python scripts/verify.py --check mypy
 
     - stage: test
       python: "3.6"
+      install:
+        - pip install -U pytest codecov
       script: pytest test
 
     - stage: docs
       python: "3.6"
       install:
-        - pip install -r docs/requirements.txt
+        - conda install -y --file docs/requirements.txt -c conda-forge 
       script:
         - python scripts/verify.py --check build-docs
       after_success: # Nothing to do
