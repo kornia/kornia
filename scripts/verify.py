@@ -19,6 +19,12 @@ def main(checks):
             run("flake8 torchgeometry test examples", shell=True, check=True)
             print("lint checks passed")
 
+        if "mypy" in checks:
+            print("Typechecker (mypy)", flush=True)
+            run("mypy @mypy_files.txt --ignore-missing-imports", shell=True,
+                check=True)
+            print("mypy checks passed")
+
         if "build-docs" in checks:
             print("Documentation (build):", flush=True)
             run("cd docs; make clean html", shell=True, check=True)
@@ -33,7 +39,7 @@ def main(checks):
         sys.exit(1)
 
 if __name__ == "__main__":
-    checks = ['lint', 'build-docs', 'check-docs',]
+    checks = ['lint', 'mypy', 'build-docs', 'check-docs',]
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--checks', type=str, required=False, nargs='+', choices=checks)
