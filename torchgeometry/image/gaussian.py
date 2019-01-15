@@ -126,7 +126,8 @@ class GaussianBlur(nn.Module):
     @staticmethod
     def compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
         """Computes zero padding tuple."""
-        return tuple([(k - 1) // 2 for k in kernel_size])
+        computed = [(k - 1) // 2 for k in kernel_size]
+        return computed[0], computed[1]
 
     def forward(self, x: torch.Tensor):
         if not torch.is_tensor(x):
@@ -137,8 +138,8 @@ class GaussianBlur(nn.Module):
                              .format(x.shape))
         # prepare kernel
         b, c, h, w = x.shape
-        kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
-        kernel: torch.Tensor = kernel.repeat(c, 1, 1, 1)
+        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
+        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
         # convolve tensor with gaussian kernel
         return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
