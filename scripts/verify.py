@@ -21,7 +21,7 @@ def main(checks):
 
         if "build-docs" in checks:
             print("Documentation (build):", flush=True)
-            run("cd docs; make html", shell=True, check=True)
+            run("cd docs; make clean html", shell=True, check=True)
 
         if "check-docs" in checks:
             print("Documentation (check):", flush=True)
