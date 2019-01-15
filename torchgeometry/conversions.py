@@ -543,7 +543,7 @@ class TransformPoints(nn.Module):
 
     Args:
         dst_pose_src (Tensor): tensor for transformations of
-        shape :math:`(B, D+1, D+1)`.
+         shape :math:`(B, D+1, D+1)`.
 
     Returns:
         Tensor: tensor of N-dimensional points.
