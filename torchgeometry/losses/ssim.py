@@ -108,8 +108,8 @@ class SSIM(nn.Module):
                              .format(img1.dtype, img2.dtype))
         # prepare kernel
         b, c, h, w = img1.shape
-        kernel: torch.Tensor = self.window.to(img1.device).to(img1.dtype)
-        kernel: torch.Tensor = kernel.repeat(c, 1, 1, 1)
+        tmp_kernel: torch.Tensor = self.window.to(img1.device).to(img1.dtype)
+        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
         # compute local mean per channel
         mu1: torch.Tensor = self.filter2D(img1, kernel, c)
