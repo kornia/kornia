@@ -11,7 +11,7 @@ matrix:
       script: flake8
     - env: MYPY_TYPE_CHECK
       python: "3.6"
-      install: pip install mypy mypy-extensions
+      install: pip install mypy mypy-extensions --ignore-missing-imports
       script: mypy @mypy_files.txt
     - python: "3.6"
 
