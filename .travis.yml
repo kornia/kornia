@@ -5,15 +5,9 @@ sudo: true
 notifications:
   email: false
 
-matrix:
-  include:
-    - env: MYPY_TYPE_CHECK
-      python: "3.6"
-      install: pip install mypy mypy-extensions 
-      script: mypy @mypy_files.txt --ignore-missing-imports
-
 stages:
   - lint check
+  - static check
   - test
   - docs
 
@@ -29,6 +23,7 @@ before_install:
   - conda info -a
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytorch scipy -c pytorch
   - source activate test-environment
+  # Install current torchgeometry
   - python setup.py install
 
 install:
@@ -47,7 +42,7 @@ jobs:
       install: pip install flake8
       script: python scripts/verify.py --check lint
 
-    - env: static check
+    - stage: static check
       python: "3.6"
       install: pip install mypy mypy-extensions 
       script: mypy @mypy_files.txt --ignore-missing-imports
@@ -62,6 +57,4 @@ jobs:
         - pip install -r docs/requirements.txt
       script:
         - python scripts/verify.py --check build-docs
-        # Create .nojekyll file to serve correctly _static and friends
-        - touch build/html/.nojekyll
       after_success: # Nothing to do
