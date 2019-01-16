@@ -18,6 +18,7 @@ if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
 fi
 
 $sdk_dir/.dev_env/bin/conda install -y \
+  pip \
   ipython \
   jupyter \
   matplotlib \
@@ -25,11 +26,15 @@ $sdk_dir/.dev_env/bin/conda install -y \
   pytorch \
   torchvision \
   opencv \
-  sphinx \
-  sphinx_rtd_theme \
-  nbsphinx \
-  mypy \
-  mypy-extensions \
   -c pytorch
 
-$sdk_dir/.dev_env/bin/conda  clean -ya
+$sdk_dir/.dev_env/bin/conda install -y \
+  --file docs/requirements.txt \
+  -c conda-forge
+
+$sdk_dir/.dev_env/bin/conda install -y \
+  mypy \
+  mypy_extensions \
+  -c conda-forge
+
+$sdk_dir/.dev_env/bin/conda clean -ya

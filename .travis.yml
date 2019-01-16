@@ -1,38 +1,26 @@
 language: python
 
-sudo: false
+sudo: true
 cache:
-  - $HOME/download # Sufficient to add miniconda.sh to TRAVIS cache.
-  - $HOME/miniconda
-  - $HOME/.cache/pip
+  - apt: true
+  - directories:
+    - $HOME/download # Sufficient to add miniconda.sh to TRAVIS cache.
+      #- $HOME/miniconda
 
 notifications:
   email: false
 
 stages:
-  - docs
   - lint check
+  - docs
   - static check
   - test
 
 before_install:
-  - sudo apt-get update
-  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
-  - bash miniconda.sh -b -p $HOME/miniconda
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  - hash -r
-  - conda config --set always_yes yes --set changeps1 no
-  - conda update -q conda
-  # Useful for debugging any issues with conda
-  - conda info -a
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytorch -c pytorch
-  - source activate test-environment
-  # Install current torchgeometry
-  - python setup.py install
+  - ./scripts/travis_before_install.sh
 
 after_success:
   - codecov
-
 
 jobs:
   include:
@@ -58,7 +46,10 @@ jobs:
     - stage: docs
       python: "3.6"
       install:
-        - conda install -y --file docs/requirements.txt -c conda-forge 
+        - source activate test-env
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - conda install -y -c conda-forge python=$TRAVIS_PYTHON_VERSION --file docs/requirements.txt
+        #- conda install -y --file docs/requirements.txt -c conda-forge 
       script:
         - python scripts/verify.py --check build-docs
       after_success: # Nothing to do
