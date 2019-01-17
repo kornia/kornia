@@ -1,0 +1,55 @@
+language: python
+
+sudo: true
+cache:
+  - apt: true
+  - directories:
+    - $HOME/download # Sufficient to add miniconda.sh to TRAVIS cache.
+      #- $HOME/miniconda
+
+notifications:
+  email: false
+
+stages:
+  - lint check
+  - docs
+  - static check
+  - test
+
+before_install:
+  - ./scripts/travis_before_install.sh
+
+after_success:
+  - codecov
+
+jobs:
+  include:
+    - stage: lint check
+      python: "3.6"
+      before_install: # Nothing to do
+      install:
+        - pip install flake8
+      script: python scripts/verify.py --check lint
+
+    - stage: static check
+      python: "3.6"
+      install:
+        - pip install mypy mypy-extensions
+      script: python scripts/verify.py --check mypy
+
+    - stage: test
+      python: "3.6"
+      install:
+        - pip install -U pytest codecov
+      script: pytest test
+
+    - stage: docs
+      python: "3.6"
+      install:
+        - source activate test-env
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - conda install -y -c conda-forge python=$TRAVIS_PYTHON_VERSION --file docs/requirements.txt
+        #- conda install -y --file docs/requirements.txt -c conda-forge 
+      script:
+        - python scripts/verify.py --check build-docs
+      after_success: # Nothing to do

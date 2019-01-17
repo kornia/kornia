@@ -1,55 +1,39 @@
-language: python
-
 sudo: true
-cache:
-  - apt: true
-  - directories:
-    - $HOME/download # Sufficient to add miniconda.sh to TRAVIS cache.
-      #- $HOME/miniconda
+dist: trusty
 
 notifications:
   email: false
 
-stages:
-  - lint check
-  - docs
-  - static check
-  - test
+env:
+  global:
+   - CACHE_DIR=$HOME/.cache/docker
+   - CACHE_FILE_NODE=$CACHE_DIR/node.tar
+
+cache:
+  directories:
+    - $CACHE_DIR
 
 before_install:
-  - ./scripts/travis_before_install.sh
-
-after_success:
-  - codecov
+  - docker load -i ${CACHE_FILE_NODE}
 
 jobs:
   include:
+    - stage: build docker image
+      before_install: # do nothing
+      script:
+      - cd docker
+      - ./build.sh
+      - docker images
+      - docker save -o ${CACHE_FILE_NODE} arraiy/torchgeometry
+
     - stage: lint check
-      python: "3.6"
-      before_install: # Nothing to do
-      install:
-        - pip install flake8
-      script: python scripts/verify.py --check lint
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check lint"
 
     - stage: static check
-      python: "3.6"
-      install:
-        - pip install mypy mypy-extensions
-      script: python scripts/verify.py --check mypy
-
-    - stage: test
-      python: "3.6"
-      install:
-        - pip install -U pytest codecov
-      script: pytest test
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check mypy"
 
     - stage: docs
-      python: "3.6"
-      install:
-        - source activate test-env
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - conda install -y -c conda-forge python=$TRAVIS_PYTHON_VERSION --file docs/requirements.txt
-        #- conda install -y --file docs/requirements.txt -c conda-forge 
-      script:
-        - python scripts/verify.py --check build-docs
-      after_success: # Nothing to do
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check build-docs"
+
+    - stage: test
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && pytest test/"

@@ -9,4 +9,5 @@ fi
 sdk_dir="$( command cd -P "$apparent_sdk_dir/../" > /dev/null && pwd -P )"
 
 # This builds the docker file, from the root of the workspace
-docker build -t arraiy/torchgeometry -f Dockerfile $sdk_dir
+#docker build -t arraiy/torchgeometry -f Dockerfile $sdk_dir
+docker build -t arraiy/torchgeometry -f Dockerfile.test $sdk_dir
