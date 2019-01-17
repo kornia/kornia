@@ -62,7 +62,8 @@ class DepthWarper(nn.Module):
 
     def compute_subpixel_step(self):
         """This computes the required inverse depth step to achieve sub pixel
-accurate sampling of the depth cost volume, per camera.
+        accurate sampling of the depth cost volume, per camera.
+
         Szeliski, Richard, and Daniel Scharstein.
         "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
