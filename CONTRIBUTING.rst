@@ -119,7 +119,7 @@ Pull Request
 ============
 
 Once you finish implementing a feature or bug-fix, please send a Pull Request to
-https://github.com/arraiy/torchgeometry through the website.
+https://github.com/arraiyopensource/torchgeometry through the website.
 
 If you are not familiar with creating a Pull Request, here are some guides:
 
