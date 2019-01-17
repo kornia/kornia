@@ -1,39 +1,26 @@
-language: python
+sudo: true
+dist: trusty
 
 notifications:
   email: false
 
-matrix:
-  include:
-    - env: LINT_CHECK
-      python: "3.6"
-      install: pip install flake8
-      script: flake8
-    - env: MYPY_TYPE_CHECK
-      python: "3.6"
-      install: pip install mypy mypy-extensions 
-      script: mypy @mypy_files.txt --ignore-missing-imports
-    - python: "3.6"
+services:
+  - docker
 
 install:
-  - sudo apt-get update
-  - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
-  - bash miniconda.sh -b -p $HOME/miniconda
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  - hash -r
-  - conda config --set always_yes yes --set changeps1 no
-  - conda update -q conda
-  # Useful for debugging any issues with conda
-  - conda info -a
+  - cd docker; ./build.sh
+  - docker images
 
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION pytorch scipy -c pytorch
-  - source activate test-environment
-  - python setup.py install
-  - pip install --upgrade pytest
-  - pip install codecov
+matrix:
+  include:
+    - env: lint check
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python verify.py --check lint"
 
-script:
-  - pytest test/
+    - env: static check
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python verify.py --check mypy"
 
-after_success:
-  - codecov
+    - env: docs
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python verify.py --check build-docs"
+
+    - env: test
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && pytest test/"
