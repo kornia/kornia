@@ -17,17 +17,12 @@ if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
     $sdk_dir/.dev_env/miniconda.sh -b -u -p $sdk_dir/.dev_env
 fi
 
+# Install CPU-PyTorch
 $sdk_dir/.dev_env/bin/conda install -y \
-  pip \
-  ipython \
-  jupyter \
-  matplotlib \
-  numpy \
-  pytorch \
-  torchvision \
-  opencv \
+  pytorch-cpu \
   -c pytorch
 
+# Tests dependencies
 $sdk_dir/.dev_env/bin/conda install -y \
   pytest \
   flake8 \
