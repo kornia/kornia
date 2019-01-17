@@ -6,13 +6,11 @@
 
 --------------------------------------------------------------------------------
 
-.. image:: https://travis-ci.com/arraiy/torchgeometry.svg?token=M8pF2LfWb2ZxBDWRRvcP&branch=master
-    :target: https://travis-ci.com/arraiy/torchgeometry
+.. image:: https://travis-ci.com/arraiyopensource/torchgeometry.svg?branch=master
+    :target: https://travis-ci.com/arraiyopensource/torchgeometry
     
 .. image:: https://badge.fury.io/py/torchgeometry.svg
     :target: https://badge.fury.io/py/torchgeometry
-
-`Documentation <https://arraiy.github.io/torchgeometry/>`_
 
 The *PyTorch Geometry* package is a geometric computer vision library for `PyTorch <https://pytorch.org/>`_.
 
@@ -37,7 +35,7 @@ Installation
 
 .. code:: bash
 
-    pip install git+https://github.com/arraiy/torchgeometry
+    pip install git+https://github.com/arraiyopensource/torchgeometry
 
 Quick Usage
 ===========
@@ -55,7 +53,7 @@ Quick Usage
 Examples
 ========
 
-Run our Jupyter notebooks `examples <https://github.com/arraiy/torchgeometry/tree/master/examples/>`_ to learn to use the library.
+Run our Jupyter notebooks `examples <https://github.com/arraiyopensource/torchgeometry/tree/master/examples/>`_ to learn to use the library.
 
 
 Cite
@@ -76,4 +74,4 @@ If you are using torchgeometry in your research-related documents, it is recomme
 
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiy/torchgeometry/blob/master/CONTRIBUTING.rst>`_ notes.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/torchgeometry/blob/master/CONTRIBUTING.rst>`_ notes.
