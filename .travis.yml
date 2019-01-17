@@ -23,4 +23,7 @@ matrix:
       script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python verify.py --check build-docs"
 
     - env: test
-      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && pytest test/"
+      script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && pytest --cov=torchgeometry test/"
+
+after_success:
+  - bash < (curl -s https://codecov.io/bash)

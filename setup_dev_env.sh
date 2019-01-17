@@ -30,6 +30,7 @@ $sdk_dir/.dev_env/bin/conda install -y \
 
 $sdk_dir/.dev_env/bin/conda install -y \
   pytest \
+  pytest-cov \
   flake8 \
   mypy \
   mypy_extensions \
