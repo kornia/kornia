@@ -4,36 +4,23 @@ dist: trusty
 notifications:
   email: false
 
-env:
-  global:
-   - CACHE_DIR=$HOME/.cache/docker
-   - CACHE_FILE_NODE=$CACHE_DIR/node.tar
+services:
+  - docker
 
-cache:
-  directories:
-    - $CACHE_DIR
+install:
+  - cd docker; ./build.sh
+  - docker images
 
-before_install:
-  - docker load -i ${CACHE_FILE_NODE}
-
-jobs:
+matrix:
   include:
-    - stage: build docker image
-      before_install: # do nothing
-      script:
-      - cd docker
-      - ./build.sh
-      - docker images
-      - docker save -o ${CACHE_FILE_NODE} arraiy/torchgeometry
-
-    - stage: lint check
+    - env: lint check
       script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check lint"
 
-    - stage: static check
+    - env: static check
       script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check mypy"
 
-    - stage: docs
+    - env: docs
       script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && python scripts/verify.py --check build-docs"
 
-    - stage: test
+    - env: test
       script: docker run arraiy/torchgeometry /bin/bash -c "source path.bash.inc && pytest test/"
