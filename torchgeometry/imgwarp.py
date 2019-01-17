@@ -127,7 +127,7 @@ def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
 
     .. note::
        See a working example `here <https://github.com/arraiy/torchgeometry/
-       blob/master/examples/warp_affine.ipynb>`_.
+       blob/master/examples/warp_affine.ipynb>`__.
     """
     if not torch.is_tensor(src):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"

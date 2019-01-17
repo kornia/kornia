@@ -29,10 +29,10 @@ def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
     Examples::
 
         >>> tgm.image.get_gaussian_kernel(3, 2.5)
-        >>> tensor([0.3243, 0.3513, 0.3243])
+        tensor([0.3243, 0.3513, 0.3243])
 
         >>> tgm.image.get_gaussian_kernel(5, 1.5)
-        >>> tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
+        tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
     if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}"
@@ -60,14 +60,14 @@ def get_gaussian_kernel2d(ksize: Tuple[int, int],
     Examples::
 
         >>> tgm.image.get_gaussian_kernel2d((3, 3), (1.5, 1.5))
-        >>> tensor([[0.0947, 0.1183, 0.0947],
-                    [0.1183, 0.1478, 0.1183],
-                    [0.0947, 0.1183, 0.0947]])
+        tensor([[0.0947, 0.1183, 0.0947],
+                [0.1183, 0.1478, 0.1183],
+                [0.0947, 0.1183, 0.0947]])
 
-        >>> tgm.image.get_gaussian_kernel((3, 5), (1.5, 1.5))
-        >>> tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
-                    [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
-                    [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
+        >>> tgm.image.get_gaussian_kernel2d((3, 5), (1.5, 1.5))
+        tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
+                [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
+                [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
     """
     if not isinstance(ksize, tuple) or len(ksize) != 2:
         raise TypeError("ksize must be a tuple of length two. Got {}"
