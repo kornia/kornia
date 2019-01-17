@@ -71,7 +71,7 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
         \right )
 
     Args:
-        src (Tensor): input image.
+        src (torch.Tensor): input image.
         M (Tensor): transformation matrix.
         dsize (tuple): size of the output image (height, width).
 
