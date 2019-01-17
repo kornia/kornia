@@ -11,7 +11,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
    - We suggest you to join the channel in order to get more involved to the PyTorch ecosystem. Send an email to `slack@pytorch.org <slack@pytorch.org>`_ in order to get access.
    - Please, don't use GitHub issues for Q&A.
 
-2. Report bugs through `GitHub issues <https://github.com/arraiy/torchgeometry/issues>`_:
+2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/torchgeometry/issues>`_:
 
    - Do a quick search first to see whether others reported a similar issue.
    - In case you find an unreported bug, please open a new ticket.
@@ -55,7 +55,7 @@ In order to start to develop, please follow the steps below:
 
 .. code:: bash
 
-    git clone https://github.com/arraiy/torchgeometry.git
+    git clone https://github.com/arraiyopensource/torchgeometry.git
     cd torchgeometry
 
 3. Create a new branch with a meaningful name reflecting your contribution. See an example:
