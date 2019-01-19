@@ -236,8 +236,8 @@ def patched_make_field(self, types, domain, items, **kw):
 TypedField.make_field = patched_make_field
 
 # @jpchen's hack to get rtd builder to install latest pytorch
-if 'READTHEDOCS' in os.environ:
-    os.system('pip install http://download.pytorch.org/whl/cpu/torch-0.4.1-cp27-cp27mu-linux_x86_64.whl')
+#if 'READTHEDOCS' in os.environ:
+#    os.system('pip install http://download.pytorch.org/whl/cpu/torch-0.4.1-cp27-cp27mu-linux_x86_64.whl')
     # for pytorch 1.0 (currently fails with OOM
     # https://readthedocs.org/projects/pyro-ppl/builds/8159615/
     #     os.system('pip install torch_nightly==1.0.0.dev20181127 -f '
