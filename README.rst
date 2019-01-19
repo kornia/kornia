@@ -8,7 +8,10 @@
 
 .. image:: https://travis-ci.com/arraiyopensource/torchgeometry.svg?branch=master
     :target: https://travis-ci.com/arraiyopensource/torchgeometry
-    
+
+.. image:: https://codecov.io/github/arraiyopensource/torchgeometry/branch/master/graph/badge.svg
+    :target: https://codecov.io/github/arraiyopensource/torchgeometry
+
 .. image:: https://badge.fury.io/py/torchgeometry.svg
     :target: https://badge.fury.io/py/torchgeometry
 
