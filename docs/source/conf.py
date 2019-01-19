@@ -3,6 +3,11 @@ import sys
 
 import sphinx_rtd_theme
 
+# If extensions (or modules to document with autodoc) are in another directory,
+# add these directories to sys.path here. If the directory is relative to the
+# documentation root, use os.path.abspath to make it absolute, like shown here.
+#
+sys.path.insert(0, os.path.abspath('../..'))
 
 # -- General configuration ------------------------------------------------
 
@@ -236,7 +241,8 @@ def patched_make_field(self, types, domain, items, **kw):
 TypedField.make_field = patched_make_field
 
 # @jpchen's hack to get rtd builder to install latest pytorch
-#if 'READTHEDOCS' in os.environ:
+if 'READTHEDOCS' in os.environ:
+    os.system("pip install pytorch-cpu==1.0.0")
 #    os.system('pip install http://download.pytorch.org/whl/cpu/torch-0.4.1-cp27-cp27mu-linux_x86_64.whl')
     # for pytorch 1.0 (currently fails with OOM
     # https://readthedocs.org/projects/pyro-ppl/builds/8159615/
