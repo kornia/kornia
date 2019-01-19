@@ -1,3 +1,4 @@
 sphinx
 sphinx_rtd_theme
 nbsphinx
+numpy
