@@ -31,22 +31,15 @@ class HomographyWarper(nn.Module):
                                border data.
     """
 
-    def __init__(self, height, width, points=None, padding_mode='zeros'):
+    def __init__(self, height, width, padding_mode='zeros'):
         super(HomographyWarper, self).__init__()
-
+        self.width = width
+        self.height = height
         self.padding_mode = padding_mode
 
-        if points is not None:
-            assert points.size(0) == 3, "Points must be 3xN"
-            self.width = points.size(1)
-            self.height = 1
-            self.grid = points
-        else:
-            self.width = width
-            self.height = height
-            # create base grid to use for computing the flow
-            self.grid = create_meshgrid(
-                height, width, normalized_coordinates=True)
+        # create base grid to compute the flow
+        self.grid = create_meshgrid(
+            height, width, normalized_coordinates=True)
 
     def warp_grid(self, H):
         """
@@ -63,38 +56,6 @@ class HomographyWarper(nn.Module):
         # the grid is copied to input device and casted to the same type
         flow = transform_points(H, grid.to(H.device).type_as(H))    # NxHxWx2
         return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
-
-    def random_warp(self, patch, dist):
-        return self(patch, random_homography(dist))
-
-    def crop_and_warp(self, H, image, roi):
-        grid = self.warp_grid(H)
-        assert len(image.shape) == 4, image.shape
-
-        width, height = image.shape[3], image.shape[2]
-
-        start_x, end_x = roi[2], roi[3] - 1  # inclusive [x_0, x_1]
-        start_y, end_y = roi[0], roi[1] - 1
-
-        start_x = (2 * start_x) / width - 1
-        end_x = (2 * end_x) / width - 1
-
-        start_y = (2 * start_y) / height - 1
-        end_y = (2 * end_y) / height - 1
-
-        b_x = (start_x + end_x) / 2
-        a_x = b_x - start_x
-
-        b_y = (start_y + end_y) / 2
-        a_y = b_y - start_y
-        a = Variable(torch.FloatTensor((a_x, a_y)))
-        b = Variable(torch.FloatTensor((b_x, b_y)))
-        if grid.is_cuda:
-            a = a.cuda()
-            b = b.cuda()
-        grid = grid * a + b
-        return F.grid_sample(
-            image, grid, mode='bilinear', padding_mode=self.padding_mode)
 
     def forward(self, patch, dst_homo_src):
         """Warps an image or tensor from source into reference frame.
@@ -128,8 +89,7 @@ class HomographyWarper(nn.Module):
 # functional api
 
 
-def homography_warp(patch, dst_H_src, dsize, points=None,
-                    padding_mode='zeros'):
+def homography_warp(patch, dst_H_src, dsize, padding_mode='zeros'):
     """
     .. note:: Functional API for :class:`torgeometry.HomographyWarper`
 
@@ -140,8 +100,6 @@ def homography_warp(patch, dst_H_src, dsize, points=None,
         dst_homo_src (Tensor): The homography or stack of homographies from
                                source to destination.
         dsize (tuple): The height and width of the image to warp.
-        points (Tensor): Tensor[3, N] of homogeneous points in normalized image
-                   space [-1, 1] to sample. Optional parameter.
         padding_mode (string): Either 'zeros' to replace out of bounds with
                                zeros or 'border' to choose the closest border
                                data.
@@ -159,5 +117,5 @@ def homography_warp(patch, dst_H_src, dsize, points=None,
         >>> output = tgm.homography_warp(input, homography, (32, 32))  # NxCxHxW
     """
     height, width = dsize
-    warper = HomographyWarper(height, width, points, padding_mode)
+    warper = HomographyWarper(height, width, padding_mode)
     return warper(patch, dst_H_src)
