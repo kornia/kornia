@@ -8,7 +8,6 @@ import numpy as np
 __all__ = [
     "tensor_to_image",
     "image_to_tensor",
-    "create_pinhole",
     "create_meshgrid",
 ]
 
