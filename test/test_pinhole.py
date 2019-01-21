@@ -25,6 +25,10 @@ def test_inverse_pose(batch_size, device_type):
     eye = torch.matmul(src_pose_dst, dst_pose_src)
     assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
 
+    # functional
+    eye = torch.matmul(tgm.InversePose()(dst_pose_src), dst_pose_src)
+    assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
+
     # evaluate function gradient
     dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
     assert gradcheck(tgm.inverse_pose, (dst_pose_src,),
@@ -32,8 +36,7 @@ def test_inverse_pose(batch_size, device_type):
 
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
-# @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-@pytest.mark.parametrize("batch_size", [6])
+@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_scale_pinhole(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
