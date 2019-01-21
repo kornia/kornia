@@ -19,8 +19,3 @@ Conversions
 .. autoclass:: ConvertPointsFromHomogeneous
 .. autoclass:: ConvertPointsToHomogeneous
 .. autoclass:: TransformPoints
-.. autoclass:: AngleAxisToRotationMatrix
-.. autoclass:: RotationMatrixToAngleAxis
-.. autoclass:: RotationMatrixToQuaternion
-.. autoclass:: QuaternionToAngleAxis
-.. autoclass:: RtvecToPose
