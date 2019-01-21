@@ -20,11 +20,6 @@ __all__ = [
     "ConvertPointsFromHomogeneous",
     "ConvertPointsToHomogeneous",
     "TransformPoints",
-    "AngleAxisToRotationMatrix",
-    "RotationMatrixToAngleAxis",
-    "RotationMatrixToQuaternion",
-    "QuaternionToAngleAxis",
-    "RtvecToPose",
 ]
 
 
@@ -555,43 +550,3 @@ class TransformPoints(nn.Module):
 
     def forward(self, points_src):
         return transform_points(self.dst_homo_src, points_src)
-
-
-class AngleAxisToRotationMatrix(nn.Module):
-    def __init__(self):
-        super(AngleAxisToRotationMatrix, self).__init__()
-
-    def forward(self, input):
-        return angle_axis_to_rotation_matrix(input)
-
-
-class RotationMatrixToAngleAxis(nn.Module):
-    def __init__(self):
-        super(RotationMatrixToAngleAxis, self).__init__()
-
-    def forward(self, input):
-        return rotation_matrix_to_angle_axis(input)
-
-
-class RotationMatrixToQuaternion(nn.Module):
-    def __init__(self):
-        super(RotationMatrixToQuaterion, self).__init__()
-
-    def forward(self, input):
-        return rotation_matrix_to_quaterion(input)
-
-
-class QuaternionToAngleAxis(nn.Module):
-    def __init__(self):
-        super(QuaternionToAngleAxis, self).__init__()
-
-    def forward(self, input):
-        return quaterion_to_angle_axis(input)
-
-
-class RtvecToPose(nn.Module):
-    def __init__(self):
-        super(RtvecToPose, self).__init__()
-
-    def forward(self, input):
-        return rtvec_to_pose(input)
