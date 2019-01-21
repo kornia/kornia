@@ -98,6 +98,8 @@ def tensor_to_image(tensor):
     return tensor.contiguous().cpu().detach().numpy()
 
 
+# TODO: evaluate wether to include it to the main API.
+'''
 def create_pinhole(intrinsic, extrinsic, height, width):
     pinhole = torch.zeros(12)
     pinhole[0] = intrinsic[0, 0]  # fx
@@ -109,4 +111,4 @@ def create_pinhole(intrinsic, extrinsic, height, width):
     pinhole[6:9] = tgm.rotation_matrix_to_angle_axis(
         torch.tensor(extrinsic))
     pinhole[9:12] = torch.tensor(extrinsic[:, 3])
-    return pinhole.view(1, -1)
+    return pinhole.view(1, -1)'''
