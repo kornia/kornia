@@ -50,18 +50,22 @@ def image_to_tensor(image):
         image (numpy.ndarray): image of the form (H, W, C).
 
     Returns:
-        numpy.ndarray: image of the form (H, W, C).
+        torch.Tensor: tensor of the form (C, H, W).
 
     """
     if not type(image) == np.ndarray:
         raise TypeError("Input type is not a numpy.ndarray. Got {}".format(
             type(image)))
+
     if len(image.shape) > 3 or len(image.shape) < 2:
         raise ValueError("Input size must be a two or three dimensional array")
+
     tensor = torch.from_numpy(image)
+
     if len(tensor.shape) == 2:
-        tensor = torch.unsqueeze(tensor, dim=0)
-    return tensor.permute(2, 0, 1)  # CxHxW
+        tensor = torch.unsqueeze(tensor, dim=-1)
+
+    return tensor.permute(2, 0, 1).squeeze_()  # CxHxW
 
 
 def tensor_to_image(tensor):
@@ -69,7 +73,7 @@ def tensor_to_image(tensor):
        the GPU, it will be copied back to CPU.
 
     Args:
-        tensor (Tensor): image of the form (1, C, H, W).
+        tensor (Tensor): image of the form (C, H, W).
 
     Returns:
         numpy.ndarray: image of the form (H, W, C).
@@ -78,13 +82,21 @@ def tensor_to_image(tensor):
     if not torch.is_tensor(tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
-    tensor = torch.squeeze(tensor)
+
     if len(tensor.shape) > 3 or len(tensor.shape) < 2:
         raise ValueError(
             "Input size must be a two or three dimensional tensor")
-    if len(tensor.shape) == 2:
+
+    input_shape = tensor.shape
+    if len(input_shape) == 2:
         tensor = torch.unsqueeze(tensor, dim=0)
-    return tensor.permute(1, 2, 0).contiguous().cpu().detach().numpy()
+
+    tensor = tensor.permute(1, 2, 0)
+
+    if len(input_shape) == 2:
+        tensor = torch.squeeze(tensor, dim=-1)
+
+    return tensor.contiguous().cpu().detach().numpy()
 
 
 def create_pinhole(intrinsic, extrinsic, height, width):
