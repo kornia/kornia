@@ -53,12 +53,12 @@ class DepthWarper(nn.Module):
         self._i_Hs_ref = homography_i_H_ref(pinhole_i, pinhole_ref)
 
     def _compute_projection(self, x, y, invd):
-        point = torch.FloatTensor([[x], [y], [1.0], [invd]]).to(x.device)
-        flow = torch.matmul(self._i_Hs_ref, point)
-        z = 1. / flow[:, :, 2]
-        x = (flow[:, :, 0] * z)
-        y = (flow[:, :, 1] * z)
-        return torch.stack([x, y], 1)
+        point = torch.FloatTensor([[[x], [y], [1.0], [invd]]])
+        flow = torch.matmul(self._i_Hs_ref, point.to(self._i_Hs_ref.device))
+        z = 1. / flow[:, 2]
+        x = (flow[:, 0] * z)
+        y = (flow[:, 1] * z)
+        return torch.cat([x, y], 1)
 
     def compute_subpixel_step(self):
         """This computes the required inverse depth step to achieve sub pixel
@@ -73,7 +73,7 @@ class DepthWarper(nn.Module):
                                          1.0 - delta_d)
         xy_p1 = self._compute_projection(self.width / 2, self.height / 2,
                                          1.0 + delta_d)
-        dx = torch.norm((xy_p1 - xy_m1), 2, dim=2) / 2.0
+        dx = torch.norm((xy_p1 - xy_m1), 2, dim=-1) / 2.0
         dxdd = dx / (delta_d)  # pixel*(1/meter)
         # half pixel sampling, we're interested in the min for all cameras
         return torch.min(0.5 / dxdd)
