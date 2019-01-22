@@ -1,1 +1,2 @@
 torchgeometry/image/gaussian.py
+torchgeometry/losses/ssim.py
