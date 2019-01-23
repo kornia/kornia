@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from .conversions import rtvec_to_pose
+from .transformations import inverse_pose
 
 
 __all__ = [
