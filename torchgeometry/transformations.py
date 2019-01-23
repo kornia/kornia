@@ -8,19 +8,25 @@ __all__ = [
 ]
 
 
-def relative_pose(pose_1: torch.Tensor, pose_2: torch.Tensor, eps: Optional[float] = 1e-6) -> torch.Tensor:
+def relative_pose(pose_1: torch.Tensor, pose_2: torch.Tensor,
+                  eps: Optional[float] = 1e-6) -> torch.Tensor:
     r"""Function that computes the relative transformation from a reference
-    pose :math:`P_1^{\{W\}} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`P_2^{\{W\}} = \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
+    pose :math:`P_1^{\{W\}} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1
+    \end{bmatrix}` to destination :math:`P_2^{\{W\}} = \begin{bmatrix} R_2 &
+    t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
 
     The relative transformation is computed as follows:
 
     .. math::
 
-        P_1^{2} = \begin{bmatrix} R_2 R_1^T & R_1^T (t_2 - t_1) \\ \mathbf{0} & 1\end{bmatrix}
+        P_1^{2} = \begin{bmatrix} R_2 R_1^T & R_1^T (t_2 - t_1) \\ \mathbf{0} &
+        1\end{bmatrix}
 
     Arguments:
-        pose_1 (torch.Tensor): reference pose tensor of shape :math:`(N, 4, 4)`.
-        pose_2 (torch.Tensor): destination pose tensor of shape :math:`(N, 4, 4)`.
+        pose_1 (torch.Tensor): reference pose tensor of shape
+         :math:`(N, 4, 4)`.
+        pose_2 (torch.Tensor): destination pose tensor of shape
+         :math:`(N, 4, 4)`.
 
     Shape:
         - Output: :math:`(N, 4, 4)`
