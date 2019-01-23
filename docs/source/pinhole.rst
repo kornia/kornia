@@ -14,12 +14,10 @@ Pinhole
 
         :math:`(t_x, t_y, t_z)` is the translation vector.
 
-.. autofunction:: inverse_pose
 .. autofunction:: pinhole_matrix
 .. autofunction:: inverse_pinhole_matrix
 .. autofunction:: scale_pinhole
 .. autofunction:: homography_i_H_ref
 
-.. autoclass:: InversePose
 .. autoclass:: PinholeMatrix
 .. autoclass:: InversePinholeMatrix
