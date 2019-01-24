@@ -28,7 +28,7 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [
-        (4, 5), (2, 6), (4, 3), (5, 7),])
+        (4, 5), (2, 6), (4, 3), (5, 7), ])
     def test_warp_grid_translation(self, shape, offset):
         # create input data
         height, width = shape
@@ -38,7 +38,7 @@ class TestHomographyWarper:
 
         # instantiate warper
         warper = tgm.HomographyWarper(height, width,
-            normalized_coordinates=False)
+                                      normalized_coordinates=False)
         flow = warper.warp_grid(dst_homo_src)
 
         # the grid the src plus the offset should be equal to the flow
@@ -49,7 +49,7 @@ class TestHomographyWarper:
             warper.grid[..., 1], flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [
-        (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7),])
+        (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7), ])
     def test_identity_resize(self, batch_shape):
         # create input data
         batch_size, channels, height, width = batch_shape
@@ -71,14 +71,14 @@ class TestHomographyWarper:
             patch_src[..., -1, -1], patch_dst[..., -1, -1])
 
     @pytest.mark.parametrize("shape", [
-        (4, 5), (2, 6), (4, 3), (5, 7),])
+        (4, 5), (2, 6), (4, 3), (5, 7), ])
     def test_translation(self, shape):
         # create input data
-        offset = 2. # in pixel
+        offset = 2.  # in pixel
         height, width = shape
         patch_src = torch.rand(1, 1, height, width)
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
-        dst_homo_src[..., 0, 2] = offset / (width -1)  # apply offset in x
+        dst_homo_src[..., 0, 2] = offset / (width - 1)  # apply offset in x
 
         # instantiate warper and from source to destination
         warper = tgm.HomographyWarper(height, width)
@@ -86,7 +86,7 @@ class TestHomographyWarper:
         assert utils.check_equal_torch(patch_src[..., 1:], patch_dst[..., :-1])
 
     @pytest.mark.parametrize("batch_shape", [
-        (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3),])
+        (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3), ])
     def test_rotation(self, batch_shape):
         # create input data
         batch_size, channels, height, width = batch_shape
@@ -158,7 +158,7 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_shape", [
-        (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16),])
+        (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16), ])
     def test_gradcheck(self, batch_shape, device_type):
         # generate input data
         device = torch.device(device_type)
