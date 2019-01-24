@@ -8,10 +8,58 @@ import utils  # test utils
 from common import TEST_DEVICES
 
 
-class Tester:
+class TestHomographyWarper:
 
     num_tests = 10
     threshold = 0.05
+
+    def test_identity(self):
+        # create input data
+        height, width = 4, 4
+        patch_src = torch.rand(1, 1, height, width)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+
+        # instantiate warper
+        warper = tgm.HomographyWarper(height, width)
+
+        # warp from source to destination
+        patch_dst = warper(patch_src, dst_homo_src)
+        assert utils.check_equal_torch(patch_src, patch_dst)
+
+    def test_translation(self):
+        # create input data
+        offset = 2. # in pixel
+        height, width = 4, 4
+        patch_src = torch.rand(1, 1, height, width)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        dst_homo_src[..., 0, 2] = offset / (width -1)  # apply offset in x
+
+        # instantiate warper
+        warper = tgm.HomographyWarper(height, width)
+
+        # warp from source to destination
+        patch_dst = warper(patch_src, dst_homo_src)
+        assert utils.check_equal_torch(patch_src[..., 1:], patch_dst[..., :3])
+
+    def test_rotation(self):
+        # create input data
+        height, width = 2, 2
+        patch_src = torch.rand(1, 1, height, width)
+        # rotation of 90deg
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        dst_homo_src[..., 0, 0] = 0.0
+        dst_homo_src[..., 0, 1] = 1.0
+        dst_homo_src[..., 1, 0] = -1.0
+        dst_homo_src[..., 1, 1] = 0.0
+
+        # instantiate warper and warp from source to destination
+        warper = tgm.HomographyWarper(height, width)
+        patch_dst = warper(patch_src, dst_homo_src)
+
+        assert torch.allclose(patch_src[..., 0, 0], patch_dst[..., 0, 1])
+        assert torch.allclose(patch_src[..., 0, 1], patch_dst[..., 1, 1])
+        assert torch.allclose(patch_src[..., 1, 0], patch_dst[..., 0, 0])
+        assert torch.allclose(patch_src[..., 1, 1], patch_dst[..., 1, 0])
 
     @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
@@ -58,30 +106,25 @@ class Tester:
                 patch_dst_to_src, patch_dst_to_src_functional)
 
     @pytest.mark.parametrize("device_type", TEST_DEVICES)
-    @pytest.mark.parametrize("batch_size", [1, 3])
-    @pytest.mark.parametrize("channels", [1, 3])
-    @pytest.mark.parametrize("height", [7, 8])
-    @pytest.mark.parametrize("width", [5, 16])
-    def test_homography_warper_gradcheck(
-            self, batch_size, channels, height, width, device_type):
+    @pytest.mark.parametrize("batch_shape", [
+        (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16),])
+    def test_gradcheck(self, batch_shape, device_type):
         # generate input data
         device = torch.device(device_type)
         eye_size = 3  # identity 3x3
 
         # create checkerboard
-        patch_src = torch.rand(batch_size, channels, height, width).to(device)
+        patch_src = torch.rand(batch_shape).to(device)
         patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
 
         # create base homography
+        batch_size, _, height, width = patch_src.shape
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
         dst_homo_src = utils.tensor_to_gradcheck_var(
             dst_homo_src, requires_grad=False)  # to var
 
         # instantiate warper
         warper = tgm.HomographyWarper(height, width)
-
-        patch_dst = warper(patch_src, dst_homo_src)
-        assert patch_dst.shape == (batch_size, channels, height, width)
 
         # evaluate function gradient
         assert gradcheck(warper, (patch_src, dst_homo_src,),
