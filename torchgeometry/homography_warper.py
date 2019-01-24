@@ -29,15 +29,16 @@ class HomographyWarper(nn.Module):
                                border data.
     """
 
-    def __init__(self, height, width, padding_mode='zeros'):
+    def __init__(self, height, width, padding_mode='zeros',
+                 normalized_coordinates=True):
         super(HomographyWarper, self).__init__()
         self.width = width
         self.height = height
         self.padding_mode = padding_mode
 
         # create base grid to compute the flow
-        self.grid = create_meshgrid(
-            height, width, normalized_coordinates=True)
+        self.grid = create_meshgrid(height, width,
+            normalized_coordinates=normalized_coordinates)
 
     def warp_grid(self, H):
         """

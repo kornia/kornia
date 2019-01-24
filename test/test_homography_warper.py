@@ -15,7 +15,7 @@ class TestHomographyWarper:
 
     def test_identity(self):
         # create input data
-        height, width = 4, 4
+        height, width = 2, 5
         patch_src = torch.rand(1, 1, height, width)
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
 
@@ -26,27 +26,73 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
         assert utils.check_equal_torch(patch_src, patch_dst)
 
-    def test_translation(self):
+    @pytest.mark.parametrize("offset", [1, 3, 7])
+    @pytest.mark.parametrize("shape", [
+        (4, 5), (2, 6), (4, 3), (5, 7),])
+    def test_warp_grid_translation(self, shape, offset):
+        # create input data
+        height, width = shape
+        patch_src = torch.rand(1, 1, height, width)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        dst_homo_src[..., 0, 2] = offset  # apply offset in x
+
+        # instantiate warper
+        warper = tgm.HomographyWarper(height, width,
+            normalized_coordinates=False)
+        flow = warper.warp_grid(dst_homo_src)
+
+        # the grid the src plus the offset should be equal to the flow
+        # on the x-axis, y-axis remains the same.
+        assert utils.check_equal_torch(
+            warper.grid[..., 0] + offset, flow[..., 0])
+        assert utils.check_equal_torch(
+            warper.grid[..., 1], flow[..., 1])
+
+    @pytest.mark.parametrize("batch_shape", [
+        (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7),])
+    def test_identity_resize(self, batch_shape):
+        # create input data
+        batch_size, channels, height, width = batch_shape
+        patch_src = torch.rand(batch_size, channels, height, width)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3)
+
+        # instantiate warper warp from source to destination
+        warper = tgm.HomographyWarper(height // 2, width // 2)
+        patch_dst = warper(patch_src, dst_homo_src)
+
+        # check the corners
+        assert utils.check_equal_torch(
+            patch_src[..., 0, 0], patch_dst[..., 0, 0])
+        assert utils.check_equal_torch(
+            patch_src[..., 0, -1], patch_dst[..., 0, -1])
+        assert utils.check_equal_torch(
+            patch_src[..., -1, 0], patch_dst[..., -1, 0])
+        assert utils.check_equal_torch(
+            patch_src[..., -1, -1], patch_dst[..., -1, -1])
+
+    @pytest.mark.parametrize("shape", [
+        (4, 5), (2, 6), (4, 3), (5, 7),])
+    def test_translation(self, shape):
         # create input data
         offset = 2. # in pixel
-        height, width = 4, 4
+        height, width = shape
         patch_src = torch.rand(1, 1, height, width)
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
         dst_homo_src[..., 0, 2] = offset / (width -1)  # apply offset in x
 
-        # instantiate warper
+        # instantiate warper and from source to destination
         warper = tgm.HomographyWarper(height, width)
-
-        # warp from source to destination
         patch_dst = warper(patch_src, dst_homo_src)
-        assert utils.check_equal_torch(patch_src[..., 1:], patch_dst[..., :3])
+        assert utils.check_equal_torch(patch_src[..., 1:], patch_dst[..., :-1])
 
-    def test_rotation(self):
+    @pytest.mark.parametrize("batch_shape", [
+        (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3),])
+    def test_rotation(self, batch_shape):
         # create input data
-        height, width = 2, 2
-        patch_src = torch.rand(1, 1, height, width)
+        batch_size, channels, height, width = batch_shape
+        patch_src = torch.rand(batch_size, channels, height, width)
         # rotation of 90deg
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        dst_homo_src = utils.create_eye_batch(batch_size, 3)
         dst_homo_src[..., 0, 0] = 0.0
         dst_homo_src[..., 0, 1] = 1.0
         dst_homo_src[..., 1, 0] = -1.0
@@ -56,10 +102,15 @@ class TestHomographyWarper:
         warper = tgm.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
 
-        assert torch.allclose(patch_src[..., 0, 0], patch_dst[..., 0, 1])
-        assert torch.allclose(patch_src[..., 0, 1], patch_dst[..., 1, 1])
-        assert torch.allclose(patch_src[..., 1, 0], patch_dst[..., 0, 0])
-        assert torch.allclose(patch_src[..., 1, 1], patch_dst[..., 1, 0])
+        # check the corners
+        assert utils.check_equal_torch(
+            patch_src[..., 0, 0], patch_dst[..., 0, -1])
+        assert utils.check_equal_torch(
+            patch_src[..., 0, -1], patch_dst[..., -1, -1])
+        assert utils.check_equal_torch(
+            patch_src[..., -1, 0], patch_dst[..., 0, 0])
+        assert utils.check_equal_torch(
+            patch_src[..., -1, -1], patch_dst[..., -1, 0])
 
     @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
