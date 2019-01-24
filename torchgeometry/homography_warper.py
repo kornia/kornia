@@ -22,10 +22,8 @@ class HomographyWarper(nn.Module):
         X_{dst} = H_{dst}^{src} * X_{src}
 
     Args:
-        width (int): The width of the image to warp.
         height (int): The height of the image to warp.
-        points (Tensor): Tensor[3, N] of homogeneous points in normalized image
-                       space [-1, 1] to sample. Optional parameter.
+        width (int): The width of the image to warp.
         padding_mode (string): Either 'zeros' to replace out of bounds with
                                zeros or 'border' to choose the closest
                                border data.
@@ -57,16 +55,18 @@ class HomographyWarper(nn.Module):
         flow = transform_points(H, grid.to(H.device).type_as(H))    # NxHxWx2
         return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
 
-    def forward(self, patch, dst_homo_src):
+    def forward(self, patch_src, dst_homo_src):
         """Warps an image or tensor from source into reference frame.
 
         Args:
-            patch (Tensor): The image or tensor to warp. Should be from source.
-            dst_homo_src (Tensor): The homography or stack of homographies
-                                   from source to destination.
+            patch_src (torch.Tensor): The image or tensor to warp.
+             Should be from source.
+            dst_homo_src (torch.Tensor): The homography or stack of homographies
+             from source to destination. The homography assumes normalized
+             coordinates [-1, 1].
 
         Return:
-            Tensor: Patch sampled at locations from source to destination.
+            torch.Tensor: Patch sampled at locations from source to destination.
 
         Shape:
             - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`
@@ -78,13 +78,14 @@ class HomographyWarper(nn.Module):
             >>> warper = tgm.HomographyWarper(32, 32)
             >>> output = warper(input, homography)  # NxCxHxW
         """
-        if not dst_homo_src.device == patch.device:
+        if not dst_homo_src.device == patch_src.device:
             raise TypeError("Patch and homography must be on the same device. \
                             Got patch.device: {} dst_H_src.device: {}."
-                            .format(patch.device, dst_homo_src.device))
+                            .format(patch_src.device, dst_homo_src.device))
         return torch.nn.functional.grid_sample(
-            patch, self.warp_grid(dst_homo_src), mode='bilinear',
+            patch_src, self.warp_grid(dst_homo_src), mode='bilinear',
             padding_mode=self.padding_mode)
+
 
 # functional api
 
