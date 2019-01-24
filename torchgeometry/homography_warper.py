@@ -15,11 +15,11 @@ __all__ = [
 # layer api
 
 class HomographyWarper(nn.Module):
-    """Warps patches by homographies.
+    r"""Warps patches by homographies.
 
     .. math::
 
-        X_{dst} = H_{dst}^{src} * X_{src}
+        X_{dst} = H_{src}^{\{dst\}} * X_{src}
 
     Args:
         height (int): The height of the image to warp.
@@ -37,11 +37,11 @@ class HomographyWarper(nn.Module):
         self.padding_mode = padding_mode
 
         # create base grid to compute the flow
-        self.grid = create_meshgrid(height, width,
-            normalized_coordinates=normalized_coordinates)
+        self.grid = create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates)
 
     def warp_grid(self, H):
-        """
+        r"""
         :param H: Homography or homographies (stacked) to transform all points
                   in the grid.
         :returns: Tensor[1, Height, Width, 2] containing transformed points in
@@ -57,7 +57,7 @@ class HomographyWarper(nn.Module):
         return flow.view(batch_size, self.height, self.width, 2)    # NxHxWx2
 
     def forward(self, patch_src, dst_homo_src):
-        """Warps an image or tensor from source into reference frame.
+        r"""Warps an image or tensor from source into reference frame.
 
         Args:
             patch_src (torch.Tensor): The image or tensor to warp.
@@ -92,7 +92,7 @@ class HomographyWarper(nn.Module):
 
 
 def homography_warp(patch, dst_H_src, dsize, padding_mode='zeros'):
-    """
+    r"""
     .. note:: Functional API for :class:`torgeometry.HomographyWarper`
 
     Warps patches by homographies.
