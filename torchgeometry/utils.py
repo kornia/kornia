@@ -38,7 +38,7 @@ def create_meshgrid(height, width, normalized_coordinates=True):
         ys = torch.linspace(0, height - 1, height)
     # generate grid by stacking coordinates
     base_grid = torch.stack(torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
-    return torch.unsqueeze(base_grid, dim=0).permute(0, 2, 3, 1)  # 1xHxwx2
+    return torch.unsqueeze(base_grid, dim=0).permute(0, 2, 3, 1)  # 1xHxWx2
 
 
 def image_to_tensor(image):
