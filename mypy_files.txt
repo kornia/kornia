@@ -1,3 +1,4 @@
 torchgeometry/image/gaussian.py
 torchgeometry/losses/ssim.py
+torchgeometry/losses/depth_smooth.py
 torchgeometry/homography_warper.py
