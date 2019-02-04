@@ -8,6 +8,71 @@ import utils
 from common import TEST_DEVICES
 
 
+class TestFocalLoss:
+    def _test_smoke_none(self):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        assert tgm.losses.focal_loss(
+            logits,
+            labels,
+            alpha=0.5,
+            gamma=2.0,
+            reduction='none').shape == (
+            2,
+            3,
+            2)
+
+    def _test_smoke_sum(self):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        assert tgm.losses.focal_loss(
+            logits,
+            labels,
+            alpha=0.5,
+            gamma=2.0,
+            reduction='sum').shape == ()
+
+    def _test_smoke_mean(self):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        assert tgm.losses.focal_loss(
+            logits,
+            labels,
+            alpha=0.5,
+            gamma=2.0,
+            reduction='mean').shape == ()
+
+    # TODO: implement me
+    def _test_jit(self):
+        pass
+
+    def _test_gradcheck(self):
+        num_classes = 3
+        alpha, gamma = 0.5, 2.0  # for focal loss
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        logits = utils.tensor_to_gradcheck_var(logits)  # to var
+        assert gradcheck(tgm.losses.focal_loss,
+                         (logits, labels, alpha, gamma), raise_exception=True)
+
+    def test_run_all(self):
+        self._test_smoke_none()
+        self._test_smoke_sum()
+        self._test_smoke_mean()
+        self._test_gradcheck()
+
+
 class TestTverskyLoss:
     def _test_smoke(self):
         num_classes = 3
