@@ -5,7 +5,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def one_hot(labels: torch.Tensor, num_classes: int, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+def one_hot(labels: torch.Tensor,
+            num_classes: int,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None) -> torch.Tensor:
     r"""Converts an integer label 2D tensor to a one-hot 3D tensor.
 
     Args:
@@ -13,8 +16,12 @@ def one_hot(labels: torch.Tensor, num_classes: int, device: Optional[torch.devic
                                 where N is batch siz. Each value is an integer
                                 representing correct classification.
         num_classes (int): number of classes in labels.
-        device (Optional[torch.device]): the desired device of returned tensor. Default: if None, uses the current device for the default tensor type (see torch.set_default_tensor_type()). device will be the CPU for CPU tensor types and the current CUDA device for CUDA tensor types.
-        dtype (Optional[torch.dtype]): the desired data type of returned tensor. Default: if None, infers data type from values.
+        device (Optional[torch.device]): the desired device of returned tensor.
+         Default: if None, uses the current device for the default tensor type
+         (see torch.set_default_tensor_type()). device will be the CPU for CPU
+         tensor types and the current CUDA device for CUDA tensor types.
+        dtype (Optional[torch.dtype]): the desired data type of returned
+         tensor. Default: if None, infers data type from values.
 
     Returns:
         torch.Tensor: the labels in one hot tensor.
@@ -40,8 +47,8 @@ def one_hot(labels: torch.Tensor, num_classes: int, device: Optional[torch.devic
             "labels must be of the same dtype torch.int64. Got: {}" .format(
                 labels.dtype))
     if num_classes < 1:
-        raise ValueError("The number of classes must be bigger than one. Got: {}"
-                         .format(num_classes))
+        raise ValueError("The number of classes must be bigger than one."
+                         " Got: {}".format(num_classes))
     batch_size, height, width = labels.shape
     one_hot = torch.zeros(batch_size, num_classes, height, width,
                           device=device, dtype=dtype)
@@ -54,16 +61,17 @@ def one_hot(labels: torch.Tensor, num_classes: int, device: Optional[torch.devic
 class DiceLoss(nn.Module):
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
     """
+
     def __init__(self,
-            smooth: Optional[float] = 1.0,
-            reduction: Optional[str] = 'none') -> None:
+                 reduction: Optional[str] = 'none') -> None:
         super(DiceLoss, self).__init__()
-        self.smooth: float = smooth
         self.reduction: str = reduction
         self.eps: float = 1e-6
 
-
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            input: torch.Tensor,
+            target: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(input):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(input)))
@@ -85,24 +93,23 @@ class DiceLoss(nn.Module):
                                  device=input.device, dtype=input.dtype)
 
         # compute the actual dice score
-        numerator = torch.sum(input_soft * target_one_hot, dim=(1, 2, 3))
-        denominator = torch.sum(input_soft + target_one_hot, dim=(1, 2, 3))
+        intersection = torch.sum(input_soft * target_one_hot, dim=(1, 2, 3))
+        cardinality = torch.sum(input_soft + target_one_hot, dim=(1, 2, 3))
 
-        dice_score_tmp = (2. * numerator + self.smooth) / \
-                         (denominator + self.smooth + self.eps)
-        
+        dice_score_tmp = 2. * intersection / (cardinality + self.eps)
+
         # reducte loss
-        dice_score = -1                                                        
-        if self.reduction == 'none':                                           
-            dice_score = dice_score_tmp                                        
-        elif self.reduction == 'mean':                                         
-            dice_score = torch.mean(dice_score_tmp)                            
+        dice_score = -1
+        if self.reduction == 'none':
+            dice_score = dice_score_tmp
+        elif self.reduction == 'mean':
+            dice_score = torch.mean(dice_score_tmp)
         elif self.reduction == 'sum':
-            dice_score = torch.sum(dice_score_tmp)                             
-        else:                                                                  
+            dice_score = torch.sum(dice_score_tmp)
+        else:
             raise NotImplementedError("Invalid reduction type: {}."
-                                      .format(self.reduction))                 
-        return 1. - dice_score                                                 
+                                      .format(self.reduction))
+        return (1. - dice_score)
 
 
 ######################
@@ -110,7 +117,11 @@ class DiceLoss(nn.Module):
 ######################
 
 
-def dice_loss(input: torch.Tensor, target: torch.Tensor, smooth: Optional[float] = 1.0, reduction: Optional[str] = 'none') -> torch.Tensor:
+def dice_loss(
+        input: torch.Tensor,
+        target: torch.Tensor,
+        smooth: Optional[float] = 1.0,
+        reduction: Optional[str] = 'none') -> torch.Tensor:
     r"""Computes image-aware depth smoothness loss.
 
     See :class:`~torchgeometry.losses.DiceLoss` for details.
