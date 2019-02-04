@@ -107,7 +107,6 @@ class DepthWarper(nn.Module):
         xv = torch.ger(ones_x, x).view(area)
         yv = torch.ger(y, ones_y).view(area)
 
-        #grid = [xv, yv, ones, inv_depth_ref.view(area)]
         grid = torch.stack([xv, yv, ones], 0)
         batch_size = inv_depth_ref.shape[0]
         grid = grid.unsqueeze(0).expand(batch_size, -1, -1)
