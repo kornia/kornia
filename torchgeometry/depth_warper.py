@@ -29,11 +29,12 @@ class DepthWarper(nn.Module):
     def __init__(self, pinholes, width=None, height=None):
         super(DepthWarper, self).__init__()
         # TODO: add type and value checkings
-        self.width = width
-        self.height = height
+        self.width = width if width is None else torch.tensor(width)
+        self.height = height if height is None else torch.tensor(height)
         self._pinholes = pinholes
         self._i_Hs_ref = None  # to be filled later
         self._pinhole_ref = None  # to be filled later
+        self.eps = 1e-6
 
     def compute_homographies(self, pinhole, scale=None):
         if scale is None:
@@ -106,10 +107,11 @@ class DepthWarper(nn.Module):
         xv = torch.ger(ones_x, x).view(area)
         yv = torch.ger(y, ones_y).view(area)
 
-        grid = [xv, yv, ones, inv_depth_ref.view(area)]
-        grid = torch.stack(grid, 0)
+        #grid = [xv, yv, ones, inv_depth_ref.view(area)]
+        grid = torch.stack([xv, yv, ones], 0)
         batch_size = inv_depth_ref.shape[0]
         grid = grid.unsqueeze(0).expand(batch_size, -1, -1)
+        grid = torch.cat([grid, inv_depth_ref.view(batch_size, 1, -1)], 1)
 
         flow = torch.matmul(self._i_Hs_ref.to(device), grid)
         assert len(flow.shape) == 3, flow.shape
@@ -120,7 +122,7 @@ class DepthWarper(nn.Module):
         factor_y = (self.height - 1) / 2
         factor_y = factor_y.to(device)
 
-        z = 1. / flow[:, 2]  # Nx(H*W)
+        z = 1. / (flow[:, 2] + self.eps)  # Nx(H*W)
         x = (flow[:, 0] * z - factor_x) / factor_x
         y = (flow[:, 1] * z - factor_y) / factor_y
 
