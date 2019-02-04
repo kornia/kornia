@@ -6,7 +6,8 @@ import torch
 def one_hot(labels: torch.Tensor,
             num_classes: int,
             device: Optional[torch.device] = None,
-            dtype: Optional[torch.dtype] = None) -> torch.Tensor:
+            dtype: Optional[torch.dtype] = None,
+            eps: Optional[float] = 1e-6) -> torch.Tensor:
     r"""Converts an integer label 2D tensor to a one-hot 3D tensor.
 
     Args:
@@ -50,4 +51,4 @@ def one_hot(labels: torch.Tensor,
     batch_size, height, width = labels.shape
     one_hot = torch.zeros(batch_size, num_classes, height, width,
                           device=device, dtype=dtype)
-    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0)
+    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
