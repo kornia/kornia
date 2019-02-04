@@ -81,7 +81,7 @@ class FocalLoss(nn.Module):
                                  device=input.device, dtype=input.dtype)
 
         # compute the actual focal loss
-        prob = input_soft * target_one_hot
+        prob = input_soft * target_one_hot + self.eps
         focal = -torch.log(prob) * self.alpha * (1. - prob) ** self.gamma
         loss_tmp = 1. - torch.sum(focal, dim=1)
 
