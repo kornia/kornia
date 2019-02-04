@@ -8,8 +8,51 @@ import utils
 from common import TEST_DEVICES
 
 
-class TestDiceLoss:
-    def test_one_hot(self):
+class TestTverskyLoss:
+    def _test_smoke(self):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        criterion = tgm.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        loss = criterion(logits, labels)
+
+    def _test_all_zeros(self):
+        num_classes = 3
+        logits = torch.zeros(2, num_classes, 1, 2)
+        logits[:, 0] = 10.0
+        logits[:, 1] = 1.0
+        logits[:, 2] = 1.0
+        labels = torch.zeros(2, 1, 2, dtype=torch.int64)
+
+        criterion = tgm.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        loss = criterion(logits, labels)
+        assert pytest.approx(loss.item(), 0.0)
+
+    # TODO: implement me
+    def _test_jit(self):
+        pass
+
+    def _test_gradcheck(self):
+        num_classes = 3
+        alpha, beta = 0.5, 0.5  # for tversky loss
+        logits = torch.rand(2, num_classes, 3, 2)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.long()
+
+        logits = utils.tensor_to_gradcheck_var(logits)  # to var
+        assert gradcheck(tgm.losses.tversky_loss,
+                         (logits, labels, alpha, beta), raise_exception=True)
+
+    def test_run_all(self):
+        self._test_smoke()
+        self._test_all_zeros()
+        self._test_gradcheck()
+
+
+class TestOneHot:
+    def test_smoke(self):
         num_classes = 4
         labels = torch.zeros(2, 2, 1, dtype=torch.int64)
         labels[0, 0, 0] = 0
@@ -25,6 +68,8 @@ class TestDiceLoss:
         assert pytest.approx(one_hot[1, labels[1, 0, 0], 0, 0].item(), 1.0)
         assert pytest.approx(one_hot[1, labels[1, 1, 0], 1, 0].item(), 1.0)
 
+
+class TestDiceLoss:
     def _test_smoke(self):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2)
@@ -34,7 +79,6 @@ class TestDiceLoss:
         criterion = tgm.losses.DiceLoss()
         loss = criterion(logits, labels)
 
-    # TODO: implement me
     def _test_all_zeros(self):
         num_classes = 3
         logits = torch.zeros(2, num_classes, 1, 2)
