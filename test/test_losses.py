@@ -9,7 +9,7 @@ from common import TEST_DEVICES
 
 
 class TestDiceLoss:
-    def test_make_one_hot(self):
+    def test_one_hot(self):
         num_classes = 4
         labels = torch.zeros(2, 2, 1, dtype=torch.int64)
         labels[0, 0, 0] = 0
@@ -18,7 +18,7 @@ class TestDiceLoss:
         labels[1, 1, 0] = 3
 
         # convert labels to one hot tensor
-        one_hot = tgm.losses.DiceLoss.make_one_hot(labels, num_classes)
+        one_hot = tgm.losses.one_hot(labels, num_classes)
 
         assert pytest.approx(one_hot[0, labels[0, 0, 0], 0, 0].item(), 1.0)
         assert pytest.approx(one_hot[0, labels[0, 1, 0], 1, 0].item(), 1.0)
