@@ -31,7 +31,7 @@ class TestDiceLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        criterion = tgm.losses.DiceLoss(reduction='none')
+        criterion = tgm.losses.DiceLoss()
         loss = criterion(logits, labels)
 
     # TODO: implement me
@@ -43,7 +43,7 @@ class TestDiceLoss:
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, dtype=torch.int64)
 
-        criterion = tgm.losses.DiceLoss(reduction='mean')
+        criterion = tgm.losses.DiceLoss()
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 

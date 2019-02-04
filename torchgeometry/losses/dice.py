@@ -60,12 +60,40 @@ def one_hot(labels: torch.Tensor,
 
 class DiceLoss(nn.Module):
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
-    """
 
-    def __init__(self,
-                 reduction: Optional[str] = 'none') -> None:
+    According to [1], we compute the Sørensen-Dice Coefficient as follows:
+
+    .. math::
+
+        \text{Dice}(x, class) = \frac{2 |X| \cap |Y|}{|X| + |Y|}
+
+    where:
+       - :math:`X` expects to be the scores of each class.
+       - :math:`Y` expects to be the one-hot tensor with the class labels.
+
+    the loss, is finally computed as:
+
+    .. math::
+
+        \text{loss}(x, class) = 1 - \text{Dice}(x, class)
+
+    [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+
+    Shape:
+        - Input: :math:`(N, C, H, W)` where C = number of classes.
+        - Target: :math:`(N, H, W)` where each value is
+          :math:`0 ≤ targets[i] ≤ C−1`.
+
+    Examples:
+        >>> N = 5  # num_classes
+        >>> loss = tgm.losses.DiceLoss()
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = loss(input, target)
+        >>> output.backward()
+    """
+    def __init__(self) -> None:
         super(DiceLoss, self).__init__()
-        self.reduction: str = reduction
         self.eps: float = 1e-6
 
     def forward(
@@ -80,7 +108,7 @@ class DiceLoss(nn.Module):
                              .format(input.shape))
         if not input.shape[-2:] == target.shape[-2:]:
             raise ValueError("input and target shapes must be the same. Got: {}"
-                             .format(input.shape, shape.shape))
+                             .format(input.shape, input.shape))
         if not input.device == target.device:
             raise ValueError(
                 "input and target must be in the same device. Got: {}" .format(
@@ -96,20 +124,8 @@ class DiceLoss(nn.Module):
         intersection = torch.sum(input_soft * target_one_hot, dim=(1, 2, 3))
         cardinality = torch.sum(input_soft + target_one_hot, dim=(1, 2, 3))
 
-        dice_score_tmp = 2. * intersection / (cardinality + self.eps)
-
-        # reducte loss
-        dice_score = -1
-        if self.reduction == 'none':
-            dice_score = dice_score_tmp
-        elif self.reduction == 'mean':
-            dice_score = torch.mean(dice_score_tmp)
-        elif self.reduction == 'sum':
-            dice_score = torch.sum(dice_score_tmp)
-        else:
-            raise NotImplementedError("Invalid reduction type: {}."
-                                      .format(self.reduction))
-        return (1. - dice_score)
+        dice_score = 2. * intersection / (cardinality + self.eps)
+        return torch.mean(1. - dice_score)
 
 
 ######################
@@ -119,10 +135,8 @@ class DiceLoss(nn.Module):
 
 def dice_loss(
         input: torch.Tensor,
-        target: torch.Tensor,
-        smooth: Optional[float] = 1.0,
-        reduction: Optional[str] = 'none') -> torch.Tensor:
-    r"""Computes image-aware depth smoothness loss.
+        target: torch.Tensor) -> torch.Tensor:
+    r"""Function that computes Sørensen-Dice Coefficient loss.
 
     See :class:`~torchgeometry.losses.DiceLoss` for details.
     """
