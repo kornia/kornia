@@ -1,6 +1,7 @@
 torchgeometry/image/gaussian.py
 torchgeometry/losses/ssim.py
 torchgeometry/losses/dice.py
+torchgeometry/losses/focal.py
 torchgeometry/losses/tversky.py
 torchgeometry/losses/depth_smooth.py
 torchgeometry/homography_warper.py
