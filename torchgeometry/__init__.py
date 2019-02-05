@@ -5,6 +5,7 @@ from .conversions import *
 from .utils import *
 from .imgwarp import *
 from .transformations import *
+from .contrib import *
 
 from torchgeometry import image
 from torchgeometry import losses

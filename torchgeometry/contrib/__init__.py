@@ -1,0 +1,1 @@
+from .spatial_soft_argmax2d import SpatialSoftArgmax2d, spatial_soft_argmax2d
