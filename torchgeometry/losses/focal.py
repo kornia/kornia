@@ -74,16 +74,16 @@ class FocalLoss(nn.Module):
                 "input and target must be in the same device. Got: {}" .format(
                     input.device, target.device))
         # compute softmax over the classes axis
-        input_soft = F.softmax(input, dim=1)
+        input_soft = F.softmax(input, dim=1) + self.eps
 
         # create the labels one hot tensor
         target_one_hot = one_hot(target, num_classes=input.shape[1],
                                  device=input.device, dtype=input.dtype)
 
         # compute the actual focal loss
-        prob = input_soft * target_one_hot + self.eps
-        focal = -torch.log(prob) * self.alpha * (1. - prob) ** self.gamma
-        loss_tmp = torch.sum(focal, dim=1)
+        weight = torch.pow(1. - input_soft, self.gamma)
+        focal = -self.alpha * weight * torch.log(input_soft)
+        loss_tmp = torch.sum(target_one_hot * focal, dim=1)
 
         loss = -1
         if self.reduction == 'none':
