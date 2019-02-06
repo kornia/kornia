@@ -72,4 +72,4 @@ class TestIntegrationFocalLoss:
         #              the algorithm.
         val = F.mse_loss(output_argmax.float(), target.float())
         if not val.item() < self.thresh:
-             pytest.xfail("Wrong seed or initial weight values.")
+            pytest.xfail("Wrong seed or initial weight values.")
