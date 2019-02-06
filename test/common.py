@@ -22,6 +22,5 @@ TEST_DEVICES = get_test_devices()
 
 @pytest.fixture()
 def device_type(request):
-    print("Executing device type")
     typ = request.config.getoption('--typetest')
     return typ
