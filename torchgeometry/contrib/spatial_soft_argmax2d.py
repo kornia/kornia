@@ -5,12 +5,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-@torch.jit.script
-def create_meshgrid(x):
-    pos_y, pos_x = torch.meshgrid(
-        torch.linspace(-1.0, 1.0, x.size(2), device=x.device, dtype=x.dtype),
-        torch.linspace(-1.0, 1.0, x.size(3), device=x.device, dtype=x.dtype))
-    return pos_y, pos_x
+def create_meshgrid(
+        x: torch.Tensor,
+        normalized_coordinates: Optional[bool]) -> torch.Tensor:
+    assert len(x.shape) == 4, x.shape
+    _, _, height, width = x.shape
+    _device, _dtype = x.device, x.dtype
+    if normalized_coordinates:
+        xs = torch.linspace(-1.0, 1.0, width, device=_device, dtype=_dtype)
+        ys = torch.linspace(-1.0, 1.0, height, device=_device, dtype=_dtype)
+    else:
+        xs = torch.linspace(0, width - 1, width, device=_device, dtype=_dtype)
+        ys = torch.linspace(0, height - 1, height, device=_device, dtype=_dtype)
+    return torch.meshgrid(ys, xs)  # pos_y, pos_x
 
 
 class SpatialSoftArgmax2d(nn.Module):
@@ -19,6 +26,12 @@ class SpatialSoftArgmax2d(nn.Module):
 
     Returns the index of the maximum 2d coordinates of the give map.
     The output order is x-coord and y-coord.
+
+    Arguments:
+        normalized_coordinates (Optional[bool]): wether to return the
+          coordinates normalized in the range of [-1, 1]. Otherwise,
+          it will return the coordinates in the range of the input shape.
+          Default is True.
 
     Shape:
         - Input: :math:`(B, N, H, W)`
@@ -31,8 +44,9 @@ class SpatialSoftArgmax2d(nn.Module):
         >>> x_coord, y_coord = torch.chunk(coords, dim=-1, chunks=2)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, normalized_coordinates: Optional[bool] = True) -> None:
         super(SpatialSoftArgmax2d, self).__init__()
+        self.normalized_coordinates: Optional[bool] = normalized_coordinates
         self.eps: float = 1e-6
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -51,7 +65,7 @@ class SpatialSoftArgmax2d(nn.Module):
         exp_x_sum = 1.0 / (exp_x.sum(dim=-1, keepdim=True) + self.eps)
 
         # create coordinates grid
-        pos_y, pos_x = create_meshgrid(input)
+        pos_y, pos_x = create_meshgrid(input, self.normalized_coordinates)
         pos_x = pos_x.reshape(-1)
         pos_y = pos_y.reshape(-1)
 
@@ -69,9 +83,11 @@ class SpatialSoftArgmax2d(nn.Module):
 ######################
 
 
-def spatial_soft_argmax2d(input: torch.Tensor) -> torch.Tensor:
+def spatial_soft_argmax2d(
+        input: torch.Tensor,
+        normalized_coordinates: Optional[bool] = True) -> torch.Tensor:
     r"""Function that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
     See :class:`torchgeometry.contrib.SpatialSoftArgmax2d` for details.
     """
-    return SpatialSoftArgmax2d()(input)
+    return SpatialSoftArgmax2d(normalized_coordinates)(input)

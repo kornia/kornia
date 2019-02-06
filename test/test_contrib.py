@@ -17,16 +17,32 @@ class TestSoftArgmax2d:
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
-        coord = tgm.contrib.spatial_soft_argmax2d(input)
+        coord = tgm.contrib.spatial_soft_argmax2d(input, True)
         assert pytest.approx(coord[..., 0].item(), -1.0)
         assert pytest.approx(coord[..., 1].item(), -1.0)
+
+    def _test_top_left_normalized(self):
+        input = torch.zeros(1, 1, 2, 3)
+        input[..., 0, 0] = 10.
+
+        coord = tgm.contrib.spatial_soft_argmax2d(input, False)
+        assert pytest.approx(coord[..., 0].item(), 0.0)
+        assert pytest.approx(coord[..., 1].item(), 0.0)
 
     def _test_bottom_right(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., -1, 1] = 10.
 
-        coord = tgm.contrib.spatial_soft_argmax2d(input)
+        coord = tgm.contrib.spatial_soft_argmax2d(input, True)
         assert pytest.approx(coord[..., 0].item(), 1.0)
+        assert pytest.approx(coord[..., 1].item(), 1.0)
+
+    def _test_bottom_right_normalized(self):
+        input = torch.zeros(1, 1, 2, 3)
+        input[..., -1, 1] = 10.
+
+        coord = tgm.contrib.spatial_soft_argmax2d(input, False)
+        assert pytest.approx(coord[..., 0].item(), 2.0)
         assert pytest.approx(coord[..., 1].item(), 1.0)
 
     def _test_batch2_n2(self):
@@ -59,6 +75,8 @@ class TestSoftArgmax2d:
     def test_run_all(self):
         self._test_smoke()
         self._test_top_left()
+        self._test_top_left_normalized()
         self._test_bottom_right()
+        self._test_bottom_right_normalized()
         self._test_batch2_n2()
         self._test_gradcheck()
