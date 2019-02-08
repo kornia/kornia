@@ -11,7 +11,7 @@ import utils  # test utils
                          [(4, 4), (1, 4, 4), (3, 4, 4), ])
 def test_tensor_to_image(batch_shape):
     tensor = torch.ones(batch_shape)
-    image = tgm.tensor_to_image(tensor)
+    image = tgm.utils.tensor_to_image(tensor)
     assert image.shape[:2] == batch_shape[-2:]
     assert isinstance(image, np.ndarray)
 
@@ -20,7 +20,7 @@ def test_tensor_to_image(batch_shape):
                          [(4, 4), (4, 4, 1), (4, 4, 3), ])
 def test_image_to_tensor(batch_shape):
     image = np.ones(batch_shape)
-    tensor = tgm.image_to_tensor(image)
+    tensor = tgm.utils.image_to_tensor(image)
     assert tensor.shape[-2:] == batch_shape[:2]
     assert isinstance(tensor, torch.Tensor)
 
@@ -30,7 +30,8 @@ def test_create_meshgrid():
     normalized_coordinates = False
 
     # create the meshgrid and verify shape
-    grid = tgm.create_meshgrid(height, width, normalized_coordinates)
+    grid = tgm.utils.create_meshgrid(
+        height, width, normalized_coordinates)
     assert grid.shape == (1, height, width, 2)
 
     # check grid corner values
@@ -45,11 +46,11 @@ def test_normalize_pixel_grid():
     height, width = 2, 4
 
     # create points grid
-    grid_norm = tgm.create_meshgrid(height, width,
-                                    normalized_coordinates=True)
+    grid_norm = tgm.utils.create_meshgrid(
+        height, width, normalized_coordinates=True)
     grid_norm = torch.unsqueeze(grid_norm, dim=0)
-    grid_pix = tgm.create_meshgrid(height, width,
-                                   normalized_coordinates=False)
+    grid_pix = tgm.utils.create_meshgrid(
+        height, width, normalized_coordinates=False)
     grid_pix = torch.unsqueeze(grid_pix, dim=0)
 
     # grid from pixel space to normalized
