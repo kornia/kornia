@@ -13,7 +13,7 @@ class TestExtractTensorPatches:
         m = tgm.contrib.ExtractTensorPatches(3)
         assert m(input).shape == (1, 4, 1, 3, 3)
 
-    def _test_b1_ch1_h4w4_ws3_4n(self):
+    def _test_b1_ch1_h4w4_ws3(self):
         input = torch.arange(16.).view(1, 1, 4, 4)
         m = tgm.contrib.ExtractTensorPatches(3)
         patches = m(input)
@@ -23,7 +23,7 @@ class TestExtractTensorPatches:
         assert utils.check_equal_torch(input[0, :, 1:, :3], patches[0, 2])
         assert utils.check_equal_torch(input[0, :, 1:, 1:], patches[0, 3])
 
-    def _test_b1_ch2_h4w4_ws3_4n(self):
+    def _test_b1_ch2_h4w4_ws3(self):
         input = torch.arange(16.).view(1, 1, 4, 4)
         input = input.expand(-1, 2, -1, -1)  # copy all channels
         m = tgm.contrib.ExtractTensorPatches(3)
@@ -34,20 +34,15 @@ class TestExtractTensorPatches:
         assert utils.check_equal_torch(input[0, :, 1:, :3], patches[0, 2])
         assert utils.check_equal_torch(input[0, :, 1:, 1:], patches[0, 3])
 
-    def _test_b1_ch1_h4w4_ws2_4n(self):
+    def _test_b1_ch1_h4w4_ws2(self):
         input = torch.arange(16.).view(1, 1, 4, 4)
         m = tgm.contrib.ExtractTensorPatches(2)
         patches = m(input)
         assert patches.shape == (1, 9, 1, 2, 2)
-        assert utils.check_equal_torch(input[0, :, 0:2, 0:2], patches[0, 0])
         assert utils.check_equal_torch(input[0, :, 0:2, 1:3], patches[0, 1])
         assert utils.check_equal_torch(input[0, :, 0:2, 2:4], patches[0, 2])
-        assert utils.check_equal_torch(input[0, :, 1:3, 0:2], patches[0, 3])
         assert utils.check_equal_torch(input[0, :, 1:3, 1:3], patches[0, 4])
-        assert utils.check_equal_torch(input[0, :, 1:3, 2:4], patches[0, 5])
-        assert utils.check_equal_torch(input[0, :, 2:4, 0:2], patches[0, 6])
         assert utils.check_equal_torch(input[0, :, 2:4, 1:3], patches[0, 7])
-        assert utils.check_equal_torch(input[0, :, 2:4, 2:4], patches[0, 8])
 
     def _test_b1_ch1_h4w4_ws2_stride2(self):
         input = torch.arange(16.).view(1, 1, 4, 4)
@@ -64,11 +59,9 @@ class TestExtractTensorPatches:
         m = tgm.contrib.ExtractTensorPatches(2, stride=(2, 1))
         patches = m(input)
         assert patches.shape == (1, 6, 1, 2, 2)
-        assert utils.check_equal_torch(input[0, :, 0:2, 0:2], patches[0, 0])
         assert utils.check_equal_torch(input[0, :, 0:2, 1:3], patches[0, 1])
         assert utils.check_equal_torch(input[0, :, 0:2, 2:4], patches[0, 2])
         assert utils.check_equal_torch(input[0, :, 2:4, 0:2], patches[0, 3])
-        assert utils.check_equal_torch(input[0, :, 2:4, 1:3], patches[0, 4])
         assert utils.check_equal_torch(input[0, :, 2:4, 2:4], patches[0, 5])
 
     def _test_b1_ch1_h3w3_ws2_stride1_padding1(self):
@@ -95,6 +88,14 @@ class TestExtractTensorPatches:
             assert utils.check_equal_torch(
                 input[i, :, 1:3, 1:3], patches[i, 10])
 
+    def _test_b1_ch1_h3w3_ws23(self):
+        input = torch.arange(9.).view(1, 1, 3, 3)
+        m = tgm.contrib.ExtractTensorPatches((2, 3))
+        patches = m(input)
+        assert patches.shape == (1, 2, 1, 2, 3)
+        assert utils.check_equal_torch(input[0, :, 0:2, 0:3], patches[0, 0])
+        assert utils.check_equal_torch(input[0, :, 1:3, 0:3], patches[0, 1])
+
     # TODO: implement me
     def _test_jit(self):
         pass
@@ -107,9 +108,10 @@ class TestExtractTensorPatches:
 
     def test_run_all(self):
         self._test_smoke()
-        self._test_b1_ch1_h4w4_ws3_4n()
-        self._test_b1_ch2_h4w4_ws3_4n()
-        self._test_b1_ch1_h4w4_ws2_4n()
+        self._test_b1_ch1_h4w4_ws3()
+        self._test_b1_ch2_h4w4_ws3()
+        self._test_b1_ch1_h4w4_ws2()
+        self._test_b1_ch1_h3w3_ws23()
         self._test_b1_ch1_h4w4_ws2_stride2()
         self._test_b1_ch1_h4w4_ws2_stride21()
         self._test_b1_ch1_h3w3_ws2_stride1_padding1()
