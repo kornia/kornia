@@ -96,6 +96,16 @@ class TestExtractTensorPatches:
         assert utils.check_equal_torch(input[0, :, 0:2, 0:3], patches[0, 0])
         assert utils.check_equal_torch(input[0, :, 1:3, 0:3], patches[0, 1])
 
+    def _test_b1_ch1_h3w4_ws23(self):
+        input = torch.arange(12.).view(1, 1, 3, 4)
+        m = tgm.contrib.ExtractTensorPatches((2, 3))
+        patches = m(input)
+        assert patches.shape == (1, 4, 1, 2, 3)
+        assert utils.check_equal_torch(input[0, :, 0:2, 0:3], patches[0, 0])
+        assert utils.check_equal_torch(input[0, :, 0:2, 1:4], patches[0, 1])
+        assert utils.check_equal_torch(input[0, :, 1:3, 0:3], patches[0, 2])
+        assert utils.check_equal_torch(input[0, :, 1:3, 1:4], patches[0, 3])
+
     # TODO: implement me
     def _test_jit(self):
         pass
@@ -112,6 +122,7 @@ class TestExtractTensorPatches:
         self._test_b1_ch2_h4w4_ws3()
         self._test_b1_ch1_h4w4_ws2()
         self._test_b1_ch1_h3w3_ws23()
+        self._test_b1_ch1_h3w4_ws23()
         self._test_b1_ch1_h4w4_ws2_stride2()
         self._test_b1_ch1_h4w4_ws2_stride21()
         self._test_b1_ch1_h3w3_ws2_stride1_padding1()
