@@ -1,8 +1,10 @@
-from typing import Optional
+from typing import Optional, Union, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from torch.nn.modules.utils import _pair
 
 
 class ExtractTensorPatches(nn.Module):
@@ -11,25 +13,30 @@ class ExtractTensorPatches(nn.Module):
 
     def __init__(
             self,
-            window_size: int,
-            stride: int = 1,
-            padding: int = 0) -> None:
+            window_size: Union[int, Tuple[int, int]],
+            stride: Optional[Union[int, Tuple[int, int]]] = 1,
+            padding: Optional[Union[int, Tuple[int, int]]] = 0) -> None:
         super(ExtractTensorPatches, self).__init__()
-        self.window_size: int = window_size
-        self.stride: int = stride
-        self.padding: int = padding
+        self.window_size: Tuple[int, int] = _pair(window_size)
+        self.stride: Tuple[int, int] = _pair(stride)
+        self.padding: Tuple[int, int] = _pair(padding)
         self.eps: float = 1e-6
 
         # create base kernel
         self.kernel: torch.Tensor = self.create_kernel(self.window_size)
 
     @staticmethod
-    def create_kernel(window_size: int, eps: float = 1e-6) -> torch.Tensor:
-        window_range = window_size * window_size
-        kernel = torch.zeros(window_range, window_range) + eps
+    def create_kernel(
+            window_size: Tuple[int, int],
+            eps: float = 1e-6) -> torch.Tensor:
+        r"""Creates a binary kernel to extract the patches. If the window size
+        is HxW will create a (H*W)xHxW kernel.
+        """
+        window_range: int = window_size[0] * window_size[1]
+        kernel: torch.Tensor = torch.zeros(window_range, window_range) + eps
         for i in range(window_range):
             kernel[i, i] += 1.0
-        return kernel.view(window_range, 1, window_size, window_size)
+        return kernel.view(window_range, 1, window_size[0], window_size[1])
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(input):
@@ -53,7 +60,7 @@ class ExtractTensorPatches(nn.Module):
 
         # reshape the output tensor
         output: torch.Tensor = output_tmp.view(
-            batch_size, channels, self.window_size, self.window_size, -1)
+            batch_size, channels, self.window_size[0], self.window_size[1], -1)
         return output.permute(0, 4, 1, 2, 3)  # BxNxCxhxw
 
 
@@ -64,7 +71,9 @@ class ExtractTensorPatches(nn.Module):
 
 def extract_tensor_patches(
         input: torch.Tensor,
-        window_size: int, stride: int = 1, padding: int = 0) -> torch.Tensor:
+        window_size: Union[int, Tuple[int, int]],
+        stride: Optional[Union[int, Tuple[int, int]]] = 1,
+        padding: Optional[Union[int, Tuple[int, int]]] = 0) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 
     See :class:`~torchgeometry.contrib.ExtractTensorPatches` for details.
