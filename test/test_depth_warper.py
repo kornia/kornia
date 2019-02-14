@@ -5,146 +5,149 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
+from torchgeometry.core.depth_warper import PinholeCamera
+from torchgeometry.core.depth_warper import normalize_pixel_coordinates
 
 
 class TestDepthWarper:
     eps = 1e-6
 
+    def _test_compute_projection_matrix(self):
+        # prepare data
+        batch_size, height, width = 1, 3, 5
+        fx, fy = 1., 1.
+        cx, cy = width / 2, height / 2
+        tx, ty, tz = 0, 0, 0
+
+        # create pinhole cameras
+        pinhole_src = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz)
+        pinhole_dst = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx + 1., ty, tz)
+
+        # create warper
+        warper = tgm.DepthWarper(None, height, width, pinhole_dst)
+        assert warper._dst_proj_src is None
+
+        # initialize projection matrices
+        warper.compute_projection_matrix(pinhole_src)
+        assert warper._dst_proj_src is not None
+
+        # retreive computed projection matrix and compare to expected
+        dst_proj_src = warper._dst_proj_src
+        dst_proj_src_expected = torch.eye(4)[None]  # Bx4x4
+        dst_proj_src_expected[..., 0, -2] += cx
+        dst_proj_src_expected[..., 1, -2] += cy
+        dst_proj_src_expected[..., 0, -1] += 1.  # offset to x-axis
+        assert utils.check_equal_torch(dst_proj_src, dst_proj_src_expected)
+
     def _test_warp_grid_offset_x1_depth1(self):
-        batch_size, channels, height, width = 1, 3, 3, 4
-        depth = torch.ones(batch_size, 1, height, width)
-        inv_depth = 1. / (depth + self.eps)
+        # prepare data
+        batch_size, height, width = 1, 3, 5
+        fx, fy = 1., 1.
+        cx, cy = width / 2, height / 2
+        tx, ty, tz = 0, 0, 0
 
-        i_trans_ref = torch.eye(4)[None] + self.eps   # 1x4x4
-        i_trans_ref[..., 0, -1] += 1.
+        # create pinhole cameras
+        pinhole_src = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz)
+        pinhole_dst = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx + 1., ty, tz)
 
-        warper = tgm.DepthWarper(None, height, width,
-            normalized_coordinates=False)
-        warper._i_Hs_ref = i_trans_ref
+        # initialize depth to one
+        depth_src = torch.ones(batch_size, 1, height, width)
 
-        grid = warper.grid
-        grid_warped = warper.warp_grid(inv_depth)
+        # create warper, initialize projection matrices and warp grid
+        warper = tgm.DepthWarper(None, height, width, pinhole_dst)
+        warper.compute_projection_matrix(pinhole_src)
+        grid_warped = warper.warp_grid(depth_src)
 
-        assert utils.check_equal_torch(grid[..., 1], grid_warped[..., 1])
+        # normalize base meshgrid
+        grid = warper.grid[..., :2]
+        grid_norm = normalize_pixel_coordinates(grid, height, width)
+
+        # check offset in x-axis
         assert utils.check_equal_torch(
-            grid[..., 1:4, 0], grid_warped[..., 0:3, 0])
-
-    def _test_warp_grid_offset_x1_depth2(self):
-        depth_val = 2.0
-        batch_size, channels, height, width = 1, 3, 3, 4
-        depth = torch.ones(batch_size, 1, height, width) * depth_val
-        inv_depth = 1. / (depth + self.eps)
-
-        i_trans_ref = torch.eye(4)[None] + self.eps   # 1x4x4
-        i_trans_ref[..., 0, -1] += 1.
-
-        warper = tgm.DepthWarper(None, height, width,
-            normalized_coordinates=False)
-        warper._i_Hs_ref = i_trans_ref
-
-        grid = warper.grid
-        grid_warped = warper.warp_grid(inv_depth)
-
+            grid_norm[..., -1, 0], grid_warped[..., -2, 0])
+        # check that y-axis remain the same
         assert utils.check_equal_torch(
-            grid[..., 1], grid_warped[..., 1] / depth_val)
-        assert utils.check_equal_torch(
-            grid[..., 1:4, 0], grid_warped[..., 0:3, 0] / depth_val)
+            grid_norm[..., -1, 1], grid_warped[..., -1, 1])
 
     def _test_warp_grid_offset_x1y1_depth1(self):
-        depth_val = 1.0
-        batch_size, channels, height, width = 1, 3, 3, 4
-        depth = torch.ones(batch_size, 1, height, width) * depth_val
-        inv_depth = 1. / (depth + self.eps)
-
-        i_trans_ref = torch.eye(4)[None] + self.eps   # 1x4x4
-        i_trans_ref[..., 0, -1] += 1.
-        i_trans_ref[..., 1, -1] += 1.
-
-        warper = tgm.DepthWarper(None, height, width,
-            normalized_coordinates=False)
-        warper._i_Hs_ref = i_trans_ref
-
-        grid = warper.grid
-        grid_warped = warper.warp_grid(inv_depth)
-
-        assert utils.check_equal_torch(
-                grid[..., 1:3, :, 1], grid_warped[..., 0:2, :, 1] / depth_val)
-        assert utils.check_equal_torch(
-            grid[..., 1:4, 0], grid_warped[..., 0:3, 0] / depth_val)
-
-    def _test_depth_warper_offset(self):
-        # generate input data
-        batch_size = 1
-        height, width = 4, 5
-        cx, cy = width / 2, height / 2
+        # prepare data
+        batch_size, height, width = 1, 3, 5
         fx, fy = 1., 1.
-        rx, ry, rz = 0., 0., 0.
-        tx, ty, tz = 0., 0., 0.
-        offset = 1.  # we will apply a 1unit offset to `i` camera
-    
-        pinhole_ref = utils.create_pinhole(
-            fx, fy, cx, cy, height, width, rx, ry, rx, tx, ty, tz)
-        pinhole_ref = pinhole_ref.expand(batch_size, -1)
-    
-        pinhole_i = utils.create_pinhole(
-            fx,
-            fy,
-            cx,
-            cy,
-            height,
-            width,
-            rx,
-            ry,
-            rx,
-            tx + offset,
-            ty + offset,
-            tz)
-        pinhole_i = pinhole_i.expand(batch_size, -1)
-    
-        # create checkerboard
-        #board = utils.create_checkerboard(height, width, 4)
-        #patch_i = torch.from_numpy(board).view(
-        #    1, 1, height, width).expand(batch_size, 1, height, width)
-        patch_i = torch.arange(float(height * width)).view(
-            batch_size, 1, height, width).expand(batch_size, -1, -1, -1)
-    
-        # instantiate warper and compute relative homographies
-        warper = tgm.DepthWarper(pinhole_i)
-        warper.compute_homographies(
-            pinhole_ref, scale=torch.ones(
-                batch_size))
-    
-        # generate synthetic inverse depth
-        inv_depth_ref = torch.ones(batch_size, 1, height, width)
-        #inv_depth_ref[..., 1:-1, 1:-1] = 2.
-    
-        # warpd source patch by depth
-        patch_ref = warper(inv_depth_ref, patch_i)
-        import pdb;pdb.set_trace()
-    
-        # compute error
+        cx, cy = width / 2, height / 2
+        tx, ty, tz = 0, 0, 0
+
+        # create pinhole cameras
+        pinhole_src = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz)
+        pinhole_dst = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx + 1., ty + 1., tz)
+
+        # initialize depth to one
+        depth_src = torch.ones(batch_size, 1, height, width)
+
+        # create warper, initialize projection matrices and warp grid
+        warper = tgm.DepthWarper(None, height, width, pinhole_dst)
+        warper.compute_projection_matrix(pinhole_src)
+        grid_warped = warper.warp_grid(depth_src)
+
+        # normalize base meshgrid
+        grid = warper.grid[..., :2]
+        grid_norm = normalize_pixel_coordinates(grid, height, width)
+
+        # check offset in x-axis
         assert utils.check_equal_torch(
-            patch_ref[..., :int(height - offset), :int(width - offset)],
-            patch_i[..., int(offset):, int(offset):])
-    
-        # test functional
-        patch_ref_functional = tgm.depth_warp(pinhole_i, pinhole_ref,
-                                              inv_depth_ref, patch_i)
-        assert utils.check_equal_torch(patch_ref, patch_ref_functional)
-    
+            grid_norm[..., -1, 0], grid_warped[..., -2, 0])
+        # check that y-axis remain the same
+        assert utils.check_equal_torch(
+            grid_norm[..., -1, :, 1], grid_warped[..., -2, :, 1])
+
+    def _test_depth_warper_offset_tensor(self):
+        # prepare data
+        batch_size, channels, height, width = 1, 3, 3, 5
+        fx, fy = 1., 1.
+        cx, cy = width / 2, height / 2
+        tx, ty, tz = 0, 0, 0
+
+        # create pinhole cameras
+        pinhole_src = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx, ty, tz)
+        pinhole_dst = PinholeCamera.from_parameters(
+            fx, fy, cx, cy, height, width, tx + 1., ty + 1., tz)
+
+        # initialize depth to one
+        depth_src = torch.ones(batch_size, 1, height, width)
+
+        # create warper, initialize projection matrices and warp grid
+        warper = tgm.DepthWarper(None, height, width, pinhole_dst)
+        warper.compute_projection_matrix(pinhole_src)
+
+        # create patch to warp
+        patch_dst = torch.arange(float(height * width)).view(
+            batch_size, 1, height, width).expand(batch_size, channels, -1, -1)
+
+        # warpd source patch by depth
+        patch_src = warper(depth_src, patch_dst)
+
+        # compare patches
+        assert utils.check_equal_torch(
+            patch_dst[..., 1:, 1:], patch_src[..., :2, :4])
+
         # test compute_projection
         # TODO: this might need a better test
         xy_projected = warper._compute_projection(0.0, 0.0, 1.0)
         assert xy_projected.shape == (1, 2)
-    
+
         # test compute_subpixel_step
         # TODO: this might need a better test
         subpixel_step = warper.compute_subpixel_step()
         assert pytest.approx(subpixel_step.item(), 0.3536)
 
     def test_run_all(self):
+        self._test_compute_projection_matrix()
         self._test_warp_grid_offset_x1_depth1()
-        self._test_warp_grid_offset_x1_depth2()
         self._test_warp_grid_offset_x1y1_depth1()
-        #self._test_depth_warper_offset()
-
+        self._test_depth_warper_offset_tensor()
