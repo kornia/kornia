@@ -9,6 +9,7 @@ from torchgeometry.core.conversions import transform_points
 from torchgeometry.core.conversions import convert_points_to_homogeneous
 from torchgeometry.core.transformations import relative_pose
 # NOTE: remove later
+from torchgeometry.core.pinhole import PinholeCamera
 from torchgeometry.core.pinhole import scale_pinhole, homography_i_H_ref
 
 
@@ -76,10 +77,10 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor,
                          "Bx1xHxW. Got {}".format(depth.shape))
     if not len(intrinsics_inv.shape) == 3:
         raise ValueError("Input intrinsics_inv has to be in the shape of "
-                         "Bx4x4. Got {}".format(intrincsics_inv.shape))
+                         "Bx4x4. Got {}".format(intrinsics_inv.shape))
     if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
         raise ValueError("Input pixel_coords has to be in the shape of "
-                         "BxHxWx3. Got {}".format(intrincsics_inv.shape))
+                         "BxHxWx3. Got {}".format(intrinsics_inv.shape))
     cam_coords: torch.Tensor = transform_points(intrinsics_inv, pixel_coords)
     return cam_coords * depth.permute(0, 2, 3, 1)
 
@@ -104,7 +105,7 @@ def cam2pixel(
     """
     if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
         raise ValueError("Input cam_coords_src has to be in the shape of "
-                         "BxHxWx3. Got {}".format(depth.shape))
+                         "BxHxWx3. Got {}".format(cam_coords_src.shape))
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
         raise ValueError("Input dst_proj_src has to be in the shape of "
                          "Bx4x4. Got {}".format(dst_proj_src.shape))
@@ -122,34 +123,6 @@ def cam2pixel(
     # stack and return the coordinates, that's the actual flow
     pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
     return pixel_coords_dst  # BxHxWx2
-
-
-class PinholeCamera:
-    # TODO: add more documentation
-    def __init__(self, intrinsics, extrinsics):
-        self.intrinsics = intrinsics
-        self.extrinsics = extrinsics
-
-    def intrinsics_inverse(self):
-        return self.intrinsics.inverse()
-
-    # NOTE: just for test. Decide if we keep it.
-    @classmethod
-    def from_parameters(self, fx, fy, cx, cy, height, width, tx, ty, tz):
-        # create the camera matrix
-        intrinsics = torch.zeros(1, 4, 4)
-        intrinsics[..., 0, 0] += fx
-        intrinsics[..., 1, 1] += fy
-        intrinsics[..., 0, 2] += cx
-        intrinsics[..., 1, 2] += cy
-        intrinsics[..., 2, 2] += 1.0
-        intrinsics[..., 3, 3] += 1.0
-        # create the pose matrix
-        extrinsics = torch.eye(4)[None]
-        extrinsics[..., 0, -1] += tx
-        extrinsics[..., 1, -1] += ty
-        extrinsics[..., 2, -1] += tz
-        return self(intrinsics, extrinsics)
 
 
 class DepthWarper(nn.Module):
@@ -286,7 +259,7 @@ class DepthWarper(nn.Module):
 
         if len(depth_src.shape) != 4:
             raise ValueError("Input depth_src has to be in the shape of"
-                             "Bx1xHxW. Got {}".format(inv_depth_ref.shape))
+                             "Bx1xHxW. Got {}".format(depth_src.shape))
 
         # unpack depth attributes
         batch_size, _, height, width = depth_src.shape

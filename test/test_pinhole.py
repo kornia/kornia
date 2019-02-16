@@ -8,6 +8,75 @@ import utils  # test utilities
 from common import TEST_DEVICES
 
 
+class TestPinholeCamera:
+    def _create_intrinsics(self, batch_size, fx, fy, cx, cy):
+        intrinsics = torch.eye(4).expand(batch_size, -1, -1)
+        intrinsics[..., 0, 0] = fx
+        intrinsics[..., 1, 1] = fy
+        intrinsics[..., 0, 2] = cx
+        intrinsics[..., 1, 2] = cy
+        return intrinsics
+
+    def _create_extrinsics(self, batch_size, tx, ty, tz):
+        extrinsics = torch.eye(4).expand(batch_size, -1, -1)
+        extrinsics[..., 0, -1] = tx
+        extrinsics[..., 1, -1] = ty
+        extrinsics[..., 2, -1] = tz
+        return extrinsics
+
+    def test_smoke(self):
+        dummy_intrinsics = torch.eye(4)[None]
+        dummy_extrinsics = torch.eye(4)[None]
+        pinhole = tgm.PinholeCamera(dummy_intrinsics, dummy_extrinsics)
+        assert isinstance(pinhole, tgm.PinholeCamera)
+
+    def test_pinhole_camera_attributes(self):
+        batch_size = 1
+        fx, fy, cx, cy = 1, 2, 3, 4
+        tx, ty, tz = 1, 2, 3
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
+        pinhole = tgm.PinholeCamera(intrinsics, extrinsics)
+
+        assert pinhole.batch_size == batch_size
+        assert pinhole.fx.item() == fx
+        assert pinhole.fy.item() == fy
+        assert pinhole.cx.item() == cx
+        assert pinhole.cy.item() == cy
+        assert pinhole.tx.item() == tx
+        assert pinhole.ty.item() == ty
+        assert pinhole.tz.item() == tz
+        assert pinhole.rt_matrix.shape == (batch_size, 3, 4)
+        assert pinhole.camera_matrix.shape == (batch_size, 3, 3)
+        assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
+        assert pinhole.translation_vector.shape == (batch_size, 3, 1)
+
+    def test_pinhole_camera_list_attributes(self):
+        batch_size = 1
+        fx, fy, cx, cy = 1, 2, 3, 4
+        tx, ty, tz = 1, 2, 3
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
+
+        pinhole_1 = tgm.PinholeCamera(intrinsics, extrinsics)
+        pinhole_2 = pinhole_1.clone()
+        pinholes_list = [pinhole_1, pinhole_2]
+        pinholes = tgm.PinholeCamerasList(pinholes_list)
+
+        assert pinholes.batch_size == batch_size
+        assert torch.allclose(pinholes.fx, torch.ones(1, 2) * fx)
+        assert torch.allclose(pinholes.fy, torch.ones(1, 2) * fy)
+        assert torch.allclose(pinholes.cx, torch.ones(1, 2) * cx)
+        assert torch.allclose(pinholes.cy, torch.ones(1, 2) * cy)
+        assert torch.allclose(pinholes.tx, torch.ones(1, 2) * tx)
+        assert torch.allclose(pinholes.ty, torch.ones(1, 2) * ty)
+        assert torch.allclose(pinholes.tz, torch.ones(1, 2) * tz)
+        assert pinholes.rt_matrix.shape == (batch_size, 2, 3, 4)
+        assert pinholes.camera_matrix.shape == (batch_size, 2, 3, 3)
+        assert pinholes.rotation_matrix.shape == (batch_size, 2, 3, 3)
+        assert pinholes.translation_vector.shape == (batch_size, 2, 3, 1)
+
+
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_scale_pinhole(batch_size, device_type):
