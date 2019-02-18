@@ -210,8 +210,8 @@ class PinholeCamera:
 
     def clone(self) -> 'PinholeCamera':
         r"""Returns a deep copy of the current object instance."""
-        height: torch.Tensor = self.height
-        width: torch.Tensor = self.width
+        height: torch.Tensor = self.height.clone()
+        width: torch.Tensor = self.width.clone()
         intrinsics: torch.Tensor = self.intrinsics.clone()
         extrinsics: torch.Tensor = self.extrinsics.clone()
         return PinholeCamera(intrinsics, extrinsics, height, width)
@@ -223,6 +223,49 @@ class PinholeCamera:
             torch.Tensor: tensor of shape :math:`(B, 4, 4)`
         """
         return self.intrinsics.inverse()
+
+    def scale(self, scale_factor) -> 'PinholeCamera':
+        r"""Scales the pinhole model.
+
+        Args:
+            scale_factor (torch.Tensor): a tensor with the scale factor. It has
+              to be broadcastable with class members. The expected shape is
+              :math:`(B)` or :math:`(1)`.
+
+        Returns:
+            PinholeCamera: the camera model with scaled parameters.
+        """
+        # scale the intrinsic parameters
+        intrinsics: torch.Tensor = self.intrinsics.clone()
+        intrinsics[..., 0, 0] *= scale_factor
+        intrinsics[..., 1, 1] *= scale_factor
+        intrinsics[..., 0, 2] *= scale_factor
+        intrinsics[..., 1, 2] *= scale_factor
+        # scale the image height/width
+        height: torch.Tensor = scale_factor * self.height.clone()
+        width: torch.Tensor = scale_factor * self.width.clone()
+        return PinholeCamera(intrinsics, self.extrinsics, height, width)
+
+    def scale_(self, scale_factor) -> 'PinholeCamera':
+        r"""Scales the pinhole model in-place.
+
+        Args:
+            scale_factor (torch.Tensor): a tensor with the scale factor. It has
+              to be broadcastable with class members. The expected shape is
+              :math:`(B)` or :math:`(1)`.
+
+        Returns:
+            PinholeCamera: the camera model with scaled parameters.
+        """
+        # scale the intrinsic parameters
+        self.intrinsics[..., 0, 0] *= scale_factor
+        self.intrinsics[..., 1, 1] *= scale_factor
+        self.intrinsics[..., 0, 2] *= scale_factor
+        self.intrinsics[..., 1, 2] *= scale_factor
+        # scale the image height/width
+        self.height *= scale_factor
+        self.width *= scale_factor
+        return self
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
