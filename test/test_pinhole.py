@@ -117,6 +117,64 @@ class TestPinholeCamera:
         assert pinholes.rotation_matrix.shape == (batch_size, 2, 3, 3)
         assert pinholes.translation_vector.shape == (batch_size, 2, 3, 1)
 
+    def test_pinhole_camera_scale(self):
+        batch_size = 2
+        height, width = 4, 6
+        fx, fy, cx, cy = 1, 2, width / 2, height / 2
+        tx, ty, tz = 1, 2, 3
+        scale_val = 2.0
+
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
+        height = torch.ones(batch_size) * height
+        width = torch.ones(batch_size) * width
+        scale_factor = torch.ones(batch_size) * scale_val
+
+        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole_scale = pinhole.scale(scale_factor)
+
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 0, 0],
+            pinhole.intrinsics[..., 0, 0] * scale_val)  # fx
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 1, 1],
+            pinhole.intrinsics[..., 1, 1] * scale_val)  # fy
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 0, 2],
+            pinhole.intrinsics[..., 0, 2] * scale_val)  # cx
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 1, 2],
+            pinhole.intrinsics[..., 1, 2] * scale_val)  # cy
+        assert utils.check_equal_torch(pinhole_scale.height,
+            pinhole.height * scale_val)  # image_height
+        assert utils.check_equal_torch(pinhole_scale.width,
+            pinhole.width * scale_val)  # image_width
+
+    def test_pinhole_camera_scale_inplace(self):
+        batch_size = 2
+        height, width = 4, 6
+        fx, fy, cx, cy = 1, 2, width / 2, height / 2
+        tx, ty, tz = 1, 2, 3
+        scale_val = 2.0
+
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
+        height = torch.ones(batch_size) * height
+        width = torch.ones(batch_size) * width
+        scale_factor = torch.ones(batch_size) * scale_val
+
+        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole_scale = pinhole.clone()
+        pinhole_scale.scale_(scale_factor)
+
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 0, 0],
+            pinhole.intrinsics[..., 0, 0] * scale_val)  # fx
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 1, 1],
+            pinhole.intrinsics[..., 1, 1] * scale_val)  # fy
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 0, 2],
+            pinhole.intrinsics[..., 0, 2] * scale_val)  # cx
+        assert utils.check_equal_torch(pinhole_scale.intrinsics[..., 1, 2],
+            pinhole.intrinsics[..., 1, 2] * scale_val)  # cy
+        assert utils.check_equal_torch(pinhole_scale.height,
+            pinhole.height * scale_val)  # image_height
+        assert utils.check_equal_torch(pinhole_scale.width,
+            pinhole.width * scale_val)  # image_width
 
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
