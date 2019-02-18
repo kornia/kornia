@@ -134,7 +134,8 @@ class DepthWarper(nn.Module):
         I_{ref} = \\omega(I_{i}, H_{ref}^{i}, \\xi_{ref})
 
     Args:
-        pinholes (torch.Tensor): The pinhole models for ith frame with shape `[Nx12]`.
+        pinholes (torch.Tensor): The pinhole models for ith frame with
+          shape `[Nx12]`.
         width (int): The width of the image to warp. Optional.
         height (int): The height of the image to warp. Optional.
 
@@ -171,14 +172,7 @@ class DepthWarper(nn.Module):
             height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
-    # TODO(edgar): refactor this and potentially and potentially accept the
-    # pinholes models as Nx2x4x4, where first will be the pinhole_matrix in the
-    # 4x4 shape, and second the Rt matrix in the 4x4 shape. For this, we need
-    # to update inverse_pinhole, scale_pinhole, etc. But seems the more generic
-    # thing to do. Additionally, I wouldn't force the output shape(self.height/width)
-    # to be the pinhole camera content. Instead I would stick to the values from
-    # the class signature which I would force to the user to introduce (now is
-    # optional and could be None).
+    # TODO(edgar): remove
     def compute_homographies(self, pinhole, scale=None):
         if scale is None:
             batch_size = pinhole.shape[0]
@@ -217,7 +211,6 @@ class DepthWarper(nn.Module):
 
     def _compute_projection(self, x, y, invd):
         point = torch.FloatTensor([[[x], [y], [1.0], [invd]]])
-        #flow = torch.matmul(self._i_Hs_ref, point.to(self._i_Hs_ref.device))
         flow = torch.matmul(
             self._dst_proj_src, point.to(self._dst_proj_src.device))
         z = 1. / flow[:, 2]
