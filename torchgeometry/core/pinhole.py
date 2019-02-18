@@ -22,96 +22,206 @@ __all__ = [
 
 
 class PinholeCamera:
-    r"""Class that represents a Pinhole Camera model."""
+    r"""Class that represents a Pinhole Camera model.
+
+    Args:
+        intrinsics (torch.Tensor): tensor with shape :math:`(B, 4, 4)`
+          containing the full 4x4 camera calibration matrix.
+        extrinsics (torch.Tensor): tensor with shape :math:`(B, 4, 4)`
+          containing the full 4x4 rotation-translation matrix.
+        height (torch.Tensor): tensor with shape :math:`(B)` containing the
+          image height.
+        widht (torch.Tensor): tensor with shape :math:`(B)` containing the image
+          width.
+
+    .. note::
+        We assume that class attributes are batched in order to take advantage
+          of PyTorch parallelism.
+    """
 
     def __init__(self, intrinsics: torch.Tensor,
-                 extrinsics: torch.Tensor) -> None:
-        if not intrinsics.shape == extrinsics.shape:
-            raise ValueError("intrinsics and extrinsics shapes must match. "
-                             "{}".format(intrinsics.shape, extrinsics.shape))
+                 extrinsics: torch.Tensor,
+                 height: torch.Tensor,
+                 width: torch.Tensor) -> None:
+        # verify batch size and shapes
+        self._check_valid([intrinsics, extrinsics, height, width])
+        self._check_valid_params(intrinsics, "intrinsics")
+        self._check_valid_params(extrinsics, "extrinsics")
+        self._check_valid_shape(height, "height")
+        self._check_valid_shape(width, "width")
         # set class attributes
-        self.intrinsics: torch.Tensor = self._check_valid_data(intrinsics,
-                                                               "intrinsics")
-        self.extrinsics: torch.Tensor = self._check_valid_data(extrinsics,
-                                                               "extrinsics")
+        self.height: torch.Tensor = height
+        self.width: torch.Tensor = width
+        self._intrinsics: torch.Tensor = intrinsics
+        self._extrinsics: torch.Tensor = extrinsics
 
-    def _check_valid_data(
-            self,
+    @staticmethod
+    def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
+        if not all(data.shape[0] for data in data_iter):
+            raise ValueError("Arguments shapes must match")
+        return True
+
+    @staticmethod
+    def _check_valid_params(
             data: torch.Tensor,
             data_name: str) -> torch.Tensor:
         if len(data.shape) not in (3, 4,) and data.shape[-2:] is not (4, 4):
             raise ValueError("Argument {0} shape must be in the following shape"
                              " Bx4x4 or BxNx4x4. Got {1}".format(data_name,
                                                                  data.shape))
-        return data
+        return True
+
+    @staticmethod
+    def _check_valid_shape(
+            data: torch.Tensor,
+            data_name: str) -> torch.Tensor:
+        if not len(data.shape) == 1:
+            raise ValueError("Argument {0} shape must be in the following shape"
+                             " B. Got {1}".format(data_name, data.shape))
+        return True
+
+    @property
+    def intrinsics(self) -> torch.Tensor:
+        r"""The full 4x4 intrinsics matrix.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+        """
+        assert self._check_valid_params(self._intrinsics, "intrinsics")
+        return self._intrinsics
+
+    @property
+    def extrinsics(self) -> torch.Tensor:
+        r"""The full 4x4 extrinsics matrix.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+        """
+        assert self._check_valid_params(self._extrinsics, "extrinsics")
+        return self._extrinsics
 
     @property
     def batch_size(self) -> int:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the batch size of the storage.
+
+        Returns:
+            int: batch size value
+        """
         return self.intrinsics.shape[0]
 
     @property
     def fx(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the focal lenght in the x-direction.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.intrinsics[..., 0, 0]
 
     @property
     def fy(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the focal lenght in the y-direction.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.intrinsics[..., 1, 1]
 
     @property
     def cx(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the x-coordinate of the principal point.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.intrinsics[..., 0, 2]
 
     @property
     def cy(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the y-coordinate of the principal point.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.intrinsics[..., 1, 2]
 
     @property
     def tx(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the x-coordinate of the translation vector.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.extrinsics[..., 0, -1]
 
     @property
     def ty(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the y-coordinate of the translation vector.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.extrinsics[..., 1, -1]
 
     @property
     def tz(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the z-coordinate of the translation vector.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B)`
+        """
         return self.extrinsics[..., 2, -1]
 
     @property
     def rt_matrix(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the 3x4 rotation-translation matrix.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 3, 4)`
+        """
         return self.extrinsics[..., :3, :4]
 
     @property
     def camera_matrix(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the 3x3 camera matrix containing the intrinsics.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 3, 3)`
+        """
         return self.intrinsics[..., :3, :3]
 
     @property
     def rotation_matrix(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the 3x3 rotation matrix from the extrinsics.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 3, 3)`
+        """
         return self.extrinsics[..., :3, :3]
 
     @property
     def translation_vector(self) -> torch.Tensor:
-        self._check_valid_data(self.extrinsics, "extrinsics")
+        r"""Returns the translation vector from the extrinsics.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 3, 1)`
+        """
         return self.extrinsics[..., :3, -1:]
 
     def clone(self) -> 'PinholeCamera':
-        intrinsics = self.intrinsics.clone()
-        extrinsics = self.extrinsics.clone()
-        return PinholeCamera(intrinsics, extrinsics)
+        r"""Returns a deep copy of the current object instance."""
+        height: torch.Tensor = self.height
+        width: torch.Tensor = self.width
+        intrinsics: torch.Tensor = self.intrinsics.clone()
+        extrinsics: torch.Tensor = self.extrinsics.clone()
+        return PinholeCamera(intrinsics, extrinsics, height, width)
 
     def intrinsics_inverse(self) -> torch.Tensor:
-        self._check_valid_data(self.intrinsics, "intrinsics")
+        r"""Returns the inverse of the 4x4 instrisics matrix.
+
+        Returns:
+            torch.Tensor: tensor of shape :math:`(B, 4, 4)`
+        """
         return self.intrinsics.inverse()
 
     # NOTE: just for test. Decide if we keep it.
@@ -130,11 +240,30 @@ class PinholeCamera:
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
-        return self(intrinsics, extrinsics)
+        # create image hegith and width
+        height_tmp = torch.zeros(1)
+        height_tmp[..., 0] += height
+        width_tmp = torch.zeros(1)
+        width_tmp[..., 0] += width
+        return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
 
 class PinholeCamerasList(PinholeCamera):
-    r"""Class that represents a list of pinhole cameras."""
+    r"""Class that represents a list of pinhole cameras.
+
+    The class inherits from :class:`~torchgeometry.PinholeCamera` meaning that
+    it will keep the same class properties but with an extra dimension.
+
+    .. note::
+        The underlying data tensor will be stacked in the first dimension.
+        That's it, given a list of two camera instances, the intrinsics tensor
+        will have a shape :math:`(B, N, 4, 4)` where :math:`B` is the batch
+        size and :math:`N` is the numbers of cameras (in this case two).
+
+    Args:
+        pinholes_list (Iterable[PinholeCamera]): a python tuple or list
+          containg a set of `PinholeCamera` instances.
+    """
 
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
         self._initialize_parameters(pinholes_list)
@@ -142,7 +271,7 @@ class PinholeCamerasList(PinholeCamera):
     def _initialize_parameters(
             self,
             pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
-        r"""Initialises the class attributes by iterating over the input list."""
+        r"""Initialises the class attributes given a cameras list."""
         if not isinstance(pinholes, (list, tuple,)):
             raise TypeError("pinhole must of type list or tuple. Got {}"
                             .format(type(pinholes)))
@@ -154,8 +283,8 @@ class PinholeCamerasList(PinholeCamera):
             intrinsics.append(pinhole.intrinsics)
             extrinsics.append(pinhole.extrinsics)
         # contatenate and set members. We will assume BxNx4x4
-        self.intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
-        self.extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
+        self._intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
+        self._extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
         return self
 
     @property
@@ -168,9 +297,11 @@ class PinholeCamerasList(PinholeCamera):
 
     def get_pinhole(self, idx: int) -> PinholeCamera:
         r"""Returns a PinholeCamera object with parameters such as Bx4x4."""
+        height: torch.Tensor = self.height[..., idx]
+        width: torch.Tensor = self.width[..., idx]
         intrinsics: torch.Tensor = self.intrinsics[:, idx]
         extrinsics: torch.Tensor = self.extrinsics[:, idx]
-        return PinholeCamera(intrinsics, extrinsics)
+        return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
 def pinhole_matrix(pinholes, eps=1e-6):
