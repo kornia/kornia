@@ -319,14 +319,19 @@ class PinholeCamerasList(PinholeCamera):
         if not isinstance(pinholes, (list, tuple,)):
             raise TypeError("pinhole must of type list or tuple. Got {}"
                             .format(type(pinholes)))
+        height, width = [], []
         intrinsics, extrinsics = [], []
         for pinhole in pinholes:
             if not isinstance(pinhole, PinholeCamera):
                 raise TypeError("Argument pinhole must be from type "
                                 "PinholeCamera. Got {}".format(type(pinhole)))
+            height.append(pinhole.height)
+            width.append(pinhole.width)
             intrinsics.append(pinhole.intrinsics)
             extrinsics.append(pinhole.extrinsics)
         # contatenate and set members. We will assume BxNx4x4
+        self.height: torch.Tensor = torch.stack(height, dim=1)
+        self.width: torch.Tensor = torch.stack(width, dim=1)
         self._intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
         self._extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
         return self
