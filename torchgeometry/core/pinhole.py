@@ -1,4 +1,5 @@
 from typing import Iterable
+import warnings
 
 import torch
 import torch.nn as nn
@@ -364,6 +365,9 @@ def pinhole_matrix(pinholes, eps=1e-6):
         >>> pinhole = torch.rand(1, 12)    # Nx12
         >>> pinhole_matrix = tgm.pinhole_matrix(pinhole)  # Nx4x4
     """
+    warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
+                  "use PinholeCamera.camera_matrix instead",
+                  PendingDeprecationWarning)
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
@@ -395,6 +399,9 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
         >>> pinhole = torch.rand(1, 12)    # Nx12
         >>> pinhole_matrix_inv = tgm.inverse_pinhole_matrix(pinhole)  # Nx4x4
     """
+    warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
+                  "use PinholeCamera.camera_matrix() instead",
+                  PendingDeprecationWarning)
     assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
@@ -428,6 +435,9 @@ def scale_pinhole(pinholes, scale):
         >>> scales = 2.0 * torch.ones(1)   # N
         >>> pinhole_i_scaled = tgm.scale_pinhole(pinhole_i)  # Nx12
     """
+    warnings.warn("scale_pinhole will be deprecated in version 0.2, "
+                  "use PinholeCamera.scale() instead",
+                  PendingDeprecationWarning)
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     assert len(scale.shape) == 1, scale.shape
     pinholes_scaled = pinholes.clone()
