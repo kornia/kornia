@@ -9,7 +9,44 @@ __all__ = [
     "tensor_to_image",
     "image_to_tensor",
     "create_meshgrid",
+    "normalize_pixel_coordinates",
 ]
+
+
+def normalize_pixel_coordinates(
+        pixel_coordinates: torch.Tensor,
+        height: float,
+        width: float) -> torch.Tensor:
+    r"""Normalize pixel coordinates between -1 and 1.
+
+    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+
+    Args:
+        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
+          Shape must be BxHxWx2.
+        width (int): the maximum width in the x-axis.
+        height (int): the maximum height in the y-axis.
+
+    Return:
+        torch.Tensor: the nornmalized pixel coordinates.
+    """
+    if len(pixel_coordinates.shape) != 4 and pixel_coordinates.shape[-1] != 2:
+        raise ValueError("Input pixel_coordinates must be of shape BxHxWx2. "
+                         "Got {}".format(pixel_coordinates.shape))
+
+    # unpack pixel coordinates
+    u_coord, v_coord = torch.chunk(pixel_coordinates, dim=-1, chunks=2)
+
+    # apply actual normalization
+    factor_u: float = 2. / (width - 1)
+    factor_v: float = 2. / (height - 1)
+    u_coord_norm: torch.Tensor = factor_u * u_coord - 1.
+    v_coord_norm: torch.Tensor = factor_v * v_coord - 1.
+
+    # stack normalized coordinates and return
+    pixel_coordinates_norm: torch.Tensor = torch.cat(
+        [u_coord_norm, v_coord_norm], dim=-1)
+    return pixel_coordinates_norm
 
 
 def create_meshgrid(height, width, normalized_coordinates=True):
