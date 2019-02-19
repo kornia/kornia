@@ -65,6 +65,8 @@ The camera rotation and translation are expressed in terms of Euclidean coordina
 .. autofunction:: inverse_pinhole_matrix
 .. autofunction:: scale_pinhole
 .. autofunction:: homography_i_H_ref
+.. autofunction:: cam2pixel
+.. autofunction:: pixel2cam
 
 .. autoclass:: PinholeMatrix
 .. autoclass:: InversePinholeMatrix

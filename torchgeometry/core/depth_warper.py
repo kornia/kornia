@@ -1,128 +1,20 @@
 from typing import Optional, Iterable, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.utils import create_meshgrid
 from torchgeometry.core.transformations import relative_pose
 from torchgeometry.core.conversions import transform_points
 from torchgeometry.core.conversions import convert_points_to_homogeneous
 from torchgeometry.core.pinhole import PinholeCamera, PinholeCamerasList
+from torchgeometry.core.pinhole import cam2pixel, pixel2cam
+from torchgeometry.utils import create_meshgrid, normalize_pixel_coordinates
 
 
 __all__ = [
     "depth_warp",
     "DepthWarper",
 ]
-
-
-def normalize_pixel_coordinates(
-        pixel_coordinates: torch.Tensor,
-        height: float,
-        width: float) -> torch.Tensor:
-    r"""Normalize pixel coordinates between -1 and 1.
-
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
-
-    Args:
-        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
-          Shape must be BxHxWx2.
-        width (int): the maximum width in the x-axis.
-        height (int): the maximum height in the y-axis.
-
-    Return:
-        torch.Tensor: the nornmalized pixel coordinates.
-    """
-    if len(pixel_coordinates.shape) != 4 and pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape BxHxWx2. "
-                         "Got {}".format(pixel_coordinates.shape))
-
-    # unpack pixel coordinates
-    u_coord, v_coord = torch.chunk(pixel_coordinates, dim=-1, chunks=2)
-
-    # apply actual normalization
-    factor_u: float = 2. / (width - 1)
-    factor_v: float = 2. / (height - 1)
-    u_coord_norm: torch.Tensor = factor_u * u_coord - 1.
-    v_coord_norm: torch.Tensor = factor_v * v_coord - 1.
-
-    # stack normalized coordinates and return
-    pixel_coordinates_norm: torch.Tensor = torch.cat(
-        [u_coord_norm, v_coord_norm], dim=-1)
-    return pixel_coordinates_norm
-
-
-# based on:
-# https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L26
-
-def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor,
-              pixel_coords: torch.Tensor) -> torch.Tensor:
-    r"""Transform coordinates in the pixel frame to the camera frame.
-
-    Args:
-        depth (torch.Tensor): the source depth maps. Shape must be Bx1xHxW.
-        intrinsics_inv (torch.Tensor): the inverse intrinsics camera matrix.
-          Shape must be Bx4x4.
-        pixel_coords (torch.Tensor): the grid with the homogeneous camera
-          coordinates. Shape must be BxHxWx3.
-
-    Returns:
-        torch.Tensor: array of (u, v, 1) cam coordinates with shape BxHxWx3.
-    """
-    if not len(depth.shape) == 4 and depth.shape[1] == 1:
-        raise ValueError("Input depth has to be in the shape of "
-                         "Bx1xHxW. Got {}".format(depth.shape))
-    if not len(intrinsics_inv.shape) == 3:
-        raise ValueError("Input intrinsics_inv has to be in the shape of "
-                         "Bx4x4. Got {}".format(intrinsics_inv.shape))
-    if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
-        raise ValueError("Input pixel_coords has to be in the shape of "
-                         "BxHxWx3. Got {}".format(intrinsics_inv.shape))
-    cam_coords: torch.Tensor = transform_points(
-        intrinsics_inv[:, None], pixel_coords)
-    return cam_coords * depth.permute(0, 2, 3, 1)
-
-
-# based on
-# https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
-
-def cam2pixel(
-        cam_coords_src: torch.Tensor,
-        dst_proj_src: torch.Tensor,
-        eps: Optional[float] = 1e-6) -> torch.Tensor:
-    r"""Transform coordinates in the camera frame to the pixel frame.
-
-    Args:
-        cam_coords (torch.Tensor): pixel coordinates defined in the first
-          camera coordinates system. Shape must be BxHxWx3.
-        dst_proj_src (torch.Tensor): the projection matrix between the
-          reference and the non reference camera frame. Shape must be Bx4x4.
-
-    Returns:
-        torch.Tensor: array of [-1, 1] coordinates of shape BxHxWx2.
-    """
-    if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
-        raise ValueError("Input cam_coords_src has to be in the shape of "
-                         "BxHxWx3. Got {}".format(cam_coords_src.shape))
-    if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
-        raise ValueError("Input dst_proj_src has to be in the shape of "
-                         "Bx4x4. Got {}".format(dst_proj_src.shape))
-    b, h, w, _ = cam_coords_src.shape
-    # apply projection matrix to points
-    point_coords: torch.Tensor = transform_points(
-        dst_proj_src[:, None], cam_coords_src)
-    x_coord: torch.Tensor = point_coords[..., 0]
-    y_coord: torch.Tensor = point_coords[..., 1]
-    z_coord: torch.Tensor = point_coords[..., 2]
-
-    # compute pixel coordinates
-    u_coord: torch.Tensor = x_coord / (z_coord + eps)
-    v_coord: torch.Tensor = y_coord / (z_coord + eps)
-
-    # stack and return the coordinates, that's the actual flow
-    pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
-    return pixel_coords_dst  # (B*N)xHxWx2
 
 
 class DepthWarper(nn.Module):
@@ -160,24 +52,6 @@ class DepthWarper(nn.Module):
         grid: torch.Tensor = create_meshgrid(
             height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
-
-    # TODO(edgar): remove
-    '''def compute_homographies(self, pinhole, scale=None):
-        if scale is None:
-            batch_size = pinhole.shape[0]
-            scale = torch.ones(
-                batch_size).to(
-                pinhole.device).type_as(pinhole)
-        # TODO: add type and value checkings
-        pinhole_ref = scale_pinhole(pinhole, scale)
-        if self.width is None:
-            self.width = pinhole_ref[..., 5:6]
-        if self.height is None:
-            self.height = pinhole_ref[..., 4:5]
-        self._pinhole_ref = pinhole_ref
-        # scale pinholes_i and compute homographies
-        pinhole_i = scale_pinhole(self._pinholes, scale)
-        self._i_Hs_ref = homography_i_H_ref(pinhole_i, pinhole_ref)'''
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera):
         if not isinstance(pinhole_src, PinholeCamera):
