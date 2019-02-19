@@ -254,9 +254,15 @@ class TestDepthWarper:
 
         # evaluate function gradient
         assert gradcheck(tgm.depth_warp,
-            ([pinhole_dst,], pinhole_src, depth_src, img_dst, height, width,),
-            raise_exception=True)
-
+                         ([pinhole_dst,
+                           ],
+                          pinhole_src,
+                          depth_src,
+                          img_dst,
+                          height,
+                          width,
+                          ),
+                         raise_exception=True)
 
     # TODO(edgar): we should include a test showing some kind of occlusion
     # def test_warp_with_occlusion(self):
