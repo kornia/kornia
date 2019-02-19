@@ -60,6 +60,42 @@ class TestPinholeCamera:
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
+    def test_pinhole_camera_translation_setters(self):
+        batch_size = 1
+        height, width = 4, 6
+        fx, fy, cx, cy = 1, 2, width / 2, height / 2
+        tx, ty, tz = 1, 2, 3
+
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
+        height = torch.ones(batch_size) * height
+        width = torch.ones(batch_size) * width
+
+        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+
+        assert pinhole.tx.item() == tx
+        assert pinhole.ty.item() == ty
+        assert pinhole.tz.item() == tz
+
+        # add offset
+        pinhole.tx += 3.
+        pinhole.ty += 2.
+        pinhole.tz += 1.
+
+        assert pinhole.tx.item() == tx + 3.
+        assert pinhole.ty.item() == ty + 2.
+        assert pinhole.tz.item() == tz + 1.
+
+        # set to zero
+        pinhole.tx = 0.
+        pinhole.ty = 0.
+        pinhole.tz = 0.
+
+        assert pinhole.tx.item() == 0.
+        assert pinhole.ty.item() == 0.
+        assert pinhole.tz.item() == 0.
+
+
     def test_pinhole_camera_attributes_batch2(self):
         batch_size = 2
         height, width = 4, 6
