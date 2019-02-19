@@ -95,9 +95,6 @@ def relative_pose(pose_1: torch.Tensor, pose_2: torch.Tensor,
     if not (len(pose_1.shape) == 3 and pose_1.shape[-2:] == (4, 4)):
         raise ValueError("Input must be a of the shape Nx4x4."
                          " Got {}".format(pose_1.shape, pose_2.shape))
-    if not pose_1.shape == pose_2.shape:
-        raise ValueError("Input pose_1 and pose_2 must be a of the same shape."
-                         " Got {}".format(pose_1.shape, pose_2.shape))
     # unpack input data
     r_mat_1 = pose_1[..., :3, :3]  # Nx3x3
     r_mat_2 = pose_2[..., :3, :3]  # Nx3x3
@@ -110,7 +107,9 @@ def relative_pose(pose_1: torch.Tensor, pose_2: torch.Tensor,
     t_vec_21 = torch.matmul(r_mat_1_trans, t_vec_2 - t_vec_1)
 
     # pack output data
-    pose_21 = torch.zeros_like(pose_1)
+    batch_size = r_mat_21.shape[0]
+    pose_21 = torch.zeros(batch_size, 4, 4,
+                          device=r_mat_21.device, dtype=r_mat_21.dtype)
     pose_21[..., :3, :3] = r_mat_21
     pose_21[..., :3, -1:] = t_vec_21
     pose_21[..., -1, -1] += 1.0

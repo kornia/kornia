@@ -155,6 +155,14 @@ class PinholeCamera:
         """
         return self.extrinsics[..., 0, -1]
 
+    @tx.setter
+    def tx(self, value) -> 'PinholeCamera':
+        r"""Set the x-coordinate of the translation vector with the given
+        value.
+        """
+        self.extrinsics[..., 0, -1] = value
+        return self
+
     @property
     def ty(self) -> torch.Tensor:
         r"""Returns the y-coordinate of the translation vector.
@@ -164,6 +172,14 @@ class PinholeCamera:
         """
         return self.extrinsics[..., 1, -1]
 
+    @ty.setter
+    def ty(self, value) -> 'PinholeCamera':
+        r"""Set the y-coordinate of the translation vector with the given
+        value.
+        """
+        self.extrinsics[..., 1, -1] = value
+        return self
+
     @property
     def tz(self) -> torch.Tensor:
         r"""Returns the z-coordinate of the translation vector.
@@ -172,6 +188,14 @@ class PinholeCamera:
             torch.Tensor: tensor of shape :math:`(B)`
         """
         return self.extrinsics[..., 2, -1]
+
+    @tz.setter
+    def tz(self, value) -> 'PinholeCamera':
+        r"""Set the y-coordinate of the translation vector with the given
+        value.
+        """
+        self.extrinsics[..., 2, -1] = value
+        return self
 
     @property
     def rt_matrix(self) -> torch.Tensor:
@@ -270,9 +294,20 @@ class PinholeCamera:
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
-    def from_parameters(self, fx, fy, cx, cy, height, width, tx, ty, tz):
+    def from_parameters(
+            self,
+            fx,
+            fy,
+            cx,
+            cy,
+            height,
+            width,
+            tx,
+            ty,
+            tz,
+            batch_size=1):
         # create the camera matrix
-        intrinsics = torch.zeros(1, 4, 4)
+        intrinsics = torch.zeros(batch_size, 4, 4)
         intrinsics[..., 0, 0] += fx
         intrinsics[..., 1, 1] += fy
         intrinsics[..., 0, 2] += cx
@@ -280,14 +315,14 @@ class PinholeCamera:
         intrinsics[..., 2, 2] += 1.0
         intrinsics[..., 3, 3] += 1.0
         # create the pose matrix
-        extrinsics = torch.eye(4)[None]
+        extrinsics = torch.eye(4).repeat(batch_size, 1, 1)
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
         # create image hegith and width
-        height_tmp = torch.zeros(1)
+        height_tmp = torch.zeros(batch_size)
         height_tmp[..., 0] += height
-        width_tmp = torch.zeros(1)
+        width_tmp = torch.zeros(batch_size)
         width_tmp[..., 0] += width
         return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
