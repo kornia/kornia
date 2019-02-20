@@ -95,7 +95,6 @@ class TestPinholeCamera:
         assert pinhole.ty.item() == 0.
         assert pinhole.tz.item() == 0.
 
-
     def test_pinhole_camera_attributes_batch2(self):
         batch_size = 2
         height, width = 4, 6

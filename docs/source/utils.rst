@@ -6,5 +6,3 @@ torchgeometry.utils
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
 .. autofunction:: create_meshgrid
-.. autofunction:: normalize_pixel_coordinates
-
