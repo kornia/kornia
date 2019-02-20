@@ -23,6 +23,6 @@ matrix:
       script: python verify.py --check build-docs
     
     - env: unit tests
-      script: pytest --cov=torchgeometry test
+      script: pytest -vx --cov=torchgeometry test
       after_success:
         - bash <(curl -s https://codecov.io/bash)
