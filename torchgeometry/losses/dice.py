@@ -44,6 +44,7 @@ class DiceLoss(nn.Module):
         >>> output = loss(input, target)
         >>> output.backward()
     """
+
     def __init__(self) -> None:
         super(DiceLoss, self).__init__()
         self.eps: float = 1e-6
