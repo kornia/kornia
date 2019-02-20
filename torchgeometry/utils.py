@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torchgeometry as tgm
@@ -12,24 +14,30 @@ __all__ = [
 ]
 
 
-def create_meshgrid(height, width, normalized_coordinates=True):
+def create_meshgrid(
+        height: int,
+        width: int,
+        normalized_coordinates: Optional[bool] = True):
     """Generates a coordinate grid for an image.
 
-    This is normalized to be in the range [-1,1] to be consistent with the
-    pytorch function grid_sample.
+    When the flag `normalized_coordinates` is set to True, the grid is
+    normalized to be in the range [-1,1] to be consistent with the pytorch
+    function grid_sample.
     http://pytorch.org/docs/master/nn.html#torch.nn.functional.grid_sample
 
     Args:
         height (int): the image height (rows).
         width (int): the image width (cols).
-        normalized_coordinates (bool): wether to used normalized coordinates in
-        the range [-1, 1] in order to be consistent with the PyTorch function
-        grid_sample.
+        normalized_coordinates (Optional[bool]): wether to normalize
+          coordinates in the range [-1, 1] in order to be consistent with the
+          PyTorch function grid_sample.
 
     Return:
-        Tensor: returns a 1xHxWx2 grid.
+        torch.Tensor: returns a grid tensor with shape :math:`(1, H, W, 2)`.
     """
     # generate coordinates
+    xs: Optional[torch.Tensor] = None
+    ys: Optional[torch.Tensor] = None
     if normalized_coordinates:
         xs = torch.linspace(-1, 1, width)
         ys = torch.linspace(-1, 1, height)
@@ -37,18 +45,19 @@ def create_meshgrid(height, width, normalized_coordinates=True):
         xs = torch.linspace(0, width - 1, width)
         ys = torch.linspace(0, height - 1, height)
     # generate grid by stacking coordinates
-    base_grid = torch.stack(torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
+    base_grid: torch.Tensor = torch.stack(
+        torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
     return torch.unsqueeze(base_grid, dim=0).permute(0, 2, 3, 1)  # 1xHxWx2
 
 
 def image_to_tensor(image):
-    """Converts a numpy image to a torch.Tensor image.
+    """Converts a numpy image to a PyTorch tensor image.
 
     Args:
-        image (numpy.ndarray): image of the form (H, W, C).
+        image (numpy.ndarray): image of the form :math:`(H, W, C)`.
 
     Returns:
-        torch.Tensor: tensor of the form (C, H, W).
+        torch.Tensor: tensor of the form :math:`(C, H, W)`.
 
     """
     if not type(image) == np.ndarray:
@@ -67,14 +76,14 @@ def image_to_tensor(image):
 
 
 def tensor_to_image(tensor):
-    """Converts a torch.Tensor image to a numpy image. In case the tensor is in
-       the GPU, it will be copied back to CPU.
+    """Converts a PyTorch tensor image to a numpy image. In case the tensor is
+    in the GPU, it will be copied back to CPU.
 
     Args:
-        tensor (Tensor): image of the form (C, H, W).
+        tensor (torch.Tensor): image of the form :math:`(C, H, W)`.
 
     Returns:
-        numpy.ndarray: image of the form (H, W, C).
+        numpy.ndarray: image of the form :math:`(H, W, C)`.
 
     """
     if not torch.is_tensor(tensor):

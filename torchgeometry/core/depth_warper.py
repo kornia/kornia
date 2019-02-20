@@ -1,8 +1,15 @@
+from typing import Optional, Iterable, Union
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
+import torch.nn.functional as F
 
-from .pinhole import scale_pinhole, homography_i_H_ref
+from torchgeometry.core.transformations import relative_pose
+from torchgeometry.core.conversions import transform_points
+from torchgeometry.core.conversions import convert_points_to_homogeneous
+from torchgeometry.core.pinhole import PinholeCamera, PinholeCamerasList
+from torchgeometry.core.pinhole import normalize_pixel_coordinates
+from torchgeometry.core.pinhole import cam2pixel, pixel2cam
+from torchgeometry.utils import create_meshgrid
 
 
 __all__ = [
@@ -12,56 +19,93 @@ __all__ = [
 
 
 class DepthWarper(nn.Module):
-    """Warps a patch by inverse depth.
+    """Warps a patch by depth.
 
     .. math::
-        H_{ref}^{i} = K_{i} * T_{ref}^{i} * K_{ref}^{-1}
+        P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
 
-        I_{ref} = \\omega(I_{i}, H_{ref}^{i}, \\xi_{ref})
+        I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
 
     Args:
-        pinholes (Tensor): The pinhole models for ith frame with shape `[Nx12]`.
-        width (int): The width of the image to warp. Optional.
-        height (int): The height of the image to warp. Optional.
-
+        pinholes_dst (Iterable[PinholeCamera]): the pinhole models for the
+          destination frame.
+        height (int): the height of the image to warp.
+        width (int): the width of the image to warp.
+        mode (Optional[str]): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (Optional[str]): padding mode for outside grid values
+           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
     """
 
-    def __init__(self, pinholes, width=None, height=None):
+    def __init__(self,
+                 pinholes_dst: Iterable[PinholeCamera],
+                 height: int, width: int,
+                 mode: Optional[str] = 'bilinear',
+                 padding_mode: Optional[str] = 'zeros'):
         super(DepthWarper, self).__init__()
-        # TODO: add type and value checkings
-        self.width = width if width is None else torch.tensor(width)
-        self.height = height if height is None else torch.tensor(height)
-        self._pinholes = pinholes
-        self._i_Hs_ref = None  # to be filled later
-        self._pinhole_ref = None  # to be filled later
+        # constructor members
+        self.width: int = width
+        self.height: int = height
+        self.mode: Optional[str] = mode
+        self.padding_mode: Optional[str] = padding_mode
         self.eps = 1e-6
 
-    def compute_homographies(self, pinhole, scale=None):
-        if scale is None:
-            batch_size = pinhole.shape[0]
-            scale = torch.ones(
-                batch_size).to(
-                pinhole.device).type_as(pinhole)
-        # TODO: add type and value checkings
-        pinhole_ref = scale_pinhole(pinhole, scale)
-        if self.width is None:
-            self.width = pinhole_ref[..., 5:6]
-        if self.height is None:
-            self.height = pinhole_ref[..., 4:5]
-        self._pinhole_ref = pinhole_ref
-        # scale pinholes_i and compute homographies
-        pinhole_i = scale_pinhole(self._pinholes, scale)
-        self._i_Hs_ref = homography_i_H_ref(pinhole_i, pinhole_ref)
+        # state members
+        self._pinhole_dst: PinholeCamerasList = PinholeCamerasList(pinholes_dst)
+        self._pinhole_src: Union[None, PinholeCamera] = None
+        self._dst_proj_src: Union[None, torch.Tensor] = None
+
+        self.grid: torch.Tensor = self._create_meshgrid(height, width)
+
+    @staticmethod
+    def _create_meshgrid(height: int, width: int) -> torch.Tensor:
+        grid: torch.Tensor = create_meshgrid(
+            height, width, normalized_coordinates=False)  # 1xHxWx2
+        return convert_points_to_homogeneous(grid)  # append ones to last dim
+
+    def compute_projection_matrix(
+            self, pinhole_src: PinholeCamera) -> 'DepthWarper':
+        r"""Computes the projection matrix from the source to destinaion frame.
+        """
+        if not isinstance(pinhole_src, PinholeCamera):
+            raise TypeError("Argument pinhole_src expected to be of class "
+                            "PinholeCamera. Got {}".format(type(pinhole_src)))
+        # compute the relative pose between the non reference and the reference
+        # camera frames.
+        batch_size: int = pinhole_src.batch_size
+        num_cameras: int = self._pinhole_dst.num_cameras
+
+        extrinsics_src: torch.Tensor = pinhole_src.extrinsics[:, None].expand(
+            -1, num_cameras, -1, -1)  # BxNx4x4
+        extrinsics_src = extrinsics_src.contiguous().view(-1, 4, 4)  # (B*N)x4x4
+        extrinsics_dst: torch.Tensor = self._pinhole_dst.extrinsics.view(
+            -1, 4, 4)  # (B*N)x4x4
+        dst_trans_src: torch.Tensor = relative_pose(
+            extrinsics_src, extrinsics_dst)
+
+        # compute the projection matrix between the non reference cameras and
+        # the reference.
+        intrinsics_dst: torch.Tensor = self._pinhole_dst.intrinsics.view(
+            -1, 4, 4)
+        dst_proj_src: torch.Tensor = torch.matmul(
+            intrinsics_dst, dst_trans_src)
+
+        # update class members
+        self._pinhole_src = pinhole_src
+        self._dst_proj_src = dst_proj_src.view(
+            pinhole_src.batch_size, -1, 4, 4)
+        return self
 
     def _compute_projection(self, x, y, invd):
         point = torch.FloatTensor([[[x], [y], [1.0], [invd]]])
-        flow = torch.matmul(self._i_Hs_ref, point.to(self._i_Hs_ref.device))
+        flow = torch.matmul(
+            self._dst_proj_src[:, 0], point.to(self._dst_proj_src.device))
         z = 1. / flow[:, 2]
         x = (flow[:, 0] * z)
         y = (flow[:, 1] * z)
         return torch.cat([x, y], 1)
 
-    def compute_subpixel_step(self):
+    def compute_subpixel_step(self) -> torch.Tensor:
         """This computes the required inverse depth step to achieve sub pixel
         accurate sampling of the depth cost volume, per camera.
 
@@ -79,123 +123,111 @@ class DepthWarper(nn.Module):
         # half pixel sampling, we're interested in the min for all cameras
         return torch.min(0.5 / dxdd)
 
-    # compute grids
+    def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
+        """Computes a grid for warping a given the depth from the reference
+        pinhole camera.
 
-    def warp(self, inv_depth_ref, roi=None):
-        # TODO: add type and value checkings
-        assert self._i_Hs_ref is not None, 'call compute_homographies'
-        if roi is None:
-            roi = (0, int(self.height), 0, int(self.width))
-        start_row, end_row, start_col, end_col = roi
-        assert start_row < end_row
-        assert start_col < end_col
-        height, width = end_row - start_row, end_col - start_col
-        area = width * height
-
-        # take sub region
-        inv_depth_ref = inv_depth_ref[..., start_row:end_row,
-                                      start_col:end_col].contiguous()
-
-        device = inv_depth_ref.device
-        ones_x = torch.ones(height).to(device)
-        ones_y = torch.ones(width).to(device)
-        ones = torch.ones(area).to(device)
-
-        x = torch.linspace(start_col, end_col - 1, width).to(device)
-        y = torch.linspace(start_row, end_row - 1, height).to(device)
-
-        xv = torch.ger(ones_x, x).view(area)
-        yv = torch.ger(y, ones_y).view(area)
-
-        grid = torch.stack([xv, yv, ones], 0)
-        batch_size = inv_depth_ref.shape[0]
-        grid = grid.unsqueeze(0).expand(batch_size, -1, -1)
-        grid = torch.cat([grid, inv_depth_ref.view(batch_size, 1, -1)], 1)
-
-        flow = torch.matmul(self._i_Hs_ref.to(device), grid)
-        assert len(flow.shape) == 3, flow.shape
-
-        factor_x = (self.width - 1) / 2
-        factor_x = factor_x.to(device)
-
-        factor_y = (self.height - 1) / 2
-        factor_y = factor_y.to(device)
-
-        z = 1. / (flow[:, 2] + self.eps)  # Nx(H*W)
-        x = (flow[:, 0] * z - factor_x) / factor_x
-        y = (flow[:, 1] * z - factor_y) / factor_y
-
-        flow = torch.stack([x, y], 1)  # Nx2x(H*W)
-
-        n, c, a = flow.shape
-        flows = flow.view(n, c, height, width)  # Nx2xHxW
-        return flows.permute(0, 2, 3, 1)  # NxHxWx2
-
-    def forward(self, inv_depth_ref, patch_i):
-        """Warps an image or tensor from ith frame to reference given the
-        inverse depth in the reference frame.
-
-        Args:
-            inv_depth_ref (Tensor): The inverse depth in the reference frame.
-            patch_i (Tensor): The patch in the it frame.
-
-        Return:
-            Tensor: The warped data from ith frame to reference.
-
-        Shape:
-            - Input: :math:`(N, 1, H, W)` and :math:`(N, C, H, W)`
-            - Output: :math:`(N, C, H, W)`
-
-        Example:
-            >>> # image in ith frame
-            >>> img_i = torch.rand(1, 3, 32, 32)       # NxCxHxW
-            >>> # pinholes models for camera i and reference
-            >>> pinholes_i = torch.Tensor([1, 12])     # Nx12
-            >>> pinhole_ref = torch.Tensor([1, 12]),   # Nx12
-            >>> # create the depth warper and compute the homographies
-            >>> warper = tgm.DepthWarper(pinholes_i)
-            >>> warper.compute_homographies(pinhole_ref)
-            >>> # warp the ith frame to reference by inverse depth
-            >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
-            >>> img_ref = warper(inv_depth_ref, img_i)    # NxCxHxW
+        The function `compute_projection_matrix` has to be called beforehand in
+        order to have precomputed the relative projection matrices encoding the
+        relative pose and the intrinsics between the reference and a non
+        reference camera.
         """
         # TODO: add type and value checkings
-        return torch.nn.functional.grid_sample(
-            patch_i, self.warp(inv_depth_ref))
+        if self._dst_proj_src is None or self._pinhole_src is None:
+            raise ValueError("Please, call compute_projection_matrix.")
+
+        if len(depth_src.shape) != 4:
+            raise ValueError("Input depth_src has to be in the shape of "
+                             "Bx1xHxW. Got {}".format(depth_src.shape))
+
+        # unpack depth attributes
+        batch_size, _, height, width = depth_src.shape
+        device: torch.device = depth_src.device
+        dtype: torch.dtype = depth_src.dtype
+
+        # expand the base coordinate grid according to the input batch size
+        pixel_coords: torch.Tensor = self.grid.to(device).to(dtype).expand(
+            batch_size, -1, -1, -1)  # BxHxWx3
+
+        # reproject the pixel coordinates to the camera frame
+        cam_coords_src: torch.Tensor = pixel2cam(
+            depth_src,
+            self._pinhole_src.intrinsics_inverse().to(dtype),
+            pixel_coords)  # BxHxWx3
+
+        # create views from tensors to match with cam2pixel expected shapes
+        cam_coords_src = cam_coords_src[:, None].expand(
+            -1, self._pinhole_dst.num_cameras, -1, -1, -1)  # BxNxHxWx3
+        cam_coords_src = cam_coords_src.contiguous().view(
+            -1, height, width, 3)                          # (B*N)xHxWx3
+        dst_proj_src: torch.Tensor = self._dst_proj_src.view(-1, 4, 4)
+
+        # reproject the camera coordinates to the pixel
+        pixel_coords_src: torch.Tensor = cam2pixel(
+            cam_coords_src, dst_proj_src.to(dtype))  # (B*N)xHxWx2
+
+        # normalize between -1 and 1 the coordinates
+        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(
+            pixel_coords_src, self.height, self.width)
+        return pixel_coords_src_norm
+
+    def forward(
+            self,
+            depth_src: torch.Tensor,
+            patch_dst: torch.Tensor) -> torch.Tensor:
+        """Warps a tensor from destination frame to reference given the depth
+        in the reference frame.
+
+        Args:
+            depth_src (torch.Tensor): the depth in the reference frame. The
+              tensor must have a shape :math:`(B, 1, H, W)`.
+            patch_dst (torch.Tensor): the patch in the destination frame. The
+              tensor must have a shape :math:`(B, C, H, W)`.
+
+        Return:
+            torch.Tensor: the warped patch from destination frame to reference.
+
+        Shape:
+            - Output: :math:`(N, C, H, W)` where C = number of channels.
+
+        Example:
+            >>> # pinholes camera models
+            >>> pinhole_dst = tgm.PinholeCamera(...)
+            >>> pinhole_src = tgm.PinholeCamera(...)
+            >>> # create the depth warper, compute the projection matrix
+            >>> warper = tgm.DepthWarper([pinhole_dst, ], height, width)
+            >>> warper.compute_projection_matrix(pinhole_src)
+            >>> # warp the destionation frame to reference by depth
+            >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
+            >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
+            >>> image_src = warper(depth_src, image_dst)    # NxCxHxW
+        """
+        return F.grid_sample(patch_dst, self.warp_grid(depth_src),
+                             mode=self.mode, padding_mode=self.padding_mode)
 
 
 # functional api
 
-def depth_warp(pinholes_i, pinhole_ref, inv_depth_ref, patch_i,
-               width=None, height=None):
-    """
-    .. note::
-        Functional API for :class:`torgeometry.DepthWarper`
+def depth_warp(pinholes_dst: Iterable[PinholeCamera],
+               pinhole_src: PinholeCamera,
+               depth_src: torch.Tensor,
+               patch_dst: torch.Tensor,
+               height: int, width: int):
+    r"""Function that warps a tensor from destination frame to reference
+    given the depth in the reference frame.
 
-    Warps a patch by inverse depth.
-
-    Args:
-        pinholes_i (Tensor): The pinhole models for ith frame with
-                             shape `[Nx12]`.
-        pinholes_ref (Tensor): The pinhole models for the reference frame
-                               with shape `[1x12]`.
-        inv_depth_ref (Tensor): The inverse depth in the reference frame.
-        patch_i (Tensor): The patch data in the ith frame.
-
-    Return:
-        Tensor: The warped data from ith frame to reference.
+    See :class:`~torchgeometry.DepthWarper` for details.
 
     Example:
-        >>> # image in ith frame
-        >>> img_i = torch.rand(1, 3, 32, 32)          # NxCxHxW
-        >>> # pinholes models for camera i and reference
-        >>> pinholes_i = torch.Tensor([1, 12])        # Nx12
-        >>> pinhole_ref = torch.Tensor([1, 12]),      # Nx12
-        >>> # warp the ith frame to reference by inverse depth in the reference
-        >>> inv_depth_ref = torch.ones(1, 1, 32, 32)  # Nx1xHxW
-        >>> img_ref = tgm.depth_warp(
-        >>>     pinholes_i, pinhole_ref, inv_depth_ref, img_i)  # NxCxHxW
+        >>> # pinholes camera models
+        >>> pinhole_dst = tgm.PinholeCamera(...)
+        >>> pinhole_src = tgm.PinholeCamera(...)
+        >>> # warp the destionation frame to reference by depth
+        >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
+        >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
+        >>> image_src = tgm.depth_warp([pinhole_dst, ], pinhole_src,
+        >>>     depth_src, image_dst, height, width)  # NxCxHxW
     """
-    warper = DepthWarper(pinholes_i, width=width, height=height)
-    warper.compute_homographies(pinhole_ref)
-    return warper(inv_depth_ref, patch_i)
+    warper = DepthWarper(pinholes_dst, height, width)
+    warper.compute_projection_matrix(pinhole_src)
+    return warper(depth_src, patch_dst)

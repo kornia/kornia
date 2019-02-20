@@ -82,9 +82,12 @@ class TestExtractTensorPatches:
         patches = m(input)
         assert patches.shape == (batch_size, 16, 1, 2, 2)
         for i in range(batch_size):
-            assert utils.check_equal_torch(input[i, :, 0:2, 0:2], patches[i, 5])
-            assert utils.check_equal_torch(input[i, :, 0:2, 1:3], patches[i, 6])
-            assert utils.check_equal_torch(input[i, :, 1:3, 0:2], patches[i, 9])
+            assert utils.check_equal_torch(
+                input[i, :, 0:2, 0:2], patches[i, 5])
+            assert utils.check_equal_torch(
+                input[i, :, 0:2, 1:3], patches[i, 6])
+            assert utils.check_equal_torch(
+                input[i, :, 1:3, 0:2], patches[i, 9])
             assert utils.check_equal_torch(
                 input[i, :, 1:3, 1:3], patches[i, 10])
 
