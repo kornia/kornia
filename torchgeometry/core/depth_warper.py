@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.core.transformations import relative_pose
+from torchgeometry.core.transformations import relative_transformation
 from torchgeometry.core.conversions import transform_points
 from torchgeometry.core.conversions import convert_points_to_homogeneous
 from torchgeometry.core.pinhole import PinholeCamera, PinholeCamerasList
@@ -80,7 +80,7 @@ class DepthWarper(nn.Module):
         extrinsics_src = extrinsics_src.contiguous().view(-1, 4, 4)  # (B*N)x4x4
         extrinsics_dst: torch.Tensor = self._pinhole_dst.extrinsics.view(
             -1, 4, 4)  # (B*N)x4x4
-        dst_trans_src: torch.Tensor = relative_pose(
+        dst_trans_src: torch.Tensor = relative_transformation(
             extrinsics_src, extrinsics_dst)
 
         # compute the projection matrix between the non reference cameras and
