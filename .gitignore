@@ -12,3 +12,4 @@ torchgeometry.egg-info/
 .cache/*
 .pytest_cache/*
 .dev_env
+.mypy_cache/*

@@ -19,7 +19,7 @@ fi
 
 # Install CPU-PyTorch
 $sdk_dir/.dev_env/bin/conda install -y \
-  pytorch-cpu \
+  pytorch-cpu==1.0.1 \
   -c pytorch
 
 # Tests dependencies

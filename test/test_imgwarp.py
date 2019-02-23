@@ -162,13 +162,13 @@ def test_warp_perspective_crop(batch_size, device_type, channels):
         points_src, points_dst)
 
     # create points grid in normalized coordinates
-    grid_src_norm = tgm.create_meshgrid(src_h, src_w,
-                                        normalized_coordinates=True)
+    grid_src_norm = tgm.utils.create_meshgrid(
+        src_h, src_w, normalized_coordinates=True)
     grid_src_norm = grid_src_norm.repeat(batch_size, 1, 1, 1).to(device)
 
     # create points grid in pixel coordinates
-    grid_src_pix = tgm.create_meshgrid(src_h, src_w,
-                                       normalized_coordinates=False)
+    grid_src_pix = tgm.utils.create_meshgrid(
+        src_h, src_w, normalized_coordinates=False)
     grid_src_pix = grid_src_pix.repeat(batch_size, 1, 1, 1).to(device)
 
     src_norm_trans_src_pix = tgm.normal_transform_pixel(src_h, src_w).repeat(
