@@ -13,15 +13,34 @@ class TestComposeTransforms:
     def _identity_matrix(self, batch_size):
         return torch.eye(4).repeat(batch_size, 1, 1)  # Nx4x4
 
-    def test_compose_transforms(self):
-        batch_size = 1
-        trans_1 = self._identity_matrix(batch_size)
-        trans_2 = self._identity_matrix(batch_size)
-        trans_2[..., :3, -1] += 10  # add offset to translation vector
+    def test_compose_transforms_4x4(self):
+        offset = 10
+        trans_01 = self._identity_matrix(batch_size=1)[0]
+        trans_12 = self._identity_matrix(batch_size=1)[0]
+        trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_21 = tgm.compose_transformations(trans_1, trans_2)
-        assert utils.check_equal_torch(trans_21, trans_2)
+        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        assert utils.check_equal_torch(trans_02, trans_12)
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_compose_transforms_Bx4x4(self, batch_size):
+        offset = 10
+        trans_01 = self._identity_matrix(batch_size)
+        trans_12 = self._identity_matrix(batch_size)
+        trans_12[..., :3, -1] += offset  # add offset to translation vector
+
+        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        assert utils.check_equal_torch(trans_02, trans_12)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_gradcheck(self, batch_size):
+        trans_01 = self._identity_matrix(batch_size)
+        trans_12 = self._identity_matrix(batch_size)
+
+        trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
+        trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
+        assert gradcheck(tgm.compose_transformations, (trans_01, trans_12,),
+                         raise_exception=True)
 
 
 class TestRelativeTransform:
@@ -118,17 +137,13 @@ def test_inverse_pose(batch_size, device_type):
     dst_pose_src[:, -1, -1] = 1.0
 
     # compute the inverse of the pose
-    src_pose_dst = tgm.inverse_pose(dst_pose_src)
+    src_pose_dst = tgm.inverse_transformation(dst_pose_src)
 
     # H_inv * H == I
     eye = torch.matmul(src_pose_dst, dst_pose_src)
     assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
 
-    # functional
-    eye = torch.matmul(tgm.InversePose()(dst_pose_src), dst_pose_src)
-    assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
-
     # evaluate function gradient
     dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
-    assert gradcheck(tgm.inverse_pose, (dst_pose_src,),
+    assert gradcheck(tgm.inverse_transformation, (dst_pose_src,),
                      raise_exception=True)
