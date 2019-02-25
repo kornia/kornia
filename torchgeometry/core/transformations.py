@@ -143,7 +143,7 @@ def relative_transformation(
     """
     if not torch.is_tensor(trans_01):
         raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
-                        .format(type(pose_01)))
+                        .format(type(trans_01)))
     if not torch.is_tensor(trans_02):
         raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}"
                         .format(type(trans_02)))
