@@ -8,25 +8,54 @@ import utils  # test utilities
 from common import TEST_DEVICES
 
 
+def identity_matrix(batch_size):
+    return torch.eye(4).repeat(batch_size, 1, 1)  # Nx4x4
+
+
+def euler_angles_to_rotation_matrix(x, y, z):
+    assert x.dim() == 1, x.shape
+    assert x.shape == y.shape == z.shape
+    ones, zeros = torch.ones_like(x), torch.zeros_like(x)
+
+    rx_tmp = [
+          ones,        zeros,         zeros, zeros,
+         zeros, torch.cos(x), -torch.sin(x), zeros,
+         zeros, torch.sin(x),  torch.cos(x), zeros,
+         zeros,        zeros,         zeros,  ones]
+    rx = torch.stack(rx_tmp, dim=-1).view(-1, 4, 4)
+
+    ry_tmp = [
+         torch.cos(y), zeros, torch.sin(y), zeros,
+                zeros,  ones,        zeros, zeros,
+        -torch.sin(y), zeros, torch.cos(y), zeros,
+                zeros, zeros,        zeros,  ones]
+    ry = torch.stack(ry_tmp, dim=-1).view(-1, 4, 4)
+
+    rz_tmp = [
+        torch.cos(z), -torch.sin(z), zeros, zeros,
+        torch.sin(z),  torch.cos(z), zeros, zeros,
+               zeros,         zeros,  ones, zeros,
+               zeros,         zeros, zeros,  ones]
+    rz = torch.stack(rz_tmp, dim=-1).view(-1, 4, 4)
+    return torch.matmul(rz, torch.matmul(ry, rx))
+
+
 class TestComposeTransforms:
 
-    def _identity_matrix(self, batch_size):
-        return torch.eye(4).repeat(batch_size, 1, 1)  # Nx4x4
-
-    def test_compose_transforms_4x4(self):
+    def test_translation_4x4(self):
         offset = 10
-        trans_01 = self._identity_matrix(batch_size=1)[0]
-        trans_12 = self._identity_matrix(batch_size=1)[0]
+        trans_01 = identity_matrix(batch_size=1)[0]
+        trans_12 = identity_matrix(batch_size=1)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = tgm.compose_transformations(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_compose_transforms_Bx4x4(self, batch_size):
+    def test_translation_Bx4x4(self, batch_size):
         offset = 10
-        trans_01 = self._identity_matrix(batch_size)
-        trans_12 = self._identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size)
+        trans_12 = identity_matrix(batch_size)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = tgm.compose_transformations(trans_01, trans_12)
@@ -34,12 +63,56 @@ class TestComposeTransforms:
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size):
-        trans_01 = self._identity_matrix(batch_size)
-        trans_12 = self._identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size)
+        trans_12 = identity_matrix(batch_size)
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
         assert gradcheck(tgm.compose_transformations, (trans_01, trans_12,),
+                         raise_exception=True)
+
+
+class TestInverseTransformation:
+
+    def test_translation_4x4(self):
+        offset = 10
+        trans_01 = identity_matrix(batch_size=1)[0]
+        trans_01[..., :3, -1] += offset  # add offset to translation vector
+
+        trans_10 = tgm.inverse_transformation(trans_01)
+        trans_01_hat = tgm.inverse_transformation(trans_10)
+        assert utils.check_equal_torch(trans_01, trans_01_hat)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_translation_Bx4x4(self, batch_size):
+        offset = 10
+        trans_01 = identity_matrix(batch_size)
+        trans_01[..., :3, -1] += offset  # add offset to translation vector
+
+        trans_10 = tgm.inverse_transformation(trans_01)
+        trans_01_hat = tgm.inverse_transformation(trans_10)
+        assert utils.check_equal_torch(trans_01, trans_01_hat)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_rotation_translation_Bx4x4(self, batch_size):
+        offset = 10
+        x, y, z = 0, 0, tgm.pi
+        ones = torch.ones(batch_size)
+        rmat_01 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
+
+        trans_01 = identity_matrix(batch_size)
+        trans_01[..., :3, -1] += offset  # add offset to translation vector
+        trans_01[..., :3, :3] = rmat_01[..., :3, :3]
+
+        trans_10 = tgm.inverse_transformation(trans_01)
+        trans_01_hat = tgm.inverse_transformation(trans_10)
+        assert utils.check_equal_torch(trans_01, trans_01_hat)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_gradcheck(self, batch_size):
+        trans_01 = identity_matrix(batch_size)
+        trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
+        assert gradcheck(tgm.inverse_transformation, (trans_01,),
                          raise_exception=True)
 
 
@@ -123,27 +196,3 @@ class TestRelativeTransform:
         #self._test_rotation()
         #self._test_integration()
         #self._test_gradcheck()
-
-
-# TODO: embedd to a class
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
-@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
-def test_inverse_pose(batch_size, device_type):
-    # generate input data
-    eye_size = 4  # identity 4x4
-    dst_pose_src = utils.create_random_homography(batch_size, eye_size)
-    dst_pose_src = dst_pose_src.to(torch.device(device_type))
-    dst_pose_src[:, -1] = 0.0
-    dst_pose_src[:, -1, -1] = 1.0
-
-    # compute the inverse of the pose
-    src_pose_dst = tgm.inverse_transformation(dst_pose_src)
-
-    # H_inv * H == I
-    eye = torch.matmul(src_pose_dst, dst_pose_src)
-    assert utils.check_equal_torch(eye, torch.eye(4), eps=1e-3)
-
-    # evaluate function gradient
-    dst_pose_src = utils.tensor_to_gradcheck_var(dst_pose_src)  # to var
-    assert gradcheck(tgm.inverse_transformation, (dst_pose_src,),
-                     raise_exception=True)
