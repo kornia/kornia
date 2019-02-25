@@ -33,11 +33,11 @@ class TestGaussianBlur:
     def test_gaussian_blur(self, batch_shape, device_type):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
-    
+
         input = torch.rand(batch_shape).to(torch.device(device_type))
         gauss = image.GaussianBlur(kernel_size, sigma)
         assert gauss(input).shape == batch_shape
-    
+
     def test_gradcheck(self):
         # test parameters
         batch_shape = (2, 3, 11, 7)
