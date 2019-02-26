@@ -15,6 +15,11 @@ def compose_transformations(
         trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
     r"""Functions that composes two homogeneous transformations.
 
+    .. math::
+
+        T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
+        \mathbf{0} & 1\end{bmatrix}
+
     Args:
         trans_01 (torch.Tensor): tensor with the homogenous transformation from
           a reference frame 1 respect to a frame 0. The tensor has must have a
@@ -23,11 +28,17 @@ def compose_transformations(
           a reference frame 2 respect to a frame 1. The tensor has must have a
           shape of :math:`(B, 4, 4)` or :math:`(4, 4)`.
 
+    Shape:
+        - Output: :math:`(N, 4, 4)` or :math:`(4, 4)`
+
     Returns:
-        torch.Tensor: the transformation between the reference frame 1 respect
-        to frame 2. The output shape will be :math:`(B, 4, 4)` or
-        :math:`(4 ,4)`.
-    
+        torch.Tensor: the transformation between the two frames.
+
+    Example::
+        >>> trans_01 = torch.eye(4)  # 4x4
+        >>> trans_12 = torch.eye(4)  # 4x4
+        >>> trans_02 = tgm.compose_transformations(trans_01, trans_12)  # 4x4
+
     """
     if not torch.is_tensor(trans_01):
         raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
@@ -64,24 +75,24 @@ def compose_transformations(
 
 def inverse_transformation(trans_12):
     r"""Function that inverts a 4x4 homogeneous transformation
-    :math:`P = \begin{bmatrix} R & t \\ \mathbf{0} & 1 \end{bmatrix}`
+    :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
     The inverse transformation is computed as follows:
 
     .. math::
 
-        P^{-1} = \begin{bmatrix} R^T & -R^T t \\ \mathbf{0} &
-        1\end{bmatrix}
+        T_2^{1} = (T_1^{2})^{-1} = \begin{bmatrix} R_1^T & -R_1^T t_1 \\
+        \mathbf{0} & 1\end{bmatrix}
 
     Args:
-        points (torch.Tensor): tensor with transformations.
+        trans_12 (torch.Tensor): transformation tensor of shape
+          :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Returns:
         torch.Tensor: tensor with inverted transformations.
 
     Shape:
-        - Input: :math:`(N, 4, 4)`
-        - Output: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 4, 4)` or :math:`(4, 4)`
 
     Example:
         >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
@@ -111,35 +122,33 @@ def inverse_transformation(trans_12):
 
 def relative_transformation(
         trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
-    r"""Function that computes the relative transformation from a reference
-    pose :math:`P_1^{\{W\}} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1
-    \end{bmatrix}` to destination :math:`P_2^{\{W\}} = \begin{bmatrix} R_2 &
-    t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
+    r"""Function that computes the relative homogenous transformation from a
+    reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
+    \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
+    \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
 
     The relative transformation is computed as follows:
 
     .. math::
 
-        P_1^{2} = \begin{bmatrix} R_2 R_1^T & R_1^T (t_2 - t_1) \\ \mathbf{0} &
-        1\end{bmatrix}
+        T_1^{2} = (T_0^{1})^{-1} \cdot T_0^{2}
 
     Arguments:
-        pose_1 (torch.Tensor): reference pose tensor of shape
-         :math:`(N, 4, 4)`.
-        pose_2 (torch.Tensor): destination pose tensor of shape
-         :math:`(N, 4, 4)`.
+        trans_01 (torch.Tensor): reference transformation tensor of shape
+         :math:`(N, 4, 4)` or :math:`(4, 4)`.
+        trans_02 (torch.Tensor): destination transformation tensor of shape
+         :math:`(N, 4, 4)` or :math:`(4, 4).
 
     Shape:
-        - Output: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Returns:
-        torch.Tensor: the relative transformation between the poses.
+        torch.Tensor: the relative transformation between the transformations.
 
     Example::
-
-        >>> pose_1 = torch.eye(4).unsqueeze(0)  # 1x4x4
-        >>> pose_2 = torch.eye(4).unsqueeze(0)  # 1x4x4
-        >>> pose_21 = tgm.relative_pose(pose_1, pose_2)  # 1x4x4
+        >>> trans_01 = torch.eye(4)  # 4x4
+        >>> trans_02 = torch.eye(4)  # 4x4
+        >>> trans_12 = tgm.relative_transformation(trans_01, trans_02)  # 4x4
     """
     if not torch.is_tensor(trans_01):
         raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
@@ -147,10 +156,10 @@ def relative_transformation(
     if not torch.is_tensor(trans_02):
         raise TypeError("Input trans_02 type is not a torch.Tensor. Got {}"
                         .format(type(trans_02)))
-    if not (len(trans_01.shape) in (2, 3) and trans_01.shape[-2:] == (4, 4)):
+    if not trans_01.dim() in (2, 3) and trans_01.shape[-2:] == (4, 4):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4."
                          " Got {}".format(trans_01.shape))
-    if not (len(trans_02.shape) in (2, 3) and trans_02.shape[-2:] == (4, 4)):
+    if not trans_02.dim() in (2, 3) and trans_02.shape[-2:] == (4, 4):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4."
                          " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
