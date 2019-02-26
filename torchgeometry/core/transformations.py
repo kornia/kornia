@@ -3,11 +3,16 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
+from torchgeometry.core.conversions import convert_points_to_homogeneous
+from torchgeometry.core.conversions import convert_points_from_homogeneous
+
 
 __all__ = [
     "compose_transformations",
     "inverse_transformation",
     "relative_transformation",
+    "transform_points",
+    "TransformPoints",
 ]
 
 
@@ -137,7 +142,7 @@ def relative_transformation(
         trans_01 (torch.Tensor): reference transformation tensor of shape
          :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_02 (torch.Tensor): destination transformation tensor of shape
-         :math:`(N, 4, 4)` or :math:`(4, 4).
+         :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Shape:
         - Output: :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -170,7 +175,77 @@ def relative_transformation(
     return trans_12
 
 
+def transform_points(dst_trans_src: torch.Tensor,
+                     points_src: torch.Tensor) -> torch.Tensor:
+    r"""Function that applies transformations to a set of points.
+
+    Args:
+        dst_trans_src (torch.Tensor): tensor for transformations of shape
+          :math:`(B, D+1, D+1)`.
+        points_src (torch.Tensor): tensor of points of shape :math:`(B, N, D)`.
+    Returns:
+        torch.Tensor: tensor of N-dimensional points.
+
+    Shape:
+        - Output: :math:`(B, N, D)`
+
+    Examples:
+
+        >>> x_src = torch.rand(2, 4, 3)  # BxNx3
+        >>> dst_trans_src = torch.eye(4).view(1, 4, 4)  # Bx4x4
+        >>> x_dst = tgm.transform_points(dst_trans_src, x_src)  # BxNx3
+    """
+    if not torch.is_tensor(dst_trans_src) or not torch.is_tensor(points_src):
+        raise TypeError("Input type is not a torch.Tensor")
+    if not dst_trans_src.device == points_src.device:
+        raise TypeError("Tensor must be in the same device")
+    if not dst_trans_src.shape[0] == points_src.shape[0]:
+        raise ValueError("Input batch size must be the same for both tensors")
+    if not dst_trans_src.shape[-1] == (points_src.shape[-1] + 1):
+        raise ValueError("Last input dimensions must differe by one unit")
+    # to homogeneous
+    points_src_h: torch.Tensor = convert_points_to_homogeneous(
+        points_src)  # BxNxD+1
+    # transform coordinates
+    points_dst_h: torch.Tensor = torch.matmul(
+        dst_trans_src.unsqueeze(1), points_src_h.unsqueeze(-1))
+    points_dst_h = torch.squeeze(points_dst_h, dim=-1)
+    # to euclidean
+    points_dst: torch.Tensor = convert_points_from_homogeneous(
+        points_dst_h)  # BxNxD
+    return points_dst
+
+
 # layer api
+
+
+class TransformPoints(nn.Module):
+    r"""Creates an object to transform a set of points.
+
+    Args:
+        dst_pose_src (torhc.Tensor): tensor for transformations of
+          shape :math:`(B, D+1, D+1)`.
+
+    Returns:
+        torch.Tensor: tensor of N-dimensional points.
+
+    Shape:
+        - Input: :math:`(B, D, N)`
+        - Output: :math:`(B, N, D)`
+
+    Examples:
+        >>> input = torch.rand(2, 4, 3)  # BxNx3
+        >>> transform = torch.eye(4).view(1, 4, 4)   # Bx4x4
+        >>> transform_op = tgm.TransformPoints(transform)
+        >>> output = transform_op(input)  # BxNx3
+    """
+
+    def __init__(self, dst_homo_src: torch.Tensor) -> None:
+        super(TransformPoints, self).__init__()
+        self.dst_homo_src: torch.Tensor = dst_homo_src
+
+    def forward(self, points_src: torch.Tensor) -> torch.Tensor:
+        return transform_points(self.dst_homo_src, points_src)
 
 
 '''class InversePose(nn.Module):
