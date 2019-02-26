@@ -6,3 +6,4 @@ Linear Transformations
 .. autofunction:: relative_transformation
 .. autofunction:: inverse_transformation
 .. autofunction:: compose_transformations
+.. autofunction:: transform_points
