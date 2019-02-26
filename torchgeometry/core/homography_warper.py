@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchgeometry.utils import create_meshgrid
-from torchgeometry.core.conversions import transform_points
+from torchgeometry.core.transformations import transform_points
 
 
 __all__ = [
