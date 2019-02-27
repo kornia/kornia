@@ -175,14 +175,14 @@ def relative_transformation(
     return trans_12
 
 
-def transform_points(dst_trans_src: torch.Tensor,
-                     points_src: torch.Tensor) -> torch.Tensor:
+def transform_points(trans_01: torch.Tensor,
+                     points_1: torch.Tensor) -> torch.Tensor:
     r"""Function that applies transformations to a set of points.
 
     Args:
-        dst_trans_src (torch.Tensor): tensor for transformations of shape
+        trans_01 (torch.Tensor): tensor for transformations of shape
           :math:`(B, D+1, D+1)`.
-        points_src (torch.Tensor): tensor of points of shape :math:`(B, N, D)`.
+        points_1 (torch.Tensor): tensor of points of shape :math:`(B, N, D)`.
     Returns:
         torch.Tensor: tensor of N-dimensional points.
 
@@ -191,29 +191,27 @@ def transform_points(dst_trans_src: torch.Tensor,
 
     Examples:
 
-        >>> x_src = torch.rand(2, 4, 3)  # BxNx3
-        >>> dst_trans_src = torch.eye(4).view(1, 4, 4)  # Bx4x4
-        >>> x_dst = tgm.transform_points(dst_trans_src, x_src)  # BxNx3
+        >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
+        >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
+        >>> points_0 = tgm.transform_points(trans_01, points_1)  # BxNx3
     """
-    if not torch.is_tensor(dst_trans_src) or not torch.is_tensor(points_src):
+    if not torch.is_tensor(trans_01) or not torch.is_tensor(points_1):
         raise TypeError("Input type is not a torch.Tensor")
-    if not dst_trans_src.device == points_src.device:
+    if not trans_01.device == points_1.device:
         raise TypeError("Tensor must be in the same device")
-    if not dst_trans_src.shape[0] == points_src.shape[0]:
+    if not trans_01.shape[0] == points_1.shape[0]:
         raise ValueError("Input batch size must be the same for both tensors")
-    if not dst_trans_src.shape[-1] == (points_src.shape[-1] + 1):
+    if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError("Last input dimensions must differe by one unit")
     # to homogeneous
-    points_src_h: torch.Tensor = convert_points_to_homogeneous(
-        points_src)  # BxNxD+1
+    points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # transform coordinates
-    points_dst_h: torch.Tensor = torch.matmul(
-        dst_trans_src.unsqueeze(1), points_src_h.unsqueeze(-1))
-    points_dst_h = torch.squeeze(points_dst_h, dim=-1)
+    points_0_h = torch.matmul(
+        trans_01.unsqueeze(1), points_1_h.unsqueeze(-1))
+    points_0_h = torch.squeeze(points_0_h, dim=-1)
     # to euclidean
-    points_dst: torch.Tensor = convert_points_from_homogeneous(
-        points_dst_h)  # BxNxD
-    return points_dst
+    points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
+    return points_0
 
 
 # layer api
