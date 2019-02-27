@@ -42,6 +42,46 @@ def euler_angles_to_rotation_matrix(x, y, z):
     return torch.matmul(rz, torch.matmul(ry, rx))  # Bx4x4
 
 
+class TestTransformPoints:
+
+    @pytest.mark.parametrize("device_type", TEST_DEVICES)
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("num_points", [2, 3, 5])
+    @pytest.mark.parametrize("num_dims", [2, 3])
+    def test_transform_points(
+            self, batch_size, num_points, num_dims, device_type):
+        # generate input data
+        eye_size = num_dims + 1
+        points_src = torch.rand(batch_size, num_points, num_dims)
+        points_src = points_src.to(torch.device(device_type))
+
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        dst_homo_src = dst_homo_src.to(torch.device(device_type))
+
+        # transform the points from dst to ref
+        points_dst = tgm.transform_points(dst_homo_src, points_src)
+
+        # transform the points from ref to dst
+        src_homo_dst = torch.inverse(dst_homo_src)
+        points_dst_to_src = tgm.transform_points(src_homo_dst, points_dst)
+
+        # projected should be equal as initial
+        error = utils.compute_mse(points_src, points_dst_to_src)
+        assert pytest.approx(error.item(), 0.0)
+
+    def test_gradcheck(self):
+        # generate input data
+        batch_size, num_points, num_dims = 2, 3, 2
+        eye_size = num_dims + 1
+        points_src = torch.rand(batch_size, num_points, num_dims)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        # evaluate function gradient
+        points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
+        dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
+        assert gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
+                         raise_exception=True)
+
+
 class TestComposeTransforms:
 
     def test_translation_4x4(self):
