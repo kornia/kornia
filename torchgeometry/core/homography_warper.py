@@ -26,9 +26,10 @@ class HomographyWarper(nn.Module):
     Args:
         height (int): The height of the image to warp.
         width (int): The width of the image to warp.
-        padding_mode (str): Either 'zeros' to replace out of bounds with
-                            zeros or 'border' to choose the closest
-                            border data.
+        mode (Optional[str]): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (Optional[str]): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         normalized_coordinates (Optional[bool]): wether to use a grid with
                                                  normalized coordinates.
     """
@@ -37,11 +38,13 @@ class HomographyWarper(nn.Module):
             self,
             height: int,
             width: int,
+            mode: Optional[str] = 'bilinear',
             padding_mode: Optional[str] = 'zeros',
             normalized_coordinates: Optional[bool] = True) -> None:
         super(HomographyWarper, self).__init__()
         self.width: int = width
         self.height: int = height
+        self.mode: Optional[str] = mode
         self.padding_mode: Optional[str] = padding_mode
         self.normalized_coordinates: Optional[bool] = normalized_coordinates
 
@@ -103,19 +106,18 @@ class HomographyWarper(nn.Module):
             raise TypeError("Patch and homography must be on the same device. \
                             Got patch.device: {} dst_H_src.device: {}."
                             .format(patch_src.device, dst_homo_src.device))
-        return torch.nn.functional.grid_sample(
-            patch_src, self.warp_grid(dst_homo_src), mode='bilinear',
-            padding_mode=self.padding_mode)
+        return F.grid_sample(patch_src, self.warp_grid(dst_homo_src),
+                             mode=self.mode, padding_mode=self.padding_mode)
 
 
 # functional api
 
 
 def homography_warp(patch_src: torch.Tensor,
-                    dst_H_src: torch.Tensor,
-                    dsize: Tuple[int,
-                                 int],
-                    padding_mode: Optional[str] = 'zeros'):
+                    dst_homo_src: torch.Tensor,
+                    dsize: Tuple[int, int],
+                    mode: Optional[str] = 'bilinear',
+                    padding_mode: Optional[str] = 'zeros') -> torch.Tensor:
     r"""Function that warps image patchs or tensors by homographies.
 
     See :class:`~torchgeometry.HomographyWarper` for details.
@@ -127,9 +129,10 @@ def homography_warp(patch_src: torch.Tensor,
                                      from source to destination of shape
                                      :math:`(N, 3, 3)`.
         dsize (Tuple[int, int]): The height and width of the image to warp.
-        padding_mode (Optional[string]): Either 'zeros' to replace out of
-                                         bounds with zeros or 'border' to
-                                         choose the closest border data.
+        mode (Optional[str]): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (Optional[str]): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
 
     Return:
         torch.Tensor: Patch sampled at locations from source to destination.
@@ -140,5 +143,5 @@ def homography_warp(patch_src: torch.Tensor,
         >>> output = tgm.homography_warp(input, homography, (32, 32))  # NxCxHxW
     """
     height, width = dsize
-    warper = HomographyWarper(height, width, padding_mode)
-    return warper(patch_src, dst_H_src)
+    warper = HomographyWarper(height, width, mode, padding_mode)
+    return warper(patch_src, dst_homo_src)
