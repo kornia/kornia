@@ -8,7 +8,6 @@ __all__ = [
     "deg2rad",
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
-    "transform_points",
     "angle_axis_to_rotation_matrix",
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
@@ -19,7 +18,6 @@ __all__ = [
     "DegToRad",
     "ConvertPointsFromHomogeneous",
     "ConvertPointsToHomogeneous",
-    "TransformPoints",
 ]
 
 
@@ -73,7 +71,7 @@ def deg2rad(tensor):
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points, eps=1e-6):
+def convert_points_from_homogeneous(points):
     r"""Function that converts points from homogeneous to Euclidean space.
 
     See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.
@@ -90,7 +88,7 @@ def convert_points_from_homogeneous(points, eps=1e-6):
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return points[..., :-1] / (points[..., -1:] + eps)
+    return points[..., :-1] / points[..., -1:]
 
 
 def convert_points_to_homogeneous(points):
@@ -111,47 +109,6 @@ def convert_points_to_homogeneous(points):
             points.shape))
 
     return nn.functional.pad(points, (0, 1), "constant", 1.0)
-
-
-def transform_points(dst_pose_src, points_src):
-    r"""Function that applies transformations to a set of points.
-
-    See :class:`~torchgeometry.TransformPoints` for details.
-
-    Args:
-        dst_pose_src (Tensor): tensor for transformations.
-        points_src (Tensor): tensor of points.
-
-    Returns:
-        Tensor: tensor of N-dimensional points.
-
-    Shape:
-        - Input: :math:`(B, D+1, D+1)` and :math:`(B, D, N)`
-        - Output: :math:`(B, N, D)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> pose = torch.eye(4).view(1, 4, 4)   # Bx4x4
-        >>> output = tgm.transform_points(pose, input)  # BxNx3
-    """
-    if not torch.is_tensor(dst_pose_src) or not torch.is_tensor(points_src):
-        raise TypeError("Input type is not a torch.Tensor")
-    if not dst_pose_src.device == points_src.device:
-        raise TypeError("Tensor must be in the same device")
-    if not dst_pose_src.shape[0] == points_src.shape[0]:
-        raise ValueError("Input batch size must be the same for both tensors")
-    if not dst_pose_src.shape[-1] == (points_src.shape[-1] + 1):
-        raise ValueError("Last input dimensions must differe by one unit")
-    # to homogeneous
-    points_src_h = convert_points_to_homogeneous(points_src)  # BxNxD+1
-    # transform coordinates
-    points_dst_h = torch.matmul(
-        dst_pose_src.unsqueeze(1), points_src_h.unsqueeze(-1))
-    points_dst_h = torch.squeeze(points_dst_h, dim=-1)
-    # to euclidean
-    points_dst = convert_points_from_homogeneous(points_dst_h)  # BxNxD
-    return points_dst
 
 
 def angle_axis_to_rotation_matrix(angle_axis):
@@ -348,8 +305,8 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     mask_c3 = mask_c3.view(-1, 1).type_as(q3)
 
     q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
-    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1  # noqa
-                    + t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
+                    t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
     q *= 0.5
     return q
 
@@ -520,33 +477,3 @@ class ConvertPointsToHomogeneous(nn.Module):
 
     def forward(self, input):
         return convert_points_to_homogeneous(input)
-
-
-class TransformPoints(nn.Module):
-    r"""Creates an object to transform a set of points.
-
-    Args:
-        dst_pose_src (Tensor): tensor for transformations of
-         shape :math:`(B, D+1, D+1)`.
-
-    Returns:
-        Tensor: tensor of N-dimensional points.
-
-    Shape:
-        - Input: :math:`(B, D, N)`
-        - Output: :math:`(B, N, D)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> transform = torch.eye(4).view(1, 4, 4)   # Bx4x4
-        >>> transform_op = tgm.TransformPoints(transform)
-        >>> output = transform_op(input)  # BxNx3
-    """
-
-    def __init__(self, dst_homo_src):
-        super(TransformPoints, self).__init__()
-        self.dst_homo_src = dst_homo_src
-
-    def forward(self, points_src):
-        return transform_points(self.dst_homo_src, points_src)
