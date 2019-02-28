@@ -19,7 +19,7 @@ __all__ = [
 
 
 class DepthWarper(nn.Module):
-    """Warps a patch by depth.
+    r"""Warps a patch by depth.
 
     .. math::
         P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
