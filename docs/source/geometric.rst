@@ -1,5 +1,5 @@
-Geometric Image Transformations
--------------------------------
+Image Transformations
+---------------------
 
 .. currentmodule:: torchgeometry
 
