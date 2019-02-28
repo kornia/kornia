@@ -1,8 +1,10 @@
+from typing import Tuple, Optional
+
 import torch
 import torch.nn.functional as F
 
-from .homography_warper import homography_warp
-from .conversions import deg2rad
+from torchgeometry.core.conversions import deg2rad
+from torchgeometry.core.homography_warper import homography_warp
 
 
 __all__ = [
@@ -102,11 +104,15 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
     return transform_warp_impl(src, M, (src.shape[-2:]), dsize)
 
 
-def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
-                border_value=0):
-    r"""Applies an affine transformation to an image.
+def warp_affine(src: torch.Tensor,
+                M: torch.Tensor,
+                dsize: Tuple[int,
+                             int],
+                flags: Optional[str] = 'bilinear',
+                padding_mode: Optional[str] = 'zeros') -> torch.Tensor:
+    r"""Applies an affine transformation to a tensor.
 
-    The function warp_affine transforms the source image using
+    The function warp_affine transforms the source tensor using
     the specified matrix:
 
     .. math::
@@ -114,20 +120,23 @@ def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
         M_{21} x + M_{22} y + M_{23} \right )
 
     Args:
-        src (Tensor): input image.
-        M (Tensor): transformation matrix.
-        dsize (tuple): size of the output image (height, width).
+        src (torch.Tensor): input tensor of shape :math:`(B, C, H, W)`.
+        M (torch.Tensor): affine transformation of shape :math:`(B, 2, 3)`.
+        dsize (Tuple[int, int]): size of the output image (height, width).
+        mode (Optional[str]): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (Optional[str]): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
 
     Returns:
-        Tensor: the warped input image.
+        torch.Tensor: the warped tensor.
 
     Shape:
-        - Input: :math:`(B, C, H, W)` and :math:`(B, 2, 3)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://github.com/arraiy/torchgeometry/
-       blob/master/examples/warp_affine.ipynb>`__.
+       See a working example `here <https://github.com/arraiyopensource/
+       torchgeometry/blob/master/docs/source/warp_affine.ipynb>`__.
     """
     if not torch.is_tensor(src):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"
@@ -142,7 +151,8 @@ def warp_affine(src, M, dsize, flags='bilinear', border_mode=None,
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(src.shape))
     # we generate a 3x3 transformation matrix from 2x3 affine
-    M_3x3 = F.pad(M, (0, 0, 0, 1, 0, 0))
+    M_3x3: torch.Tensor = F.pad(M, (0, 0, 0, 1, 0, 0),
+                                mode="constant", value=0)
     M_3x3[:, 2, 2] += 1.0
 
     # launches the warper
