@@ -35,7 +35,7 @@ class TestAngleAxisToQuaternion:
     def test_small_angle(self):
         theta = 1e-2
         angle_axis = torch.Tensor([theta, 0, 0])
-        expected = torch.Tensor([np.cos(theta/2), np.sin(theta/2), 0, 0])
+        expected = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
         quaternion = tgm.angle_axis_to_quaternion(angle_axis)
         assert utils.check_equal_torch(quaternion, expected)
 
