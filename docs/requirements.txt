@@ -2,3 +2,4 @@ sphinx
 sphinx_rtd_theme
 nbsphinx
 numpy
+tornado<6
