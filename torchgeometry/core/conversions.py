@@ -308,8 +308,8 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     mask_c3 = mask_c3.view(-1, 1).type_as(q3)
 
     q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
-    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1  # noqa
-                    + t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
+                    t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
     q *= 0.5
     return q
 
@@ -363,7 +363,9 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     angle_axis[..., 2] += q3 * k
     return angle_axis
 
-# based on: https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
+# based on:
+# https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
+
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     """Convert an angle axis to a quaternion.
