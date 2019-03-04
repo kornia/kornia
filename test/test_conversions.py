@@ -13,6 +13,48 @@ from common import TEST_DEVICES
 # based on:
 # https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
 
+class TestAngleAxisToQuaternion:
+
+    def test_smoke(self):
+        angle_axis = torch.zeros(3)
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert quaternion.shape == (4,)
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        angle_axis = torch.zeros(batch_size, 3)
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert quaternion.shape == (batch_size, 4)
+
+    def test_zero_angle(self):
+        angle_axis = torch.Tensor([0, 0, 0])
+        expected = torch.Tensor([1, 0, 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_small_angle(self):
+        theta = 1e-2
+        angle_axis = torch.Tensor([theta, 0, 0])
+        expected = torch.Tensor([np.cos(theta/2), np.sin(theta/2), 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_x_rotation(self):
+        half_sqrt2 = 0.5 * np.sqrt(2)
+        angle_axis = torch.Tensor([tgm.pi / 2, 0, 0])
+        expected = torch.Tensor([half_sqrt2, half_sqrt2, 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_gradcheck(self):
+        eps = 1e-12
+        angle_axis = torch.Tensor([0, 0, 0]) + eps
+        angle_axis = utils.tensor_to_gradcheck_var(angle_axis)
+        # evaluate function gradient
+        assert gradcheck(tgm.angle_axis_to_quaternion, (angle_axis,),
+                         raise_exception=True)
+
+
 class TestQuaternionToAngleAxis:
 
     def test_smoke(self):
@@ -202,7 +244,6 @@ def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
                      (rmat,), raise_exception=True)
 
 
-@pytest.mark.skip("fix")
 @pytest.mark.parametrize("device_type", TEST_DEVICES)
 def test_rotation_matrix_to_angle_axis(device_type):
     device = torch.device(device_type)
