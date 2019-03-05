@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import torchgeometry as tgm
+
 __all__ = [
     # functional api
     "pi",
@@ -12,6 +14,7 @@ __all__ = [
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
     "quaternion_to_angle_axis",
+    "angle_axis_to_quaternion",
     "rtvec_to_pose",
     # layer api
     "RadToDeg",
@@ -23,7 +26,7 @@ __all__ = [
 
 """Constant with number pi
 """
-pi = torch.Tensor([3.141592653589793])
+pi = torch.Tensor([3.14159265358979323846])
 
 
 def rad2deg(tensor):
@@ -311,66 +314,107 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     return q
 
 
-def quaternion_to_angle_axis(quaternion, eps=1e-6):
-    """Convert quaternion vector to angle axis of rotation
+def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
+    """Convert quaternion vector to angle axis of rotation.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        quaternion (Tensor): batch with quaternions
+        quaternion (torch.Tensor): tensor with quaternions.
 
     Return:
-        Tensor: batch with angle axis of rotation
+        torch.Tensor: tensor with angle axis of rotation.
 
     Shape:
-        - Input: :math:`(N, 4)`
-        - Output: :math:`(N, 3)`
+        - Input: :math:`(*, 4)` where `*` means, any number of dimensions
+        - Output: :math:`(*, 3)`
 
     Example:
-        >>> input = torch.rand(2, 4)  # Nx4
-        >>> output = tgm.quaternion_to_angle_axis(input)  # Nx3
+        >>> quaternion = torch.rand(2, 4)  # Nx4
+        >>> angle_axis = tgm.quaternion_to_angle_axis(quaternion)  # Nx3
     """
     if not torch.is_tensor(quaternion):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(quaternion)))
 
-    if len(quaternion.shape) != 2 and quaternion.shape[1] != 4:
-        raise ValueError("Input must be a tensor of shape Nx4. Got {}".format(
-            quaternion.shape))
+    if not quaternion.shape[-1] == 4:
+        raise ValueError("Input must be a tensor of shape Nx4 or 4. Got {}"
+                         .format(quaternion.shape))
+    # unpack input and compute conversion
+    q1: torch.Tensor = quaternion[..., 1]
+    q2: torch.Tensor = quaternion[..., 2]
+    q3: torch.Tensor = quaternion[..., 3]
+    sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
-    normalizer = 1 / torch.norm(quaternion, dim=1)
-    q1 = quaternion[:, 1] * normalizer
-    q2 = quaternion[:, 2] * normalizer
-    q3 = quaternion[:, 3] * normalizer
+    sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
+    cos_theta: torch.Tensor = quaternion[..., 0]
+    two_theta: torch.Tensor = 2.0 * torch.where(
+        cos_theta < 0.0,
+        torch.atan2(-sin_theta, -cos_theta),
+        torch.atan2(sin_theta, cos_theta))
 
-    sin_squared = q1 * q1 + q2 * q2 + q3 * q3
-    mask = (sin_squared > eps).to(sin_squared.device)
-    mask_pos = (mask).type_as(sin_squared)
-    mask_neg = (mask == False).type_as(sin_squared)  # noqa
-    batch_size = quaternion.size(0)
-    angle_axis = torch.zeros(
-        batch_size, 3, dtype=quaternion.dtype).to(
-        quaternion.device)
+    k_pos: torch.Tensor = two_theta / sin_theta
+    k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
+    k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
 
-    sin_theta = torch.sqrt(sin_squared)
-    cos_theta = quaternion[:, 0] * normalizer
-    mask_theta = (cos_theta < eps).view(1, -1)
-    mask_theta_neg = (mask_theta).type_as(cos_theta)
-    mask_theta_pos = (mask_theta == False).type_as(cos_theta)  # noqa
-
-    theta = torch.atan2(-sin_theta, -cos_theta) * mask_theta_neg \
-        + torch.atan2(sin_theta, cos_theta) * mask_theta_pos
-
-    two_theta = 2 * theta
-    k_pos = two_theta / sin_theta
-    k_neg = 2.0
-    k = k_neg * mask_neg + k_pos * mask_pos
-
-    angle_axis[:, 0] = q1 * k
-    angle_axis[:, 1] = q2 * k
-    angle_axis[:, 2] = q3 * k
-
+    angle_axis: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
+    angle_axis[..., 0] += q1 * k
+    angle_axis[..., 1] += q2 * k
+    angle_axis[..., 2] += q3 * k
     return angle_axis
+
+# based on:
+# https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
+
+
+def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
+    """Convert an angle axis to a quaternion.
+
+    Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
+
+    Args:
+        angle_axis (torch.Tensor): tensor with angle axis.
+
+    Return:
+        torch.Tensor: tensor with quaternion.
+
+    Shape:
+        - Input: :math:`(*, 3)` where `*` means, any number of dimensions
+        - Output: :math:`(*, 4)`
+
+    Example:
+        >>> angle_axis = torch.rand(2, 4)  # Nx4
+        >>> quaternion = tgm.angle_axis_to_quaternion(angle_axis)  # Nx3
+    """
+    if not torch.is_tensor(angle_axis):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(angle_axis)))
+
+    if not angle_axis.shape[-1] == 3:
+        raise ValueError("Input must be a tensor of shape Nx3 or 3. Got {}"
+                         .format(angle_axis.shape))
+    # unpack input and compute conversion
+    a0: torch.Tensor = angle_axis[..., 0:1]
+    a1: torch.Tensor = angle_axis[..., 1:2]
+    a2: torch.Tensor = angle_axis[..., 2:3]
+    theta_squared: torch.Tensor = a0 * a0 + a1 * a1 + a2 * a2
+
+    theta: torch.Tensor = torch.sqrt(theta_squared)
+    half_theta: torch.Tensor = theta * 0.5
+
+    mask: torch.Tensor = theta_squared > 0.0
+    ones: torch.Tensor = torch.ones_like(half_theta)
+
+    k_neg: torch.Tensor = 0.5 * ones
+    k_pos: torch.Tensor = torch.sin(half_theta) / theta
+    k: torch.Tensor = torch.where(mask, k_pos, k_neg)
+    w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
+
+    quaternion: torch.Tensor = torch.zeros_like(angle_axis)
+    quaternion[..., 0:1] += a0 * k
+    quaternion[..., 1:2] += a1 * k
+    quaternion[..., 2:3] += a2 * k
+    return torch.cat([w, quaternion], dim=-1)
 
 # TODO: add below funtionalities
 #  - pose_to_rtvec
