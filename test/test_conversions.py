@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 import torch
 import torchgeometry as tgm
@@ -7,6 +8,98 @@ from torch.autograd import gradcheck
 import utils  # test utils
 from utils import check_equal_torch, check_equal_numpy
 from common import TEST_DEVICES
+
+
+# based on:
+# https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
+
+class TestAngleAxisToQuaternion:
+
+    def test_smoke(self):
+        angle_axis = torch.zeros(3)
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert quaternion.shape == (4,)
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        angle_axis = torch.zeros(batch_size, 3)
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert quaternion.shape == (batch_size, 4)
+
+    def test_zero_angle(self):
+        angle_axis = torch.Tensor([0, 0, 0])
+        expected = torch.Tensor([1, 0, 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_small_angle(self):
+        theta = 1e-2
+        angle_axis = torch.Tensor([theta, 0, 0])
+        expected = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_x_rotation(self):
+        half_sqrt2 = 0.5 * np.sqrt(2)
+        angle_axis = torch.Tensor([tgm.pi / 2, 0, 0])
+        expected = torch.Tensor([half_sqrt2, half_sqrt2, 0, 0])
+        quaternion = tgm.angle_axis_to_quaternion(angle_axis)
+        assert utils.check_equal_torch(quaternion, expected)
+
+    def test_gradcheck(self):
+        eps = 1e-12
+        angle_axis = torch.Tensor([0, 0, 0]) + eps
+        angle_axis = utils.tensor_to_gradcheck_var(angle_axis)
+        # evaluate function gradient
+        assert gradcheck(tgm.angle_axis_to_quaternion, (angle_axis,),
+                         raise_exception=True)
+
+
+class TestQuaternionToAngleAxis:
+
+    def test_smoke(self):
+        quaternion = torch.zeros(4)
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert angle_axis.shape == (3,)
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        quaternion = torch.zeros(batch_size, 4)
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert angle_axis.shape == (batch_size, 3)
+
+    def test_unit_quaternion(self):
+        quaternion = torch.Tensor([1, 0, 0, 0])
+        expected = torch.Tensor([0, 0, 0])
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert utils.check_equal_torch(angle_axis, expected)
+
+    def test_y_rotation(self):
+        quaternion = torch.Tensor([0, 0, 1, 0])
+        expected = torch.Tensor([0, tgm.pi, 0])
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert utils.check_equal_torch(angle_axis, expected)
+
+    def test_z_rotation(self):
+        quaternion = torch.Tensor([np.sqrt(3) / 2, 0, 0, 0.5])
+        expected = torch.Tensor([0, 0, tgm.pi / 3])
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert utils.check_equal_torch(angle_axis, expected)
+
+    def test_small_angle(self):
+        theta = 1e-2
+        quaternion = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
+        expected = torch.Tensor([theta, 0, 0])
+        angle_axis = tgm.quaternion_to_angle_axis(quaternion)
+        assert utils.check_equal_torch(angle_axis, expected)
+
+    def test_gradcheck(self):
+        eps = 1e-12
+        quaternion = torch.Tensor([1, 0, 0, 0]) + eps
+        quaternion = utils.tensor_to_gradcheck_var(quaternion)
+        # evaluate function gradient
+        assert gradcheck(tgm.quaternion_to_angle_axis, (quaternion,),
+                         raise_exception=True)
 
 
 def test_pi():

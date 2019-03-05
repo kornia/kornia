@@ -11,6 +11,7 @@ Conversions
 .. autofunction:: rotation_matrix_to_angle_axis
 .. autofunction:: rotation_matrix_to_quaternion
 .. autofunction:: quaternion_to_angle_axis
+.. autofunction:: angle_axis_to_quaternion
 .. autofunction:: rtvec_to_pose
 
 .. autoclass:: RadToDeg
