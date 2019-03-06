@@ -30,7 +30,7 @@ VERSION = find_version('torchgeometry', '__init__.py')
 
 
 requirements = [
-    'torch==1.0.0',
+    'torch>=1.0.0',
 ]
 
 
