@@ -40,7 +40,7 @@ setup(
     version=VERSION,
     author='Edgar Riba',
     author_email='edgar.riba@gmail.com',
-    url='https://github.com/arraiy/torchgeometry',
+    url='https://github.com/arraiyopensource/torchgeometry',
     description='differential geometric computer vision for deep learning',
     long_description=long_description,
     license='BSD',
