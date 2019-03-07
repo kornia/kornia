@@ -1,6 +1,4 @@
-# Welcome to the PyTorch setup.py.
-#
-# Environment variables you are probably interested in:
+# Welcome to the PyTorch Geometry setup.py.
 #
 # Environment variables for feature toggles:
 #
