@@ -1,3 +1,5 @@
+from .version import __version__
+
 from torchgeometry import core
 from torchgeometry import image
 from torchgeometry import losses
@@ -11,7 +13,3 @@ from .core.pinhole import *
 from .core.conversions import *
 from .core.imgwarp import *
 from .core.transformations import *
-
-
-# TODO(edgar): move to a separated file
-__version__ = '0.1.2rc1'  # the current version of the lib

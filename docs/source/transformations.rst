@@ -3,7 +3,7 @@ Linear Transformations
 
 .. currentmodule:: torchgeometry
 
-.. autofunction:: relative_pose
-.. autofunction:: inverse_pose
-
-.. autoclass:: InversePose
+.. autofunction:: relative_transformation
+.. autofunction:: inverse_transformation
+.. autofunction:: compose_transformations
+.. autofunction:: transform_points
