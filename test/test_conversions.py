@@ -6,14 +6,13 @@ from torch.autograd import gradcheck
 
 import utils  # test utils
 from utils import check_equal_torch, check_equal_numpy
-from common import TEST_DEVICES
+from common import device_type
 
 
 def test_pi():
     assert pytest.approx(tgm.pi.item(), 3.141592)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_rad2deg(batch_shape, device_type):
@@ -37,7 +36,6 @@ def test_rad2deg(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_deg2rad(batch_shape, device_type):
@@ -60,7 +58,6 @@ def test_deg2rad(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_convert_points_to_homogeneous(batch_shape, device_type):
@@ -83,7 +80,6 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
 def test_convert_points_from_homogeneous(batch_shape, device_type):
@@ -107,7 +103,6 @@ def test_convert_points_from_homogeneous(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 @pytest.mark.parametrize("num_points", [2, 3, 5])
 @pytest.mark.parametrize("num_dims", [2, 3])
@@ -142,7 +137,6 @@ def test_transform_points(batch_size, num_points, num_dims, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_angle_axis_to_rotation_matrix(batch_size, device_type):
     # generate input data
@@ -163,7 +157,6 @@ def test_angle_axis_to_rotation_matrix(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rtvec_to_pose_gradcheck(batch_size, device_type):
     # generate input data
@@ -174,7 +167,6 @@ def test_rtvec_to_pose_gradcheck(batch_size, device_type):
     assert gradcheck(tgm.rtvec_to_pose, (rtvec,), raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
     # generate input data
@@ -186,7 +178,6 @@ def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
                      (rmat,), raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 def test_rotation_matrix_to_angle_axis(device_type):
     device = torch.device(device_type)
     rmat_1 = torch.tensor([[-0.30382753, -0.95095137, -0.05814062, 0.],
