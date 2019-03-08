@@ -1,5 +1,5 @@
 import pytest
-from common import TEST_DEVICES
+from common import device_type
 
 import torch
 import torchgeometry as tgm
@@ -69,7 +69,6 @@ class LocalizationNetwork(nn.Module):
 
 # TODO(wizaron): need the double check what's going on here
 @pytest.mark.skip(reason="in PyTorch >= v1.0.0 it crashes.")
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_jit_tracing(device_type, affine):
     net = LocalizationNetwork((4, 4), pretrained=False, affine=affine)

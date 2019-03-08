@@ -5,7 +5,7 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
-from common import TEST_DEVICES
+from common import device_type
 
 
 class TestHomographyWarper:
@@ -112,7 +112,6 @@ class TestHomographyWarper:
         assert utils.check_equal_torch(
             patch_src[..., -1, -1], patch_dst[..., -1, 0])
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_homography_warper(self, batch_size, device_type):
         # generate input data
@@ -156,7 +155,6 @@ class TestHomographyWarper:
             assert utils.check_equal_torch(
                 patch_dst_to_src, patch_dst_to_src_functional)
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16), ])
     def test_gradcheck(self, batch_shape, device_type):
