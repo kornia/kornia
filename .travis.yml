@@ -5,11 +5,12 @@ python:
 notifications:
   email: false
 
-install:
+before_install:
   - ./setup_travis_env.sh
-
-before_script:
   - source path.bash.inc
+
+install:
+  - python setup.py install
 
 matrix:
   include:

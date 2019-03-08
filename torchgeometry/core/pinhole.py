@@ -4,8 +4,9 @@ import warnings
 import torch
 import torch.nn as nn
 
-from torchgeometry.core.transformations import inverse_pose
-from torchgeometry.core.conversions import rtvec_to_pose, transform_points
+from torchgeometry.core.conversions import rtvec_to_pose
+from torchgeometry.core.transformations import transform_points
+from torchgeometry.core.transformations import inverse_transformation
 
 
 __all__ = [
@@ -558,7 +559,8 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
     assert pinhole_i.shape == pinhole_ref.shape, pinhole_ref.shape
     i_pose_base = get_optical_pose_base(pinhole_i)
     ref_pose_base = get_optical_pose_base(pinhole_ref)
-    i_pose_ref = torch.matmul(i_pose_base, inverse_pose(ref_pose_base))
+    i_pose_ref = torch.matmul(i_pose_base,
+                              inverse_transformation(ref_pose_base))
     return torch.matmul(
         pinhole_matrix(pinhole_i),
         torch.matmul(i_pose_ref, inverse_pinhole_matrix(pinhole_ref)))

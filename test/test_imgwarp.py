@@ -195,3 +195,33 @@ def test_warp_perspective_crop(batch_size, device_type, channels):
     patch_warped = tgm.warp_perspective(
         patch, dst_pix_trans_src_pix, (dst_h, dst_w))
     assert patch_warped.shape == (batch_size, channels, dst_h, dst_w)
+
+
+class TestWarpAffine:
+    def test_smoke(self):
+        batch_size, channels, height, width = 1, 2, 3, 4
+        aff_ab = torch.eye(2, 3)[None]  # 1x2x3
+        img_b = torch.rand(batch_size, channels, height, width)
+        img_a = tgm.warp_affine(img_b, aff_ab, (height, width))
+        assert img_b.shape == img_a.shape
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    def test_translation(self, batch_size):
+        offset = 1.
+        channels, height, width = 1, 3, 4
+        aff_ab = torch.eye(2, 3).repeat(batch_size, 1, 1)  # Bx2x3
+        aff_ab[..., -1] += offset
+        img_b = torch.arange(float(height * width)).view(
+            1, channels, height, width).repeat(batch_size, 1, 1, 1)
+        img_a = tgm.warp_affine(img_b, aff_ab, (height, width))
+        assert utils.check_equal_torch(img_b[..., :2, :3], img_a[..., 1:, 1:])
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 1, 2, 3, 4
+        aff_ab = torch.eye(2, 3)[None]  # 1x2x3
+        img_b = torch.rand(batch_size, channels, height, width)
+        aff_ab = utils.tensor_to_gradcheck_var(
+            aff_ab, requires_grad=False)  # to var
+        img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
+        assert gradcheck(tgm.warp_affine, (img_b, aff_ab, (height, width),),
+                         raise_exception=True)
