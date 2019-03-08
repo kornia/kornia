@@ -5,7 +5,7 @@ python:
 notifications:
   email: false
 
-install:
+before_install:
   - ./setup_travis_env.sh
 
 before_script:
@@ -20,9 +20,11 @@ matrix:
       script: python verify.py --check mypy
     
     - env: docs
+      install: python setup.py install
       script: python verify.py --check build-docs
     
     - env: unit tests
+      install: python setup.py install
       script: pytest -vx --cov=torchgeometry test
       after_success:
         - bash <(curl -s https://codecov.io/bash)
