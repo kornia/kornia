@@ -5,7 +5,7 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utilities
-from common import TEST_DEVICES
+from common import device_type
 
 
 class TestPinholeCamera:
@@ -258,7 +258,6 @@ class TestPinholeCamera:
             pinhole_scale.width, pinhole.width * scale_val)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_scale_pinhole(batch_size, device_type):
     # generate input data
@@ -277,7 +276,6 @@ def test_scale_pinhole(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_pinhole_matrix(batch_size, device_type):
     # generate input data
@@ -310,7 +308,6 @@ def test_pinhole_matrix(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_inverse_pinhole_matrix(batch_size, device_type):
     # generate input data
@@ -345,7 +342,6 @@ def test_inverse_pinhole_matrix(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_homography_i_H_ref(batch_size, device_type):
     # generate input data
