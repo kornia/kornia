@@ -68,7 +68,7 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
 
     .. math::
         \text{dst} (x, y) = \text{src} \left(
-        \frac{M_{11} x + M_{12} y + M_{33}}{M_{31} x + M_{32} y + M_{33}} ,
+        \frac{M_{11} x + M_{12} y + M_{13}}{M_{31} x + M_{32} y + M_{33}} ,
         \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
         \right )
 
