@@ -1,5 +1,6 @@
 build/
 dist/
+torchgeometry/version.py
 torchgeometry.egg-info/
 */**/__pycache__
 */**/*.pyc
