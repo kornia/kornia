@@ -14,3 +14,4 @@ torchgeometry.egg-info/
 .pytest_cache/*
 .dev_env
 .mypy_cache/*
+.coverage
