@@ -10,20 +10,20 @@ before_install:
   - source path.bash.inc
 
 install:
-  - python setup.py install
+  - make install
 
 matrix:
   include:
     - env: lint check
-      script: python verify.py --check lint
+      script: make lint
     
     - env: static check
-      script: python verify.py --check mypy
+      script: make mypy
     
     - env: docs
-      script: python verify.py --check build-docs
+      script: make build-docs
     
     - env: unit tests
-      script: pytest -vx --cov=torchgeometry test
+      script: make test-cpu-cov
       after_success:
         - bash <(curl -s https://codecov.io/bash)

@@ -8,15 +8,15 @@ from torchgeometry.core.conversions import convert_points_from_homogeneous
 
 
 __all__ = [
-    "compose_transformations",
+    "boxplus_transformation",
+    "boxminus_transformation",
     "inverse_transformation",
-    "relative_transformation",
     "transform_points",
     "TransformPoints",
 ]
 
 
-def compose_transformations(
+def boxplus_transformation(
         trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
     r"""Functions that composes two homogeneous transformations.
 
@@ -125,7 +125,7 @@ def inverse_transformation(trans_12):
     return trans_21
 
 
-def relative_transformation(
+def boxminus_transformation(
         trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Function that computes the relative homogenous transformation from a
     reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
@@ -171,7 +171,7 @@ def relative_transformation(
         raise ValueError("Input number of dims must match. Got {} and {}"
                          .format(trans_01.dim(), trans_02.dim()))
     trans_10: torch.Tensor = inverse_transformation(trans_01)
-    trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
+    trans_12: torch.Tensor = boxplus_transformation(trans_10, trans_02)
     return trans_12
 
 
