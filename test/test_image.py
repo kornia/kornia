@@ -5,7 +5,7 @@ import torchgeometry.image as image
 from torch.autograd import gradcheck
 
 import utils
-from common import TEST_DEVICES
+from common import device_type
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -27,7 +27,6 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
 
 
 class TestGaussianBlur:
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_shape",
                              [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_gaussian_blur(self, batch_shape, device_type):

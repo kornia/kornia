@@ -5,7 +5,7 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils
-from common import TEST_DEVICES
+from common import device_type
 
 
 class TestFocalLoss:
@@ -200,7 +200,6 @@ class TestDepthSmoothnessLoss:
         assert gradcheck(tgm.losses.depth_smoothness_loss,
                          (depth, image,), raise_exception=True)
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_shape",
                              [(1, 1, 10, 16), (2, 4, 8, 15), ])
     def test_run_all(self, batch_shape, device_type):
@@ -213,7 +212,6 @@ class TestDepthSmoothnessLoss:
 
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("reduction_type", ['none', 'mean', 'sum'])
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape",
                          [(1, 1, 10, 16), (2, 4, 8, 15), ])
 def test_ssim(batch_shape, device_type, window_size, reduction_type):
