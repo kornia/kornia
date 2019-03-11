@@ -1,12 +1,15 @@
-.PHONY: test test_cpu test_gpu
+.PHONY: test test-cpu test-gpu lint mypy build-docs install uninstall FORCE
 
 test: test_cpu test_gpu
 
-test_cpu: FORCE
-	python setup.py install && pytest --typetest cpu
+test-cpu: FORCE
+	pytest --typetest cpu -vx
 
-test_gpu: FORCE
-	python setup.py install && pytest --typetest cuda
+test-cpu-cov: FORCE
+	pytest --typetest cpu -vx --cov=torchgeommetry test
+
+test-gpu: FORCE
+	pytest --typetest cuda -vx
 
 lint: FORCE
 	python verify.py --check lint
@@ -14,8 +17,8 @@ lint: FORCE
 mypy: FORCE
 	python verify.py --check mypy
 
-docs: FORCE
-	$(MAKE) -C docs html
+build-docs: FORCE
+	python verify.py --check build-docs
 
 install: FORCE
 	python setup.py install
