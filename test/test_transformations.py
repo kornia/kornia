@@ -90,7 +90,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size=1)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        trans_02 = tgm.boxplus_transformation(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -100,7 +100,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        trans_02 = tgm.boxplus_transformation(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -110,7 +110,7 @@ class TestComposeTransforms:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
-        assert gradcheck(tgm.compose_transformations, (trans_01, trans_12,),
+        assert gradcheck(tgm.boxplus_transformation, (trans_01, trans_12,),
                          raise_exception=True)
 
 
@@ -166,8 +166,8 @@ class TestRelativeTransformation:
         trans_02 = identity_matrix(batch_size=1)[0]
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_12 = tgm.relative_transformation(trans_01, trans_02)
-        trans_02_hat = tgm.compose_transformations(trans_01, trans_12)
+        trans_12 = tgm.boxminus_transformation(trans_01, trans_02)
+        trans_02_hat = tgm.boxplus_transformation(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -182,8 +182,8 @@ class TestRelativeTransformation:
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
-        trans_12 = tgm.relative_transformation(trans_01, trans_02)
-        trans_02_hat = tgm.compose_transformations(trans_01, trans_12)
+        trans_12 = tgm.boxminus_transformation(trans_01, trans_02)
+        trans_02_hat = tgm.boxplus_transformation(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -193,5 +193,5 @@ class TestRelativeTransformation:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
-        assert gradcheck(tgm.relative_transformation, (trans_01, trans_02,),
+        assert gradcheck(tgm.boxminus_transformation, (trans_01, trans_02,),
                          raise_exception=True)
