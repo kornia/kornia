@@ -1,4 +1,5 @@
 import torch
+import pytest
 
 
 def get_test_devices():
@@ -9,11 +10,17 @@ def get_test_devices():
         list(str): list with devices names.
     """
     devices = ["cpu"]
-    if torch.cuda.is_available():
-        devices.append("cuda")
+    # if torch.cuda.is_available():
+    #    devices.append("cuda")
     return devices
 
 
 # setup the devices to test the source code
 
 TEST_DEVICES = get_test_devices()
+
+
+@pytest.fixture()
+def device_type(request):
+    typ = request.config.getoption('--typetest')
+    return typ
