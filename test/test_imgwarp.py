@@ -1,4 +1,3 @@
-import unittest
 import pytest
 
 import torch
@@ -6,10 +5,9 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
-from common import TEST_DEVICES
+from common import device_type
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_shape",
                          [(1, 1, 7, 32), (2, 3, 16, 31)])
 def test_warp_perspective_rotation(batch_shape, device_type):
@@ -50,7 +48,6 @@ def test_warp_perspective_rotation(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_get_perspective_transform(batch_size, device_type):
     # generate input data
@@ -81,7 +78,6 @@ def test_get_perspective_transform(batch_size, device_type):
                      (points_src, points_dst,), raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rotation_matrix2d(batch_size, device_type):
     # generate input data
@@ -134,7 +130,6 @@ def test_rotation_matrix2d(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("device_type", TEST_DEVICES)
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 @pytest.mark.parametrize("channels", [1, 5])
 def test_warp_perspective_crop(batch_size, device_type, channels):
