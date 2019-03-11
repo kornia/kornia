@@ -6,7 +6,7 @@ test-cpu: FORCE
 	pytest --typetest cpu -vx
 
 test-cpu-cov: FORCE
-	pytest --typetest cpu -vx --cov=torchgeommetry test
+	pytest --typetest cpu -vx --cov=torchgeometry test
 
 test-gpu: FORCE
 	pytest --typetest cuda -vx
