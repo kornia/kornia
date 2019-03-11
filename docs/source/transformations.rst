@@ -3,7 +3,7 @@ Linear Transformations
 
 .. currentmodule:: torchgeometry
 
-.. autofunction:: relative_transformation
+.. autofunction:: boxminus_transformation
+.. autofunction:: boxplus_transformation
 .. autofunction:: inverse_transformation
-.. autofunction:: compose_transformations
 .. autofunction:: transform_points
