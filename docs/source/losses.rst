@@ -8,10 +8,10 @@ torchgeometry.losses
 .. autofunction:: tversky_loss
 .. autofunction:: focal_loss
 .. autofunction:: ssim
-.. autofunction:: depth_smoothness_loss
+.. autofunction:: inverse_depth_smoothness_loss
 
 .. autoclass:: DiceLoss
 .. autoclass:: TverskyLoss
 .. autoclass:: FocalLoss
 .. autoclass:: SSIM
-.. autoclass:: DepthSmoothnessLoss
+.. autoclass:: InverseDepthSmoothnessLoss
