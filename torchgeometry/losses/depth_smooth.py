@@ -6,7 +6,7 @@ import torch.nn.functional as F
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641
 
 
-class InvDepthSmoothnessLoss(nn.Module):
+class InverseDepthSmoothnessLoss(nn.Module):
     r"""Criterion that computes image-aware inverse depth smoothness loss.
 
     .. math::
@@ -30,7 +30,7 @@ class InvDepthSmoothnessLoss(nn.Module):
     """
 
     def __init__(self) -> None:
-        super(InvDepthSmoothnessLoss, self).__init__()
+        super(InverseDepthSmoothnessLoss, self).__init__()
 
     @staticmethod
     def gradient_x(img: torch.Tensor) -> torch.Tensor:
@@ -42,10 +42,7 @@ class InvDepthSmoothnessLoss(nn.Module):
         assert len(img.shape) == 4, img.shape
         return img[:, :, :-1, :] - img[:, :, 1:, :]
 
-    def forward(
-            self,
-            idepth: torch.Tensor,
-            image: torch.Tensor) -> torch.Tensor:
+    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(idepth):
             raise TypeError("Input idepth type is not a torch.Tensor. Got {}"
                             .format(type(idepth)))
@@ -92,11 +89,11 @@ class InvDepthSmoothnessLoss(nn.Module):
 ######################
 
 
-def inv_depth_smoothness_loss(
+def inverse_depth_smoothness_loss(
         idepth: torch.Tensor,
         image: torch.Tensor) -> torch.Tensor:
     r"""Computes image-aware inverse depth smoothness loss.
 
     See :class:`~torchgeometry.losses.InvDepthSmoothnessLoss` for details.
     """
-    return InvDepthSmoothnessLoss()(idepth, image)
+    return InverseDepthSmoothnessLoss()(idepth, image)
