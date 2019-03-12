@@ -42,7 +42,10 @@ class InverseDepthSmoothnessLoss(nn.Module):
         assert len(img.shape) == 4, img.shape
         return img[:, :, :-1, :] - img[:, :, 1:, :]
 
-    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+    def forward(
+            self,
+            idepth: torch.Tensor,
+            image: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(idepth):
             raise TypeError("Input idepth type is not a torch.Tensor. Got {}"
                             .format(type(idepth)))
