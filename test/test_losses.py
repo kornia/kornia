@@ -181,7 +181,7 @@ class TestDepthSmoothnessLoss:
         image = self.image.clone()
         depth = self.depth.clone()
 
-        criterion = tgm.losses.DepthSmoothnessLoss()
+        criterion = tgm.losses.InvDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
     # TODO: implement me
@@ -197,7 +197,7 @@ class TestDepthSmoothnessLoss:
         depth = self.depth.clone()
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(tgm.losses.depth_smoothness_loss,
+        assert gradcheck(tgm.losses.inv_depth_smoothness_loss,
                          (depth, image,), raise_exception=True)
 
     @pytest.mark.parametrize("batch_shape",
