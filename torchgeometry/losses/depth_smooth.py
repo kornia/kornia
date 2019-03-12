@@ -6,8 +6,8 @@ import torch.nn.functional as F
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641
 
 
-class DepthSmoothnessLoss(nn.Module):
-    r"""Criterion that computes image-aware depth smoothness loss.
+class InvDepthSmoothnessLoss(nn.Module):
+    r"""Criterion that computes image-aware inverse depth smoothness loss.
 
     .. math::
 
@@ -17,20 +17,20 @@ class DepthSmoothnessLoss(nn.Module):
 
 
     Shape:
-        - Depth: :math:`(N, 1, H, W)`
+        - Inverse Depth: :math:`(N, 1, H, W)`
         - Image: :math:`(N, 3, H, W)`
         - Output: scalar
 
     Examples::
 
-        >>> depth = torch.rand(1, 1, 4, 5)
+        >>> idepth = torch.rand(1, 1, 4, 5)
         >>> image = torch.rand(1, 3, 4, 5)
         >>> smooth = tgm.losses.DepthSmoothnessLoss()
-        >>> loss = smooth(depth, image)
+        >>> loss = smooth(idepth, image)
     """
 
     def __init__(self) -> None:
-        super(DepthSmoothnessLoss, self).__init__()
+        super(InvDepthSmoothnessLoss, self).__init__()
 
     @staticmethod
     def gradient_x(img: torch.Tensor) -> torch.Tensor:
@@ -42,33 +42,36 @@ class DepthSmoothnessLoss(nn.Module):
         assert len(img.shape) == 4, img.shape
         return img[:, :, :-1, :] - img[:, :, 1:, :]
 
-    def forward(self, depth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(depth):
-            raise TypeError("Input depth type is not a torch.Tensor. Got {}"
-                            .format(type(depth)))
+    def forward(
+            self,
+            idepth: torch.Tensor,
+            image: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(idepth):
+            raise TypeError("Input idepth type is not a torch.Tensor. Got {}"
+                            .format(type(idepth)))
         if not torch.is_tensor(image):
             raise TypeError("Input image type is not a torch.Tensor. Got {}"
                             .format(type(image)))
-        if not len(depth.shape) == 4:
-            raise ValueError("Invalid depth shape, we expect BxCxHxW. Got: {}"
-                             .format(depth.shape))
+        if not len(idepth.shape) == 4:
+            raise ValueError("Invalid idepth shape, we expect BxCxHxW. Got: {}"
+                             .format(idepth.shape))
         if not len(image.shape) == 4:
             raise ValueError("Invalid image shape, we expect BxCxHxW. Got: {}"
                              .format(image.shape))
-        if not depth.shape[-2:] == image.shape[-2:]:
-            raise ValueError("depth and image shapes must be the same. Got: {}"
-                             .format(depth.shape, image.shape))
-        if not depth.device == image.device:
+        if not idepth.shape[-2:] == image.shape[-2:]:
+            raise ValueError("idepth and image shapes must be the same. Got: {}"
+                             .format(idepth.shape, image.shape))
+        if not idepth.device == image.device:
             raise ValueError(
-                "depth and image must be in the same device. Got: {}" .format(
-                    depth.device, image.device))
-        if not depth.dtype == image.dtype:
+                "idepth and image must be in the same device. Got: {}" .format(
+                    idepth.device, image.device))
+        if not idepth.dtype == image.dtype:
             raise ValueError(
-                "depth and image must be in the same dtype. Got: {}" .format(
-                    depth.dtype, image.dtype))
+                "idepth and image must be in the same dtype. Got: {}" .format(
+                    idepth.dtype, image.dtype))
         # compute the gradients
-        depth_dx: torch.Tensor = self.gradient_x(depth)
-        depth_dy: torch.Tensor = self.gradient_y(depth)
+        idepth_dx: torch.Tensor = self.gradient_x(idepth)
+        idepth_dy: torch.Tensor = self.gradient_y(idepth)
         image_dx: torch.Tensor = self.gradient_x(image)
         image_dy: torch.Tensor = self.gradient_y(image)
 
@@ -79,8 +82,8 @@ class DepthSmoothnessLoss(nn.Module):
             -torch.mean(torch.abs(image_dy), dim=1, keepdim=True))
 
         # apply image weights to depth
-        smoothness_x: torch.Tensor = torch.abs(depth_dx * weights_x)
-        smoothness_y: torch.Tensor = torch.abs(depth_dy * weights_y)
+        smoothness_x: torch.Tensor = torch.abs(idepth_dx * weights_x)
+        smoothness_y: torch.Tensor = torch.abs(idepth_dy * weights_y)
         return torch.mean(smoothness_x) + torch.mean(smoothness_y)
 
 
@@ -89,11 +92,11 @@ class DepthSmoothnessLoss(nn.Module):
 ######################
 
 
-def depth_smoothness_loss(
-        depth: torch.Tensor,
+def inv_depth_smoothness_loss(
+        idepth: torch.Tensor,
         image: torch.Tensor) -> torch.Tensor:
-    r"""Computes image-aware depth smoothness loss.
+    r"""Computes image-aware inverse depth smoothness loss.
 
-    See :class:`~torchgeometry.losses.DepthSmoothnessLoss` for details.
+    See :class:`~torchgeometry.losses.InvDepthSmoothnessLoss` for details.
     """
-    return DepthSmoothnessLoss()(depth, image)
+    return InvDepthSmoothnessLoss()(idepth, image)
