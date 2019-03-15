@@ -14,7 +14,7 @@ def gaussian(window_size, sigma):
 
 
 def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients.
+    """Function that returns Gaussian filter coefficients.
 
     Args:
         ksize (int): filter size. It should be odd and positive.
