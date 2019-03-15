@@ -21,7 +21,7 @@ def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
         sigma (float): gaussian standard deviation.
 
     Returns:
-        Tensor: 1D tensor with gaussian filter coefficients.
+        torch.Tensor: 1D tensor with gaussian filter coefficients.
 
     Shape:
         - Output: :math:`(ksize,)`
@@ -52,7 +52,7 @@ def get_gaussian_kernel2d(ksize: Tuple[int, int],
          direction.
 
     Returns:
-        Tensor: 2D tensor with gaussian filter matrix coefficients.
+        torch.Tensor: 2D tensor with gaussian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(ksize_x, ksize_y)`
@@ -95,7 +95,7 @@ class GaussianBlur(nn.Module):
         sigma (Tuple[float, float]): the standard deviation of the kernel.
 
     Returns:
-        Tensor: the blurred tensor.
+        torch.Tensor: the blurred tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -149,12 +149,8 @@ class GaussianBlur(nn.Module):
 # functional interface
 ######################
 
-
-def gaussian_blur(src: torch.Tensor,
-                  kernel_size: Tuple[int,
-                                     int],
-                  sigma: Tuple[float,
-                               float]) -> torch.Tensor:
+def gaussian_blur(src: torch.Tensor, kernel_size: Tuple[int,int],
+                          sigma: Tuple[float, float]) -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
@@ -166,7 +162,7 @@ def gaussian_blur(src: torch.Tensor,
         sigma (Tuple[float, float]): the standard deviation of the kernel.
 
     Returns:
-        Tensor: the blurred tensor.
+        torch.Tensor: the blurred tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
