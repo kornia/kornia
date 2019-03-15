@@ -151,7 +151,7 @@ class GaussianBlur(nn.Module):
 
 def gaussian_blur(src: torch.Tensor, kernel_size: Tuple[int,int],
                           sigma: Tuple[float, float]) -> torch.Tensor:
-    r"""Function that blurs a tensor using a Gaussian filter.
+    """Function that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
     it to each channel. It suports batched operation.
