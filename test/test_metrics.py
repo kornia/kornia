@@ -8,6 +8,72 @@ import utils
 from common import device_type
 
 
+class TestMeanIoU:
+    def test_two_classes_perfect(self):
+        num_classes = 2
+        actual = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]])
+        predicted = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]])
+
+        mean_iou = tgm.metrics.mean_iou(actual, predicted, num_classes)
+        assert mean_iou.shape == (1, num_classes)
+        assert pytest.approx(mean_iou[..., 0].item(), 1.00)
+        assert pytest.approx(mean_iou[..., 1].item(), 1.00)
+
+    def test_two_classes(self):
+        num_classes = 2
+        actual = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]])
+        predicted = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 1]])
+
+        mean_iou = tgm.metrics.mean_iou(actual, predicted, num_classes)
+        assert mean_iou.shape == (1, num_classes)
+        assert pytest.approx(mean_iou[..., 0].item(), 0.75)
+        assert pytest.approx(mean_iou[..., 1].item(), 0.80)
+
+    def test_four_classes_2d_perfect(self):
+        num_classes = 4
+        actual = torch.tensor(
+            [[[0, 0, 1, 1],
+              [0, 0, 1, 1],
+              [2, 2, 3, 3],
+              [2, 2, 3, 3]]])
+        predicted = torch.tensor(
+            [[[0, 0, 1, 1],
+              [0, 0, 1, 1],
+              [2, 2, 3, 3],
+              [2, 2, 3, 3]]])
+
+        mean_iou = tgm.metrics.mean_iou(actual, predicted, num_classes)
+        assert mean_iou.shape == (1, num_classes)
+        assert pytest.approx(mean_iou[..., 0].item(), 1.00)
+        assert pytest.approx(mean_iou[..., 1].item(), 1.00)
+        assert pytest.approx(mean_iou[..., 2].item(), 1.00)
+        assert pytest.approx(mean_iou[..., 3].item(), 1.00)
+
+    def test_four_classes_2d_one_class_no_predicted(self):
+        num_classes = 4
+        actual = torch.tensor(
+            [[[0, 0, 0, 0],
+              [0, 0, 0, 0],
+              [2, 2, 3, 3],
+              [2, 2, 3, 3]]])
+        predicted = torch.tensor(
+            [[[3, 3, 2, 2],
+              [3, 3, 2, 2],
+              [2, 2, 3, 3],
+              [2, 2, 3, 3]]])
+
+        mean_iou = tgm.metrics.mean_iou(actual, predicted, num_classes)
+        assert mean_iou.shape == (1, num_classes)
+        assert pytest.approx(mean_iou[..., 0].item(), 0.00)
+        assert pytest.approx(mean_iou[..., 1].item(), 0.00)
+        assert pytest.approx(mean_iou[..., 2].item(), 0.50)
+        assert pytest.approx(mean_iou[..., 3].item(), 0.50)
+
+
 class TestConfusionMatrix:
     def test_two_classes(self):
         num_classes = 2
