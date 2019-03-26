@@ -10,6 +10,7 @@ from common import device_type
 
 class TestMeanIoU:
     def test_two_classes_perfect(self):
+        batch_size = 1
         num_classes = 2
         actual = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 0]])
@@ -17,11 +18,27 @@ class TestMeanIoU:
             [[1, 1, 1, 1, 0, 0, 0, 0]])
 
         mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
-        assert mean_iou.shape == (1, num_classes)
-        assert pytest.approx(mean_iou[..., 0].item(), 1.00)
-        assert pytest.approx(mean_iou[..., 1].item(), 1.00)
+        mean_iou_real = torch.tensor(
+            [[1.0, 1.0]], dtype=torch.float32)
+        assert mean_iou.shape == (batch_size, num_classes)
+        assert utils.check_equal_torch(mean_iou, mean_iou_real)
+
+    def test_two_classes_perfect_batch2(self):
+        batch_size = 2
+        num_classes = 2
+        actual = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]]).repeat(batch_size, 1)
+        predicted = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]]).repeat(batch_size, 1)
+
+        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou_real = torch.tensor(
+            [[1.0, 1.0]], dtype=torch.float32)
+        assert mean_iou.shape == (batch_size, num_classes)
+        assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
     def test_two_classes(self):
+        batch_size = 1
         num_classes = 2
         actual = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 0]])
@@ -29,11 +46,14 @@ class TestMeanIoU:
             [[1, 1, 1, 1, 0, 0, 0, 1]])
 
         mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
-        assert mean_iou.shape == (1, num_classes)
-        assert pytest.approx(mean_iou[..., 0].item(), 0.75)
-        assert pytest.approx(mean_iou[..., 1].item(), 0.80)
+        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou_real = torch.tensor(
+            [[0.75, 0.80]], dtype=torch.float32)
+        assert mean_iou.shape == (batch_size, num_classes)
+        assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
     def test_four_classes_2d_perfect(self):
+        batch_size = 1
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 1, 1],
@@ -47,13 +67,13 @@ class TestMeanIoU:
               [2, 2, 3, 3]]])
 
         mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
-        assert mean_iou.shape == (1, num_classes)
-        assert pytest.approx(mean_iou[..., 0].item(), 1.00)
-        assert pytest.approx(mean_iou[..., 1].item(), 1.00)
-        assert pytest.approx(mean_iou[..., 2].item(), 1.00)
-        assert pytest.approx(mean_iou[..., 3].item(), 1.00)
+        mean_iou_real = torch.tensor(
+            [[1.0, 1.0, 1.0, 1.0]], dtype=torch.float32)
+        assert mean_iou.shape == (batch_size, num_classes)
+        assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
     def test_four_classes_2d_one_class_no_predicted(self):
+        batch_size = 1
         num_classes = 4
         actual = torch.tensor(
             [[[0, 0, 0, 0],
@@ -67,11 +87,10 @@ class TestMeanIoU:
               [2, 2, 3, 3]]])
 
         mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
-        assert mean_iou.shape == (1, num_classes)
-        assert pytest.approx(mean_iou[..., 0].item(), 0.00)
-        assert pytest.approx(mean_iou[..., 1].item(), 0.00)
-        assert pytest.approx(mean_iou[..., 2].item(), 0.50)
-        assert pytest.approx(mean_iou[..., 3].item(), 0.50)
+        mean_iou_real = torch.tensor(
+            [[0.0, 0.0, 0.5, 0.5]], dtype=torch.float32)
+        assert mean_iou.shape == (batch_size, num_classes)
+        assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
 
 class TestConfusionMatrix:
@@ -81,6 +100,20 @@ class TestConfusionMatrix:
             [[1, 1, 1, 1, 0, 0, 0, 0]])
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]])
+
+        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat_real = torch.tensor(
+            [[[3, 1],
+              [0, 4]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
+
+    def test_two_classes_batch2(self):
+        batch_size = 2
+        num_classes = 2
+        actual = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 0]]).repeat(batch_size, 1)
+        predicted = torch.tensor(
+            [[1, 1, 1, 1, 0, 0, 0, 1]]).repeat(batch_size, 1)
 
         conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
