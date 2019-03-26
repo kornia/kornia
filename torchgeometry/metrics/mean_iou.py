@@ -20,13 +20,10 @@ def mean_iou(
           values between 0 and K-1, whete targets are assumed to be provided as
           one-hot vectors.
         num_classes (int): total possible number of classes in target.
-        labels: torch.Tensor,
-        predictions: torch.Tensor,
-        num_classes: int) -> torch.Tensor:
 
     Returns:
         torch.Tensor: a tensor representing the mean intersection-over union
-        with shape :math:`(B, C)` where C is the number of classes.
+        with shape :math:`(B, K)` where K is the number of classes.
     """
     if not isinstance(input, torch.LongTensor):
         raise TypeError("Input input type is not a torch.LongTensor. Got {}"
@@ -55,7 +52,8 @@ def mean_iou(
     # iterate over classes
     for class_id in range(num_classes):
         tp: torch.Tensor = conf_mat[..., None, class_id, class_id]
-        total = torch.sum(conf_mat[..., class_id, :], dim=-1, keepdim=True) + \
+        total: torch.Tensor = \
+            torch.sum(conf_mat[..., class_id, :], dim=-1, keepdim=True) + \
             torch.sum(conf_mat[..., :, class_id], dim=-1, keepdim=True)
         iou_val: torch.Tensor = tp / (total.float() - tp + 1e-6)
         ious[..., class_id:class_id + 1] += iou_val
