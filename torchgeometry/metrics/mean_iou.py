@@ -4,40 +4,47 @@ from torchgeometry.metrics import confusion_matrix
 
 
 def mean_iou(
-        labels: torch.Tensor,
-        predictions: torch.Tensor,
+        input: torch.Tensor,
+        target: torch.Tensor,
         num_classes: int) -> torch.Tensor:
     r"""Calculate mean Intersection-Over-Union (mIOU).
 
+    The function internally computes the confusion matrix.
+
     Args:
-        labels (torch.Tensor) : tensor with ground truth (correct) target
-          values. The shape can be :math:`(N, *)`.
-        predictions (torch.Tensor) : tensor with estimated targets returned by
-          a classifier. The shape can be :math:`(N, *)`.
-        num_classes (int): total possible number of classes in labels.
+        input (torch.Tensor) : tensor with estimated targets returned by a
+          classifier. The shape can be :math:`(B, *)` and must contain integer
+          values between 0 and K-1.
+        target (torch.Tensor) : tensor with ground truth (correct) target
+          values. The shape can be :math:`(B, *)` and must contain integer
+          values between 0 and K-1, whete targets are assumed to be provided as
+          one-hot vectors.
+        num_classes (int): total possible number of classes in target.
+        labels: torch.Tensor,
+        predictions: torch.Tensor,
+        num_classes: int) -> torch.Tensor:
 
     Returns:
-        torch.Tensor: a tensor representing the mean intersection-over union.
+        torch.Tensor: a tensor representing the mean intersection-over union
+        with shape :math:`(B, C)` where C is the number of classes.
     """
-    if not torch.is_tensor(labels):
-        raise TypeError("Input labels type is not a torch.Tensor. Got {}"
-                        .format(type(labels)))
-    if not torch.is_tensor(predictions):
-        raise TypeError("Input predictions type is not a torch.Tensor. Got {}"
-                        .format(type(predictions)))
-    if not labels.shape == predictions.shape:
-        raise ValueError("Inputs labels and predictions must have the same "
-                         "shape. Got: {}".format(labels.shape,
-                                                 predictions.shape))
-    if not labels.device == predictions.device:
+    if not isinstance(input, torch.LongTensor):
+        raise TypeError("Input input type is not a torch.LongTensor. Got {}"
+                        .format(type(input)))
+    if not isinstance(target, torch.LongTensor):
+        raise TypeError("Input target type is not a torch.LongTensor. Got {}"
+                        .format(type(target)))
+    if not input.shape == target.shape:
+        raise ValueError("Inputs input and target must have the same shape. "
+                         "Got: {}".format(input.shape, target.shape))
+    if not input.device == target.device:
         raise ValueError("Inputs must be in the same device. "
-                         "Got: {} - {}".format(labels.device,
-                                               predictions.device))
+                         "Got: {} - {}".format(input.device, target.device))
     if not isinstance(num_classes, int) or num_classes < 2:
         raise ValueError("The number of classes must be an intenger bigger "
                          "than two. Got: {}".format(num_classes))
     # we first compute the confusion matrix
-    conf_mat: torch.Tensor = confusion_matrix(labels, predictions, num_classes)
+    conf_mat: torch.Tensor = confusion_matrix(input, target, num_classes)
 
     # allocate output tensor
     batch_size: int = conf_mat.shape[0]
