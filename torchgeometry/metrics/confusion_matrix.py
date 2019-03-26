@@ -5,13 +5,13 @@ import torch
 # Inspired by:
 # https://github.com/pytorch/tnt/blob/master/torchnet/meter/confusionmeter.py#L68-L73  # noqa
 
+
 def confusion_matrix(
         input: torch.Tensor,
         target: torch.Tensor,
-        num_classes: int) -> torch.Tensor:
+        num_classes: int,
+        normalized: Optional[float] = False) -> torch.Tensor:
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
-
-    Computes the confusion matrix of K x K size where K is no of classes.
 
     Args:
         input (torch.Tensor) : tensor with estimated targets returned by a
@@ -22,9 +22,11 @@ def confusion_matrix(
           values between 0 and K-1, whete targets are assumed to be provided as
           one-hot vectors.
         num_classes (int): total possible number of classes in target.
+        normalized: (Optional[float]): wether to return the confusion matrix
+          normalized. Default: False.
 
     Returns:
-        torch.Tensor: a tensor with the confusion matrix with shape
+        torch.Tensor: a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.
     """
     if not isinstance(input, torch.LongTensor):
@@ -51,4 +53,12 @@ def confusion_matrix(
     confusion_vec: torch.Tensor = torch.stack([
         torch.bincount(pb, minlength=num_classes**2) for pb in pre_bincount_vec
     ])
-    return confusion_vec.view(batch_size, num_classes, num_classes)  # BxKxK
+
+    confusion_mat: torch.Tensor = confusion_vec.view(
+        batch_size, num_classes, num_classes).to(torch.float32)  # BxKxK
+
+    if normalized:
+        norm_val: torch.Tensor = torch.sum(confusion_mat, dim=1, keepdim=True)
+        confusion_mat = confusion_mat / (norm_val + 1e-6)
+
+    return confusion_mat

@@ -83,10 +83,10 @@ class TestConfusionMatrix:
             [[1, 1, 1, 1, 0, 0, 0, 1]])
 
         conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
-        assert conf_mat[..., 0, 0].item() == 3
-        assert conf_mat[..., 0, 1].item() == 1
-        assert conf_mat[..., 1, 0].item() == 0
-        assert conf_mat[..., 1, 1].item() == 4
+        conf_mat_real = torch.tensor(
+            [[[3, 1],
+              [0, 4]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_three_classes(self):
         num_classes = 3
@@ -99,8 +99,25 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[4, 1, 2],
               [3, 0, 2],
-              [1, 2, 1]]])
-        assert torch.equal(conf_mat, conf_mat_real)
+              [1, 2, 1]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
+
+    def test_three_classes_normalized(self):
+        num_classes = 3
+        normalized = True
+        actual = torch.tensor(
+            [[2, 2, 0, 0, 1, 0, 0, 2, 1, 1, 0, 0, 1, 2, 1, 0]])
+        predicted = torch.tensor(
+            [[2, 1, 0, 0, 0, 0, 0, 1, 0, 2, 2, 1, 0, 0, 2, 2]])
+
+        conf_mat = tgm.metrics.confusion_matrix(
+            predicted, actual, num_classes, normalized)
+
+        conf_mat_real = torch.tensor(
+            [[[0.5000, 0.3333, 0.4000],
+              [0.3750, 0.0000, 0.4000],
+              [0.1250, 0.6667, 0.2000]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_perfect(self):
         num_classes = 4
@@ -120,8 +137,8 @@ class TestConfusionMatrix:
             [[[4, 0, 0, 0],
               [0, 4, 0, 0],
               [0, 0, 4, 0],
-              [0, 0, 0, 4]]])
-        assert torch.equal(conf_mat, conf_mat_real)
+              [0, 0, 0, 4]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_nonperfect(self):
         num_classes = 4
@@ -141,8 +158,8 @@ class TestConfusionMatrix:
             [[[3, 0, 0, 1],
               [1, 3, 0, 0],
               [0, 0, 4, 0],
-              [0, 1, 0, 3]]])
-        assert torch.equal(conf_mat, conf_mat_real)
+              [0, 1, 0, 3]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_missing(self):
         num_classes = 4
@@ -162,8 +179,8 @@ class TestConfusionMatrix:
             [[[0, 0, 0, 4],
               [0, 4, 0, 0],
               [0, 0, 4, 0],
-              [0, 0, 0, 4]]])
-        assert torch.equal(conf_mat, conf_mat_real)
+              [0, 0, 0, 4]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_no_predicted(self):
         num_classes = 4
@@ -183,5 +200,5 @@ class TestConfusionMatrix:
             [[[0, 0, 4, 4],
               [0, 0, 0, 0],
               [0, 0, 4, 0],
-              [0, 0, 0, 4]]])
-        assert torch.equal(conf_mat, conf_mat_real)
+              [0, 0, 0, 4]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
