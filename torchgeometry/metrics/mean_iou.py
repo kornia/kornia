@@ -54,7 +54,7 @@ def mean_iou(
     # TODO: is it possible to vectorize this ?
     # iterate over classes
     for class_id in range(num_classes):
-        tp: torch.Tensor = conf_mat[..., class_id, class_id].float()
+        tp: torch.Tensor = conf_mat[..., None, class_id, class_id]
         total = torch.sum(conf_mat[..., class_id, :], dim=-1, keepdim=True) + \
             torch.sum(conf_mat[..., :, class_id], dim=-1, keepdim=True)
         iou_val: torch.Tensor = tp / (total.float() - tp + 1e-6)
