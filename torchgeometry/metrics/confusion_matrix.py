@@ -10,7 +10,7 @@ def confusion_matrix(
         input: torch.Tensor,
         target: torch.Tensor,
         num_classes: int,
-        normalized: Optional[float] = False) -> torch.Tensor:
+        normalized: Optional[bool] = False) -> torch.Tensor:
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
 
     Args:
@@ -22,7 +22,7 @@ def confusion_matrix(
           values between 0 and K-1, whete targets are assumed to be provided as
           one-hot vectors.
         num_classes (int): total possible number of classes in target.
-        normalized: (Optional[float]): wether to return the confusion matrix
+        normalized: (Optional[bool]): wether to return the confusion matrix
           normalized. Default: False.
 
     Returns:
