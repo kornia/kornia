@@ -2,7 +2,6 @@ import pytest
 
 import torch
 import torchgeometry as tgm
-from torch.autograd import gradcheck
 
 import utils
 from common import device_type
@@ -72,7 +71,7 @@ class TestMeanIoU:
         assert mean_iou.shape == (batch_size, num_classes)
         assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
-    def test_four_classes_2d_one_class_no_predicted(self):
+    def test_four_classes_one_missing(self):
         batch_size = 1
         num_classes = 4
         actual = torch.tensor(
@@ -88,7 +87,7 @@ class TestMeanIoU:
 
         mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
-            [[0.0, 0.0, 0.5, 0.5]], dtype=torch.float32)
+            [[0.0, 1.0, 0.5, 0.5]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
         assert utils.check_equal_torch(mean_iou, mean_iou_real)
 
@@ -133,6 +132,21 @@ class TestConfusionMatrix:
             [[[4, 1, 2],
               [3, 0, 2],
               [1, 2, 1]]], dtype=torch.float32)
+        assert utils.check_equal_torch(conf_mat, conf_mat_real)
+
+    def test_four_classes_one_missing(self):
+        num_classes = 4
+        actual = torch.tensor(
+            [[3, 3, 1, 1, 2, 1, 1, 3, 2, 2, 1, 1, 2, 3, 2, 1]])
+        predicted = torch.tensor(
+            [[3, 2, 1, 1, 1, 1, 1, 2, 1, 3, 3, 2, 1, 1, 3, 3]])
+
+        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat_real = torch.tensor(
+            [[[0, 0, 0, 0],
+              [0, 4, 1, 2],
+              [0, 3, 0, 2],
+              [0, 1, 2, 1]]], dtype=torch.float32)
         assert utils.check_equal_torch(conf_mat, conf_mat_real)
 
     def test_three_classes_normalized(self):

@@ -1,12 +1,14 @@
-import torch
+from typing import Optional
 
+import torch
 from torchgeometry.metrics import confusion_matrix
 
 
 def mean_iou(
         input: torch.Tensor,
         target: torch.Tensor,
-        num_classes: int) -> torch.Tensor:
+        num_classes: int,
+        eps: Optional[float] = 1e-6) -> torch.Tensor:
     r"""Calculate mean Intersection-Over-Union (mIOU).
 
     The function internally computes the confusion matrix.
@@ -43,18 +45,13 @@ def mean_iou(
     # we first compute the confusion matrix
     conf_mat: torch.Tensor = confusion_matrix(input, target, num_classes)
 
-    # allocate output tensor
-    batch_size: int = conf_mat.shape[0]
-    ious: torch.Tensor = torch.zeros(
-        batch_size, num_classes, device=conf_mat.device)
+    # compute the actual intersection over union
+    sum_over_row = torch.sum(conf_mat, dim=1)
+    sum_over_col = torch.sum(conf_mat, dim=2)
+    conf_mat_diag = torch.diagonal(conf_mat, dim1=-2, dim2=-1)
+    denominator = sum_over_row + sum_over_col - conf_mat_diag
 
-    # TODO: is it possible to vectorize this ?
-    # iterate over classes
-    for class_id in range(num_classes):
-        tp: torch.Tensor = conf_mat[..., None, class_id, class_id]
-        total: torch.Tensor = \
-            torch.sum(conf_mat[..., class_id, :], dim=-1, keepdim=True) + \
-            torch.sum(conf_mat[..., :, class_id], dim=-1, keepdim=True)
-        iou_val: torch.Tensor = tp / (total.float() - tp + 1e-6)
-        ious[..., class_id:class_id + 1] += iou_val
+    # NOTE: we add epsilon so that samples that are neither in the
+    # prediction or ground truth are taken into account.
+    ious = (conf_mat_diag + eps) / (denominator + eps)
     return ious
