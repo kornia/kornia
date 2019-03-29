@@ -180,7 +180,7 @@ class TestConvertPointsFromHomogeneous:
         # generate input data
         points_h = torch.rand(batch_shape)
         points_h = points_h.to(torch.device(device_type))
-    
+
         # to euclidean
         points = tgm.convert_points_from_homogeneous(points_h)
 
