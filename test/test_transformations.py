@@ -69,26 +69,6 @@ class TestTransformPoints:
         error = utils.compute_mse(points_src, points_dst_to_src)
         assert pytest.approx(error.item(), 0.0)
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_nan_input(self, device_type, batch_size):
-        # generate input data
-        num_dims = 2
-        num_points = 1
-        eye_size = num_dims + 1
-        points_src = torch.zeros(
-            batch_size, num_points, num_dims, device=torch.device(device_type))
-
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.to(torch.device(device_type))
-        dst_homo_src[..., 0, 0] *= 9999
-        dst_homo_src[..., 1, 1] *= 9999
-        dst_homo_src[..., 2, 2] *= 9999
-
-        # transform the points from dst to ref
-        points_dst = tgm.transform_points(dst_homo_src, points_src)
-        pass
-
     def test_gradcheck(self):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
