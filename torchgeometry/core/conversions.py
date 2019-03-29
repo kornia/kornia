@@ -74,7 +74,7 @@ def deg2rad(tensor):
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points):
+def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
     See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.
@@ -91,7 +91,12 @@ def convert_points_from_homogeneous(points):
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return points[..., :-1] / points[..., -1:]
+    # we check for points at infinity
+    z_vec: torch.Tensor = points[..., -1:]
+    scale: torch.Tensor = torch.where(
+        z_vec != 0.0, 1. / z_vec, torch.ones_like(z_vec))
+
+    return scale * points[..., :-1]
 
 
 def convert_points_to_homogeneous(points):
