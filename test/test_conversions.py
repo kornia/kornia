@@ -173,27 +173,44 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-def test_convert_points_from_homogeneous(batch_shape, device_type):
-    # generate input data
-    points_h = torch.rand(batch_shape)
-    points_h = points_h.to(torch.device(device_type))
-    points_h[..., -1] = 1.0
+class TestConvertPointsFromHomogeneous:
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_convert_points(self, batch_shape, device_type):
+        # generate input data
+        points_h = torch.rand(batch_shape)
+        points_h = points_h.to(torch.device(device_type))
+    
+        # to euclidean
+        points = tgm.convert_points_from_homogeneous(points_h)
 
-    # to euclidean
-    points = tgm.convert_points_from_homogeneous(points_h)
+        error = utils.compute_mse(points_h[..., :2], points)
+        assert pytest.approx(error.item(), 0.0)
 
-    error = utils.compute_mse(points_h[..., :2], points)
-    assert pytest.approx(error.item(), 0.0)
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_convert_points_infinity(self, batch_shape, device_type):
+        # generate input data
+        points_h = torch.ones(batch_shape)
+        points_h = points_h.to(torch.device(device_type))
+        points_h[..., 0, -1] = 0.0
+        points_h[..., 1] = 2.0
 
-    # functional
-    assert torch.allclose(points, tgm.ConvertPointsFromHomogeneous()(points_h))
+        # to euclidean
+        points = tgm.convert_points_from_homogeneous(points_h)
 
-    # evaluate function gradient
-    points = utils.tensor_to_gradcheck_var(points)  # to var
-    assert gradcheck(tgm.convert_points_from_homogeneous, (points,),
-                     raise_exception=True)
+        assert utils.check_equal_torch(
+            points_h[..., 0:2], points[..., 0:2])
+
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_gradcheck(self, batch_shape):
+        points_h = torch.rand(batch_shape)
+
+        # evaluate function gradient
+        points_h = utils.tensor_to_gradcheck_var(points_h)  # to var
+        assert gradcheck(tgm.convert_points_from_homogeneous, (points_h,),
+                         raise_exception=True)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
