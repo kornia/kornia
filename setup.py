@@ -79,7 +79,8 @@ if __name__ == '__main__':
 	description='differential geometric computer vision for deep learning',
 	long_description=long_description,
 	license='BSD',
-
+	python_requires='>=3.6',
+	    
 	# Test
 	setup_requires=['pytest-runner'],
 	tests_require=['pytest'],
