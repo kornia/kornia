@@ -1,9 +1,7 @@
-from typing import Optional
-
-import numpy as np
-
 import torch
 import torch.nn as nn
+
+import numpy as np
 
 
 class ToTensor(nn.Module):
@@ -30,7 +28,7 @@ class ToTensor(nn.Module):
 
 
 def to_tensor(input: np.ndarray) -> torch.Tensor:
-    r"""Conver a ``numpy.ndarray`` to tensor.
+    r"""Convert a ``numpy.ndarray`` to tensor.
 
     See ``~torchgeometry.augmentation.ToTensor`` for more details.
 
