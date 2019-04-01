@@ -25,8 +25,8 @@ TGM focuses on Image and tensor warping functions such as:
    losses
    metrics
    contrib
+   augmentation
    utils
-
 
 .. toctree::
    :maxdepth: 2
