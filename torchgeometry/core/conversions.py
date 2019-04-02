@@ -22,8 +22,6 @@ __all__ = [
     "ConvertPointsFromHomogeneous",
     "ConvertPointsToHomogeneous",
 ]
-
-
 """Constant with number pi
 """
 pi = torch.Tensor([3.14159265358979323846])
@@ -45,8 +43,8 @@ def rad2deg(tensor):
         >>> output = tgm.rad2deg(input)
     """
     if not torch.is_tensor(tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(tensor)))
 
     return 180. * tensor / pi.to(tensor.device).type(tensor.dtype)
 
@@ -68,13 +66,14 @@ def deg2rad(tensor):
         >>> output = tgm.deg2rad(input)
     """
     if not torch.is_tensor(tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(tensor)))
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
+def convert_points_from_homogeneous(points: torch.Tensor,
+                                    eps=1e-6) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
     See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.
@@ -93,8 +92,7 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    scale: torch.Tensor = torch.where(
-        z_vec != 0.0, 1. / z_vec, torch.ones_like(z_vec))
+    scale: torch.Tensor = 1. / torch.clamp(z_vec, eps)
 
     return scale * points[..., :-1]
 
@@ -136,6 +134,7 @@ def angle_axis_to_rotation_matrix(angle_axis):
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = tgm.angle_axis_to_rotation_matrix(input)  # Nx4x4
     """
+
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
@@ -280,27 +279,31 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:, 1, 1]
 
     t0 = 1 + rmat_t[:, 0, 0] - rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q0 = torch.stack([rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
-                      t0, rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
-                      rmat_t[:, 2, 0] + rmat_t[:, 0, 2]], -1)
+    q0 = torch.stack([
+        rmat_t[:, 1, 2] - rmat_t[:, 2, 1], t0,
+        rmat_t[:, 0, 1] + rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2]
+    ], -1)
     t0_rep = t0.repeat(4, 1).t()
 
     t1 = 1 - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q1 = torch.stack([rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
-                      rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
-                      t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]], -1)
+    q1 = torch.stack([
+        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+        t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]
+    ], -1)
     t1_rep = t1.repeat(4, 1).t()
 
     t2 = 1 - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q2 = torch.stack([rmat_t[:, 0, 1] - rmat_t[:, 1, 0],
-                      rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
-                      rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2], -1)
+    q2 = torch.stack([
+        rmat_t[:, 0, 1] - rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
+        rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2
+    ], -1)
     t2_rep = t2.repeat(4, 1).t()
 
     t3 = 1 + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q3 = torch.stack([t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
-                      rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
-                      rmat_t[:, 0, 1] - rmat_t[:, 1, 0]], -1)
+    q3 = torch.stack([
+        t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
+        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] - rmat_t[:, 1, 0]
+    ], -1)
     t3_rep = t3.repeat(4, 1).t()
 
     mask_c0 = mask_d2 * mask_d0_d1
@@ -343,8 +346,9 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
             type(quaternion)))
 
     if not quaternion.shape[-1] == 4:
-        raise ValueError("Input must be a tensor of shape Nx4 or 4. Got {}"
-                         .format(quaternion.shape))
+        raise ValueError(
+            "Input must be a tensor of shape Nx4 or 4. Got {}".format(
+                quaternion.shape))
     # unpack input and compute conversion
     q1: torch.Tensor = quaternion[..., 1]
     q2: torch.Tensor = quaternion[..., 2]
@@ -354,8 +358,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
     cos_theta: torch.Tensor = quaternion[..., 0]
     two_theta: torch.Tensor = 2.0 * torch.where(
-        cos_theta < 0.0,
-        torch.atan2(-sin_theta, -cos_theta),
+        cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta),
         torch.atan2(sin_theta, cos_theta))
 
     k_pos: torch.Tensor = two_theta / sin_theta
@@ -367,6 +370,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     angle_axis[..., 1] += q2 * k
     angle_axis[..., 2] += q3 * k
     return angle_axis
+
 
 # based on:
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
@@ -396,8 +400,9 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
             type(angle_axis)))
 
     if not angle_axis.shape[-1] == 3:
-        raise ValueError("Input must be a tensor of shape Nx3 or 3. Got {}"
-                         .format(angle_axis.shape))
+        raise ValueError(
+            "Input must be a tensor of shape Nx3 or 3. Got {}".format(
+                angle_axis.shape))
     # unpack input and compute conversion
     a0: torch.Tensor = angle_axis[..., 0:1]
     a1: torch.Tensor = angle_axis[..., 1:2]
@@ -421,9 +426,9 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     quaternion[..., 2:3] += a2 * k
     return torch.cat([w, quaternion], dim=-1)
 
+
 # TODO: add below funtionalities
 #  - pose_to_rtvec
-
 
 # layer api
 
