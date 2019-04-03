@@ -51,14 +51,14 @@ class TestGaussianBlur:
                          raise_exception=True)
 
 
-@pytest.mark.parametrize("window_size", 5)
+@pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel(window_size):
     kernel = image.get_laplacian_kernel(window_size)
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
-@pytest.mark.parametrize("window_size", 5)
+@pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel2d(window_size):
     kernel = image.get_laplacian_kernel2d(window_size)
     assert kernel.shape == window_size
