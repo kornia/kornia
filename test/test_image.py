@@ -1,6 +1,7 @@
 import pytest
 
 import torch
+import math
 import torchgeometry.image as image
 from torch.autograd import gradcheck
 
@@ -48,3 +49,27 @@ class TestGaussianBlur:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
+
+
+@pytest.mark.parametrize("window_size", 5)
+def test_get_laplacian_kernel(window_size):
+    kernel = image.get_laplacian_kernel(window_size)
+    assert kernel.shape == (window_size,)
+    assert kernel.sum().item() == pytest.approx(1.0)
+
+@pytest.mark.parametrize("window_size", 5)
+def test_get_laplacian_kernel2d(window_size):
+    kernel = image.get_laplacian_kernel2d(window_size)
+    assert kernel.shape == window_size
+    assert kernel.sum().item() == pytest.approx(1.0)
+
+
+class TestLaplacianBlur:
+    @pytest.mark.parametrize("batch_shape",
+                             [(1, 4, 8, 15), (2, 3, 11, 7)])
+    def test_laplacian_blur(self, batch_shape, device_type):
+        kernel_size = 5
+
+        input = torch.rand(batch_shape).to(torch.device(device_type))
+        laplace = image.LaplacianBlur(kernel_size)
+        assert laplace(input).shape == batch_shape
