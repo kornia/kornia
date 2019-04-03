@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torchgeometry.augmentation as taug
 from torch.autograd import gradcheck 
+from torch.testing import assert_allclose
 
 import torchvision
 
@@ -101,3 +102,48 @@ class TestGrayscale:
         img = torch.ones(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(taug.Grayscale(), (img,), raise_exception=True)
+
+class TestRotate:
+    def test_smoke(self):
+        assert str(taug.Rotate(degrees=0.)) == 'Rotate(degrees=0.0, center=None)'
+
+    def test_angle90(self):
+        # prepare input data
+        inp = torch.FloatTensor([[
+            [1, 2],
+            [3, 4],
+            [5, 6],
+            [7, 8],
+        ]])
+        expected = torch.FloatTensor([[
+            [0, 0],
+            [4, 6],
+            [3, 5],
+            [0, 0],
+        ]])
+        # prepare transformation
+        transform = taug.Rotate(degrees=90)
+        assert_allclose(transform(inp), expected)
+        
+    def test_angle90_batch2(self):
+        # prepare input data
+        inp = torch.FloatTensor([[
+            [1, 2],
+            [3, 4],
+            [5, 6],
+            [7, 8],
+        ]]).repeat(2, 1, 1, 1)
+        expected = torch.FloatTensor([[[
+            [0, 0],
+            [4, 6],
+            [3, 5],
+            [0, 0],
+        ]],[[
+            [0, 0],
+            [5, 3],
+            [6, 4],
+            [0, 0],
+        ]]])
+        # prepare transformation
+        transform = taug.Rotate(degrees=[90, -90])
+        assert_allclose(transform(inp), expected)

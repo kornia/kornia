@@ -1,3 +1,4 @@
 from .to_tensor import ToTensor
 from .color import Grayscale
-from .normalization import Normalize
+from .normalization import Normalise
+from .affine import Rotate
