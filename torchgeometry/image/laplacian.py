@@ -32,13 +32,102 @@ def get_laplacian_kernel(ksize: int):
 
 
 	"""
+	if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
+	    raise TypeError("ksize must be an odd positive integer. Got {}"
+	                    .format(ksize))
+	window_1d: torch.Tensor = laplacian(ksize)
+	return window_1d
+
+
+def get_laplacian_kernel2d(ksize: int) -> torch.Tensor:
+    r"""Function that returns Gaussian filter matrix coefficients.
+
+    Args:
+        ksize (int): filter size should be odd.
+
+    Returns:
+        Tensor: 2D tensor with laplacian filter matrix coefficients.
+
+    Shape:
+        - Output: :math:`(ksize, ksize)`
+
+    Examples::
+
+    """
     if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
-        raise TypeError("ksize must be an odd positive integer. Got {}"
+        raise TypeError("ksize must be a tuple of length two. Got {}"
                         .format(ksize))
-    window_1d: torch.Tensor = laplacian(ksize)
-    return window_1d
+
+    kernel = torch.ones((ksize, ksize))
+    mid = int(math.floor((ksize/2)))
+    kernel[mid, mid] = 1 - math.pow(ksize, 2)
+    kernel_2d: torch.Tensor = kernel
+    return kernel_2d
 
 
 
-kk =get_laplacian_kernel(7)
+class LaplacianBlur(nn.Module):
+    r"""Creates an operator that blurs a tensor using a Laplacian filter.
+
+    The operator smooths the given tensor with a laplacian kernel by convolving
+    it to each channel. It suports batched operation.
+
+    Arguments:
+        kernel_size (int): the size of the kernel.
+
+    Returns:
+        Tensor: the blurred tensor.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> gauss = tgm.image.LaplacianBlur(5)
+        >>> output = gauss(input)  # 2x4x5x5
+    """
+
+    def __init__(self, kernel_size: int) -> None:
+        super(LaplacianBlur, self).__init__()
+        self.kernel_size: int = kernel_size
+        self._padding: int = self.compute_zero_padding(kernel_size)
+        self.kernel: torch.Tensor = self.get_laplacian_kernel(kernel_size)
+
+    @staticmethod
+    def get_laplacian_kernel(kernel_size) -> torch.Tensor:
+        """Returns a 2D Laplacian kernel array."""
+        kernel: torch.Tensor = get_laplacian_kernel2d(kernel_size)
+        return kernel
+
+    @staticmethod
+    def compute_zero_padding(kernel_size: int):
+        """Computes zero padding."""
+        computed = (kernel_size - 1) // 2
+        return computed
+
+    def forward(self, x: torch.Tensor):
+        if not torch.is_tensor(x):
+            raise TypeError("Input x type is not a torch.Tensor. Got {}"
+                            .format(type(x)))
+        if not len(x.shape) == 4:
+            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
+                             .format(x.shape))
+        # prepare kernel
+        b, c, h, w = x.shape
+        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
+        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
+
+        # convolve tensor with gaussian kernel
+        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
+
+kk =get_laplacian_kernel(9)
+kk2 = get_laplacian_kernel2d(9)
 print(kk)
+print(kk2)
+
+input = torch.rand(2, 4, 5, 5)
+laplace = LaplacianBlur(3)
+output = laplace(input)  # 2x4x5x5
+print(output)
