@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils  # test utils
 from utils import check_equal_torch, check_equal_numpy
@@ -174,33 +175,41 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
 
 
 class TestConvertPointsFromHomogeneous:
-    @pytest.mark.parametrize("batch_shape", [
-        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-    def test_convert_points(self, batch_shape, device_type):
+    def test_convert_points(self, device_type):
         # generate input data
-        points_h = torch.rand(batch_shape)
-        points_h = points_h.to(torch.device(device_type))
+        points_h = torch.FloatTensor([
+            [1, 2, 1],
+            [0, 1, 2],
+            [2, 1, 0],
+        ]).to(torch.device(device_type))
+
+        expected = torch.FloatTensor([
+            [1, 2],
+            [0, 0.5],
+            [2e6, 1e6],
+        ]).to(torch.device(device_type))
 
         # to euclidean
         points = tgm.convert_points_from_homogeneous(points_h)
+        assert_allclose(points, expected)
 
-        error = utils.compute_mse(points_h[..., :2], points)
-        assert pytest.approx(error.item(), 0.0)
-
-    @pytest.mark.parametrize("batch_shape", [
-        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-    def test_convert_points_infinity(self, batch_shape, device_type):
+    def test_convert_points_batch(self, device_type):
         # generate input data
-        points_h = torch.ones(batch_shape)
-        points_h = points_h.to(torch.device(device_type))
-        points_h[..., 0, -1] = 0.0
-        points_h[..., 1] = 2.0
+        points_h = torch.FloatTensor([[
+            [2, 1, 0],
+        ], [
+            [0, 1, 2],
+        ]]).to(torch.device(device_type))
+
+        expected = torch.FloatTensor([[
+            [2e6, 1e6],
+        ], [
+            [0, 0.5],
+        ]]).to(torch.device(device_type))
 
         # to euclidean
         points = tgm.convert_points_from_homogeneous(points_h)
-
-        assert utils.check_equal_torch(
-            points_h[..., 0:2], points[..., 0:2])
+        assert_allclose(points, expected)
 
     @pytest.mark.parametrize("batch_shape", [
         (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
