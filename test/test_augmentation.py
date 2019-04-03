@@ -147,3 +147,18 @@ class TestRotate:
         # prepare transformation
         transform = taug.Rotate(degrees=[90, -90])
         assert_allclose(transform(inp), expected)
+
+    def test_random_rotate_value(self):
+        transform = taug.RandomRotation(degrees=90)
+        angle = transform.get_params(transform.degrees)
+        assert angle in torch.arange(-90,91)
+
+    def test_random_rotate_minmax_value(self):
+        transform = taug.RandomRotation(degrees=(-45, 0))
+        angle = transform.get_params(transform.degrees)
+        assert angle in torch.arange(-45,1)
+
+    def test_random_rotate_value(self):
+        transform = taug.RandomRotation(degrees=90)
+        angle = transform.get_params(transform.degrees)
+        assert angle in torch.arange(-90,91)

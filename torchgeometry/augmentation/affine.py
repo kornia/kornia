@@ -7,6 +7,27 @@ import torch.nn as nn
 from torchgeometry.core import get_rotation_matrix2d, warp_affine
 
 
+class RandomRotation(nn.Module):
+    def __init__(self, degrees, center=None):
+        super(RandomRotation, self).__init__()
+        if isinstance(degrees, numbers.Number):
+            if degrees < 0:
+                 raise ValueError("If degrees is a single number, it must be positive.")
+            self.degrees = (-degrees, degrees)
+        else:
+            if len(degrees) != 2:
+                raise ValueError("If degrees is a sequence, it must be of len 2.")
+            self.degrees = degrees
+        self.center = center
+    
+    @staticmethod
+    def get_params(degrees):
+        return torch.FloatTensor(1).uniform_(degrees[0], degrees[1]).item()
+
+    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
+        return F.rotate(img, self.get_params(self.degrees), self.center)
+
+
 class Rotate(nn.Module):
     r"""Rotate the image anti-clockwise about the centre.
     
