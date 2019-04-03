@@ -29,7 +29,11 @@ def get_laplacian_kernel(ksize: int):
 		- Output: math:`(ksize, 0)`
 
 	Examples::
+    	>>> tgm.image.get_laplacian_kernel(3)
+    	tensor([ 1., -2.,  1.])
 
+    	>>> tgm.image.get_laplacian_kernel(5)
+    	tensor([ 1.,  1., -4.,  1.,  1.])
 
 	"""
 	if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
@@ -52,6 +56,18 @@ def get_laplacian_kernel2d(ksize: int) -> torch.Tensor:
         - Output: :math:`(ksize, ksize)`
 
     Examples::
+
+        >>> tgm.image.get_laplacian_kernel2d(3)
+        tensor([[ 1.,  1.,  1.],
+        [ 1., -8.,  1.],
+        [ 1.,  1.,  1.]])
+
+        >>> tgm.image.get_laplacian_kernel2d(5)
+        tensor([[  1.,   1.,   1.,   1.,   1.],
+        [  1.,   1.,   1.,   1.,   1.],
+        [  1.,   1., -24.,   1.,   1.],
+        [  1.,   1.,   1.,   1.,   1.],
+        [  1.,   1.,   1.,   1.,   1.]])
 
     """
     if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
@@ -85,8 +101,8 @@ class LaplacianBlur(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> gauss = tgm.image.LaplacianBlur(5)
-        >>> output = gauss(input)  # 2x4x5x5
+        >>> laplace = tgm.image.LaplacianBlur(5)
+        >>> output = laplace(input)  # 2x4x5x5
     """
 
     def __init__(self, kernel_size: int) -> None:
@@ -122,12 +138,33 @@ class LaplacianBlur(nn.Module):
         # convolve tensor with gaussian kernel
         return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
 
-kk =get_laplacian_kernel(9)
-kk2 = get_laplacian_kernel2d(9)
-print(kk)
-print(kk2)
 
-input = torch.rand(2, 4, 5, 5)
-laplace = LaplacianBlur(3)
-output = laplace(input)  # 2x4x5x5
-print(output)
+######################
+# functional interface
+######################
+
+
+def laplacian_blur(src: torch.Tensor,
+                  kernel_size: int) -> torch.Tensor:
+    r"""Function that blurs a tensor using a Laplacian filter.
+
+    The operator smooths the given tensor with a laplacian kernel by convolving
+    it to each channel. It suports batched operation.
+
+    Arguments:
+        src (Tensor): the input tensor.
+        kernel_size (int): the size of the kernel.
+
+    Returns:
+        Tensor: the blurred tensor.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> output = tgm.image.laplacian_blur(input, (3, 3), (1.5, 1.5))
+    """
+    return LaplacianBlur(kernel_size)(src)
