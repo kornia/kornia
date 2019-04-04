@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import math
 import torch
 import torch.nn as nn
 from torch.nn.functional import conv2d
@@ -12,7 +11,7 @@ def laplacian_1d(window_size) -> torch.Tensor:
     """
 
     filter_1d = torch.ones(window_size)
-    filter_1d[int(math.floor(window_size / 2))] = 1 - window_size
+    filter_1d[int(torch.floor(window_size / 2))] = 1 - window_size
     laplacian_1d: torch.Tensor = filter_1d
     return laplacian_1d
 
@@ -78,8 +77,8 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
                         .format(kernel_size))
 
     kernel = torch.ones((kernel_size, kernel_size))
-    mid = int(math.floor((kernel_size / 2)))
-    kernel[mid, mid] = 1 - math.pow(kernel_size, 2)
+    mid = int(torch.floor((kernel_size / 2)))
+    kernel[mid, mid] = 1 - torch.pow(kernel_size, 2)
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 
