@@ -4,6 +4,7 @@ import torch
 import math
 import torchgeometry.image as image
 from torch.autograd import gradcheck
+import torch_testing as tt
 
 import utils
 from common import device_type
@@ -63,6 +64,12 @@ def test_get_laplacian_kernel2d(window_size):
     kernel = image.get_laplacian_kernel2d(window_size)
     assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
+    expected = torch.tensor([1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1.],
+                            [1., 1., -24., 1., 1.],
+                            [1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1.])
+    tt.assert_equal(expected, kernel)
 
 
 class TestLaplacian:
