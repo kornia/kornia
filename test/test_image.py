@@ -1,7 +1,6 @@
 import pytest
 
 import torch
-import math
 import torchgeometry.image as image
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -64,11 +63,11 @@ def test_get_laplacian_kernel2d(window_size):
     kernel = image.get_laplacian_kernel2d(window_size)
     assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
-    expected = torch.tensor([1., 1., 1., 1., 1.],
+    expected = torch.tensor([[1., 1., 1., 1., 1.],
                             [1., 1., 1., 1., 1.],
                             [1., 1., -24., 1., 1.],
                             [1., 1., 1., 1., 1.],
-                            [1., 1., 1., 1., 1.])
+                            [1., 1., 1., 1., 1.]])
     assert_allclose(expected, kernel)
 
 
