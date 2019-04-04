@@ -37,10 +37,11 @@ def get_laplacian_kernel(kernel_size: int) -> torch.Tensor:
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
+            kernel_size <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}"
                         .format(kernel_size))
-    window_1d: torch.Tensor = laplacian(kernel_size)
+    window_1d: torch.Tensor = laplacian_1d(kernel_size)
     return window_1d
 
 
@@ -71,7 +72,8 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
         [  1.,   1.,   1.,   1.,   1.]])
 
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
+            kernel_size <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}"
                         .format(kernel_size))
 
@@ -136,7 +138,8 @@ class Laplacian(nn.Module):
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
         # convolve tensor with gaussian kernel
-        # TODO: Filter2D convolves an image with the kernel. A wrapper fucntion for conv2d something similar to the one
+        # TODO: Filter2D convolves an image with the kernel. A wrapper fucntion
+        #  for conv2d something similar to the one
         #       given in OpenCV. Also see separable filters.
         # https://github.com/opencv/opencv/blob/7fb70e170154d064ef12d8fec61c0ae70812ce3d/modules/imgproc/src/deriv.cpp#L822
         return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
@@ -147,8 +150,7 @@ class Laplacian(nn.Module):
 ######################
 
 
-def laplacian(src: torch.Tensor,
-                   kernel_size: int) -> torch.Tensor:
+def laplacian(src: torch.Tensor, kernel_size: int) -> torch.Tensor:
     r"""Function that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
