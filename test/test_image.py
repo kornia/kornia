@@ -57,19 +57,20 @@ def test_get_laplacian_kernel(window_size):
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(0.0)
 
+
 @pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel2d(window_size):
     kernel = image.get_laplacian_kernel2d(window_size)
-    assert kernel.shape == window_size
+    assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
 
 
-class TestLaplacianBlur:
+class TestLaplacian:
     @pytest.mark.parametrize("batch_shape",
                              [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_laplacian_blur(self, batch_shape, device_type):
+    def test_laplacian(self, batch_shape, device_type):
         kernel_size = 5
 
         input = torch.rand(batch_shape).to(torch.device(device_type))
-        laplace = image.LaplacianBlur(kernel_size)
+        laplace = image.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape

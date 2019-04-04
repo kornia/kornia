@@ -6,21 +6,22 @@ import torch.nn as nn
 from torch.nn.functional import conv2d
 
 
-def laplacian(window_size):
+def laplacian_1d(window_size) -> torch.Tensor:
     r"""One could also use the Laplacian of Gaussian formula
         to design the filter.
     """
 
-    laplacian = torch.ones(window_size)
-    laplacian[int(math.floor(window_size / 2))] = 1 - window_size
-    return laplacian
+    filter_1d = torch.ones(window_size)
+    filter_1d[int(math.floor(window_size / 2))] = 1 - window_size
+    laplacian_1d: torch.Tensor = filter_1d
+    return laplacian_1d
 
 
-def get_laplacian_kernel(ksize: int):
+def get_laplacian_kernel(kernel_size: int) -> torch.Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter
 
     Args:
-        ksize (int): filter size. It should be odd and positive.
+        kernel_size (int): filter size. It should be odd and positive.
 
     Returns:
         Tensor (float): 1D tensor with laplacian filter coefficients.
@@ -36,14 +37,14 @@ def get_laplacian_kernel(ksize: int):
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}"
-                        .format(ksize))
-    window_1d: torch.Tensor = laplacian(ksize)
+                        .format(kernel_size))
+    window_1d: torch.Tensor = laplacian(kernel_size)
     return window_1d
 
 
-def get_laplacian_kernel2d(ksize: int) -> torch.Tensor:
+def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -70,19 +71,19 @@ def get_laplacian_kernel2d(ksize: int) -> torch.Tensor:
         [  1.,   1.,   1.,   1.,   1.]])
 
     """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
-        raise TypeError("ksize must be a tuple of length two. Got {}"
-                        .format(ksize))
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
+        raise TypeError("ksize must be an odd positive integer. Got {}"
+                        .format(kernel_size))
 
-    kernel = torch.ones((ksize, ksize))
-    mid = int(math.floor((ksize / 2)))
-    kernel[mid, mid] = 1 - math.pow(ksize, 2)
+    kernel = torch.ones((kernel_size, kernel_size))
+    mid = int(math.floor((kernel_size / 2)))
+    kernel[mid, mid] = 1 - math.pow(kernel_size, 2)
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 
 
-class LaplacianBlur(nn.Module):
-    r"""Creates an operator that blurs a tensor using a Laplacian filter.
+class Laplacian(nn.Module):
+    r"""Creates an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
     it to each channel. It suports batched operation.
@@ -91,7 +92,7 @@ class LaplacianBlur(nn.Module):
         kernel_size (int): the size of the kernel.
 
     Returns:
-        Tensor: the blurred tensor.
+        Tensor: the tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -100,12 +101,12 @@ class LaplacianBlur(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> laplace = tgm.image.LaplacianBlur(5)
+        >>> laplace = tgm.image.Laplacian(5)
         >>> output = laplace(input)  # 2x4x5x5
     """
 
     def __init__(self, kernel_size: int) -> None:
-        super(LaplacianBlur, self).__init__()
+        super(Laplacian, self).__init__()
         self.kernel_size: int = kernel_size
         self._padding: int = self.compute_zero_padding(kernel_size)
         self.kernel: torch.Tensor = self.get_laplacian_kernel(kernel_size)
@@ -135,6 +136,9 @@ class LaplacianBlur(nn.Module):
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
         # convolve tensor with gaussian kernel
+        # TODO: Filter2D convolves an image with the kernel. A wrapper fucntion for conv2d something similar to the one
+        #       given in OpenCV. Also see separable filters.
+        # https://github.com/opencv/opencv/blob/7fb70e170154d064ef12d8fec61c0ae70812ce3d/modules/imgproc/src/deriv.cpp#L822
         return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
 
 
@@ -143,19 +147,19 @@ class LaplacianBlur(nn.Module):
 ######################
 
 
-def laplacian_blur(src: torch.Tensor,
+def laplacian(src: torch.Tensor,
                    kernel_size: int) -> torch.Tensor:
-    r"""Function that blurs a tensor using a Laplacian filter.
+    r"""Function that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
     it to each channel. It suports batched operation.
 
     Arguments:
-        src (Tensor): the input tensor.
+        src (torch.Tensor): the input tensor.
         kernel_size (int): the size of the kernel.
 
     Returns:
-        Tensor: the blurred tensor.
+        Tensor: the tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -164,6 +168,6 @@ def laplacian_blur(src: torch.Tensor,
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> output = tgm.image.laplacian_blur(input, (3, 3), (1.5, 1.5))
+        >>> output = tgm.image.laplacian(input, (3, 3), (1.5, 1.5))
     """
-    return LaplacianBlur(kernel_size)(src)
+    return Laplacian(kernel_size)(src)
