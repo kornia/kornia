@@ -4,7 +4,7 @@ import torch
 import math
 import torchgeometry.image as image
 from torch.autograd import gradcheck
-import torch_testing as tt
+from torch.testing import assert_allclose
 
 import utils
 from common import device_type
@@ -69,7 +69,7 @@ def test_get_laplacian_kernel2d(window_size):
                             [1., 1., -24., 1., 1.],
                             [1., 1., 1., 1., 1.],
                             [1., 1., 1., 1., 1.])
-    tt.assert_equal(expected, kernel)
+    assert_allclose(expected, kernel)
 
 
 class TestLaplacian:
