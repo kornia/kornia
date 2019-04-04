@@ -105,7 +105,9 @@ class TestGrayscale:
 
 class TestRotate:
     def test_smoke(self):
-        assert str(taug.Rotate(degrees=0.)) == 'Rotate(degrees=0.0, center=None)'
+        angle = 0.0
+        angle_t = torch.Tensor([angle])
+        assert str(taug.Rotate(angle=angle_t)) == 'Rotate(angle=0.0, center=None)'
 
     def test_angle90(self):
         # prepare input data
@@ -122,7 +124,8 @@ class TestRotate:
             [0, 0],
         ]])
         # prepare transformation
-        transform = taug.Rotate(degrees=90)
+        angle_t = torch.Tensor([90])
+        transform = taug.Rotate(angle_t)
         assert_allclose(transform(inp), expected)
         
     def test_angle90_batch2(self):
@@ -145,20 +148,21 @@ class TestRotate:
             [0, 0],
         ]]])
         # prepare transformation
-        transform = taug.Rotate(degrees=[90, -90])
+        angle_t = torch.Tensor([90, -90])
+        transform = taug.Rotate(angle_t)
         assert_allclose(transform(inp), expected)
 
     def test_random_rotate_value(self):
         transform = taug.RandomRotation(degrees=90)
-        angle = transform.get_params(transform.degrees)
-        assert angle in torch.arange(-90,91)
+        inp = torch.rand(1, 3, 4)
+        assert transform(inp).shape == (1, 3, 4)
 
     def test_random_rotate_minmax_value(self):
         transform = taug.RandomRotation(degrees=(-45, 0))
-        angle = transform.get_params(transform.degrees)
-        assert angle in torch.arange(-45,1)
+        inp = torch.rand(1, 3, 4)
+        assert transform(inp).shape == (1, 3, 4)
 
-    def test_random_rotate_value(self):
-        transform = taug.RandomRotation(degrees=90)
-        angle = transform.get_params(transform.degrees)
-        assert angle in torch.arange(-90,91)
+    def test_random_rotate_minmax_value_batch(self):
+        transform = taug.RandomRotation(degrees=(-45, 0))
+        inp = torch.rand(2, 3, 3, 4)
+        assert transform(inp).shape == (2, 3, 3, 4)

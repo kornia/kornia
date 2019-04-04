@@ -7,8 +7,18 @@ import torch.nn as nn
 from torchgeometry.core import get_rotation_matrix2d, warp_affine
 
 
-class RandomRotation(nn.Module):
-    def __init__(self, degrees, center=None):
+def compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
+    height, width = tensor.shape[-2:]
+    center_x: float = float(width - 1) / 2
+    center_y: float = float(height - 1) / 2
+    center: torch.Tensor = torch.Tensor([center_x, center_y])
+    return center
+
+
+class RandomRotation(object):
+    def __init__(self,
+            degrees: Union[float, Tuple[float]],
+            center: Union[None, Tuple[float]] = None) -> None:
         super(RandomRotation, self).__init__()
         if isinstance(degrees, numbers.Number):
             if degrees < 0:
@@ -21,11 +31,16 @@ class RandomRotation(nn.Module):
         self.center = center
     
     @staticmethod
-    def get_params(degrees):
-        return torch.FloatTensor(1).uniform_(degrees[0], degrees[1]).item()
+    def get_params(degrees: Tuple[float], num_samples: int) -> torch.Tensor:
+        return torch.FloatTensor(num_samples).uniform_(degrees[0], degrees[1])
 
-    def forward(self, tensor: torch.Tensor) -> torch.Tensor:
-        return F.rotate(img, self.get_params(self.degrees), self.center)
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        self.center = compute_rotation_center(tensor)
+        num_samples: int = 1
+        if len(tensor.shape) == 4:
+            num_samples = tensor.shape[0]
+        angle: torch.Tensor = self.get_params(self.degrees, num_samples)
+        return rotate(tensor, angle, self.center)
 
 
 class Rotate(nn.Module):
@@ -33,67 +48,59 @@ class Rotate(nn.Module):
     
     Args:
         tensor (torch.Tensor): The image tensor to be rotated.
-        degrees (float): The angle through which to rotate.
+        angle (torch.Tensor): The angle through which to rotate.
 
     Returns:
         torch.Tensor: The rotated image tensor.
     """
-    def __init__(self,
-            degrees: Union[float, Tuple[float]],
-            center: Union[None, Tuple[float]] = None) -> None:
+    def __init__(self, angle: torch.Tensor,
+            center: Union[None, torch.Tensor] = None) -> None:
         super(Rotate, self).__init__()
-        self.degrees: Union[float, Tuple[float]] = degrees
-        self.center: Union[None, Tuple[float]] = center
+        self.angle: torch.Tensor = angle
+        self.center: Union[None, torch.Tensor] = center
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return rotate(input, self.degrees, self.center)
+        self.center = compute_rotation_center(input)
+        return rotate(input, self.angle, self.center)
 
     def __repr__(self):
         return self.__class__.__name__ + '(' \
-            'degrees={0}, center={1})' \
-            .format(self.degrees, self.center)
+            'angle={0}, center={1})' \
+            .format(self.angle.item(), self.center)
 
 
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L185
 
-def rotate(tensor: torch.Tensor, degrees: Union[float, Tuple[float]],
-           center: Union[None, Tuple[float]] = None) -> torch.Tensor:
+def rotate(tensor: torch.Tensor, angle: torch.Tensor,
+           center: Union[None, torch.Tensor] = None) -> torch.Tensor:
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
+    if not torch.is_tensor(angle):
+        raise TypeError("Input angle type is not a torch.Tensor. Got {}"
+                        .format(type(angle)))
     if len(tensor.shape) not in (3, 4,):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
                          "Got: {}".format(tensor.shape))
+    if (len(tensor.shape) == 3 and not len(angle.shape) == 1) or \
+       (len(tensor.shape) == 4 and tensor.shape[0] != angle.shape[0]):
+        raise ValueError("Input tensor a angle shape must match. "
+                         "Got tensor: {0} and angle: {1}"
+                         .format(tensor.shape, angle.shape))
 
-    # degrees must be a list
-    if isinstance(degrees, numbers.Number):
-        degrees = [degrees]
-
-    if len(tensor.shape) == 4 and tensor.shape[0] != len(degrees):
-        raise ValueError("Input tensor shape a degrees length must match. "
-                         "Got tensor: {0} and degrees length: {1}"
-                         .format(tensor.shape, len(degrees)))
-
-    # convert parameters to tensor
-    degrees_t: torch.Tensor = torch.Tensor(degrees)
-    scale_t: torch.Tensor = torch.ones_like(degrees_t)
-
-    # compute rotation center
-    center_t: Union[Tuple[float], torch.Tensor] = None
+    # compute the rotation center
     if center is None:
-        height, width = tensor.shape[-2:]
-        center_x: float = float(width - 1) / 2
-        center_y: float = float(height - 1) / 2
-        center_t = [center_x, center_y]
-    center_t = torch.Tensor([center_t])
+        center = compute_rotation_center(tensor)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
-    center_t = center_t.expand(degrees_t.shape[0], -1)
+    center = center.expand(angle.shape[0], -1)
+    scale: torch.Tensor = torch.ones_like(angle)
     rotation_matrix: torch.Tensor = get_rotation_matrix2d(
-        center_t, degrees_t, scale_t)
+        center, angle, scale)
 
+    # warp using the affine transform
     return affine(tensor, rotation_matrix)
 
 # based on:
