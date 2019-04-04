@@ -10,4 +10,5 @@ rm -rf /var/lib/apt/lists/*
 COPY . /torchgeometry
 WORKDIR /torchgeometry
 
+RUN pip3 install torch_testing
 RUN ./setup_travis_env.sh
