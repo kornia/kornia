@@ -166,3 +166,25 @@ class TestRotate:
         transform = taug.RandomRotation(degrees=(-45, 0))
         inp = torch.rand(2, 3, 3, 4)
         assert transform(inp).shape == (2, 3, 3, 4)
+
+    def test_compose_transforms(self):
+        c, h, w = 3, 4, 2  # channels, height, width
+        inp = torch.rand(c, h, w)
+        angle = torch.Tensor([90])
+        center = torch.Tensor([[(w - 1) / 2, (h - 1) / 2]])
+
+        # compose the transforms
+        compose_matrix = nn.Sequential(
+            taug.RotationMatrix(angle, center),
+        )
+        matrix = compose_matrix(taug.identity_matrix())
+
+        transforms = nn.Sequential(
+            taug.Rotate(angle, center),
+        )
+
+        # apply transforms
+        out_affine = taug.affine(inp, matrix[..., :2, :3])
+        out_rotate = taug.rotate(inp, angle, center)
+        assert_allclose(out_affine, out_rotate)
+        assert_allclose(out_affine, transforms(inp))

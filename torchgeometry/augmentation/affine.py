@@ -3,6 +3,7 @@ import numbers
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from torchgeometry.core import get_rotation_matrix2d, warp_affine
 
@@ -13,6 +14,35 @@ def compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
     center_y: float = float(height - 1) / 2
     center: torch.Tensor = torch.Tensor([center_x, center_y])
     return center
+
+
+def convert_matrix2d_to_homogeneous(matrix: torch.Tensor) -> torch.Tensor:
+    # pad last two dimensions with zeros
+    matrix_h: torch.Tensor = F.pad(matrix, (0, 0, 0, 1), "constant", 0.0)
+    matrix_h[..., -1, -1] += 1.
+    return matrix_h
+
+
+def identity_matrix() -> torch.Tensor:
+    return torch.eye(3)[None]
+
+
+# TODO: implement me
+class RandomRotationMatrix(nn.Module):
+    pass
+
+
+class RotationMatrix(nn.Module):
+    def __init__(self,
+            angle: torch.Tensor, center: torch.Tensor) -> None:
+        super(RotationMatrix, self).__init__()
+        scale: torch.Tensor = torch.ones_like(angle)
+        self.matrix: torch.Tensor = convert_matrix2d_to_homogeneous(
+            get_rotation_matrix2d(center, angle, scale))
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        assert input.shape == self.matrix.shape
+        return torch.matmul(input, self.matrix)
 
 
 class RandomRotation(object):
@@ -85,7 +115,7 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
                          "Got: {}".format(tensor.shape))
     if (len(tensor.shape) == 3 and not len(angle.shape) == 1) or \
        (len(tensor.shape) == 4 and tensor.shape[0] != angle.shape[0]):
-        raise ValueError("Input tensor a angle shape must match. "
+        raise ValueError("Input tensor and angle shapes must match. "
                          "Got tensor: {0} and angle: {1}"
                          .format(tensor.shape, angle.shape))
 
