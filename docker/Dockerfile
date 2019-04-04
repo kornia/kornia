@@ -15,4 +15,5 @@ RUN curl -o ~/miniconda.sh -O  https://repo.continuum.io/miniconda/Miniconda3-la
      /opt/conda/bin/conda clean -ya
 ENV PATH /opt/conda/bin:$PATH
 
+RUN pip3 install torch_testing
 RUN conda install pytorch torchvision cuda91 -c pytorch
