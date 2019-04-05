@@ -58,16 +58,18 @@ def test_get_laplacian_kernel(window_size):
     assert kernel.sum().item() == pytest.approx(0.0)
 
 
-@pytest.mark.parametrize("window_size", [5])
+@pytest.mark.parametrize("window_size", [7])
 def test_get_laplacian_kernel2d(window_size):
     kernel = image.get_laplacian_kernel2d(window_size)
     assert kernel.shape == (window_size, window_size)
     assert kernel.sum().item() == pytest.approx(0.0)
-    expected = torch.tensor([[1., 1., 1., 1., 1.],
-                            [1., 1., 1., 1., 1.],
-                            [1., 1., -24., 1., 1.],
-                            [1., 1., 1., 1., 1.],
-                            [1., 1., 1., 1., 1.]])
+    expected = torch.tensor([[1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., -48., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.]])
     assert_allclose(expected, kernel)
 
 
