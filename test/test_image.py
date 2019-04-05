@@ -1,6 +1,7 @@
 import pytest
 
 import torch
+import math
 import torchgeometry.image as image
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
