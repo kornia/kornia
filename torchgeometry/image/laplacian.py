@@ -12,7 +12,7 @@ def laplacian_1d(window_size) -> torch.Tensor:
     """
 
     filter_1d = torch.ones(window_size)
-    filter_1d[int(torch.floor(window_size / 2))] = 1 - window_size
+    filter_1d[int(math.floor(window_size / 2))] = 1 - window_size
     laplacian_1d: torch.Tensor = filter_1d
     return laplacian_1d
 
