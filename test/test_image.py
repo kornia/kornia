@@ -86,7 +86,7 @@ class TestLaplacian:
     def test_gradcheck(self):
         # test parameters
         batch_shape = (2, 3, 11, 7)
-        kernel_size = (3, 9)
+        kernel_size = 9
 
         # evaluate function gradient
         input = torch.rand(batch_shape)
