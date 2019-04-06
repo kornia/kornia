@@ -1,6 +1,5 @@
 from typing import Tuple
 
-import math
 import torch
 import torch.nn as nn
 from torch.nn.functional import conv2d
@@ -79,7 +78,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
     kernel = torch.ones((kernel_size, kernel_size))
     mid = kernel_size // 2
-    kernel[mid, mid] = 1 - math.pow(kernel_size, 2)
+    kernel[mid, mid] = 1 - kernel_size ** 2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 

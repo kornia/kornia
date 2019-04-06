@@ -82,3 +82,14 @@ class TestLaplacian:
         input = torch.rand(batch_shape).to(torch.device(device_type))
         laplace = image.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape
+
+    def test_gradcheck(self):
+        # test parameters
+        batch_shape = (2, 3, 11, 7)
+        kernel_size = (3, 9)
+
+        # evaluate function gradient
+        input = torch.rand(batch_shape)
+        input = utils.tensor_to_gradcheck_var(input)
+        assert gradcheck(image.laplacian, (input, kernel_size,),
+                         raise_exception=True)
