@@ -106,85 +106,87 @@ class TestGrayscale:
 class TestRotate:
     def test_smoke(self):
         angle = 0.0
-        angle_t = torch.Tensor([angle])
+        angle_t = torch.tensor([angle])
         assert str(taug.Rotate(angle=angle_t)) == 'Rotate(angle=0.0, center=None)'
 
     def test_angle90(self):
         # prepare input data
-        inp = torch.FloatTensor([[
-            [1, 2],
-            [3, 4],
-            [5, 6],
-            [7, 8],
+        inp = torch.tensor([[
+            [1., 2.],
+            [3., 4.],
+            [5., 6.],
+            [7., 8.],
         ]])
-        expected = torch.FloatTensor([[
-            [0, 0],
-            [4, 6],
-            [3, 5],
-            [0, 0],
+        expected = torch.tensor([[
+            [0., 0.],
+            [4., 6.],
+            [3., 5.],
+            [0., 0.],
         ]])
         # prepare transformation
-        angle_t = torch.Tensor([90])
+        angle_t = torch.tensor([90.])
         transform = taug.Rotate(angle_t)
         assert_allclose(transform(inp), expected)
         
     def test_angle90_batch2(self):
         # prepare input data
-        inp = torch.FloatTensor([[
-            [1, 2],
-            [3, 4],
-            [5, 6],
-            [7, 8],
+        inp = torch.tensor([[
+            [1., 2.],
+            [3., 4.],
+            [5., 6.],
+            [7., 8.],
         ]]).repeat(2, 1, 1, 1)
-        expected = torch.FloatTensor([[[
-            [0, 0],
-            [4, 6],
-            [3, 5],
-            [0, 0],
+        expected = torch.tensor([[[
+            [0., 0.],
+            [4., 6.],
+            [3., 5.],
+            [0., 0.],
         ]],[[
-            [0, 0],
-            [5, 3],
-            [6, 4],
-            [0, 0],
+            [0., 0.],
+            [5., 3.],
+            [6., 4.],
+            [0., 0.],
         ]]])
         # prepare transformation
-        angle_t = torch.Tensor([90, -90])
+        angle_t = torch.tensor([90., -90.])
         transform = taug.Rotate(angle_t)
         assert_allclose(transform(inp), expected)
 
-    def test_random_rotate_value(self):
-        transform = taug.RandomRotation(degrees=90)
-        inp = torch.rand(1, 3, 4)
-        assert transform(inp).shape == (1, 3, 4)
-
-    def test_random_rotate_minmax_value(self):
-        transform = taug.RandomRotation(degrees=(-45, 0))
-        inp = torch.rand(1, 3, 4)
-        assert transform(inp).shape == (1, 3, 4)
-
-    def test_random_rotate_minmax_value_batch(self):
-        transform = taug.RandomRotation(degrees=(-45, 0))
-        inp = torch.rand(2, 3, 3, 4)
-        assert transform(inp).shape == (2, 3, 3, 4)
-
     def test_compose_transforms(self):
-        c, h, w = 3, 4, 2  # channels, height, width
-        inp = torch.rand(c, h, w)
-        angle = torch.Tensor([90])
-        center = torch.Tensor([[(w - 1) / 2, (h - 1) / 2]])
+        h, w = 4, 2  # height, width
+        center = torch.tensor([[(w - 1) / 2, (h - 1) / 2]])
+
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 2.],
+            [3., 4.],
+            [5., 6.],
+            [7., 8.],
+        ]])
+        expected = torch.tensor([[
+            [0., 0.],
+            [4., 6.],
+            [3., 5.],
+            [0., 0.],
+        ]])
 
         # compose the transforms
+        angle = torch.tensor([90.])
+        random_rotation = taug.RandomRotationMatrix(angle, center)
         compose_matrix = nn.Sequential(
             taug.RotationMatrix(angle, center),
+            random_rotation,
         )
         matrix = compose_matrix(taug.identity_matrix())
 
+        # rotation with obtained random angle
+        angle_composed = angle + random_rotation.angle
         transforms = nn.Sequential(
-            taug.Rotate(angle, center),
+            taug.Rotate(angle_composed, center),
         )
 
         # apply transforms
         out_affine = taug.affine(inp, matrix[..., :2, :3])
-        out_rotate = taug.rotate(inp, angle, center)
+        out_rotate = taug.rotate(inp, angle_composed, center)
         assert_allclose(out_affine, out_rotate)
         assert_allclose(out_affine, transforms(inp))

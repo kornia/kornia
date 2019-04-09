@@ -27,50 +27,73 @@ def identity_matrix() -> torch.Tensor:
     return torch.eye(3)[None]
 
 
-# TODO: implement me
-class RandomRotationMatrix(nn.Module):
-    pass
+def rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
+    scale: torch.Tensor = torch.ones_like(angle)
+    matrix: torch.Tensor = convert_matrix2d_to_homogeneous(
+        get_rotation_matrix2d(center, angle, scale))
+    return matrix
 
 
 class RotationMatrix(nn.Module):
     def __init__(self,
             angle: torch.Tensor, center: torch.Tensor) -> None:
         super(RotationMatrix, self).__init__()
-        scale: torch.Tensor = torch.ones_like(angle)
-        self.matrix: torch.Tensor = convert_matrix2d_to_homogeneous(
-            get_rotation_matrix2d(center, angle, scale))
+        self.angle: torch.Tensor = angle
+        self.center: torch.Tensor = center
+        self.matrix: torch.Tensor = self._generate_matrix()
+
+    def _generate_matrix(self) -> torch.Tensor:
+        assert self.angle is not None
+        assert self.center is not None
+        return rotation_matrix(self.angle, self.center)
+
+    def affine(self) -> torch.Tensor:
+        assert self.matrix is not None
+        return self.matrix[..., :2, :3]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        assert input.shape == self.matrix.shape
+        assert self.matrix is not None
         return torch.matmul(input, self.matrix)
 
 
-class RandomRotation(object):
+class RandomRotationMatrix(nn.Module):
     def __init__(self,
-            degrees: Union[float, Tuple[float]],
-            center: Union[None, Tuple[float]] = None) -> None:
-        super(RandomRotation, self).__init__()
-        if isinstance(degrees, numbers.Number):
-            if degrees < 0:
+            degrees: torch.Tensor,
+            center: Union[None, torch.Tensor] = None) -> None:
+        super(RandomRotationMatrix, self).__init__()
+        if len(degrees.shape) == 1:
+            if bool(degrees < 0):
                  raise ValueError("If degrees is a single number, it must be positive.")
-            self.degrees = (-degrees, degrees)
+            self.degrees = torch.cat([-degrees, degrees])
         else:
-            if len(degrees) != 2:
+            if len(degrees.shape) != 2:
                 raise ValueError("If degrees is a sequence, it must be of len 2.")
             self.degrees = degrees
         self.center = center
+        self.angle = None
+        self.matrix = None
     
-    @staticmethod
-    def get_params(degrees: Tuple[float], num_samples: int) -> torch.Tensor:
-        return torch.FloatTensor(num_samples).uniform_(degrees[0], degrees[1])
+    def _generate_params(self, num_samples: int) -> torch.Tensor:
+        degrees: Tuple[float] = self.degrees.tolist()
+        angle: torch.Tensor = torch.tensor(
+            [float(num_samples)]).uniform_(degrees[0], degrees[1])
+        return angle
 
-    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
-        self.center = compute_rotation_center(tensor)
-        num_samples: int = 1
-        if len(tensor.shape) == 4:
-            num_samples = tensor.shape[0]
-        angle: torch.Tensor = self.get_params(self.degrees, num_samples)
-        return rotate(tensor, angle, self.center)
+    def _generate_matrix(self, num_samples: int) -> torch.Tensor:
+        assert self.center is not None
+        self.angle: torch.Tensor = self._generate_params(num_samples)
+        return rotation_matrix(self.angle, self.center)
+
+    def affine(self) -> torch.Tensor:
+        assert self.matrix is not None
+        return self.matrix[..., :2, :3]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        assert len(input.shape) == 3, input.shape
+        assert self.center is not None, self.center
+        num_samples: int = input.shape[0]
+        self.matrix: torch.Tensor = self._generate_matrix(num_samples)
+        return torch.matmul(input, self.matrix)
 
 
 class Rotate(nn.Module):
@@ -90,7 +113,6 @@ class Rotate(nn.Module):
         self.center: Union[None, torch.Tensor] = center
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        self.center = compute_rotation_center(input)
         return rotate(input, self.angle, self.center)
 
     def __repr__(self):
@@ -110,6 +132,9 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
     if not torch.is_tensor(angle):
         raise TypeError("Input angle type is not a torch.Tensor. Got {}"
                         .format(type(angle)))
+    if center is not None and not torch.is_tensor(angle):
+        raise TypeError("Input center type is not a torch.Tensor. Got {}"
+                        .format(type(center)))
     if len(tensor.shape) not in (3, 4,):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
                          "Got: {}".format(tensor.shape))
@@ -126,12 +151,10 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     center = center.expand(angle.shape[0], -1)
-    scale: torch.Tensor = torch.ones_like(angle)
-    rotation_matrix: torch.Tensor = get_rotation_matrix2d(
-        center, angle, scale)
+    rotation_matrix = RotationMatrix(angle, center)
 
     # warp using the affine transform
-    return affine(tensor, rotation_matrix)
+    return affine(tensor, rotation_matrix.affine())
 
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L166
