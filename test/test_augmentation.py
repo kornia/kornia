@@ -260,6 +260,83 @@ class TestRotation:
         assert_allclose(out_affine, transforms(inp))
 
 
+class TestScaling:
+
+    def test_scale_factor_2(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([2.])
+        transform = taug.Scale(scale_factor)
+        assert_allclose(transform(inp).sum().item(), 12.25)
+        
+    def test_scale_factor_05(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+        expected = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([0.5])
+        transform = taug.Scale(scale_factor)
+        assert_allclose(transform(inp), expected)
+
+    def test_compose_transforms(self):
+        h, w = 4, 4  # height, width
+        center = torch.tensor([[(w - 1) / 2, (h - 1) / 2]])
+
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+        expected = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+
+        # compose the transforms
+        scale_factor = torch.tensor([0.5])
+        scale_factor_interval = torch.tensor([0.5, 1.0])
+        random_scaling = taug.RandomScalingMatrix(
+            scale_factor_interval, center)
+
+        compose_matrix = nn.Sequential(
+            taug.ScalingMatrix(scale_factor, center),
+            random_scaling,
+        )
+        matrix = compose_matrix(taug.identity_matrix())
+
+        # rotation with obtained random angle
+        scale_composed = scale_factor * random_scaling.scale
+        transforms = nn.Sequential(
+            taug.Scale(scale_composed, center),
+        )
+
+        # apply transforms
+        out_affine = taug.affine(inp, matrix[..., :2, :3])
+        out_scale = taug.scale(inp, scale_composed, center)
+        assert_allclose(out_affine, out_scale)
+        assert_allclose(out_affine, transforms(inp))
+
+
 class TestComposeTransforms:
     def test_rotation_translation(self):
         h, w = 4, 2  # height, width
@@ -275,13 +352,18 @@ class TestComposeTransforms:
         # compose the transforms
         angle = torch.tensor([90.])
         translation = torch.tensor([[1., 1.]])
+        scale_factor_up = torch.tensor([2.])
+        scale_factor_down = torch.tensor([0.5])
 
         compose_matrix = nn.Sequential(
             taug.RotationMatrix(angle, center),
             taug.TranslationMatrix(translation),
+            taug.ScalingMatrix(scale_factor_up, center),
+            taug.ScalingMatrix(scale_factor_down, center),
             taug.TranslationMatrix(-translation),
             taug.RotationMatrix(-angle, center),
         )
+        import pdb;pdb.set_trace()
         matrix = compose_matrix(taug.identity_matrix())
 
         # apply transforms
