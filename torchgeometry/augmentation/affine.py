@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchgeometry.core import get_rotation_matrix2d, warp_affine
+from torchgeometry.core import get_perspective_transform, warp_perspective
 
 
 def compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
@@ -445,6 +446,101 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
 
     # warp the input tensor
     warped: torch.Tensor = warp_affine(tensor, matrix, tensor.shape[-2:])
+
+    # return in the original shape
+    if is_unbatched:
+        warped = torch.squeeze(warped, dim=0)
+
+    return warped
+
+
+def resized_crop(
+        tensor: torch.Tensor,
+        tl: torch.Tensor,
+        tr: torch.Tensor,
+        bl: torch.Tensor,
+        br: torch.Tensor,
+        size: Tuple[int]) -> torch.Tensor:
+    dst_h, dst_w = size
+
+    # [y, x] origin
+    # top-left, top-right, bottom-left, bottom-right
+    points_src: torch.Tensor = torch.stack([tl, tr, bl, br], dim=1)
+
+    # [y, x] destination
+    # top-left, top-right, bottom-left, bottom-right
+    points_dst: torch.Tensor = torch.FloatTensor([[
+        [0, 0],
+        [0, dst_w - 1],
+        [dst_h - 1, 0],
+        [dst_h - 1, dst_w - 1],
+    ]]).repeat(points_src.shape[0], 1, 1)
+
+    # warping needs data in the shape of BCHW
+    is_unbatched: bool = tensor.ndimension() == 3
+    if is_unbatched:
+        tensor = torch.unsqueeze(tensor, dim=0)
+
+    # compute transformation between points and warp
+    dst_trans_src: torch.Tensor = get_perspective_transform(
+        points_src, points_dst)
+
+    warped: torch.Tensor = warp_perspective(
+        tensor, dst_trans_src, (dst_h, dst_w))
+
+    # return in the original shape
+    if is_unbatched:
+        warped = torch.squeeze(warped, dim=0)
+
+    return warped
+
+
+def center_crop(tensor: torch.Tensor, size: Tuple[int]) -> torch.Tensor:
+
+    dst_h, dst_w = size
+    src_h, src_w = tensor.shape[-2:]
+
+    dst_h_half: float = float(dst_h) / 2
+    dst_w_half: float = float(dst_w) / 2
+    src_h_half: float = float(src_h) / 2
+    src_w_half: float = float(src_w) / 2
+
+    start_x: float = src_h_half - dst_h_half
+    start_y: float = src_w_half - dst_w_half
+
+    end_x: float = start_x + dst_w - 1
+    end_y: float = start_y + dst_h - 1
+
+    # [y, x] origin
+    # top-left, top-right, bottom-left, bottom-right
+    points_src: torch.Tensor = torch.FloatTensor([[
+        [start_y, start_x],
+        [start_y, end_x],
+        [end_y, start_x],
+        [end_y, end_x],
+    ]])
+
+    # [y, x] destination
+    # top-left, top-right, bottom-left, bottom-right
+    points_dst: torch.Tensor = torch.FloatTensor([[
+        [0, 0],
+        [0, dst_w - 1],
+        [dst_h - 1, 0],
+        [dst_h - 1, dst_w - 1],
+    ]])
+
+    # warping needs data in the shape of BCHW
+    is_unbatched: bool = tensor.ndimension() == 3
+    if is_unbatched:
+        tensor = torch.unsqueeze(tensor, dim=0)
+
+    # compute transformation between points and warp
+    dst_trans_src: torch.Tensor = get_perspective_transform(
+        points_src, points_dst)
+    dst_trans_src = dst_trans_src.repeat(tensor.shape[0], 1, 1)
+
+    warped: torch.Tensor = warp_perspective(
+        tensor, dst_trans_src, (dst_h, dst_w))
 
     # return in the original shape
     if is_unbatched:

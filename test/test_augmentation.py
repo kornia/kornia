@@ -363,9 +363,127 @@ class TestComposeTransforms:
             taug.TranslationMatrix(-translation),
             taug.RotationMatrix(-angle, center),
         )
-        import pdb;pdb.set_trace()
         matrix = compose_matrix(taug.identity_matrix())
 
         # apply transforms
         out_affine = taug.affine(inp, matrix[..., :2, :3])
         assert_allclose(out_affine, inp)
+
+
+class TestCrop:
+    def test_resized_crop(self):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]])
+
+        height, width = 2, 2
+        expected = torch.tensor([[
+            [6., 7.],
+            [10., 11.],
+        ]])
+
+        tl = torch.tensor([[1., 1.]])
+        tr = torch.tensor([[1., 2.]])
+        bl = torch.tensor([[2., 1.]])
+        br = torch.tensor([[2., 2.]])
+
+        out_crop = taug.resized_crop(inp, tl, tr, bl, br, (height, width))
+        assert_allclose(out_crop, expected)
+
+    def test_resized_crop_batch(self):
+        inp = torch.tensor([[[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]],[[
+            [1., 5., 9.,  13.],
+            [2., 6., 10., 14.],
+            [3., 7., 11., 15.],
+            [4., 8., 12., 16.],
+        ]]])
+
+        height, width = 2, 2
+        expected = torch.tensor([[[
+            [6., 7.],
+            [10., 11.],
+        ]],[[
+            [11., 15.],
+            [12., 16.],
+        ]]])
+
+        tl = torch.tensor([[1., 1.], [2., 2.]])
+        tr = torch.tensor([[1., 2.], [2., 3.]])
+        bl = torch.tensor([[2., 1.], [3., 2.]])
+        br = torch.tensor([[2., 2.], [3., 3.]])
+
+        out_crop = taug.resized_crop(inp, tl, tr, bl, br, (height, width))
+        assert_allclose(out_crop, expected)
+
+    def test_center_crop_h2_w4(self):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]])
+
+        height, width = 2, 4
+        expected = torch.tensor([[
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+        ]])
+
+        out_crop = taug.center_crop(inp, (height, width))
+        assert_allclose(out_crop, expected)
+
+    def test_center_crop_h4_w2(self):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]])
+
+        height, width = 4, 2
+        expected = torch.tensor([[
+            [2., 3.],
+            [6., 7.],
+            [10., 11.],
+            [14., 15.],
+        ]])
+
+        out_crop = taug.center_crop(inp, (height, width))
+        assert_allclose(out_crop, expected)
+
+    def test_center_crop_h4_w2_batch(self):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ],[
+            [1., 5., 9.,  13.],
+            [2., 6., 10., 14.],
+            [3., 7., 11., 15.],
+            [4., 8., 12., 16.],
+        ]])
+
+        height, width = 4, 2
+        expected = torch.tensor([[
+            [2., 3.],
+            [6., 7.],
+            [10., 11.],
+            [14., 15.],
+        ],[
+            [5., 9.],
+            [6., 10.],
+            [7., 11.],
+            [8., 12.],
+        ]])
+
+        out_crop = taug.center_crop(inp, (height, width))
+        assert_allclose(out_crop, expected)
