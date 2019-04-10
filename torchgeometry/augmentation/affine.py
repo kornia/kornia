@@ -34,6 +34,35 @@ def rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
     return matrix
 
 
+def translation_matrix(translation: torch.Tensor) -> torch.Tensor:
+    matrix: torch.Tensor = identity_matrix()
+    matrix = matrix.repeat(translation.shape[0], 1, 1)
+
+    dx, dy = torch.chunk(translation, chunks=2, dim=-1)
+    matrix[..., 0, 2:3] += dx
+    matrix[..., 1, 2:3] += dy
+    return matrix
+
+
+class TranslationMatrix(nn.Module):
+    def __init__(self, translation: torch.Tensor) -> None:
+        super(TranslationMatrix, self).__init__()
+        self.translation: torch.Tensor = translation
+        self.matrix: torch.Tensor = self._generate_matrix()
+
+    def _generate_matrix(self) -> torch.Tensor:
+        assert self.translation is not None
+        return translation_matrix(self.translation)
+
+    def affine(self) -> torch.Tensor:
+        assert self.matrix is not None
+        return self.matrix[..., :2, :3]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        assert self.matrix is not None
+        return torch.matmul(self.matrix, input)
+
+
 class RotationMatrix(nn.Module):
     def __init__(self,
             angle: torch.Tensor, center: torch.Tensor) -> None:
@@ -53,7 +82,7 @@ class RotationMatrix(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         assert self.matrix is not None
-        return torch.matmul(input, self.matrix)
+        return torch.matmul(self.matrix, input)
 
 
 class RandomRotationMatrix(nn.Module):
@@ -96,12 +125,50 @@ class RandomRotationMatrix(nn.Module):
         return torch.matmul(input, self.matrix)
 
 
+class RandomTranslationMatrix(nn.Module):
+    def __init__(self, translation: torch.Tensor) -> None:
+        super(RandomTranslationMatrix, self).__init__()
+        if len(translation.shape) != 1:
+            raise ValueError("Translation tensor must be of size of 2.")
+
+        if translation.shape[0] == 1:
+            self.translation = torch.cat([-translation, translation])
+        elif translation.shape[0] == 2:
+            self.translation = translation
+        else:
+            raise ValueError("If translation is a sequence, it must be of len 2.")
+
+        self.matrix = None
+    
+    def _generate_params(self, num_samples: int) -> torch.Tensor:
+        translation_vec: Tuple[float] = self.translation.tolist()
+        translation: torch.Tensor = torch.zeros(num_samples, 2).uniform_(
+            translation_vec[0], translation_vec[1])
+        return translation
+
+    def _generate_matrix(self, num_samples: int) -> torch.Tensor:
+        self.translation: torch.Tensor = self._generate_params(num_samples)
+        return translation_matrix(self.translation)
+
+    def affine(self) -> torch.Tensor:
+        assert self.matrix is not None
+        return self.matrix[..., :2, :3]
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        assert len(input.shape) == 3, input.shape
+        num_samples: int = input.shape[0]
+        self.matrix: torch.Tensor = self._generate_matrix(num_samples)
+        return torch.matmul(input, self.matrix)
+
+
 class Rotate(nn.Module):
     r"""Rotate the image anti-clockwise about the centre.
     
     Args:
-        tensor (torch.Tensor): The image tensor to be rotated.
         angle (torch.Tensor): The angle through which to rotate.
+        center (torch.Tensor): The center through which to rotate. The tensor
+          must have a shape of :math:(B, 2), where B is batch size and last
+          dimension contains cx and cy.
 
     Returns:
         torch.Tensor: The rotated image tensor.
@@ -121,11 +188,46 @@ class Rotate(nn.Module):
             .format(self.angle.item(), self.center)
 
 
+class Translate(nn.Module):
+    r"""Translate the tensor in pixel units.
+
+    Args:
+        translation (torch.Tensor): tensor containing the amount of pixels to
+          translate in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains dx dy.
+
+    Returns:
+        torch.Tensor: The translated tensor.
+    """
+    def __init__(self, translation: torch.Tensor) -> None:
+        super(Translate, self).__init__()
+        self.translation: torch.Tensor = translation
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return translate(input, self.translation)
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            'translation={0})'.format(self.translation)
+
+
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L185
 
 def rotate(tensor: torch.Tensor, angle: torch.Tensor,
            center: Union[None, torch.Tensor] = None) -> torch.Tensor:
+    r"""Rotate the image anti-clockwise about the centre.
+    
+    Args:
+        tensor (torch.Tensor): The image tensor to be rotated.
+        angle (torch.Tensor): The angle through which to rotate.
+        center (torch.Tensor): The center through which to rotate. The tensor
+          must have a shape of :math:(B, 2), where B is batch size and last
+          dimension contains cx and cy.
+
+    Returns:
+        torch.Tensor: The rotated image tensor.
+    """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
@@ -155,6 +257,36 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
     # warp using the affine transform
     return affine(tensor, rotation_matrix.affine())
+
+
+def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
+    r"""Translate the tensor in pixel units.
+
+    Args:
+        tensor (torch.Tensor): The image tensor to be translated.
+        translation (torch.Tensor): tensor containing the amount of pixels to
+          translate in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains dx dy.
+
+    Returns:
+        torch.Tensor: The translated tensor.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(translation):
+        raise TypeError("Input translation type is not a torch.Tensor. Got {}"
+                        .format(type(translation)))
+    if len(tensor.shape) not in (3, 4,):
+        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
+                         "Got: {}".format(tensor.shape))
+
+    # compute the translation matrix
+    translation_matrix = TranslationMatrix(translation)
+
+    # warp using the affine transform
+    return affine(tensor, translation_matrix.affine())
+
 
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L166
