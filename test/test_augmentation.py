@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchgeometry.augmentation as taug
-from torch.autograd import gradcheck 
+from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import torchvision
@@ -15,7 +15,7 @@ from common import device_type
 
 class TestAugmentationSequential:
     def test_smoke(self):
-        height, width, channels = 4, 5, 3 
+        height, width, channels = 4, 5, 3
         img = np.ones((height, width, channels))
 
         transforms = nn.Sequential(
@@ -25,7 +25,7 @@ class TestAugmentationSequential:
         assert transforms(img).shape == (1, height, width)
 
     def test_smoke_batch(self):
-        batch_size, height, width, channels = 2, 4, 5, 3 
+        batch_size, height, width, channels = 2, 4, 5, 3
         img = np.ones((batch_size, height, width, channels))
 
         transforms = nn.Sequential(
@@ -37,7 +37,7 @@ class TestAugmentationSequential:
 
 class TestAugmentationCompose:
     def test_smoke(self):
-        height, width, channels = 4, 5, 3 
+        height, width, channels = 4, 5, 3
         img = np.ones((height, width, channels))
 
         transforms = torchvision.transforms.Compose([
@@ -47,7 +47,7 @@ class TestAugmentationCompose:
         assert transforms(img).shape == (1, height, width)
 
     def test_smoke_batch(self):
-        batch_size, height, width, channels = 2, 4, 5, 3 
+        batch_size, height, width, channels = 2, 4, 5, 3
         img = np.ones((batch_size, height, width, channels))
 
         transforms = torchvision.transforms.Compose([
@@ -62,12 +62,12 @@ class TestToTensor:
         assert str(taug.ToTensor()) == 'ToTensor()'
 
     def test_rgb_to_tensor(self):
-        height, width, channels = 4, 5, 3 
+        height, width, channels = 4, 5, 3
         img = np.ones((height, width, channels))
         assert taug.ToTensor()(img).shape == (channels, height, width)
 
     def test_rgb_to_tensor_batch(self):
-        batch_size, height, width, channels = 2, 4, 5, 3 
+        batch_size, height, width, channels = 2, 4, 5, 3
         img = np.ones((batch_size, height, width, channels))
         assert taug.ToTensor()(img).shape == \
             (batch_size, channels, height, width)
@@ -127,7 +127,7 @@ class TestRotate:
         angle_t = torch.Tensor([90])
         transform = taug.Rotate(angle_t)
         assert_allclose(transform(inp), expected)
-        
+
     def test_angle90_batch2(self):
         # prepare input data
         inp = torch.FloatTensor([[
