@@ -5,7 +5,9 @@ from typing import Sequence
 
 class Normalise(nn.Module):
 
-    """Normalize a tensor image with mean and standard deviation.
+    """Normalize a tensor image or a batch of tensor images
+    with mean and standard deviation. Input must be a tensor of shape (C, H, W)
+    or a batch of tensors (*, C, H, W).
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
     this transform will normalize each channel of the input ``torch.*Tensor``
     i.e. ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
@@ -55,7 +57,7 @@ def normalise(data: torch.Tensor, mean: Sequence[float],
     if not isinstance(data, torch.Tensor):
         raise TypeError('data is not a torch.Tensor')
 
-    if inplace:
+    if not inplace:
         data = data.clone()
 
     mean = torch.as_tensor(mean, device=data.device)[..., :, None, None]
