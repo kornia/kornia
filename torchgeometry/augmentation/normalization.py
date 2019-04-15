@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import Sequence
+from typing import Sequence, Optional
 
 
 class Normalise(nn.Module):
@@ -19,7 +19,7 @@ class Normalise(nn.Module):
     """
 
     def __init__(self, mean: Sequence[float], std: Sequence[float],
-                 inplace: bool = False) -> None:
+                 inplace: Optional[bool] = False) -> None:
 
         super(Normalise, self).__init__()
 
@@ -37,7 +37,8 @@ class Normalise(nn.Module):
 
 
 def normalise(data: torch.Tensor, mean: Sequence[float],
-              std: Sequence[float], inplace: bool = False) -> torch.Tensor:
+              std: Sequence[float],
+              inplace: Optional[bool] = False) -> torch.Tensor:
 
     """Normalise the image with channel-wise mean and standard deviation.
 
