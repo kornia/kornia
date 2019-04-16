@@ -103,11 +103,61 @@ class TestGrayscale:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(taug.Grayscale(), (img,), raise_exception=True)
 
+
+class TestNormalize:
+    def test_smoke(self):
+        mean = [0.5]
+        std = [0.1]
+        repr = 'Normalize(mean=[0.5], std=[0.1])'
+        assert str(taug.Normalize(mean, std)) == repr
+
+    def test_normalize(self):
+
+        # prepare input data
+        data = torch.ones(1, 2, 2)
+        mean = torch.tensor([0.5])
+        std = torch.tensor([2.0])
+
+        # expected output
+        expected = torch.tensor([0.25]).repeat(1, 2, 2).view_as(data)
+
+        f = taug.Normalize(mean, std)
+        assert_allclose(f(data), expected)
+
+    def test_batch_normalize(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1)
+        data += 2
+        mean = torch.tensor([0.5, 1.0, 2.0])
+        std = torch.tensor([2., 2., 2.])
+
+        # expected output
+        expected = torch.tensor([1.25, 1., 0.5]).repeat(2, 1, 1).view_as(data)
+
+        f = taug.Normalize(mean, std)
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1).double()
+        data += 2
+        mean = torch.tensor([0.5, 1.0, 2.0]).double()
+        std = torch.tensor([2., 2., 2.]).double()
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(taug.Normalize(mean, std), (data,),
+                         raise_exception=True)
+
+
 class TestRotate:
     def test_smoke(self):
         angle = 0.0
         angle_t = torch.Tensor([angle])
-        assert str(taug.Rotate(angle=angle_t)) == 'Rotate(angle=0.0, center=None)'
+        repr = 'Rotate(angle=0.0, center=None)'
+        assert str(taug.Rotate(angle=angle_t)) == repr
 
     def test_angle90(self):
         # prepare input data
@@ -141,7 +191,7 @@ class TestRotate:
             [4, 6],
             [3, 5],
             [0, 0],
-        ]],[[
+        ]], [[
             [0, 0],
             [5, 3],
             [6, 4],
