@@ -5,6 +5,7 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils
+from torch.testing import assert_allclose
 from common import device_type
 
 
@@ -232,7 +233,7 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     assert pytest.approx(ssim(img2, img2).sum().item(), 0.0)
 
     # functional
-    assert utils.check_equal_torch(
+    assert_allclose(
         ssim_loss_val, tgm.losses.ssim(
             img1, img2, window_size, reduction_type))
 

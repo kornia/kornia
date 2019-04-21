@@ -6,9 +6,10 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-import utils  # test utils
+from torch.testing import assert_allclose
 from utils import check_equal_torch, check_equal_numpy
 from common import device_type
+import utils
 
 
 # based on:
@@ -31,21 +32,21 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.Tensor([0, 0, 0])
         expected = torch.Tensor([1, 0, 0, 0])
         quaternion = tgm.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_small_angle(self):
         theta = 1e-2
         angle_axis = torch.Tensor([theta, 0, 0])
         expected = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
         quaternion = tgm.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_x_rotation(self):
         half_sqrt2 = 0.5 * np.sqrt(2)
         angle_axis = torch.Tensor([tgm.pi / 2, 0, 0])
         expected = torch.Tensor([half_sqrt2, half_sqrt2, 0, 0])
         quaternion = tgm.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_gradcheck(self):
         eps = 1e-12
@@ -73,26 +74,26 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.Tensor([1, 0, 0, 0])
         expected = torch.Tensor([0, 0, 0])
         angle_axis = tgm.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_y_rotation(self):
         quaternion = torch.Tensor([0, 0, 1, 0])
         expected = torch.Tensor([0, tgm.pi, 0])
         angle_axis = tgm.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_z_rotation(self):
         quaternion = torch.Tensor([np.sqrt(3) / 2, 0, 0, 0.5])
         expected = torch.Tensor([0, 0, tgm.pi / 3])
         angle_axis = tgm.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_small_angle(self):
         theta = 1e-2
         quaternion = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
         expected = torch.Tensor([theta, 0, 0])
         angle_axis = tgm.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_gradcheck(self):
         eps = 1e-12

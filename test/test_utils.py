@@ -5,6 +5,7 @@ import torch
 import torchgeometry as tgm
 
 import utils  # test utils
+from torch.testing import assert_allclose
 
 
 @pytest.mark.parametrize("batch_shape",
@@ -59,5 +60,5 @@ def test_normalize_pixel_grid():
     # transform grids
     grid_pix_to_norm = tgm.transform_points(norm_trans_pix, grid_pix)
     grid_norm_to_pix = tgm.transform_points(pix_trans_norm, grid_norm)
-    assert utils.check_equal_torch(grid_pix, grid_norm_to_pix)
-    assert utils.check_equal_torch(grid_norm, grid_pix_to_norm)
+    assert_allclose(grid_pix, grid_norm_to_pix)
+    assert_allclose(grid_norm, grid_pix_to_norm)

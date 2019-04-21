@@ -4,7 +4,8 @@ import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
 
-import utils  # test utils
+from torch.testing import assert_allclose
+import utils
 from torchgeometry.core.depth_warper import normalize_pixel_coordinates
 
 
@@ -46,7 +47,7 @@ class TestDepthWarper:
         dst_proj_src_expected[..., 0, -2] += pinhole_src.cx
         dst_proj_src_expected[..., 1, -2] += pinhole_src.cy
         dst_proj_src_expected[..., 0, -1] += 1.  # offset to x-axis
-        assert utils.check_equal_torch(dst_proj_src, dst_proj_src_expected)
+        assert_allclose(dst_proj_src, dst_proj_src_expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
     def test_warp_grid_offset_x1_depth1(self, batch_size):
@@ -69,10 +70,10 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert utils.check_equal_torch(
+        assert_allclose(
             grid_norm[..., -1, 0], grid_warped[..., -2, 0])
         # check that y-axis remain the same
-        assert utils.check_equal_torch(
+        assert_allclose(
             grid_norm[..., -1, 1], grid_warped[..., -1, 1])
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
@@ -97,10 +98,10 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert utils.check_equal_torch(
+        assert_allclose(
             grid_norm[..., -1, 0], grid_warped[..., -2, 0])
         # check that y-axis remain the same
-        assert utils.check_equal_torch(
+        assert_allclose(
             grid_norm[..., -1, :, 1], grid_warped[..., -2, :, 1])
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
@@ -125,7 +126,7 @@ class TestDepthWarper:
         patch_src = warper(depth_src, patch_dst)
 
         # compare patches
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_dst[..., 1:, 1:], patch_src[..., :2, :4])
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
