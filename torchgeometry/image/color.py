@@ -1,0 +1,53 @@
+import torch
+import torch.nn as nn
+
+
+class RgbToGrayscale(nn.Module):
+    r"""Convert image to grayscale version of image.
+
+    Args:
+        input (torch.Tensor): Image to be converted to grayscale.
+
+    Returns:
+        torch.Tensor: Grayscale version of the image.
+
+    Shape:
+        - Input: :math:`(*, 3, H, W)`
+        - Output: :math:`(*, 1, H, W)`
+    
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> gray = tgm.image.RgbToGrayscale()
+        >>> output = gray(input)  # 2x1x4x5
+    """
+    def __init__(self) -> None:
+        super(RgbToGrayscale, self).__init__()
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return rgb_to_grayscale(input)
+
+
+def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
+    r"""Convert an RGB image to grayscale.
+
+    See :class:`~torchgeometry.image.RgbToGrayscale` for details.
+
+    Args:
+        input (torch.Tensor): Image to be converted to grayscale.
+
+    Returns:
+        torch.Tensor: Grayscale version of the image.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(input)))
+
+    if len(input.shape) < 3 and input.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                         .format(input.shape))
+
+    # https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+    r, g, b = torch.chunk(input, chunks=3, dim=-3)
+    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
+    return gray
