@@ -36,7 +36,7 @@ class PinholeCamera:
           containing the full 4x4 rotation-translation matrix.
         height (torch.Tensor): tensor with shape :math:`(B)` containing the
           image height.
-        widht (torch.Tensor): tensor with shape :math:`(B)` containing the image
+        width (torch.Tensor): tensor with shape :math:`(B)` containing the image
           width.
 
     .. note::
