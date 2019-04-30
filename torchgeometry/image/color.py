@@ -14,7 +14,7 @@ class RgbToGrayscale(nn.Module):
     Shape:
         - Input: :math:`(*, 3, H, W)`
         - Output: :math:`(*, 1, H, W)`
-    
+
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
