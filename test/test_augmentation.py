@@ -141,7 +141,7 @@ class TestNormalize:
     def test_gradcheck(self):
 
         # prepare input data
-        data = torch.ones(2, 3, 1, 1).double()
+        data = torch.ones(2, 3, 1, 1)
         data += 2
         mean = torch.tensor([0.5, 1.0, 2.0]).double()
         std = torch.tensor([2., 2., 2.]).double()
