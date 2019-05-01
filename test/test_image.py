@@ -48,3 +48,22 @@ class TestGaussianBlur:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
+
+
+class TestRgbToGrayscale:
+    def test_rgb_to_grayscale(self):
+        channels, height, width = 3, 4, 5
+        img = torch.ones(channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == (1, height, width)
+
+    def test_rgb_to_grayscale_batch(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == \
+            (batch_size, 1, height, width)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(image.rgb_to_grayscale, (img,), raise_exception=True)
