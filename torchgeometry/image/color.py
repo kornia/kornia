@@ -5,6 +5,8 @@ import torch.nn as nn
 class RgbToGrayscale(nn.Module):
     r"""Convert image to grayscale version of image.
 
+    The image data is assumed to be in the range of (0, 1).
+
     Args:
         input (torch.Tensor): Image to be converted to grayscale.
 

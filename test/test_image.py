@@ -3,6 +3,7 @@ import pytest
 import torch
 import torchgeometry.image as image
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils
 from common import device_type
@@ -49,6 +50,14 @@ class TestGaussianBlur:
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
 
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gauss = image.GaussianBlur((5, 5), (1.2, 1.2))
+        gauss_traced = torch.jit.trace(
+            image.GaussianBlur((5, 5), (1.2, 1.2)), img)
+        assert_allclose(gauss(img), gauss_traced(img))
+
 
 class TestRgbToGrayscale:
     def test_rgb_to_grayscale(self):
@@ -67,3 +76,10 @@ class TestRgbToGrayscale:
         img = torch.ones(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(image.rgb_to_grayscale, (img,), raise_exception=True)
+
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gray = image.RgbToGrayscale()
+        gray_traced = torch.jit.trace(image.RgbToGrayscale(), img)
+        assert_allclose(gray(img), gray_traced(img))
