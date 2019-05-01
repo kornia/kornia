@@ -24,7 +24,7 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
         Tensor: 1D tensor with gaussian filter coefficients.
 
     Shape:
-        - Output: :math:`(kernel_size)`
+        - Output: :math:`(\text{kernel_size})`
 
     Examples::
 
@@ -35,9 +35,9 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
-        kernel_size <= 0:
-            raise TypeError("kernel_size must be an odd positive integer. "
-                            "Got {}".format(ksize))
+            kernel_size <= 0:
+        raise TypeError("kernel_size must be an odd positive integer. "
+                        "Got {}".format(kernel_size))
     window_1d: torch.Tensor = gaussian(kernel_size, sigma)
     return window_1d
 
@@ -72,7 +72,7 @@ def get_gaussian_kernel2d(kernel_size: Tuple[int, int],
     """
     if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
         raise TypeError("kernel_size must be a tuple of length two. Got {}"
-                        .format(ksize))
+                        .format(kernel_size))
     if not isinstance(sigma, tuple) or len(sigma) != 2:
         raise TypeError("sigma must be a tuple of length two. Got {}"
                         .format(sigma))
