@@ -84,7 +84,10 @@ class SSIM(nn.Module):
             channel: int) -> torch.Tensor:
         return F.conv2d(input, kernel, padding=self.padding, groups=channel)
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(  # type: ignore
+            self,
+            img1: torch.Tensor,
+            img2: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(img1):
             raise TypeError("Input img1 type is not a torch.Tensor. Got {}"
                             .format(type(img1)))
