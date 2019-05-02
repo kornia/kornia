@@ -21,7 +21,7 @@ fi
 $sdk_dir/.dev_env/bin/conda install -y \
   pytorch-cpu==1.1.0 \
   -c pytorch
-
+  
 # Tests dependencies
 $sdk_dir/.dev_env/bin/conda install -y \
   pytest \
@@ -31,5 +31,5 @@ $sdk_dir/.dev_env/bin/conda install -y \
   mypy_extensions \
   --file docs/requirements.txt \
   -c conda-forge
-
+  
 $sdk_dir/.dev_env/bin/conda clean -ya
