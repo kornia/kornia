@@ -123,7 +123,7 @@ class GaussianBlur(nn.Module):
         computed = [(k - 1) // 2 for k in kernel_size]
         return computed[0], computed[1]
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor):  # type: ignore
         if not torch.is_tensor(x):
             raise TypeError("Input x type is not a torch.Tensor. Got {}"
                             .format(type(x)))

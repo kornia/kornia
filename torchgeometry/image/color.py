@@ -26,7 +26,7 @@ class RgbToGrayscale(nn.Module):
     def __init__(self) -> None:
         super(RgbToGrayscale, self).__init__()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rgb_to_grayscale(input)
 
 

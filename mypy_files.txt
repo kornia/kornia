@@ -2,6 +2,7 @@ torchgeometry/core/homography_warper.py
 torchgeometry/core/depth_warper.py
 torchgeometry/core/pinhole.py
 torchgeometry/image/gaussian.py
+torchgeometry/image/color.py
 torchgeometry/losses/ssim.py
 torchgeometry/losses/dice.py
 torchgeometry/losses/focal.py
