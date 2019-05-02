@@ -29,10 +29,10 @@ def confusion_matrix(
         torch.Tensor: a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.
     """
-    if not torch.is_tensor(input) and input.dtype is not torch.uint64:
+    if not torch.is_tensor(input) and input.dtype is not torch.int64:
         raise TypeError("Input input type is not a torch.Tensor with "
                         "torch.int64 dtype. Got {}".format(type(input)))
-    if not torch.is_tensor(target) and target.dtype is not torch.uint64:
+    if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError("Input target type is not a torch.Tensor with "
                         "torch.int64 dtype. Got {}".format(type(target)))
     if not input.shape == target.shape:
@@ -50,10 +50,14 @@ def confusion_matrix(
     # NOTE: torch.bincount does not implement batched version
     pre_bincount: torch.Tensor = input + target * num_classes
     pre_bincount_vec: torch.Tensor = pre_bincount.view(batch_size, -1)
-    confusion_vec: torch.Tensor = torch.stack([
-        torch.bincount(pb, minlength=num_classes**2) for pb in pre_bincount_vec
-    ])
 
+    confusion_list = []
+    for iter_id in range(batch_size):
+        pb: torch.Tensor = pre_bincount_vec[iter_id]
+        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes**2)
+        confusion_list.append(bin_count)
+
+    confusion_vec: torch.Tensor = torch.stack(confusion_list)
     confusion_mat: torch.Tensor = confusion_vec.view(
         batch_size, num_classes, num_classes).to(torch.float32)  # BxKxK
 

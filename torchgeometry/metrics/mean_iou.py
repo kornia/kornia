@@ -27,10 +27,10 @@ def mean_iou(
         torch.Tensor: a tensor representing the mean intersection-over union
         with shape :math:`(B, K)` where K is the number of classes.
     """
-    if not torch.is_tensor(input) and input.dtype is not torch.uint64:
+    if not torch.is_tensor(input) and input.dtype is not torch.int64:
         raise TypeError("Input input type is not a torch.Tensor with "
                         "torch.int64 dtype. Got {}".format(type(input)))
-    if not torch.is_tensor(target) and target.dtype is not torch.uint64:
+    if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError("Input target type is not a torch.Tensor with "
                         "torch.int64 dtype. Got {}".format(type(target)))
     if not input.shape == target.shape:

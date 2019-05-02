@@ -49,6 +49,14 @@ class TestGaussianBlur:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
+        
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gauss = image.GaussianBlur((5, 5), (1.2, 1.2))
+        gauss_traced = torch.jit.trace(
+            image.GaussianBlur((5, 5), (1.2, 1.2)), img)
+        assert_allclose(gauss(img), gauss_traced(img))
 
 
 @pytest.mark.parametrize("window_size", [5])
@@ -93,3 +101,29 @@ class TestLaplacian:
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(image.laplacian, (input, kernel_size,),
                          raise_exception=True)
+        
+        
+class TestRgbToGrayscale:
+    def test_rgb_to_grayscale(self):
+        channels, height, width = 3, 4, 5
+        img = torch.ones(channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == (1, height, width)
+
+    def test_rgb_to_grayscale_batch(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == \
+            (batch_size, 1, height, width)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(image.rgb_to_grayscale, (img,), raise_exception=True)
+
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gray = image.RgbToGrayscale()
+        gray_traced = torch.jit.trace(image.RgbToGrayscale(), img)
+        assert_allclose(gray(img), gray_traced(img))

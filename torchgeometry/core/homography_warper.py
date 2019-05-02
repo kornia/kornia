@@ -76,7 +76,7 @@ class HomographyWarper(nn.Module):
             dst_homo_src, grid.to(device).to(dtype))  # NxHxWx2
         return flow.view(batch_size, self.height, self.width, 2)  # NxHxWx2
 
-    def forward(
+    def forward(  # type: ignore
             self,
             patch_src: torch.Tensor,
             dst_homo_src: torch.Tensor) -> torch.Tensor:

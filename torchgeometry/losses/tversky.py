@@ -54,7 +54,7 @@ class TverskyLoss(nn.Module):
         self.beta: float = beta
         self.eps: float = 1e-6
 
-    def forward(
+    def forward(  # type: ignore
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
@@ -81,13 +81,13 @@ class TverskyLoss(nn.Module):
         # compute the actual dice score
         dims = (1, 2, 3)
         intersection = torch.sum(input_soft * target_one_hot, dims)
-        fps = torch.sum(input_soft * (1. - target_one_hot), dims)
-        fns = torch.sum((1. - input_soft) * target_one_hot, dims)
+        fps = torch.sum(input_soft * (torch.tensor(1.) - target_one_hot), dims)
+        fns = torch.sum((torch.tensor(1.) - input_soft) * target_one_hot, dims)
 
         numerator = intersection
         denominator = intersection + self.alpha * fps + self.beta * fns
         tversky_loss = numerator / (denominator + self.eps)
-        return torch.mean(1. - tversky_loss)
+        return torch.mean(torch.tensor(1.) - tversky_loss)
 
 
 ######################
