@@ -242,7 +242,7 @@ class TransformPoints(nn.Module):
         super(TransformPoints, self).__init__()
         self.dst_homo_src: torch.Tensor = dst_homo_src
 
-    def forward(self, points_src: torch.Tensor) -> torch.Tensor:
+    def forward(self, points_src: torch.Tensor) -> torch.Tensor:  # type: ignore
         return transform_points(self.dst_homo_src, points_src)
 
 
