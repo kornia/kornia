@@ -69,7 +69,7 @@ class PinholeCamera:
     @staticmethod
     def _check_valid_params(
             data: torch.Tensor,
-            data_name: str) -> torch.Tensor:
+            data_name: str) -> bool:
         if len(data.shape) not in (3, 4,) and data.shape[-2:] is not (4, 4):
             raise ValueError("Argument {0} shape must be in the following shape"
                              " Bx4x4 or BxNx4x4. Got {1}".format(data_name,
@@ -79,7 +79,7 @@ class PinholeCamera:
     @staticmethod
     def _check_valid_shape(
             data: torch.Tensor,
-            data_name: str) -> torch.Tensor:
+            data_name: str) -> bool:
         if not len(data.shape) == 1:
             raise ValueError("Argument {0} shape must be in the following shape"
                              " B. Got {1}".format(data_name, data.shape))
