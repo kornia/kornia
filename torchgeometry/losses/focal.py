@@ -52,11 +52,11 @@ class FocalLoss(nn.Module):
                  reduction: Optional[str] = 'none') -> None:
         super(FocalLoss, self).__init__()
         self.alpha: float = alpha
-        self.gamma: Optional[float] = gamma
+        self.gamma: torch.Tensor = torch.tensor(gamma)
         self.reduction: Optional[str] = reduction
         self.eps: float = 1e-6
 
-    def forward(
+    def forward(  # type: ignore
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
@@ -81,11 +81,11 @@ class FocalLoss(nn.Module):
                                  device=input.device, dtype=input.dtype)
 
         # compute the actual focal loss
-        weight = torch.pow(1. - input_soft, self.gamma)
+        weight = torch.pow(torch.tensor(1.) - input_soft,
+                           self.gamma.to(input.dtype))
         focal = -self.alpha * weight * torch.log(input_soft)
         loss_tmp = torch.sum(target_one_hot * focal, dim=1)
 
-        loss = -1
         if self.reduction == 'none':
             loss = loss_tmp
         elif self.reduction == 'mean':
