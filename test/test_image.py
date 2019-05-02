@@ -3,10 +3,10 @@ import pytest
 import torch
 import torchgeometry.image as image
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils
 from common import device_type
-
 
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
@@ -47,4 +47,51 @@ class TestGaussianBlur:
         input = torch.rand(batch_shape)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
+                         raise_exception=True)
+
+class TestNormalize:
+    def test_smoke(self):
+        mean = [0.5]
+        std = [0.1]
+        repr = 'Normalize(mean=[0.5], std=[0.1])'
+        assert str(image.Normalize(mean, std)) == repr
+
+    def test_normalize(self):
+
+        # prepare input data
+        data = torch.ones(1, 2, 2)
+        mean = torch.tensor([0.5])
+        std = torch.tensor([2.0])
+
+        # expected output
+        expected = torch.tensor([0.25]).repeat(1, 2, 2).view_as(data)
+
+        f = image.Normalize(mean, std)
+        assert_allclose(f(data), expected)
+
+    def test_batch_normalize(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1)
+        data += 2
+        mean = torch.tensor([0.5, 1.0, 2.0])
+        std = torch.tensor([2., 2., 2.])
+
+        # expected output
+        expected = torch.tensor([1.25, 1., 0.5]).repeat(2, 1, 1).view_as(data)
+
+        f = image.Normalize(mean, std)
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1)
+        data += 2
+        mean = torch.tensor([0.5, 1.0, 2.0]).double()
+        std = torch.tensor([2., 2., 2.]).double()
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(image.Normalize(mean, std), (data,),
                          raise_exception=True)
