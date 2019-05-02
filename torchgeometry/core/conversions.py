@@ -22,9 +22,10 @@ __all__ = [
     "ConvertPointsFromHomogeneous",
     "ConvertPointsToHomogeneous",
 ]
+
 """Constant with number pi
 """
-pi = torch.Tensor([3.14159265358979323846])
+pi = torch.tensor(3.14159265358979323846)
 
 
 def rad2deg(tensor):
@@ -92,7 +93,7 @@ def convert_points_from_homogeneous(points: torch.Tensor,
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    scale: torch.Tensor = 1. / torch.clamp(z_vec, eps)
+    scale: torch.Tensor = torch.tensor(1.) / torch.clamp(z_vec, eps)
 
     return scale * points[..., :-1]
 
