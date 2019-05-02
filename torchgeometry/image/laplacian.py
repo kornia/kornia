@@ -124,7 +124,7 @@ class Laplacian(nn.Module):
         computed = (kernel_size - 1) // 2
         return computed
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor):  # type: ignore
         if not torch.is_tensor(x):
             raise TypeError("Input x type is not a torch.Tensor. Got {}"
                             .format(type(x)))

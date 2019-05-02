@@ -49,7 +49,7 @@ class TestGaussianBlur:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
-        
+
     def test_jit(self):
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
@@ -101,8 +101,8 @@ class TestLaplacian:
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(image.laplacian, (input, kernel_size,),
                          raise_exception=True)
-        
-        
+
+
 class TestRgbToGrayscale:
     def test_rgb_to_grayscale(self):
         channels, height, width = 3, 4, 5
