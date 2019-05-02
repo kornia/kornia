@@ -95,7 +95,7 @@ class ExtractTensorPatches(nn.Module):
             kernel[i, i] += 1.0
         return kernel.view(window_range, 1, window_size[0], window_size[1])
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
             raise TypeError("Input input type is not a torch.Tensor. Got {}"
                             .format(type(input)))
