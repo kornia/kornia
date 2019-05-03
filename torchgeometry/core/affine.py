@@ -6,7 +6,7 @@ import torch.nn as nn
 from torchgeometry.core import warp_affine, get_rotation_matrix2d
 
 
-## utilities to compute affine matrices
+# utilities to compute affine matrices
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
@@ -14,12 +14,14 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center: torch.Tensor = torch.tensor([center_x, center_y],
+    center: torch.Tensor = torch.tensor(
+        [center_x, center_y],
         device=tensor.device, dtype=tensor.dtype)
     return center
 
 
-def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
+def _compute_rotation_matrix(angle: torch.Tensor,
+                             center: torch.Tensor) -> torch.Tensor:
     """Computes a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(angle)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
@@ -38,7 +40,8 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
     return matrix
 
 
-def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
+def _compute_scaling_matrix(scale: torch.Tensor,
+                            center: torch.Tensor) -> torch.Tensor:
     """Computes affine matrix for scaling."""
     angle: torch.Tensor = torch.zeros_like(scale)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
@@ -61,11 +64,11 @@ def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
 
 def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
-    
+
     Args:
         tensor (torch.Tensor): The image tensor to be warped.
         matrix (torch.Tensor): The 2x3 affine transformation matrix.
-    
+
     Returns:
         torch.Tensor: The warped image.
     """
@@ -94,7 +97,7 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
 def rotate(tensor: torch.Tensor, angle: torch.Tensor,
            center: Union[None, torch.Tensor] = None) -> torch.Tensor:
     r"""Rotate the image anti-clockwise about the centre.
-    
+
     Args:
         tensor (torch.Tensor): The image tensor to be rotated.
         angle (torch.Tensor): The angle through which to rotate.
@@ -161,7 +164,7 @@ def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
 def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
           center: Union[None, torch.Tensor] = None) -> torch.Tensor:
     r"""Scales the input image.
-    
+
     Args:
         tensor (torch.Tensor): The image tensor to be scaled.
         scale_factor (torch.Tensor): The scale factor apply.
@@ -222,7 +225,7 @@ def shear(tensor: torch.Tensor, shear: torch.Tensor) -> torch.Tensor:
 
 class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
-    
+
     Args:
         angle (torch.Tensor): The angle through which to rotate.
         center (torch.Tensor): The center through which to rotate. The tensor
@@ -231,8 +234,9 @@ class Rotate(nn.Module):
     Returns:
         torch.Tensor: The rotated tensor.
     """
+
     def __init__(self, angle: torch.Tensor,
-            center: Union[None, torch.Tensor] = None) -> None:
+                 center: Union[None, torch.Tensor] = None) -> None:
         super(Rotate, self).__init__()
         self.angle: torch.Tensor = angle
         self.center: Union[None, torch.Tensor] = center
@@ -255,6 +259,7 @@ class Translate(nn.Module):
     Returns:
         torch.Tensor: The translated tensor.
     """
+
     def __init__(self, translation: torch.Tensor) -> None:
         super(Translate, self).__init__()
         self.translation: torch.Tensor = translation
@@ -269,7 +274,7 @@ class Translate(nn.Module):
 
 class Scale(nn.Module):
     r"""Scale the tensor by a factor.
-    
+
     Args:
         scale_factor (torch.Tensor): The scale factor apply.
         center (torch.Tensor): The center through which to rotate. The tensor
@@ -278,8 +283,9 @@ class Scale(nn.Module):
     Returns:
         torch.Tensor: The scaled tensor.
     """
+
     def __init__(self, scale_factor: torch.Tensor,
-            center: Union[None, torch.Tensor] = None) -> None:
+                 center: Union[None, torch.Tensor] = None) -> None:
         super(Scale, self).__init__()
         self.scale_factor: torch.Tensor = scale_factor
         self.center: torch.Tensor = center
@@ -304,6 +310,7 @@ class Shear(nn.Module):
     Returns:
         torch.Tensor: The skewed tensor.
     """
+
     def __init__(self, shear: torch.Tensor) -> None:
         super(Shear, self).__init__()
         self.shear: torch.Tensor = shear

@@ -13,7 +13,8 @@ class TestRotate:
     def test_smoke(self):
         angle = 0.0
         angle_t = torch.tensor([angle])
-        assert str(tgm.Rotate(angle=angle_t)) == 'Rotate(angle=0.0, center=None)'
+        assert str(tgm.Rotate(angle=angle_t)
+                   ) == 'Rotate(angle=0.0, center=None)'
 
     def test_angle90(self):
         # prepare input data
@@ -33,7 +34,7 @@ class TestRotate:
         angle = torch.tensor([90.])
         transform = tgm.Rotate(angle)
         assert_allclose(transform(inp), expected)
-        
+
     def test_angle90_batch2(self):
         # prepare input data
         inp = torch.tensor([[
@@ -47,7 +48,7 @@ class TestRotate:
             [4., 6.],
             [3., 5.],
             [0., 0.],
-        ]],[[
+        ]], [[
             [0., 0.],
             [5., 3.],
             [6., 4.],
@@ -71,7 +72,7 @@ class TestRotate:
             [4., 6.],
             [3., 5.],
             [0., 0.],
-        ]],[[
+        ]], [[
             [0., 0.],
             [4., 6.],
             [3., 5.],
@@ -136,7 +137,7 @@ class TestTranslate:
             [0., 3.],
             [0., 5.],
             [0., 7.],
-        ]],[[
+        ]], [[
             [0., 0.],
             [0., 1.],
             [0., 3.],
@@ -160,7 +161,7 @@ class TestTranslate:
             [0., 3.],
             [0., 5.],
             [0., 7.],
-        ]],[[
+        ]], [[
             [0., 1.],
             [0., 3.],
             [0., 5.],
@@ -180,7 +181,8 @@ class TestTranslate:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(tgm.translate, (input, translation,), raise_exception=True)
+        assert gradcheck(tgm.translate, (input, translation,),
+                         raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     def test_jit(self):
@@ -205,7 +207,7 @@ class TestScale:
         scale_factor = torch.tensor([2.])
         transform = tgm.Scale(scale_factor)
         assert_allclose(transform(inp).sum().item(), 12.25)
-        
+
     def test_scale_factor_05(self):
         # prepare input data
         inp = torch.tensor([[
@@ -273,7 +275,7 @@ class TestScale:
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(tgm.scale, (input, scale_factor,),
-            raise_exception=True)
+                         raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     def test_jit(self):
@@ -305,7 +307,7 @@ class TestShear:
         shear = torch.tensor([[0.5, 0.0]])
         transform = tgm.Shear(shear)
         assert_allclose(transform(inp), expected)
-        
+
     def test_shear_y(self):
         # prepare input data
         inp = torch.tensor([[
@@ -340,7 +342,7 @@ class TestShear:
             [.5, 1., 1., 1.],
             [0., 1., 1., 1.],
             [0., .5, 1., 1.]
-        ]],[[
+        ]], [[
             [1., .5, 0., 0.],
             [1., 1., 1., .5],
             [1., 1., 1., 1.],
