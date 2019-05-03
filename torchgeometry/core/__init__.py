@@ -4,3 +4,6 @@ from .pinhole import *
 from .conversions import *
 from .imgwarp import *
 from .transformations import *
+from .affine import (
+    affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
+)
