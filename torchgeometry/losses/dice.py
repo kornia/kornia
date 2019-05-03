@@ -49,7 +49,7 @@ class DiceLoss(nn.Module):
         super(DiceLoss, self).__init__()
         self.eps: float = 1e-6
 
-    def forward(
+    def forward(  # type: ignore
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
@@ -79,7 +79,7 @@ class DiceLoss(nn.Module):
         cardinality = torch.sum(input_soft + target_one_hot, dims)
 
         dice_score = 2. * intersection / (cardinality + self.eps)
-        return torch.mean(1. - dice_score)
+        return torch.mean(torch.tensor(1.) - dice_score)
 
 
 ######################

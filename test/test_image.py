@@ -49,6 +49,13 @@ class TestGaussianBlur:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gauss = image.GaussianBlur((5, 5), (1.2, 1.2))
+        gauss_traced = torch.jit.trace(
+            image.GaussianBlur((5, 5), (1.2, 1.2)), img)
+        assert_allclose(gauss(img), gauss_traced(img))
 
 
 class TestNormalize:
@@ -113,3 +120,73 @@ class TestNormalize:
 
         assert gradcheck(image.Normalize(mean, std), (data,),
                          raise_exception=True)
+
+
+@pytest.mark.parametrize("window_size", [5])
+def test_get_laplacian_kernel(window_size):
+    kernel = image.get_laplacian_kernel(window_size)
+    assert kernel.shape == (window_size,)
+    assert kernel.sum().item() == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("window_size", [7])
+def test_get_laplacian_kernel2d(window_size):
+    kernel = image.get_laplacian_kernel2d(window_size)
+    assert kernel.shape == (window_size, window_size)
+    assert kernel.sum().item() == pytest.approx(0.0)
+    expected = torch.tensor([[1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., -48., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.],
+                            [1., 1., 1., 1., 1., 1., 1.]])
+    assert_allclose(expected, kernel)
+
+
+class TestLaplacian:
+    @pytest.mark.parametrize("batch_shape",
+                             [(1, 4, 8, 15), (2, 3, 11, 7)])
+    def test_laplacian(self, batch_shape, device_type):
+        kernel_size = 5
+
+        input = torch.rand(batch_shape).to(torch.device(device_type))
+        laplace = image.Laplacian(kernel_size)
+        assert laplace(input).shape == batch_shape
+
+    def test_gradcheck(self):
+        # test parameters
+        batch_shape = (2, 3, 11, 7)
+        kernel_size = 9
+
+        # evaluate function gradient
+        input = torch.rand(batch_shape)
+        input = utils.tensor_to_gradcheck_var(input)
+        assert gradcheck(image.laplacian, (input, kernel_size,),
+                         raise_exception=True)
+
+
+class TestRgbToGrayscale:
+    def test_rgb_to_grayscale(self):
+        channels, height, width = 3, 4, 5
+        img = torch.ones(channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == (1, height, width)
+
+    def test_rgb_to_grayscale_batch(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        assert image.RgbToGrayscale()(img).shape == \
+            (batch_size, 1, height, width)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(image.rgb_to_grayscale, (img,), raise_exception=True)
+
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gray = image.RgbToGrayscale()
+        gray_traced = torch.jit.trace(image.RgbToGrayscale(), img)
+        assert_allclose(gray(img), gray_traced(img))
