@@ -6,7 +6,10 @@ import torch.nn as nn
 from torchgeometry.core import warp_affine, get_rotation_matrix2d
 
 
-def compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
+## utilities to compute affine matrices
+
+
+def _compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane."""
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
@@ -16,10 +19,22 @@ def compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
     return center
 
 
-def compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
-    """Computes a pure rotation matrix."""
+def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
+    """Computes a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(angle)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
+    return matrix
+
+
+def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
+    """Computes affine matrix for translation."""
+    matrix: torch.Tensor = torch.eye(
+        3, device=translation.device, dtype=translation.dtype)
+    matrix = matrix.repeat(translation.shape[0], 1, 1)
+
+    dx, dy = torch.chunk(translation, chunks=2, dim=-1)
+    matrix[..., 0, 2:3] += dx
+    matrix[..., 1, 2:3] += dy
     return matrix
 
 
@@ -86,15 +101,42 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
     # compute the rotation center
     if center is None:
-        center: torch.Tensor = compute_rotation_center(tensor)
+        center: torch.Tensor = _compute_rotation_center(tensor)
         # TODO: add broadcasting to get_rotation_matrix2d for center
         center = center.expand(angle.shape[0], -1)
 
     # compute the rotation matrix
-    rotation_matrix: torch.Tensor = compute_rotation_matrix(angle, center)
+    rotation_matrix: torch.Tensor = _compute_rotation_matrix(angle, center)
 
     # warp using the affine transform
     return affine(tensor, rotation_matrix[..., :2, :3])
+
+
+def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
+    r"""Translate the tensor in pixel units.
+    Args:
+        tensor (torch.Tensor): The image tensor to be translated.
+        translation (torch.Tensor): tensor containing the amount of pixels to
+          translate in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains dx dy.
+    Returns:
+        torch.Tensor: The translated tensor.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(translation):
+        raise TypeError("Input translation type is not a torch.Tensor. Got {}"
+                        .format(type(translation)))
+    if len(tensor.shape) not in (3, 4,):
+        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
+                         "Got: {}".format(tensor.shape))
+
+    # compute the translation matrix
+    translation_matrix: torch.Tensor = _compute_translation_matrix(translation)
+
+    # warp using the affine transform
+    return affine(tensor, translation_matrix[..., :2, :3])
 
 
 class Rotate(nn.Module):
@@ -122,3 +164,23 @@ class Rotate(nn.Module):
             'angle={0}, center={1})' \
             .format(self.angle.item(), self.center)
 
+
+class Translate(nn.Module):
+    r"""Translate the tensor in pixel units.
+    Args:
+        translation (torch.Tensor): tensor containing the amount of pixels to
+          translate in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains dx dy.
+    Returns:
+        torch.Tensor: The translated tensor.
+    """
+    def __init__(self, translation: torch.Tensor) -> None:
+        super(Translate, self).__init__()
+        self.translation: torch.Tensor = translation
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return translate(input, self.translation)
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            'translation={0})'.format(self.translation)
