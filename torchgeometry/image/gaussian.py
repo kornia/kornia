@@ -13,18 +13,18 @@ def gaussian(window_size, sigma):
     return gauss / gauss.sum()
 
 
-def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
+def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
     r"""Function that returns Gaussian filter coefficients.
 
     Args:
-        ksize (int): filter size. It should be odd and positive.
+        kernel_size (int): filter size. It should be odd and positive.
         sigma (float): gaussian standard deviation.
 
     Returns:
         Tensor: 1D tensor with gaussian filter coefficients.
 
     Shape:
-        - Output: :math:`(ksize,)`
+        - Output: :math:`(\text{kernel_size})`
 
     Examples::
 
@@ -34,19 +34,20 @@ def get_gaussian_kernel(ksize: int, sigma: float) -> torch.Tensor:
         >>> tgm.image.get_gaussian_kernel(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize <= 0:
-        raise TypeError("ksize must be an odd positive integer. Got {}"
-                        .format(ksize))
-    window_1d: torch.Tensor = gaussian(ksize, sigma)
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
+            kernel_size <= 0:
+        raise TypeError("kernel_size must be an odd positive integer. "
+                        "Got {}".format(kernel_size))
+    window_1d: torch.Tensor = gaussian(kernel_size, sigma)
     return window_1d
 
 
-def get_gaussian_kernel2d(ksize: Tuple[int, int],
+def get_gaussian_kernel2d(kernel_size: Tuple[int, int],
                           sigma: Tuple[float, float]) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
-        ksize (Tuple[int, int]): filter sizes in the x and y direction.
+        kernel_size (Tuple[int, int]): filter sizes in the x and y direction.
          Sizes should be odd and positive.
         sigma (Tuple[int, int]): gaussian standard deviation in the x and y
          direction.
@@ -55,7 +56,7 @@ def get_gaussian_kernel2d(ksize: Tuple[int, int],
         Tensor: 2D tensor with gaussian filter matrix coefficients.
 
     Shape:
-        - Output: :math:`(ksize_x, ksize_y)`
+        - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
 
     Examples::
 
@@ -69,13 +70,13 @@ def get_gaussian_kernel2d(ksize: Tuple[int, int],
                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
     """
-    if not isinstance(ksize, tuple) or len(ksize) != 2:
-        raise TypeError("ksize must be a tuple of length two. Got {}"
-                        .format(ksize))
+    if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
+        raise TypeError("kernel_size must be a tuple of length two. Got {}"
+                        .format(kernel_size))
     if not isinstance(sigma, tuple) or len(sigma) != 2:
         raise TypeError("sigma must be a tuple of length two. Got {}"
                         .format(sigma))
-    ksize_x, ksize_y = ksize
+    ksize_x, ksize_y = kernel_size
     sigma_x, sigma_y = sigma
     kernel_x: torch.Tensor = get_gaussian_kernel(ksize_x, sigma_x)
     kernel_y: torch.Tensor = get_gaussian_kernel(ksize_y, sigma_y)
@@ -114,14 +115,7 @@ class GaussianBlur(nn.Module):
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
         self._padding: Tuple[int, int] = self.compute_zero_padding(kernel_size)
-        self.kernel: torch.Tensor = self.create_gaussian_kernel(
-            kernel_size, sigma)
-
-    @staticmethod
-    def create_gaussian_kernel(kernel_size, sigma) -> torch.Tensor:
-        """Returns a 2D Gaussian kernel array."""
-        kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
-        return kernel
+        self.kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
 
     @staticmethod
     def compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -129,7 +123,7 @@ class GaussianBlur(nn.Module):
         computed = [(k - 1) // 2 for k in kernel_size]
         return computed[0], computed[1]
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor):  # type: ignore
         if not torch.is_tensor(x):
             raise TypeError("Input x type is not a torch.Tensor. Got {}"
                             .format(type(x)))
@@ -141,6 +135,8 @@ class GaussianBlur(nn.Module):
         tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
+        # TODO: explore solution when using jit.trace since it raises a warning
+        # because the shape is converted to a tensor instead to a int.
         # convolve tensor with gaussian kernel
         return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
 
@@ -150,7 +146,7 @@ class GaussianBlur(nn.Module):
 ######################
 
 
-def gaussian_blur(src: torch.Tensor,
+def gaussian_blur(input: torch.Tensor,
                   kernel_size: Tuple[int,
                                      int],
                   sigma: Tuple[float,
@@ -161,12 +157,12 @@ def gaussian_blur(src: torch.Tensor,
     it to each channel. It suports batched operation.
 
     Arguments:
-        src (Tensor): the input tensor.
+        input (torch.Tensor): the input tensor.
         kernel_size (Tuple[int, int]): the size of the kernel.
         sigma (Tuple[float, float]): the standard deviation of the kernel.
 
     Returns:
-        Tensor: the blurred tensor.
+        torch.Tensor: the blurred tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -177,4 +173,4 @@ def gaussian_blur(src: torch.Tensor,
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = tgm.image.gaussian_blur(input, (3, 3), (1.5, 1.5))
     """
-    return GaussianBlur(kernel_size, sigma)(src)
+    return GaussianBlur(kernel_size, sigma)(input)

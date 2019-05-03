@@ -157,7 +157,7 @@ class DepthWarper(nn.Module):
             pixel_coords_src, self.height, self.width)
         return pixel_coords_src_norm
 
-    def forward(
+    def forward(  # type: ignore
             self,
             depth_src: torch.Tensor,
             patch_dst: torch.Tensor) -> torch.Tensor:

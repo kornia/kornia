@@ -84,7 +84,10 @@ class SSIM(nn.Module):
             channel: int) -> torch.Tensor:
         return F.conv2d(input, kernel, padding=self.padding, groups=channel)
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+    def forward(  # type: ignore
+            self,
+            img1: torch.Tensor,
+            img2: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(img1):
             raise TypeError("Input img1 type is not a torch.Tensor. Got {}"
                             .format(type(img1)))
@@ -127,7 +130,7 @@ class SSIM(nn.Module):
         ssim_map = ((2 * mu1_mu2 + self.C1) * (2 * sigma12 + self.C2)) / \
             ((mu1_sq + mu2_sq + self.C1) * (sigma1_sq + sigma2_sq + self.C2))
 
-        loss = torch.clamp(1. - ssim_map, min=0, max=1) / 2.
+        loss = torch.clamp(torch.tensor(1.) - ssim_map, min=0, max=1) / 2.
 
         if self.reduction == 'mean':
             loss = torch.mean(loss)
