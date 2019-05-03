@@ -222,11 +222,6 @@ class Rotate(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rotate(input, self.angle, self.center)
 
-    def __repr__(self):
-        return self.__class__.__name__ + '(' \
-            'angle={0}, center={1})' \
-            .format(self.angle.item(), self.center)
-
 
 class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
@@ -246,10 +241,6 @@ class Translate(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return translate(input, self.translation)
-
-    def __repr__(self):
-        return self.__class__.__name__ + '(' \
-            'translation={0})'.format(self.translation)
 
 
 class Scale(nn.Module):
@@ -275,11 +266,6 @@ class Scale(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return scale(input, self.scale_factor, self.center)
 
-    def __repr__(self):
-        return self.__class__.__name__ + '(' \
-            'scale_factor={0}, center={1})'  \
-            .format(self.scale_factor, self.center)
-
 
 class Shear(nn.Module):
     r"""Shear the tensor.
@@ -300,7 +286,3 @@ class Shear(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return shear(input, self.shear)
-
-    def __repr__(self):
-        return self.__class__.__name__ + '(' \
-            'shear={0})'.format(self.shear)
