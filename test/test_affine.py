@@ -284,3 +284,111 @@ class TestScale:
         trans_traced = torch.jit.trace(tgm.Scale(scale_factor), img)
         assert_allclose(trans(img), trans_traced(img))
 
+
+class TestShear:
+    def test_shear_x(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+        expected = torch.tensor([[
+            [1., 1., 1., 1.],
+            [.5, 1., 1., 1.],
+            [0., 1., 1., 1.],
+            [0., .5, 1., 1.]
+        ]])
+
+        # prepare transformation
+        shear = torch.tensor([[0.5, 0.0]])
+        transform = tgm.Shear(shear)
+        assert_allclose(transform(inp), expected)
+        
+    def test_shear_y(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+        expected = torch.tensor([[
+            [1., .5, 0., 0.],
+            [1., 1., 1., .5],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+
+        # prepare transformation
+        shear = torch.tensor([[0.0, 0.5]])
+        transform = tgm.Shear(shear)
+        assert_allclose(transform(inp), expected)
+
+    def test_shear_batch2(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]]).repeat(2, 1, 1, 1)
+
+        expected = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [.5, 1., 1., 1.],
+            [0., 1., 1., 1.],
+            [0., .5, 1., 1.]
+        ]],[[
+            [1., .5, 0., 0.],
+            [1., 1., 1., .5],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]]])
+
+        # prepare transformation
+        shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]])
+        transform = tgm.Shear(shear)
+        assert_allclose(transform(inp), expected)
+
+    def test_shear_batch2_broadcast(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]]).repeat(2, 1, 1, 1)
+
+        expected = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [.5, 1., 1., 1.],
+            [0., 1., 1., 1.],
+            [0., .5, 1., 1.]
+        ]]])
+
+        # prepare transformation
+        shear = torch.tensor([[0.5, 0.0]])
+        transform = tgm.Shear(shear)
+        assert_allclose(transform(inp), expected)
+
+    def test_gradcheck(self):
+        # test parameters
+        shear = torch.tensor([[0.5, 0.0]])
+        shear = utils.tensor_to_gradcheck_var(
+            shear, requires_grad=False)  # to var
+
+        # evaluate function gradient
+        input = torch.rand(1, 2, 3, 4)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(tgm.shear, (input, shear,), raise_exception=True)
+
+    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    def test_jit(self):
+        shear = torch.tensor([[0.5, 0.0]])
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        trans = tgm.Shear(shear)
+        trans_traced = torch.jit.trace(tgm.Shear(shear), img)
+        assert_allclose(trans(img), trans_traced(img))

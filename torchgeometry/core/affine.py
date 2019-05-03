@@ -45,6 +45,17 @@ def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.
     return matrix
 
 
+def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
+    """Computes affine matrix for shearing."""
+    matrix: torch.Tensor = torch.eye(3, device=shear.device, dtype=shear.dtype)
+    matrix = matrix.repeat(shear.shape[0], 1, 1)
+
+    shx, shy = torch.chunk(shear, chunks=2, dim=-1)
+    matrix[..., 0, 1:2] += shx
+    matrix[..., 1, 0:1] += shy
+    return matrix
+
+
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L166
 
@@ -181,6 +192,34 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
     return affine(tensor, scaling_matrix[..., :2, :3])
 
 
+def shear(tensor: torch.Tensor, shear: torch.Tensor) -> torch.Tensor:
+    r"""Shear the tensor.
+
+    Args:
+        tensor (torch.Tensor): The image tensor to be translated.
+        shear (torch.Tensor): tensor containing the angle to shear
+          in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains shx shy.
+    Returns:
+        torch.Tensor: The skewed tensor.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(shear):
+        raise TypeError("Input shear type is not a torch.Tensor. Got {}"
+                        .format(type(shear)))
+    if len(tensor.shape) not in (3, 4,):
+        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
+                         "Got: {}".format(tensor.shape))
+
+    # compute the translation matrix
+    shear_matrix: torch.Tensor = _compute_shear_matrix(shear)
+
+    # warp using the affine transform
+    return affine(tensor, shear_matrix[..., :2, :3])
+
+
 class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
     
@@ -252,3 +291,26 @@ class Scale(nn.Module):
         return self.__class__.__name__ + '(' \
             'scale_factor={0}, center={1})'  \
             .format(self.scale_factor, self.center)
+
+
+class Shear(nn.Module):
+    r"""Shear the tensor.
+
+    Args:
+        tensor (torch.Tensor): The image tensor to be translated.
+        shear (torch.Tensor): tensor containing the angle to shear
+          in the x and y direction. The tensor must have a shape of
+          :math:(B, 2), where B is batch size, last dimension contains shx shy.
+    Returns:
+        torch.Tensor: The skewed tensor.
+    """
+    def __init__(self, shear: torch.Tensor) -> None:
+        super(Shear, self).__init__()
+        self.shear: torch.Tensor = shear
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return shear(input, self.shear)
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            'shear={0})'.format(self.shear)
