@@ -8,6 +8,7 @@ from torch.testing import assert_allclose
 import utils
 from common import device_type
 
+
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel(window_size, sigma):
@@ -49,6 +50,7 @@ class TestGaussianBlur:
         assert gradcheck(image.gaussian_blur, (input, kernel_size, sigma,),
                          raise_exception=True)
 
+
 class TestNormalize:
     def test_smoke(self):
         mean = [0.5]
@@ -69,16 +71,32 @@ class TestNormalize:
         f = image.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
+    def test_broadcast_normalize(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1)
+        data += 2
+
+        mean = torch.tensor([0.5, 1.0, 2.0])
+        std = torch.tensor([2.0, 2.0, 2.0])
+
+        # expected output
+        expected = torch.tensor([1.25, 1, 0.5]).repeat(2, 1, 1).view_as(data)
+
+        f = image.Normalize(mean, std)
+        assert_allclose(f(data), expected)
+
     def test_batch_normalize(self):
 
         # prepare input data
         data = torch.ones(2, 3, 1, 1)
         data += 2
-        mean = torch.tensor([0.5, 1.0, 2.0])
-        std = torch.tensor([2., 2., 2.])
+
+        mean = torch.tensor([0.5, 1.0, 2.0]).repeat(2, 1)
+        std = torch.tensor([2.0, 2.0, 2.0]).repeat(2, 1)
 
         # expected output
-        expected = torch.tensor([1.25, 1., 0.5]).repeat(2, 1, 1).view_as(data)
+        expected = torch.tensor([1.25, 1, 0.5]).repeat(2, 1, 1).view_as(data)
 
         f = image.Normalize(mean, std)
         assert_allclose(f(data), expected)

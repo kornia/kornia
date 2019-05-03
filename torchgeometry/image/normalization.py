@@ -13,8 +13,8 @@ class Normalize(nn.Module):
     i.e. ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
 
     Args:
-        mean (Tensor): Mean for each channel.
-        std (Tensor): Standard deviation for each channel.
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviation for each channel.
     """
 
     def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
@@ -38,11 +38,11 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
     """Normalise the image with channel-wise mean and standard deviation.
 
     Args:
-        data (Tensor): The image tensor to be normalised.
-        mean (Tensor): Mean for each channel.
-        std (Tensor): Standard deviations for each channel.
+        data (torch.Tensor): The image tensor to be normalised.
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
 
-    Returns:
+        Returns:
         Tensor: The normalised image tensor.
     """
 
@@ -55,11 +55,14 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
     if not torch.is_tensor(std):
         raise TypeError('std should be a tensor. Got {}'.format(type(std)))
 
-    if len(mean) != data.shape[-3]:
+    if len(mean) != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
         raise ValueError('mean lenght and number of channels do not match')
 
-    if len(std) != data.shape[-3]:
+    if len(std) != data.shape[-3] and std.shape[:2] != data.shape[:2]:
         raise ValueError('std lenght and number of channels do not match')
+
+    if std.shape != mean.shape:
+        raise ValueError('std and mean must have the same shape')
 
     mean = mean[..., :, None, None].to(data.device)
     std = std[..., :, None, None].to(data.device)
