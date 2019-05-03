@@ -24,7 +24,7 @@ class Normalize(nn.Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return normalize(input, self.mean, self.std)
 
     def __repr__(self):
@@ -55,10 +55,10 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
     if not torch.is_tensor(std):
         raise TypeError('std should be a tensor. Got {}'.format(type(std)))
 
-    if len(mean) != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
+    if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
         raise ValueError('mean lenght and number of channels do not match')
 
-    if len(std) != data.shape[-3] and std.shape[:2] != data.shape[:2]:
+    if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
         raise ValueError('std lenght and number of channels do not match')
 
     if std.shape != mean.shape:
@@ -67,8 +67,6 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
     mean = mean[..., :, None, None].to(data.device)
     std = std[..., :, None, None].to(data.device)
 
-    out = data.sub(mean).div(std)
+    out = (data - mean) / std
 
     return out
-
-# - denormalise
