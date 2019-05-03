@@ -23,6 +23,7 @@ class RgbToGrayscale(nn.Module):
         >>> gray = tgm.image.RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
+
     def __init__(self) -> None:
         super(RgbToGrayscale, self).__init__()
 
