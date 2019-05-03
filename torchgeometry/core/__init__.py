@@ -4,4 +4,4 @@ from .pinhole import *
 from .conversions import *
 from .imgwarp import *
 from .transformations import *
-from .affine import rotate, translate, Rotate, Translate
+from .affine import rotate, translate, scale, Rotate, Translate, Scale
