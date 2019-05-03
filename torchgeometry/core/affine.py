@@ -98,14 +98,7 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
            center: Union[None, torch.Tensor] = None) -> torch.Tensor:
     r"""Rotate the image anti-clockwise about the centre.
 
-    Args:
-        tensor (torch.Tensor): The image tensor to be rotated.
-        angle (torch.Tensor): The angle through which to rotate.
-        center (torch.Tensor): The center through which to rotate. The tensor
-          must have a shape of :math:(B, 2), where B is batch size and last
-          dimension contains cx and cy.
-    Returns:
-        torch.Tensor: The rotated image tensor.
+    See :class:`~torchgeometry.Rotate` for details.
     """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -136,13 +129,8 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
 def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
-    Args:
-        tensor (torch.Tensor): The image tensor to be translated.
-        translation (torch.Tensor): tensor containing the amount of pixels to
-          translate in the x and y direction. The tensor must have a shape of
-          :math:(B, 2), where B is batch size, last dimension contains dx dy.
-    Returns:
-        torch.Tensor: The translated tensor.
+
+    See :class:`~torchgeometry.Translate` for details.
     """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -165,14 +153,7 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
           center: Union[None, torch.Tensor] = None) -> torch.Tensor:
     r"""Scales the input image.
 
-    Args:
-        tensor (torch.Tensor): The image tensor to be scaled.
-        scale_factor (torch.Tensor): The scale factor apply.
-        center (torch.Tensor): The center through which to rotate. The tensor
-          must have a shape of :math:(B, 2), where B is batch size and last
-          dimension contains cx and cy.
-    Returns:
-        torch.Tensor: The scaled tensor.
+    See :class:`~torchgeometry.Scale` for details.
     """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -198,13 +179,7 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
 def shear(tensor: torch.Tensor, shear: torch.Tensor) -> torch.Tensor:
     r"""Shear the tensor.
 
-    Args:
-        tensor (torch.Tensor): The image tensor to be translated.
-        shear (torch.Tensor): tensor containing the angle to shear
-          in the x and y direction. The tensor must have a shape of
-          :math:(B, 2), where B is batch size, last dimension contains shx shy.
-    Returns:
-        torch.Tensor: The skewed tensor.
+    See :class:`~torchgeometry.Shear` for details.
     """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -227,9 +202,10 @@ class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Args:
-        angle (torch.Tensor): The angle through which to rotate.
+        angle (torch.Tensor): The angle through which to rotate. The tensor
+          must have a shape of (B), where B is batch size.
         center (torch.Tensor): The center through which to rotate. The tensor
-          must have a shape of :math:(B, 2), where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
     Returns:
         torch.Tensor: The rotated tensor.
@@ -252,10 +228,12 @@ class Rotate(nn.Module):
 
 class Translate(nn.Module):
     r"""Translate the tensor in pixel units.
+
     Args:
         translation (torch.Tensor): tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
-          :math:(B, 2), where B is batch size, last dimension contains dx dy.
+          (B, 2), where B is batch size, last dimension contains dx dy.
+
     Returns:
         torch.Tensor: The translated tensor.
     """
@@ -276,10 +254,12 @@ class Scale(nn.Module):
     r"""Scale the tensor by a factor.
 
     Args:
-        scale_factor (torch.Tensor): The scale factor apply.
-        center (torch.Tensor): The center through which to rotate. The tensor
-          must have a shape of :math:(B, 2), where B is batch size and last
+        scale_factor (torch.Tensor): The scale factor apply. The tensor
+          must have a shape of (B), where B is batch size.
+        center (torch.Tensor): The center through which to scale. The tensor
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
+
     Returns:
         torch.Tensor: The scaled tensor.
     """
@@ -303,10 +283,11 @@ class Shear(nn.Module):
     r"""Shear the tensor.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be translated.
+        tensor (torch.Tensor): The image tensor to be skewed.
         shear (torch.Tensor): tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
-          :math:(B, 2), where B is batch size, last dimension contains shx shy.
+          (B, 2), where B is batch size, last dimension contains shx shy.
+
     Returns:
         torch.Tensor: The skewed tensor.
     """
