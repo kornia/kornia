@@ -264,7 +264,10 @@ def get_perspective_transform(src, dst):
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def get_rotation_matrix2d(center, angle, scale):
+def get_rotation_matrix2d(
+        center: torch.Tensor,
+        angle: torch.Tensor,
+        scale: torch.Tensor) -> torch.Tensor:
     r"""Calculates an affine matrix of 2D rotation.
 
     The function calculates the following matrix:
@@ -330,20 +333,22 @@ def get_rotation_matrix2d(center, angle, scale):
         raise ValueError("Inputs must have same batch size dimension. Got {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    angle_rad = deg2rad(angle)
-    alpha = torch.cos(angle_rad) * scale
-    beta = torch.sin(angle_rad) * scale
+    angle_rad: torch.Tensor = deg2rad(angle)
+    alpha: torch.Tensor = torch.cos(angle_rad) * scale
+    beta: torch.Tensor = torch.sin(angle_rad) * scale
 
     # unpack the center to x, y coordinates
-    x, y = center[..., 0], center[..., 1]
+    x: torch.Tensor = center[..., 0]
+    y: torch.Tensor = center[..., 1]
 
     # create output tensor
-    batch_size, _ = center.shape
-    M = torch.zeros(batch_size, 2, 3, device=center.device, dtype=center.dtype)
+    batch_size: int = center.shape[0]
+    M: torch.Tensor = torch.zeros(
+        batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0, 0] = alpha
     M[..., 0, 1] = beta
-    M[..., 0, 2] = (1. - alpha) * x - beta * y
+    M[..., 0, 2] = (torch.tensor(1.) - alpha) * x - beta * y
     M[..., 1, 0] = -beta
     M[..., 1, 1] = alpha
-    M[..., 1, 2] = beta * x + (1. - alpha) * y
+    M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
     return M
