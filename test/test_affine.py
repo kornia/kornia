@@ -10,12 +10,6 @@ from common import device_type
 
 
 class TestRotate:
-    def test_smoke(self):
-        angle = 0.0
-        angle_t = torch.tensor([angle])
-        assert str(tgm.Rotate(angle=angle_t)
-                   ) == 'Rotate(angle=0.0, center=None)'
-
     def test_angle90(self):
         # prepare input data
         inp = torch.tensor([[
