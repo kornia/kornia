@@ -9,7 +9,7 @@ from torchgeometry.core import warp_affine, get_rotation_matrix2d
 ## utilities to compute affine matrices
 
 
-def _compute_rotation_center(tensor: torch.Tensor) -> torch.Tensor:
+def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane."""
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
@@ -35,6 +35,13 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
     dx, dy = torch.chunk(translation, chunks=2, dim=-1)
     matrix[..., 0, 2:3] += dx
     matrix[..., 1, 2:3] += dy
+    return matrix
+
+
+def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
+    """Computes affine matrix for scaling."""
+    angle: torch.Tensor = torch.zeros_like(scale)
+    matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
 
@@ -101,11 +108,12 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
     # compute the rotation center
     if center is None:
-        center: torch.Tensor = _compute_rotation_center(tensor)
-        # TODO: add broadcasting to get_rotation_matrix2d for center
-        center = center.expand(angle.shape[0], -1)
+        center: torch.Tensor = _compute_tensor_center(tensor)
 
     # compute the rotation matrix
+    # TODO: add broadcasting to get_rotation_matrix2d for center
+    angle = angle.expand(tensor.shape[0])
+    center = center.expand(tensor.shape[0], -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix(angle, center)
 
     # warp using the affine transform
@@ -137,6 +145,40 @@ def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:
 
     # warp using the affine transform
     return affine(tensor, translation_matrix[..., :2, :3])
+
+
+def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
+          center: Union[None, torch.Tensor] = None) -> torch.Tensor:
+    r"""Scales the input image.
+    
+    Args:
+        tensor (torch.Tensor): The image tensor to be scaled.
+        scale_factor (torch.Tensor): The scale factor apply.
+        center (torch.Tensor): The center through which to rotate. The tensor
+          must have a shape of :math:(B, 2), where B is batch size and last
+          dimension contains cx and cy.
+    Returns:
+        torch.Tensor: The scaled tensor.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(scale_factor):
+        raise TypeError("Input scale_factor type is not a torch.Tensor. Got {}"
+                        .format(type(scale_factor)))
+
+    # compute the tensor center
+    if center is None:
+        center: torch.Tensor = _compute_tensor_center(tensor)
+
+    # compute the rotation matrix
+    # TODO: add broadcasting to get_rotation_matrix2d for center
+    center = center.expand(tensor.shape[0], -1)
+    scale_factor = scale_factor.expand(tensor.shape[0])
+    scaling_matrix: torch.Tensor = _compute_scaling_matrix(scale_factor, center)
+
+    # warp using the affine transform
+    return affine(tensor, scaling_matrix[..., :2, :3])
 
 
 class Rotate(nn.Module):
@@ -184,3 +226,29 @@ class Translate(nn.Module):
     def __repr__(self):
         return self.__class__.__name__ + '(' \
             'translation={0})'.format(self.translation)
+
+
+class Scale(nn.Module):
+    r"""Scale the tensor by a factor.
+    
+    Args:
+        scale_factor (torch.Tensor): The scale factor apply.
+        center (torch.Tensor): The center through which to rotate. The tensor
+          must have a shape of :math:(B, 2), where B is batch size and last
+          dimension contains cx and cy.
+    Returns:
+        torch.Tensor: The scaled tensor.
+    """
+    def __init__(self, scale_factor: torch.Tensor,
+            center: Union[None, torch.Tensor] = None) -> None:
+        super(Scale, self).__init__()
+        self.scale_factor: torch.Tensor = scale_factor
+        self.center: torch.Tensor = center
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return scale(input, self.scale_factor, self.center)
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' \
+            'scale_factor={0}, center={1})'  \
+            .format(self.scale_factor, self.center)

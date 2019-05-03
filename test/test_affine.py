@@ -190,3 +190,97 @@ class TestTranslate:
         trans = tgm.Translate(translation)
         trans_traced = torch.jit.trace(tgm.Translate(translation), img)
         assert_allclose(trans(img), trans_traced(img))
+
+
+class TestScale:
+    def test_scale_factor_2(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([2.])
+        transform = tgm.Scale(scale_factor)
+        assert_allclose(transform(inp).sum().item(), 12.25)
+        
+    def test_scale_factor_05(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]])
+        expected = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([0.5])
+        transform = tgm.Scale(scale_factor)
+        assert_allclose(transform(inp), expected)
+
+    def test_scale_factor_05_batch2(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]]).repeat(2, 1, 1, 1)
+        expected = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([0.5, 0.5])
+        transform = tgm.Scale(scale_factor)
+        assert_allclose(transform(inp), expected)
+
+    def test_scale_factor_05_batch2_broadcast(self):
+        # prepare input data
+        inp = torch.tensor([[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.]
+        ]]).repeat(2, 1, 1, 1)
+        expected = torch.tensor([[
+            [0., 0., 0., 0.],
+            [0., 1., 1., 0.],
+            [0., 1., 1., 0.],
+            [0., 0., 0., 0.]
+        ]])
+        # prepare transformation
+        scale_factor = torch.tensor([0.5])
+        transform = tgm.Scale(scale_factor)
+        assert_allclose(transform(inp), expected)
+
+    def test_gradcheck(self):
+        # test parameters
+        scale_factor = torch.tensor([0.5])
+        scale_factor = utils.tensor_to_gradcheck_var(
+            scale_factor, requires_grad=False)  # to var
+
+        # evaluate function gradient
+        input = torch.rand(1, 2, 3, 4)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(tgm.scale, (input, scale_factor,),
+            raise_exception=True)
+
+    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    def test_jit(self):
+        scale_factor = torch.tensor([0.5])
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        trans = tgm.Scale(scale_factor)
+        trans_traced = torch.jit.trace(tgm.Scale(scale_factor), img)
+        assert_allclose(trans(img), trans_traced(img))
+
