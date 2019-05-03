@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -7,7 +7,8 @@ import torch.nn.functional as F
 
 def create_meshgrid(
         x: torch.Tensor,
-        normalized_coordinates: Optional[bool]) -> torch.Tensor:
+        normalized_coordinates: Optional[bool]) -> Tuple[torch.Tensor,
+                                                         torch.Tensor]:
     assert len(x.shape) == 4, x.shape
     _, _, height, width = x.shape
     _device, _dtype = x.device, x.dtype
@@ -49,7 +50,7 @@ class SpatialSoftArgmax2d(nn.Module):
         self.normalized_coordinates: Optional[bool] = normalized_coordinates
         self.eps: float = 1e-6
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
             raise TypeError("Input input type is not a torch.Tensor. Got {}"
                             .format(type(input)))
@@ -62,7 +63,8 @@ class SpatialSoftArgmax2d(nn.Module):
 
         # compute softmax with max substraction trick
         exp_x = torch.exp(x - torch.max(x, dim=-1, keepdim=True)[0])
-        exp_x_sum = 1.0 / (exp_x.sum(dim=-1, keepdim=True) + self.eps)
+        exp_x_sum = torch.tensor(
+            1.0) / (exp_x.sum(dim=-1, keepdim=True) + self.eps)
 
         # create coordinates grid
         pos_y, pos_x = create_meshgrid(input, self.normalized_coordinates)
