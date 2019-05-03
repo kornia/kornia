@@ -3,7 +3,7 @@ from typing import Union
 import torch
 import torch.nn as nn
 
-from torchgeometry.core import warp_affine, get_rotation_matrix2d
+from torchgeometry.core.imgwarp import warp_affine, get_rotation_matrix2d
 
 
 # utilities to compute affine matrices
@@ -82,7 +82,9 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
     matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor
-    warped: torch.Tensor = warp_affine(tensor, matrix, tensor.shape[-2:])
+    height: int = tensor.shape[-2]
+    width: int = tensor.shape[-1]
+    warped: torch.Tensor = warp_affine(tensor, matrix, (height, width))
 
     # return in the original shape
     if is_unbatched:
@@ -115,7 +117,7 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
     # compute the rotation center
     if center is None:
-        center: torch.Tensor = _compute_tensor_center(tensor)
+        center = _compute_tensor_center(tensor)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
@@ -164,7 +166,7 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
 
     # compute the tensor center
     if center is None:
-        center: torch.Tensor = _compute_tensor_center(tensor)
+        center = _compute_tensor_center(tensor)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
@@ -217,7 +219,7 @@ class Rotate(nn.Module):
         self.angle: torch.Tensor = angle
         self.center: Union[None, torch.Tensor] = center
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rotate(input, self.angle, self.center)
 
     def __repr__(self):
@@ -242,7 +244,7 @@ class Translate(nn.Module):
         super(Translate, self).__init__()
         self.translation: torch.Tensor = translation
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return translate(input, self.translation)
 
     def __repr__(self):
@@ -268,9 +270,9 @@ class Scale(nn.Module):
                  center: Union[None, torch.Tensor] = None) -> None:
         super(Scale, self).__init__()
         self.scale_factor: torch.Tensor = scale_factor
-        self.center: torch.Tensor = center
+        self.center: Union[None, torch.Tensor] = center
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return scale(input, self.scale_factor, self.center)
 
     def __repr__(self):
@@ -296,7 +298,7 @@ class Shear(nn.Module):
         super(Shear, self).__init__()
         self.shear: torch.Tensor = shear
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return shear(input, self.shear)
 
     def __repr__(self):
