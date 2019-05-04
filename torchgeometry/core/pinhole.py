@@ -620,20 +620,10 @@ def normalize_pixel_coordinates(
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
                          "Got {}".format(pixel_coordinates.shape))
-    height_t: torch.Tensor = torch.tensor([])
-    width_t: torch.Tensor = torch.tensor([])
-    if isinstance(height, int):
-        height_t = torch.tensor(height)
-    else:
-        height_t = height
-    if isinstance(width, int):
-        width_t = torch.tensor(width)
-    else:
-        width_t = width
-
     # compute normalization factor
-    hw: torch.Tensor = torch.stack([width_t, height_t]).to(
-        pixel_coordinates.device).to(pixel_coordinates.dtype)
+    hw: torch.Tensor = torch.stack([
+        torch.tensor(width), torch.tensor(height)
+    ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
     factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
 
@@ -642,9 +632,9 @@ def normalize_pixel_coordinates(
         factor * pixel_coordinates - torch.tensor(1.)
     return pixel_coordinates_norm
 
+
 # based on
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
-
 
 def cam2pixel(
         cam_coords_src: torch.Tensor,
