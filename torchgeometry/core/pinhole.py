@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Union
 import warnings
 
 import torch
@@ -602,8 +602,8 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor,
 
 def normalize_pixel_coordinates(
         pixel_coordinates: torch.Tensor,
-        height: float,
-        width: float) -> torch.Tensor:
+        height: int,
+        width: int) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -611,8 +611,8 @@ def normalize_pixel_coordinates(
     Args:
         pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
           Shape must be :math:`(B, H, W, 2)`.
-        width (float): the maximum width in the x-axis.
-        height (float): the maximum height in the y-axis.
+        width (int): the maximum width in the x-axis.
+        height (int): the maximum height in the y-axis.
 
     Return:
         torch.Tensor: the nornmalized pixel coordinates.
@@ -620,11 +620,20 @@ def normalize_pixel_coordinates(
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
                          "Got {}".format(pixel_coordinates.shape))
+    height_t: torch.Tensor = torch.tensor([])
+    width_t: torch.Tensor = torch.tensor([])
+    if isinstance(height, int):
+        height_t = torch.tensor(height)
+    else:
+        height_t = height
+    if isinstance(width, int):
+        width_t = torch.tensor(width)
+    else:
+        width_t = width
 
     # compute normalization factor
-    hw: torch.Tensor = torch.stack([
-        torch.tensor(width), torch.tensor(height)]
-    ).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+    hw: torch.Tensor = torch.stack([width_t, height_t]).to(
+        pixel_coordinates.device).to(pixel_coordinates.dtype)
 
     factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
 
