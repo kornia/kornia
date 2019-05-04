@@ -3,6 +3,7 @@ import pytest
 import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils  # test utilities
 from common import device_type
@@ -386,3 +387,31 @@ def test_homography_i_H_ref(batch_size, device_type):
                      (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
                       utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
                      raise_exception=True)
+
+
+class TestNormalizePixelCoordinates:
+    def test_small(self):
+        height, width = 3, 4
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        expected = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+        grid_norm = tgm.normalize_pixel_coordinates(
+            grid, height, width)
+        assert_allclose(grid_norm, expected)
+
+    def test_jit(self):
+        height = torch.tensor(3)
+        width = torch.tensor(4)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+
+        op_traced = torch.jit.trace(
+            tgm.normalize_pixel_coordinates,
+            (grid, height, width,))
+
+        actual = tgm.normalize_pixel_coordinates(
+            grid, height, width)
+        expected = op_traced(grid, height, width)
+
+        assert_allclose(actual, expected)
