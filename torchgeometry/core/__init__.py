@@ -7,3 +7,4 @@ from .transformations import *
 from .affine import (
     affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
 )
+from .crop import center_crop
