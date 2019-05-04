@@ -375,3 +375,49 @@ class TestRemap:
         remap_traced = torch.jit.trace(tgm.remap, input)
 
         assert_allclose(tgm.remap(*input), remap_traced(*input))
+
+
+class TestInvertAffineTransform:
+    def test_smoke(self):
+        matrix = torch.eye(2, 3)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix, matrix_inv)
+
+    def test_rot90(self):
+        angle = torch.tensor([90.])
+        scale = torch.tensor([1.])
+        center = torch.tensor([[0., 0.]])
+        expected = torch.tensor([[
+            [0., -1., 0.],
+            [1., 0., 0.],
+        ]])
+        matrix = tgm.get_rotation_matrix2d(center, angle, scale)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix_inv, expected)
+
+    def test_rot90_batch(self):
+        angle = torch.tensor([90.])
+        scale = torch.tensor([1.])
+        center = torch.tensor([[0., 0.]])
+        expected = torch.tensor([[
+            [0., -1., 0.],
+            [1., 0., 0.],
+        ]])
+        matrix = tgm.get_rotation_matrix2d(
+            center, angle, scale).repeat(2, 1, 1)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix_inv, expected)
+
+    def test_gradcheck(self):
+        matrix = torch.eye(2, 3)
+        matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
+        assert gradcheck(tgm.invert_affine_transform, (matrix,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        matrix = torch.eye(2, 3)
+        op_traced = torch.jit.trace(
+            tgm.invert_affine_transform, matrix)
+        actual = tgm.invert_affine_transform(matrix)
+        actual_traced = op_traced(matrix)
+        assert_allclose(actual, actual_traced)

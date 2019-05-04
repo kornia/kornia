@@ -16,6 +16,7 @@ __all__ = [
     "get_rotation_matrix2d",
     "normal_transform_pixel",
     "remap",
+    "invert_affine_transform",
 ]
 
 
@@ -411,3 +412,37 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
     # warp ans return
     tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm)
     return tensor_warped
+
+
+def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
+    r"""Inverts an affine transformation.
+
+    The function computes an inverse affine transformation represented by
+    2×3 matrix:
+
+    .. math::
+        \begin{bmatrix}
+            a_{11} & a_{12} & b_{1} \\
+            a_{21} & a_{22} & b_{2} \\
+        \end{bmatrix}
+
+    The result is also a 2×3 matrix of the same type as M.
+
+    Args:
+        matrix (torch.Tensor): original affine transform. The tensor musth be
+          in the shape of (B, 2, 3).
+
+    Return:
+        torch.Tensor: the reverse affine transform.
+    """
+    if not torch.is_tensor(matrix):
+        raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
+                        .format(type(matrix)))
+    if not (len(matrix.shape) == 3 or matrix.shape[-2:] == (2, 3)):
+        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
+                         .format(matrix.shape))
+    matrix_tmp: torch.Tensor = F.pad(matrix, (0, 0, 0, 1), "constant", 0.0)
+    matrix_tmp[..., 2, 2] += 1.0
+
+    matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
+    return matrix_inv[..., :2, :3]
