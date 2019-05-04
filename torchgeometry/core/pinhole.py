@@ -605,12 +605,15 @@ def normalize_pixel_coordinates(
         height: float,
         width: float) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
+
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+
     Args:
         pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
           Shape must be :math:`(B, H, W, 2)`.
         width (float): the maximum width in the x-axis.
         height (float): the maximum height in the y-axis.
+
     Return:
         torch.Tensor: the nornmalized pixel coordinates.
     """
@@ -632,6 +635,7 @@ def normalize_pixel_coordinates(
 
 # based on
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
+
 
 def cam2pixel(
         cam_coords_src: torch.Tensor,

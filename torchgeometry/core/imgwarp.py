@@ -5,6 +5,8 @@ import torch.nn.functional as F
 
 from torchgeometry.core.conversions import deg2rad
 from torchgeometry.core.homography_warper import homography_warp
+# TODO: move to utils or conversions
+from torchgeometry.core.pinhole import normalize_pixel_coordinates
 
 
 __all__ = [
@@ -13,6 +15,7 @@ __all__ = [
     "get_perspective_transform",
     "get_rotation_matrix2d",
     "normal_transform_pixel",
+    "remap",
 ]
 
 
@@ -352,3 +355,59 @@ def get_rotation_matrix2d(
     M[..., 1, 1] = alpha
     M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
     return M
+
+
+def remap(tensor: torch.Tensor, map_x: torch.Tensor,
+          map_y: torch.Tensor) -> torch.Tensor:
+    r"""Applies a generic geometrical transformation to a tensor.
+
+    The function remap transforms the source tensor using the specified map:
+
+    .. math::
+        \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
+
+    Args:
+        tensor (torch.Tensor): the tensor to remap with shape (B, D, H, W).
+          Where D is the number of channels.
+        map_x (torch.Tensor): the flow in the x-direction in pixel coordinates.
+          The tensor must be in the shape of (B, H, W).
+        map_y (torch.Tensor): the flow in the y-direction in pixel coordinates.
+          The tensor must be in the shape of (B, H, W).
+
+    Returns:
+        torch.Tensor: the warped tensor.
+
+    Example:
+        >>> grid = tgm.utils.create_meshgrid(2, 2, False)  # 1x2x2x2
+        >>> grid += 1  # apply offset in both directions
+        >>> input = torch.ones(1, 1, 2, 2)
+        >>> tgm.remap(input, grid[..., 0], grid[..., 1])   # 1x1x2x2
+        tensor([[[[1., 0.],
+                  [0., 0.]]]])
+
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(map_x):
+        raise TypeError("Input map_x type is not a torch.Tensor. Got {}"
+                        .format(type(map_x)))
+    if not torch.is_tensor(map_y):
+        raise TypeError("Input map_y type is not a torch.Tensor. Got {}"
+                        .format(type(map_y)))
+    if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
+        raise ValueError("Inputs last two dimensions must match.")
+
+    batch_size, _, height, width = tensor.shape
+
+    # grid_sample need the grid between -1/1
+    map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
+    map_xy_norm: torch.Tensor = normalize_pixel_coordinates(
+        map_xy, height, width)
+
+    # simulate broadcasting since grid_sample does not support it
+    map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
+
+    # warp ans return
+    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm)
+    return tensor_warped
