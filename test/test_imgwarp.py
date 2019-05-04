@@ -364,6 +364,9 @@ class TestRemap:
                          raise_exception=True)
 
     def test_jit(self):
+        @torch.jit.script
+        def op_script(input, map1, map2):
+            return tgm.remap(input, map1, map2)
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width)
 
@@ -372,9 +375,35 @@ class TestRemap:
         grid += 1.  # apply some shift
 
         input = (img, grid[..., 0], grid[..., 1],)
-        remap_traced = torch.jit.trace(tgm.remap, input)
+        actual = op_script(*input)
+        expected = tgm.remap(*input)
+        assert_allclose(actual, expected)
 
-        assert_allclose(tgm.remap(*input), remap_traced(*input))
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input, map1, map2):
+            return tgm.remap(input, map1, map2)
+        # 1. Trace op
+        batch_size, channels, height, width = 1, 1, 3, 4
+        img = torch.ones(batch_size, channels, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply some shift
+        input_tuple = (img, grid[..., 0], grid[..., 1])
+        op_traced = torch.jit.trace(op_script, input_tuple)
+
+        # 2. Generate different input
+        batch_size, channels, height, width = 2, 2, 2, 5
+        img = torch.ones(batch_size, channels, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 2.  # apply some shift
+
+        # 3. Apply to different input
+        input_tuple = (img, grid[..., 0], grid[..., 1])
+        actual = op_script(*input_tuple)
+        expected = tgm.remap(*input_tuple)
+        assert_allclose(actual, expected)
 
 
 class TestInvertAffineTransform:
@@ -415,9 +444,22 @@ class TestInvertAffineTransform:
                          raise_exception=True)
 
     def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return tgm.invert_affine_transform(input)
         matrix = torch.eye(2, 3)
-        op_traced = torch.jit.trace(
-            tgm.invert_affine_transform, matrix)
-        actual = tgm.invert_affine_transform(matrix)
-        actual_traced = op_traced(matrix)
-        assert_allclose(actual, actual_traced)
+        op_traced = torch.jit.trace(op_script, matrix)
+        actual = op_traced(matrix)
+        expected = tgm.invert_affine_transform(matrix)
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input):
+            return tgm.invert_affine_transform(input)
+        matrix = torch.eye(2, 3)
+        matrix_2 = torch.eye(2, 3).repeat(2, 1, 1)
+        op_traced = torch.jit.trace(op_script, matrix)
+        actual = op_traced(matrix_2)
+        expected = tgm.invert_affine_transform(matrix_2)
+        assert_allclose(actual, expected)
