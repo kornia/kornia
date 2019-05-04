@@ -14,6 +14,9 @@ test-gpu: FORCE
 lint: FORCE
 	python verify.py --check lint
 
+autopep8: FORCE
+	autopep8 --in-place --aggressive --recursive torchgeometry/ test/
+
 mypy: FORCE
 	python verify.py --check mypy
 
