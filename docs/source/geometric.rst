@@ -9,6 +9,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: warp_affine
 .. autofunction:: get_perspective_transform
 .. autofunction:: get_rotation_matrix2d
+.. autofunction:: remap
 
 .. autofunction:: affine
 .. autofunction:: rotate

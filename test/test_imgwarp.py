@@ -271,3 +271,107 @@ class TestWarpAffine:
                 (height, width),
             ),
             raise_exception=True)
+
+
+class TestRemap:
+    def test_smoke(self):
+        height, width = 3, 4
+        input = torch.ones(1, 1, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        input_warped = tgm.remap(input, grid[..., 0], grid[..., 1])
+        assert_allclose(input, input_warped)
+
+    def test_shift(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]])
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply shift in both x/y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_shift_batch(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]]).repeat(2, 1, 1, 1)
+
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+        ]], [[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        # generate a batch of grids
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid = grid.repeat(2, 1, 1, 1)
+        grid[0, ..., 0] += 1.  # apply shift in the x direction
+        grid[1, ..., 1] += 1.  # apply shift in the y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_shift_batch_broadcast(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]]).repeat(2, 1, 1, 1)
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply shift in both x/y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 1, 2, 3, 4
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid = utils.tensor_to_gradcheck_var(
+            grid, requires_grad=False)  # to var
+
+        assert gradcheck(tgm.remap, (img, grid[..., 0], grid[..., 1],),
+                         raise_exception=True)
+
+    def test_jit(self):
+        batch_size, channels, height, width = 1, 1, 3, 4
+        img = torch.ones(batch_size, channels, height, width)
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply some shift
+
+        input = (img, grid[..., 0], grid[..., 1],)
+        remap_traced = torch.jit.trace(tgm.remap, input)
+
+        assert_allclose(tgm.remap(*input), remap_traced(*input))
