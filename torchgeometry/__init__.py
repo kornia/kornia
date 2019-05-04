@@ -23,3 +23,4 @@ from .core.transformations import *
 from .core.affine import (
     affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
 )
+from .core.crop import center_crop

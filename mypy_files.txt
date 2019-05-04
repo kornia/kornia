@@ -2,6 +2,8 @@ torchgeometry/core/homography_warper.py
 torchgeometry/core/depth_warper.py
 torchgeometry/core/pinhole.py
 torchgeometry/core/imgwarp.py
+torchgeometry/core/crop.py
+torchgeometry/core/affine.py
 torchgeometry/image/gaussian.py
 torchgeometry/image/color.py
 torchgeometry/image/laplacian.py

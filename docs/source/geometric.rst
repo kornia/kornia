@@ -11,6 +11,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: get_rotation_matrix2d
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
+.. autofunction:: center_crop
 
 .. autofunction:: affine
 .. autofunction:: rotate
