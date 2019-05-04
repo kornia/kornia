@@ -605,36 +605,30 @@ def normalize_pixel_coordinates(
         height: float,
         width: float) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
-
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
-
     Args:
         pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
           Shape must be :math:`(B, H, W, 2)`.
         width (float): the maximum width in the x-axis.
         height (float): the maximum height in the y-axis.
-
     Return:
         torch.Tensor: the nornmalized pixel coordinates.
     """
-    if len(pixel_coordinates.shape) != 4 and pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape BxHxWx2. "
+    if pixel_coordinates.shape[-1] != 2:
+        raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
                          "Got {}".format(pixel_coordinates.shape))
 
-    # unpack pixel coordinates
-    u_coord, v_coord = torch.chunk(pixel_coordinates, dim=-1, chunks=2)
+    # compute normalization factor
+    hw: torch.Tensor = torch.stack([
+        torch.tensor(width), torch.tensor(height)]
+    ).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    # apply actual normalization
-    factor_u: float = 2. / (width - 1)
-    factor_v: float = 2. / (height - 1)
-    u_coord_norm: torch.Tensor = factor_u * u_coord - 1.
-    v_coord_norm: torch.Tensor = factor_v * v_coord - 1.
+    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
 
-    # stack normalized coordinates and return
-    pixel_coordinates_norm: torch.Tensor = torch.cat(
-        [u_coord_norm, v_coord_norm], dim=-1)
+    # normalize coordinates and return
+    pixel_coordinates_norm: torch.Tensor = \
+        factor * pixel_coordinates - torch.tensor(1.)
     return pixel_coordinates_norm
-
 
 # based on
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
