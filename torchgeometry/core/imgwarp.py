@@ -5,6 +5,8 @@ import torch.nn.functional as F
 
 from torchgeometry.core.conversions import deg2rad
 from torchgeometry.core.homography_warper import homography_warp
+# TODO: move to utils or conversions
+from torchgeometry.core.pinhole import normalize_pixel_coordinates
 
 
 __all__ = [
@@ -13,6 +15,8 @@ __all__ = [
     "get_perspective_transform",
     "get_rotation_matrix2d",
     "normal_transform_pixel",
+    "remap",
+    "invert_affine_transform",
 ]
 
 
@@ -255,7 +259,7 @@ def get_perspective_transform(src, dst):
     ], dim=1)
 
     # solve the system Ax = b
-    X, LU = torch.gesv(b, A)
+    X, LU = torch.solve(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -264,7 +268,10 @@ def get_perspective_transform(src, dst):
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def get_rotation_matrix2d(center, angle, scale):
+def get_rotation_matrix2d(
+        center: torch.Tensor,
+        angle: torch.Tensor,
+        scale: torch.Tensor) -> torch.Tensor:
     r"""Calculates an affine matrix of 2D rotation.
 
     The function calculates the following matrix:
@@ -330,20 +337,112 @@ def get_rotation_matrix2d(center, angle, scale):
         raise ValueError("Inputs must have same batch size dimension. Got {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    angle_rad = deg2rad(angle)
-    alpha = torch.cos(angle_rad) * scale
-    beta = torch.sin(angle_rad) * scale
+    angle_rad: torch.Tensor = deg2rad(angle)
+    alpha: torch.Tensor = torch.cos(angle_rad) * scale
+    beta: torch.Tensor = torch.sin(angle_rad) * scale
 
     # unpack the center to x, y coordinates
-    x, y = center[..., 0], center[..., 1]
+    x: torch.Tensor = center[..., 0]
+    y: torch.Tensor = center[..., 1]
 
     # create output tensor
-    batch_size, _ = center.shape
-    M = torch.zeros(batch_size, 2, 3, device=center.device, dtype=center.dtype)
+    batch_size: int = center.shape[0]
+    M: torch.Tensor = torch.zeros(
+        batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0, 0] = alpha
     M[..., 0, 1] = beta
-    M[..., 0, 2] = (1. - alpha) * x - beta * y
+    M[..., 0, 2] = (torch.tensor(1.) - alpha) * x - beta * y
     M[..., 1, 0] = -beta
     M[..., 1, 1] = alpha
-    M[..., 1, 2] = beta * x + (1. - alpha) * y
+    M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
     return M
+
+
+def remap(tensor: torch.Tensor, map_x: torch.Tensor,
+          map_y: torch.Tensor) -> torch.Tensor:
+    r"""Applies a generic geometrical transformation to a tensor.
+
+    The function remap transforms the source tensor using the specified map:
+
+    .. math::
+        \text{dst}(x, y) = \text{src}(map_x(x, y), map_y(x, y))
+
+    Args:
+        tensor (torch.Tensor): the tensor to remap with shape (B, D, H, W).
+          Where D is the number of channels.
+        map_x (torch.Tensor): the flow in the x-direction in pixel coordinates.
+          The tensor must be in the shape of (B, H, W).
+        map_y (torch.Tensor): the flow in the y-direction in pixel coordinates.
+          The tensor must be in the shape of (B, H, W).
+
+    Returns:
+        torch.Tensor: the warped tensor.
+
+    Example:
+        >>> grid = tgm.utils.create_meshgrid(2, 2, False)  # 1x2x2x2
+        >>> grid += 1  # apply offset in both directions
+        >>> input = torch.ones(1, 1, 2, 2)
+        >>> tgm.remap(input, grid[..., 0], grid[..., 1])   # 1x1x2x2
+        tensor([[[[1., 0.],
+                  [0., 0.]]]])
+
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(map_x):
+        raise TypeError("Input map_x type is not a torch.Tensor. Got {}"
+                        .format(type(map_x)))
+    if not torch.is_tensor(map_y):
+        raise TypeError("Input map_y type is not a torch.Tensor. Got {}"
+                        .format(type(map_y)))
+    if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
+        raise ValueError("Inputs last two dimensions must match.")
+
+    batch_size, _, height, width = tensor.shape
+
+    # grid_sample need the grid between -1/1
+    map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
+    map_xy_norm: torch.Tensor = normalize_pixel_coordinates(
+        map_xy, height, width)
+
+    # simulate broadcasting since grid_sample does not support it
+    map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
+
+    # warp ans return
+    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm)
+    return tensor_warped
+
+
+def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
+    r"""Inverts an affine transformation.
+
+    The function computes an inverse affine transformation represented by
+    2×3 matrix:
+
+    .. math::
+        \begin{bmatrix}
+            a_{11} & a_{12} & b_{1} \\
+            a_{21} & a_{22} & b_{2} \\
+        \end{bmatrix}
+
+    The result is also a 2×3 matrix of the same type as M.
+
+    Args:
+        matrix (torch.Tensor): original affine transform. The tensor musth be
+          in the shape of (B, 2, 3).
+
+    Return:
+        torch.Tensor: the reverse affine transform.
+    """
+    if not torch.is_tensor(matrix):
+        raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
+                        .format(type(matrix)))
+    if not (len(matrix.shape) == 3 or matrix.shape[-2:] == (2, 3)):
+        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
+                         .format(matrix.shape))
+    matrix_tmp: torch.Tensor = F.pad(matrix, (0, 0, 0, 1), "constant", 0.0)
+    matrix_tmp[..., 2, 2] += 1.0
+
+    matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
+    return matrix_inv[..., :2, :3]

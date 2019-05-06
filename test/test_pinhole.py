@@ -3,6 +3,7 @@ import pytest
 import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils  # test utilities
 from common import device_type
@@ -386,3 +387,55 @@ def test_homography_i_H_ref(batch_size, device_type):
                      (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
                       utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
                      raise_exception=True)
+
+
+class TestNormalizePixelCoordinates:
+    def test_small(self):
+        height, width = 3, 4
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        expected = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+        grid_norm = tgm.normalize_pixel_coordinates(
+            grid, height, width)
+        assert_allclose(grid_norm, expected)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input: torch.Tensor, height: int,
+                      width: int) -> torch.Tensor:
+            return tgm.normalize_pixel_coordinates(input, height, width)
+        height, width = 3, 4
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+
+        actual = op_script(grid, height, width)
+        expected = tgm.normalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input, height, width):
+            return tgm.normalize_pixel_coordinates(input, height, width)
+        # 1. Trace op
+        height, width = 3, 4
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        op_traced = torch.jit.trace(
+            op_script,
+            (grid, torch.tensor(height), torch.tensor(width),))
+
+        # 2. Generate new input
+        height, width = 2, 5
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False).repeat(2, 1, 1, 1)
+
+        # 3. Evaluate
+        actual = op_traced(
+            grid, torch.tensor(height), torch.tensor(width))
+        expected = tgm.normalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)

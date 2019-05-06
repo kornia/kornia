@@ -34,7 +34,6 @@ class Normalize(nn.Module):
 
 def normalize(data: torch.Tensor, mean: torch.Tensor,
               std: torch.Tensor) -> torch.Tensor:
-
     """Normalise the image with channel-wise mean and standard deviation.
 
     Args:
