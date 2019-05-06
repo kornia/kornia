@@ -61,9 +61,6 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
     if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
         raise ValueError('std lenght and number of channels do not match')
 
-    if std.shape != mean.shape:
-        raise ValueError('std and mean must have the same shape')
-
     mean = mean[..., :, None, None].to(data.device)
     std = std[..., :, None, None].to(data.device)
 
