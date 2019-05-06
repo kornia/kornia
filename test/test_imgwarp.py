@@ -271,3 +271,195 @@ class TestWarpAffine:
                 (height, width),
             ),
             raise_exception=True)
+
+
+class TestRemap:
+    def test_smoke(self):
+        height, width = 3, 4
+        input = torch.ones(1, 1, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        input_warped = tgm.remap(input, grid[..., 0], grid[..., 1])
+        assert_allclose(input, input_warped)
+
+    def test_shift(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]])
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply shift in both x/y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_shift_batch(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]]).repeat(2, 1, 1, 1)
+
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+        ]], [[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        # generate a batch of grids
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid = grid.repeat(2, 1, 1, 1)
+        grid[0, ..., 0] += 1.  # apply shift in the x direction
+        grid[1, ..., 1] += 1.  # apply shift in the y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_shift_batch_broadcast(self):
+        height, width = 3, 4
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]]).repeat(2, 1, 1, 1)
+        expected = torch.tensor([[[
+            [1., 1., 1., 0.],
+            [1., 1., 1., 0.],
+            [0., 0., 0., 0.],
+        ]]])
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply shift in both x/y direction
+
+        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        assert_allclose(input_warped, expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 1, 2, 3, 4
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid = utils.tensor_to_gradcheck_var(
+            grid, requires_grad=False)  # to var
+
+        assert gradcheck(tgm.remap, (img, grid[..., 0], grid[..., 1],),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input, map1, map2):
+            return tgm.remap(input, map1, map2)
+        batch_size, channels, height, width = 1, 1, 3, 4
+        img = torch.ones(batch_size, channels, height, width)
+
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply some shift
+
+        input = (img, grid[..., 0], grid[..., 1],)
+        actual = op_script(*input)
+        expected = tgm.remap(*input)
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input, map1, map2):
+            return tgm.remap(input, map1, map2)
+        # 1. Trace op
+        batch_size, channels, height, width = 1, 1, 3, 4
+        img = torch.ones(batch_size, channels, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 1.  # apply some shift
+        input_tuple = (img, grid[..., 0], grid[..., 1])
+        op_traced = torch.jit.trace(op_script, input_tuple)
+
+        # 2. Generate different input
+        batch_size, channels, height, width = 2, 2, 2, 5
+        img = torch.ones(batch_size, channels, height, width)
+        grid = tgm.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid += 2.  # apply some shift
+
+        # 3. Apply to different input
+        input_tuple = (img, grid[..., 0], grid[..., 1])
+        actual = op_script(*input_tuple)
+        expected = tgm.remap(*input_tuple)
+        assert_allclose(actual, expected)
+
+
+class TestInvertAffineTransform:
+    def test_smoke(self):
+        matrix = torch.eye(2, 3)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix, matrix_inv)
+
+    def test_rot90(self):
+        angle = torch.tensor([90.])
+        scale = torch.tensor([1.])
+        center = torch.tensor([[0., 0.]])
+        expected = torch.tensor([[
+            [0., -1., 0.],
+            [1., 0., 0.],
+        ]])
+        matrix = tgm.get_rotation_matrix2d(center, angle, scale)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix_inv, expected)
+
+    def test_rot90_batch(self):
+        angle = torch.tensor([90.])
+        scale = torch.tensor([1.])
+        center = torch.tensor([[0., 0.]])
+        expected = torch.tensor([[
+            [0., -1., 0.],
+            [1., 0., 0.],
+        ]])
+        matrix = tgm.get_rotation_matrix2d(
+            center, angle, scale).repeat(2, 1, 1)
+        matrix_inv = tgm.invert_affine_transform(matrix)
+        assert_allclose(matrix_inv, expected)
+
+    def test_gradcheck(self):
+        matrix = torch.eye(2, 3)
+        matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
+        assert gradcheck(tgm.invert_affine_transform, (matrix,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return tgm.invert_affine_transform(input)
+        matrix = torch.eye(2, 3)
+        op_traced = torch.jit.trace(op_script, matrix)
+        actual = op_traced(matrix)
+        expected = tgm.invert_affine_transform(matrix)
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input):
+            return tgm.invert_affine_transform(input)
+        matrix = torch.eye(2, 3)
+        matrix_2 = torch.eye(2, 3).repeat(2, 1, 1)
+        op_traced = torch.jit.trace(op_script, matrix)
+        actual = op_traced(matrix_2)
+        expected = tgm.invert_affine_transform(matrix_2)
+        assert_allclose(actual, expected)
