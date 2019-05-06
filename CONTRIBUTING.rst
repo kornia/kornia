@@ -71,6 +71,7 @@ In order to start to develop, please follow the steps below:
 .. code:: bash
 
    source ./path.bash.inc
+   python setup.py develop
    python -c "import torchgeometry; print(torchgeometry.__version__)"
 
 To install, or update the conda environment run ``setup_dev_env.sh``
