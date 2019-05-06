@@ -12,6 +12,10 @@ The functions in this sections perform various image filtering operations.
 
 .. autofunction:: gaussian_blur
 .. autofunction:: laplacian
+.. autofunction:: pyrdown
+.. autofunction:: pyrup
 
 .. autoclass:: GaussianBlur
 .. autoclass:: Laplacian
+.. autoclass:: PyrDown
+.. autoclass:: PyrUp
