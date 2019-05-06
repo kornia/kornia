@@ -20,3 +20,7 @@ from .core.pinhole import *
 from .core.conversions import *
 from .core.imgwarp import *
 from .core.transformations import *
+from .core.affine import (
+    affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
+)
+from .core.crop import center_crop, crop_and_resize

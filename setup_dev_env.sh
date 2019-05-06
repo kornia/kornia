@@ -32,6 +32,7 @@ $sdk_dir/.dev_env/bin/conda install -y \
   pytest \
   pytest-cov \
   flake8 \
+  autopep8 \
   mypy \
   mypy_extensions \
   --file docs/requirements.txt \

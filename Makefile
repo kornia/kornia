@@ -1,6 +1,6 @@
 .PHONY: test test-cpu test-gpu lint mypy build-docs install uninstall FORCE
 
-test: test_cpu test_gpu
+test: mypy lint test-cpu
 
 test-cpu: FORCE
 	pytest --typetest cpu -vx
@@ -13,6 +13,9 @@ test-gpu: FORCE
 
 lint: FORCE
 	python verify.py --check lint
+
+autopep8: FORCE
+	autopep8 --in-place --aggressive --recursive torchgeometry/ test/
 
 mypy: FORCE
 	python verify.py --check mypy
