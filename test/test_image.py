@@ -167,6 +167,39 @@ class TestLaplacian:
                          raise_exception=True)
 
 
+class TestBgRToRgb:
+
+    def test_bgr_to_rgb(self):
+
+        # prepare input data
+        data = torch.ones(3, 2, 2)
+
+        f = image.BgrToRgb()
+        assert_allclose(f(data)[0], data[-1])
+        assert_allclose(f(data)[-1], data[0])
+
+    def test_batch_bgr_to_rgb(self):
+
+        # prepare input data
+        data = torch.ones(5, 3, 2, 2)
+
+        f = image.BgrToRgb()
+        out = f(data)
+        for i in range(out.shape[0]):
+            assert_allclose(out[i][0], data[i][-1])
+            assert_allclose(out[i][-1], out[i][0])
+
+    def test_gradcheck(self):
+
+        # prepare input data
+        data = torch.ones(2, 3, 1, 1)
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(image.BgrToRgb(), (data,),
+                         raise_exception=True)
+
+
 class TestRgbToGrayscale:
     def test_rgb_to_grayscale(self):
         channels, height, width = 3, 4, 5
