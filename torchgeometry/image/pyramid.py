@@ -30,6 +30,10 @@ class PyrDown(nn.Module):
 
     Return:
         torch.Tensor: the downsampled tensor.
+
+    Examples:
+        >>> input = torch.rand(1, 2, 4, 4)
+        >>> output = tgm.image.PyrDown()(input)  # 1x2x2x2
     """
 
     def __init__(self) -> None:
@@ -60,6 +64,10 @@ class PyrUp(nn.Module):
 
     Return:
         torch.Tensor: the upsampled tensor.
+
+    Examples:
+        >>> input = torch.rand(1, 2, 4, 4)
+        >>> output = tgm.image.PyrUp()(input)  # 1x2x8x8
     """
 
     def __init__(self):
