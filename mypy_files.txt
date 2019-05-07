@@ -7,6 +7,8 @@ torchgeometry/core/affine.py
 torchgeometry/image/gaussian.py
 torchgeometry/image/color.py
 torchgeometry/image/laplacian.py
+torchgeometry/image/pyramid.py
+torchgeometry/image/sobel.py
 torchgeometry/losses/ssim.py
 torchgeometry/losses/dice.py
 torchgeometry/losses/focal.py

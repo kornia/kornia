@@ -14,8 +14,12 @@ The functions in this sections perform various image filtering operations.
 .. autofunction:: laplacian
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
+.. autofunction:: sobel
+.. autofunction:: sobel_edges
 
 .. autoclass:: GaussianBlur
 .. autoclass:: Laplacian
 .. autoclass:: PyrDown
 .. autoclass:: PyrUp
+.. autoclass:: Sobel
+.. autoclass:: SobelEdges
