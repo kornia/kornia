@@ -46,7 +46,6 @@ def rgb_to_hsv(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    torch.autograd.set_detect_anomaly(True)
     r = image[..., 0, :, :]
     g = image[..., 1, :, :]
     b = image[..., 2, :, :]
@@ -57,9 +56,11 @@ def rgb_to_hsv(image):
     v = maxc  # brightness
 
     deltac = maxc - minc
-    s = deltac.clone() / v  # saturation
+    s = deltac / v  # saturation
 
-    deltac[deltac == 0] = 1  # avoid division by zero
+    # avoid division by zero
+    deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
+
     rc = (maxc - r) / deltac
     gc = (maxc - g) / deltac
     bc = (maxc - b) / deltac
