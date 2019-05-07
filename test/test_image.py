@@ -184,6 +184,93 @@ class TestLaplacian:
                          raise_exception=True)
 
 
+class TestRgbToHsv:
+
+    def test_rgb_to_hsv(self):
+
+        data = torch.tensor([[[21., 22.],
+                              [22., 22.]],
+
+                             [[13., 14.],
+                              [14., 14.]],
+
+                             [[8., 8.],
+                              [8., 8.]]])
+
+        expected = torch.tensor([[[0.0641, 0.0714],
+                                  [0.0714, 0.0714]],
+
+                                 [[0.6190, 0.6364],
+                                  [0.6364, 0.6364]],
+
+                                 [[21.0000, 22.0000],
+                                  [22.0000, 22.0000]]])
+
+        f = image.RgbToHsV()
+        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+
+    def test_batch_rgb_to_hsv(self):
+
+        data = torch.tensor([[[21., 22.],
+                              [22., 22.]],
+
+                             [[13., 14.],
+                              [14., 14.]],
+
+                             [[8., 8.],
+                              [8., 8.]]])  # 3x2x2
+
+        expected = torch.tensor([[[0.0641, 0.0714],
+                                  [0.0714, 0.0714]],
+
+                                 [[0.6190, 0.6364],
+                                  [0.6364, 0.6364]],
+
+                                 [[21.0000, 22.0000],
+                                  [22.0000, 22.0000]]])  # 3x2x2
+        f = image.RgbToHsV()
+        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
+        print(data.shape)
+        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
+        print(expected.shape)
+        print(f(data).shape)
+        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+
+    def test_gradcheck(self):
+
+        data = torch.tensor([[[[21., 22.],
+                              [22., 22.]],
+
+                             [[13., 14.],
+                              [14., 14.]],
+
+                             [[8., 8.],
+                              [8., 8.]]]])  # 3x2x2
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(image.RgbToHsV(), (data,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(data: torch.Tensor) -> torch.Tensor:
+
+            return image.rgb_to_hsv(data)
+            data = torch.tensor([[[[21., 22.],
+                                  [22., 22.]],
+
+                                 [[13., 14.],
+                                  [14., 14.]],
+
+                                 [[8., 8.],
+                                  [8., 8.]]]])  # 3x2x2
+
+            actual = op.script(data)
+            expected = image.rgb_to_hsv(data)
+            assert_allclose(actual, expected)
+
+
 class TestBgRToRgb:
 
     def test_bgr_to_rgb(self):
