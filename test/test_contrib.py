@@ -3,8 +3,36 @@ import pytest
 import torch
 import torchgeometry as tgm
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import utils
+
+
+class TestMaxBlurPool2d:
+    def test_shape(self):
+        input = torch.rand(1, 2, 4, 6)
+        pool = tgm.contrib.MaxBlurPool2d(kernel_size=3)
+        assert pool(input).shape == (1, 2, 2, 3)
+
+    def test_shape_batch(self):
+        input = torch.rand(3, 2, 6, 10)
+        pool = tgm.contrib.MaxBlurPool2d(kernel_size=5)
+        assert pool(input).shape == (3, 2, 3, 5)
+
+    def test_gradcheck(self):
+        input = torch.rand(2, 3, 4, 4)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(tgm.contrib.max_blur_pool2d,
+                         (input, 3,), raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
+            return tgm.contrib.max_blur_pool2d(input, kernel_size)
+        img = torch.rand(2, 3, 4, 5)
+        actual = op_script(img, kernel_size=3)
+        expected = tgm.contrib.max_blur_pool2d(img, kernel_size=3)
+        assert_allclose(actual, expected)
 
 
 class TestExtractTensorPatches:
