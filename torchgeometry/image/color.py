@@ -27,7 +27,7 @@ class RgbToHsV(nn.Module):
         return rgb_to_hsv(image)
 
 
-def rgb_to_hsv(rgb):  # TODO
+def rgb_to_hsv(image):
 
     """Convert an RGB image to HSV
 
@@ -38,7 +38,6 @@ def rgb_to_hsv(rgb):  # TODO
         torch.Tensor: HSV version of the image.
     """
 
-    '''
     if not torch.is_tensor(image):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
@@ -47,17 +46,20 @@ def rgb_to_hsv(rgb):  # TODO
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    input_shape = rgb.shape
-    rgb = rgb.reshape(-1, 3)
-    r, g, b = rgb[:, 0], rgb[:, 1], rgb[:, 2]
+    torch.autograd.set_detect_anomaly(True)
+    r = image[..., 0, :, :]
+    g = image[..., 1, :, :]
+    b = image[..., 2, :, :]
 
-    maxc = np.maximum(np.maximum(r, g), b)
-    minc = np.minimum(np.minimum(r, g), b)
-    v = maxc
+    maxc = image.max(-3)[0]
+    minc = image.min(-3)[0]
+
+    v = maxc  # brightness
 
     deltac = maxc - minc
-    s = deltac / maxc
-    deltac[deltac == 0] = 1
+    s = deltac.clone() / v  # saturation
+
+    deltac[deltac == 0] = 1  # avoid division by zero
     rc = (maxc - r) / deltac
     gc = (maxc - g) / deltac
     bc = (maxc - b) / deltac
@@ -68,9 +70,8 @@ def rgb_to_hsv(rgb):  # TODO
     h[minc == maxc] = 0.0
 
     h = (h / 6.0) % 1.0
-    res = np.dstack([h, s, v])
-    return res.reshape(input_shape)
-    '''
+
+    return torch.stack([h, s, v], dim=-3)
 
 
 class RgbToBgr(nn.Module):
