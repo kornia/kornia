@@ -30,6 +30,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'nbsphinx',
+    'sphinxcontrib.bibtex',
 ]
 
 napoleon_use_ivar = True
