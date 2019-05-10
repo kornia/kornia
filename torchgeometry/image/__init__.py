@@ -8,3 +8,4 @@ from .color import BgrToRgb, bgr_to_rgb
 from .color import RgbToBgr, rgb_to_bgr
 from .color import RgbToHsV, rgb_to_hsv
 from .pyramid import pyrdown, pyrup, PyrDown, PyrUp
+from .sobel import SobelEdges, Sobel, sobel, sobel_edges
