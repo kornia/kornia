@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 __all__ = [
-    "SobelEdges",
+    "SpatialGradient",
     "Sobel",
     "sobel",
-    "sobel_edges",
+    "spatial_gradient",
 ]
 
 
@@ -19,8 +19,9 @@ def _get_sobel_kernel_3x3() -> torch.Tensor:
     ])
 
 
-class SobelEdges(nn.Module):
-    r"""Computes the Sobel edge maps per channel.
+class SpatialGradient(nn.Module):
+    r"""Computes the first order image derivative in both x and y using a Sobel
+      operator.
 
     Args:
         input (torch.Tensor): the input tensor with shape of BxCxHxW.
@@ -31,14 +32,12 @@ class SobelEdges(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = tgm.image.SobelEdges()(input)  # 1x3x2x4x4
+        >>> output = tgm.image.SpatialGradient()(input)  # 1x3x2x4x4
     """
 
     def __init__(self) -> None:
-        super(SobelEdges, self).__init__()
+        super(SpatialGradient, self).__init__()
         self.kernel: torch.Tensor = self.get_sobel_kernel()
-        # NOTE: this wil change if we make the kernel size variable
-        self.padding: int = 2
 
     @staticmethod
     def get_sobel_kernel() -> torch.Tensor:
@@ -88,7 +87,7 @@ class Sobel(nn.Module):
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
         # comput the x/y gradients
-        edges: torch.Tensor = sobel_edges(input)
+        edges: torch.Tensor = spatial_gradient(input)
 
         # unpack the edges
         gx: torch.Tensor = edges[:, :, 0]
@@ -102,12 +101,13 @@ class Sobel(nn.Module):
 # functiona api
 
 
-def sobel_edges(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Sobel edge maps per channel.
+def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
+    r"""Computes the first order image derivative in both x and y using a Sobel
+      operator.
 
     See :class:`~torchgeometry.image.SobelEdges` for details.
     """
-    return SobelEdges()(input)
+    return SpatialGradient()(input)
 
 
 def sobel(input: torch.Tensor) -> torch.Tensor:
