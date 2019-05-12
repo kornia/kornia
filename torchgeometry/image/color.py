@@ -1,35 +1,33 @@
 import torch
 import torch.nn as nn
-import numpy as np
 
 
-class RgbToHsV(nn.Module):
+class RgbToHsv(nn.Module):
 
-    """convert image from RGB to HSV.
+    """Convert image from RGB to HSV.
     The image data is assumed to be in the range of (0, 1).
 
     args:
-        image (torch.tensor): RGB image to be converted to HSV.
+        image (torch.Tensor): RGB image to be converted to HSV.
 
     returns:
         torch.tensor: HSV version of the image.
 
     shape:
-        - image: :math:`(*, 3, h, w)`
-        - output: :math:`(*, 3, h, w)`
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
 
     """
 
     def __init__(self) -> None:
-        super(RgbToHsV, self).__init__()
+        super(RgbToHsv, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rgb_to_hsv(image)
 
 
 def rgb_to_hsv(image):
-
-    """Convert an RGB image to HSV
+    """Convert an RGB image to HSV.
 
     Args:
         input (torch.Tensor): RGB Image to be converted to HSV.
@@ -46,49 +44,53 @@ def rgb_to_hsv(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    r = image[..., 0, :, :]
-    g = image[..., 1, :, :]
-    b = image[..., 2, :, :]
+    r: torch.Tensor = image[..., 0, :, :]
+    g: torch.Tensor = image[..., 1, :, :]
+    b: torch.Tensor = image[..., 2, :, :]
 
-    maxc = image.max(-3)[0]
-    minc = image.min(-3)[0]
+    maxc: torch.Tensor = image.max(-3)[0]
+    minc: torch.Tensor = image.min(-3)[0]
 
-    v = maxc  # brightness
+    v: torch.Tensor = maxc  # brightness
 
-    deltac = maxc - minc
-    s = deltac / v  # saturation
+    deltac: torch.Tensor = maxc - minc
+    s: torch.Tensor = deltac / v  # saturation
 
     # avoid division by zero
-    deltac = torch.where(deltac == 0, torch.ones_like(deltac), deltac)
+    deltac: torch.Tensor = torch.where(
+        deltac == 0, torch.ones_like(deltac), deltac)
 
-    rc = (maxc - r) / deltac
-    gc = (maxc - g) / deltac
-    bc = (maxc - b) / deltac
+    rc: torch.Tensor = (maxc - r) / deltac
+    gc: torch.Tensor = (maxc - g) / deltac
+    bc: torch.Tensor = (maxc - b) / deltac
 
-    h = 4.0 + gc - rc
-    h[g == maxc] = 2.0 + rc[g == maxc] - bc[g == maxc]
-    h[r == maxc] = bc[r == maxc] - gc[r == maxc]
-    h[minc == maxc] = 0.0
+    maxg: torch.Tensor = g == maxc
+    maxr: torch.Tensor = r == maxc
 
-    h = (h / 6.0) % 1.0
+    h: torch.Tensor = 4.0 + gc - rc
+    h[maxg]: torch.Tensor = 2.0 + rc[maxg] - bc[maxg]
+    h[maxr]: torch.Tensor = bc[maxr] - gc[maxr]
+    h[minc == maxc]: torch.Tensor = 0.0
+
+    h: torch.Tensor = (h / 6.0) % 1.0
 
     return torch.stack([h, s, v], dim=-3)
 
 
 class RgbToBgr(nn.Module):
 
-    """convert image from RGB to BGR
+    """Convert image from RGB to BGR.
     The image data is assumed to be in the range of (0, 1).
 
     args:
-        image (torch.tensor): RGB image to be converted to BGR
+        image (torch.Tensor): RGB image to be converted to BGR
 
     returns:
         torch.tensor: BGR version of the image.
 
     shape:
-        - image: :math:`(*, 3, h, w)`
-        - output: :math:`(*, 3, h, w)`
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
 
     """
 
@@ -118,14 +120,14 @@ class BgrToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     args:
-        image (torch.tensor): BGR image to be converted to RGB.
+        image (torch.Tensor): BGR image to be converted to RGB.
 
     returns:
         torch.tensor: RGB version of the image.
 
     shape:
-        - image: :math:`(*, 3, h, w)`
-        - output: :math:`(*, 3, h, w)`
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
 
     """
 
@@ -154,7 +156,8 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
                          .format(image.shape))
 
-    out = image.flip(-3)
+    # flip image channels
+    out: torch.Tensor = image.flip(-3)
 
     return out
 
@@ -165,14 +168,14 @@ class RgbToGrayscale(nn.Module):
     the image data is assumed to be in the range of (0, 1).
 
     args:
-        input (torch.tensor): image to be converted to grayscale.
+        input (torch.Tensor): image to be converted to grayscale.
 
     returns:
-        torch.tensor: grayscale version of the image.
+        torch.Tensor: grayscale version of the image.
 
     shape:
-        - input: :math:`(*, 3, h, w)`
-        - output: :math:`(*, 1, h, w)`
+        - input: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 1, H, W)`
 
     Examples::
 
@@ -211,3 +214,68 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
     return gray
+
+
+class Normalize(nn.Module):
+
+    """Normalize a tensor image or a batch of tensor images
+    with mean and standard deviation. Input must be a tensor of shape (C, H, W)
+    or a batch of tensors (*, C, H, W).
+    Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
+    this transform will normalize each channel of the input ``torch.*Tensor``
+    i.e. ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
+
+    Args:
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviation for each channel.
+    """
+
+    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+
+        super(Normalize, self).__init__()
+
+        self.mean: torch.Tensor = mean
+        self.std: torch.Tensor = std
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return normalize(input, self.mean, self.std)
+
+    def __repr__(self):
+        repr = '(mean={0}, std={1})'.format(self.mean, self.std)
+        return self.__class__.__name__ + repr
+
+
+def normalize(data: torch.Tensor, mean: torch.Tensor,
+              std: torch.Tensor) -> torch.Tensor:
+    """Normalise the image with channel-wise mean and standard deviation.
+
+    Args:
+        data (torch.Tensor): The image tensor to be normalised.
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
+
+        Returns:
+        Tensor: The normalised image tensor.
+    """
+
+    if not torch.is_tensor(data):
+        raise TypeError('data should be a tensor. Got {}'.format(type(data)))
+
+    if not torch.is_tensor(mean):
+        raise TypeError('mean should be a tensor. Got {}'.format(type(mean)))
+
+    if not torch.is_tensor(std):
+        raise TypeError('std should be a tensor. Got {}'.format(type(std)))
+
+    if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
+        raise ValueError('mean lenght and number of channels do not match')
+
+    if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
+        raise ValueError('std lenght and number of channels do not match')
+
+    mean: torch.Tensor = mean[..., :, None, None].to(data.device)
+    std: torch.Tensor = std[..., :, None, None].to(data.device)
+
+    out: torch.Tensor = (data - mean) / std
+
+    return out

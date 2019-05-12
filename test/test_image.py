@@ -1,12 +1,11 @@
 import pytest
-
 import torch
-import torchgeometry.image as image
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-import utils
 from common import device_type
+
+import torchgeometry.image as image
+import utils
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -51,12 +50,16 @@ class TestGaussianBlur:
                          raise_exception=True)
 
     def test_jit(self):
+        @torch.jit.script
+        def op_script(img):
+
+            return image.gaussian_blur(img, (5, 5), (1.2, 1.2))
+
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        gauss = image.GaussianBlur((5, 5), (1.2, 1.2))
-        gauss_traced = torch.jit.trace(
-            image.GaussianBlur((5, 5), (1.2, 1.2)), img)
-        assert_allclose(gauss(img), gauss_traced(img))
+        expected = image.GaussianBlur((5, 5), (1.2, 1.2))(img)
+        actual = op_script(img)
+        assert_allclose(actual, expected)
 
 
 class TestNormalize:
@@ -122,7 +125,7 @@ class TestNormalize:
             mean = torch.tensor([0.5, 1.0, 2.0]).repeat(2, 1)
             std = torch.tensor([2.0, 2.0, 2.0]).repeat(2, 1)
 
-            actual = op.script(data, mean, std)
+            actual = op_script(data, mean, std)
             expected = image.normalize(data, mean, std)
             assert_allclose(actual, expected)
 
@@ -206,7 +209,7 @@ class TestRgbToHsv:
                                  [[21.0000, 22.0000],
                                   [22.0000, 22.0000]]])
 
-        f = image.RgbToHsV()
+        f = image.RgbToHsv()
         assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
 
     def test_batch_rgb_to_hsv(self):
@@ -228,7 +231,7 @@ class TestRgbToHsv:
 
                                  [[21.0000, 22.0000],
                                   [22.0000, 22.0000]]])  # 3x2x2
-        f = image.RgbToHsV()
+        f = image.RgbToHsv()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
         print(data.shape)
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
@@ -249,7 +252,7 @@ class TestRgbToHsv:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(image.RgbToHsV(), (data,),
+        assert gradcheck(image.RgbToHsv(), (data,),
                          raise_exception=True)
 
     def test_jit(self):
@@ -266,12 +269,12 @@ class TestRgbToHsv:
                                  [[8., 8.],
                                   [8., 8.]]]])  # 3x2x2
 
-            actual = op.script(data)
+            actual = op_script(data)
             expected = image.rgb_to_hsv(data)
             assert_allclose(actual, expected)
 
 
-class TestBgRToRgb:
+class TestBgrToRgb:
 
     def test_bgr_to_rgb(self):
 
@@ -372,9 +375,115 @@ class TestBgRToRgb:
                                  [[3., 3.],
                                   [3., 3.]]])  # 3x2x2
 
-            actual = op.script(data)
+            actual = op_script(data)
             expected = image.bgr_to_rgb(data)
             assert_allclose(actual, expected)
+
+
+class TestRgbToBgr:
+
+    def test_rgb_to_bgr(self):
+
+        # prepare input data
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[2., 2.],
+                              [2., 2.]],
+
+                             [[3., 3.],
+                              [3., 3.]]])  # 3x2x2
+
+        expected = torch.tensor([[[3., 3.],
+                                  [3., 3.]],
+
+                                 [[2., 2.],
+                                  [2., 2.]],
+
+                                 [[1., 1.],
+                                  [1., 1.]]])  # 3x2x2
+
+        f = image.RgbToBgr()
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+
+        # prepare input data
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[2., 2.],
+                              [2., 2.]],
+
+                             [[3., 3.],
+                              [3., 3.]]])  # 3x2x2
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(image.RgbToBgr(), (data,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(data: torch.Tensor) -> torch.Tensor:
+
+            return image.rgb_to_bgr(data)
+
+            data = torch.tensor([[[1., 1.],
+                                  [1., 1.]],
+
+                                 [[2., 2.],
+                                  [2., 2.]],
+
+                                 [[3., 3.],
+                                  [3., 3.]]])  # 3x2x2
+
+            actual = op_script(data)
+            expected = image.rgb_to_bgr(data)
+            assert_allclose(actual, expected)
+
+    def test_batch_rgb_to_bgr(self):
+
+        # prepare input data
+        data = torch.tensor([[[[1., 1.],
+                              [1., 1.]],
+
+                             [[2., 2.],
+                              [2., 2.]],
+
+                             [[3., 3.],
+                              [3., 3.]]],
+
+                             [[[1., 1.],
+                               [1., 1.]],
+
+                              [[2., 2.],
+                               [2., 2.]],
+
+                              [[3., 3.],
+                               [3., 3.]]]])  # 2x3x2x2
+
+        expected = torch.tensor([[[[3., 3.],
+                                  [3., 3.]],
+
+                                 [[2., 2.],
+                                  [2., 2.]],
+
+                                 [[1., 1.],
+                                  [1., 1.]]],
+
+                                [[[3., 3.],
+                                  [3., 3.]],
+
+                                 [[2., 2.],
+                                  [2., 2.]],
+
+                                 [[1., 1.],
+                                  [1., 1.]]]])  # 2x3x2x2
+
+        f = image.RgbToBgr()
+        out = f(data)
+        assert_allclose(out, expected)
 
 
 class TestRgbToGrayscale:
