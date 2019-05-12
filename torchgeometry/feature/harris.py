@@ -132,7 +132,7 @@ class CornerHarris(nn.Module):
         scores = torch.clamp(scores, min=1e-6)
 
         # apply non maxima suppresion
-        scores = NonMaximaSuppression2d(kernel_size=(3, 3))(scores)
+        scores = non_maxima_suppression2d(scores, kernel_size=(3, 3))
 
         # normalize and return
         scores_max: torch.Tensor = F.adaptive_max_pool2d(scores, output_size=1)
