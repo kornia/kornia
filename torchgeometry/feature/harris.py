@@ -143,8 +143,8 @@ class CornerHarris(nn.Module):
 
 
 def corner_harris(input: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
-    r"""Computes the first order image derivative in both x and y using a Sobel
-        operator.
+    r"""Computes the first order image derivative in both x and y directions
+        using a Sobel operator.
 
     See :class:`~torchgeometry.feature.CornerHarris` for details.
     """
