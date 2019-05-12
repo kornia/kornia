@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.image import get_gaussian_kernel2d
+from torchgeometry.filters import get_gaussian_kernel2d
 
 
 class SSIM(nn.Module):

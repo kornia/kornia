@@ -21,8 +21,10 @@ TGM focuses on Image and tensor warping functions such as:
    :caption: Package Reference
 
    core
-   image
+   color
    feature
+   filters
+   transform
    losses
    metrics
    contrib

@@ -1,7 +1,7 @@
-Image Filtering
----------------
+torchgeometry.filters
+---------------------
 
-.. currentmodule:: torchgeometry.image
+.. currentmodule:: torchgeometry.filters
 
 The functions in this sections perform various image filtering operations.
 
@@ -14,8 +14,6 @@ The functions in this sections perform various image filtering operations.
 .. autofunction:: median_blur
 .. autofunction:: gaussian_blur
 .. autofunction:: laplacian
-.. autofunction:: pyrdown
-.. autofunction:: pyrup
 .. autofunction:: sobel
 .. autofunction:: spatial_gradient
 
@@ -23,7 +21,5 @@ The functions in this sections perform various image filtering operations.
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur
 .. autoclass:: Laplacian
-.. autoclass:: PyrDown
-.. autoclass:: PyrUp
 .. autoclass:: Sobel
-.. autoclass:: spatial_gradient
+.. autoclass:: SpatialGradient

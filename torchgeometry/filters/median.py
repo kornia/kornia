@@ -2,16 +2,18 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from torch.nn.functional import conv2d
+import torch.nn.functional as F
 
 
-def _get_box_filter(kernel_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Utility function that returns a box filter."""
-    kx: float = float(kernel_size[0])
-    ky: float = float(kernel_size[1])
-    scale: torch.Tensor = torch.tensor(1.) / torch.tensor([kx * ky])
-    tmp_kernel: torch.Tensor = torch.ones(1, 1, kernel_size[0], kernel_size[1])
-    return scale.to(tmp_kernel.dtype) * tmp_kernel
+def _compute_binary_kernel(window_size: Tuple[int, int]) -> torch.Tensor:
+    r"""Creates a binary kernel to extract the patches. If the window size
+    is HxW will create a (H*W)xHxW kernel.
+    """
+    window_range: int = window_size[0] * window_size[1]
+    kernel: torch.Tensor = torch.zeros(window_range, window_range)
+    for i in range(window_range):
+        kernel[i, i] += 1.0
+    return kernel.view(window_range, 1, window_size[0], window_size[1])
 
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -20,19 +22,8 @@ def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
     return computed[0], computed[1]
 
 
-class BoxBlur(nn.Module):
-    r"""Blurs an image using the box filter.
-
-    The function smooths an image using the kernel:
-
-    .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
+class MedianBlur(nn.Module):
+    r"""Blurs an image using the median filter.
 
     Args:
         kernel_size (Tuple[int, int]): the blurring kernel size.
@@ -46,13 +37,13 @@ class BoxBlur(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
-        >>> blur = tgm.image.BoxBlur((3, 3))
+        >>> blur = tgm.filters.MedianBlur((3, 3))
         >>> output = blur(input)  # 2x4x5x7
     """
 
     def __init__(self, kernel_size: Tuple[int, int]) -> None:
-        super(BoxBlur, self).__init__()
-        self.kernel: torch.Tensor = _get_box_filter(kernel_size)
+        super(MedianBlur, self).__init__()
+        self.kernel: torch.Tensor = _compute_binary_kernel(kernel_size)
         self.padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
 
     def forward(self, input: torch.Tensor):  # type: ignore
@@ -67,15 +58,23 @@ class BoxBlur(nn.Module):
         tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
-        return conv2d(input, kernel, padding=self.padding, stride=1, groups=c)
+        # map the local window to single vector
+        features: torch.Tensor = F.conv2d(
+            input, kernel, padding=self.padding, stride=1, groups=c)
+        features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
+
+        # compute the median along the feature axis
+        median: torch.Tensor = torch.median(features, dim=2)[0]
+        return median
 
 
 # functiona api
 
 
-def box_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Blurs an image using the box filter.
+def median_blur(input: torch.Tensor,
+                kernel_size: Tuple[int, int]) -> torch.Tensor:
+    r"""Blurs an image using the median filter.
 
-    See :class:`~torchgeometry.image.BoxBlur` for details.
+    See :class:`~torchgeometry.filters.MedianBlur` for details.
     """
-    return BoxBlur(kernel_size)(input)
+    return MedianBlur(kernel_size)(input)

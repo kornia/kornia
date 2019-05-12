@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.image import spatial_gradient, gaussian_blur
+from torchgeometry.filters import spatial_gradient, gaussian_blur
 
 
 class NonMaximaSuppression2d(nn.Module):
