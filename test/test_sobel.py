@@ -27,13 +27,13 @@ class TestSpatialGradient:
         ]]])
 
         expected = torch.tensor([[[[
-            [3., 4., 3.],
-            [0., 0., 0.],
-            [-3., -4., -3.],
-        ], [
             [3., 0., -3.],
             [4., 0., -4.],
             [3., 0., -3.],
+        ], [
+            [3., 4., 3.],
+            [0., 0., 0.],
+            [-3., -4., -3.],
         ]]]])
 
         edges = tgm.image.spatial_gradient(inp)
