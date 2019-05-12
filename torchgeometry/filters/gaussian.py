@@ -105,7 +105,7 @@ class GaussianBlur(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> gauss = tgm.image.GaussianBlur((3, 3), (1.5, 1.5))
+        >>> gauss = tgm.filters.GaussianBlur((3, 3), (1.5, 1.5))
         >>> output = gauss(input)  # 2x4x5x5
     """
 
@@ -153,24 +153,6 @@ def gaussian_blur(input: torch.Tensor,
                                float]) -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
-    The operator smooths the given tensor with a gaussian kernel by convolving
-    it to each channel. It suports batched operation.
-
-    Arguments:
-        input (torch.Tensor): the input tensor.
-        kernel_size (Tuple[int, int]): the size of the kernel.
-        sigma (Tuple[float, float]): the standard deviation of the kernel.
-
-    Returns:
-        torch.Tensor: the blurred tensor.
-
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 5, 5)
-        >>> output = tgm.image.gaussian_blur(input, (3, 3), (1.5, 1.5))
+    See :class:`~torchgeometry.filters.GaussianBlur` for details.
     """
     return GaussianBlur(kernel_size, sigma)(input)

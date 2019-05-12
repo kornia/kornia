@@ -3,8 +3,8 @@ import torch.nn as nn
 
 
 class RgbToHsv(nn.Module):
+    r"""Convert image from RGB to HSV.
 
-    """Convert image from RGB to HSV.
     The image data is assumed to be in the range of (0, 1).
 
     args:
@@ -27,7 +27,7 @@ class RgbToHsv(nn.Module):
 
 
 def rgb_to_hsv(image):
-    """Convert an RGB image to HSV.
+    r"""Convert an RGB image to HSV.
 
     Args:
         input (torch.Tensor): RGB Image to be converted to HSV.
@@ -78,8 +78,8 @@ def rgb_to_hsv(image):
 
 
 class RgbToBgr(nn.Module):
+    r"""Convert image from RGB to BGR.
 
-    """Convert image from RGB to BGR.
     The image data is assumed to be in the range of (0, 1).
 
     args:
@@ -102,7 +102,7 @@ class RgbToBgr(nn.Module):
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
-    """Convert a RGB image to BGR.
+    r"""Convert a RGB image to BGR.
 
     Args:
         input (torch.Tensor): RGB Image to be converted to BGR.
@@ -115,8 +115,8 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
 
 class BgrToRgb(nn.Module):
+    r"""Convert image from BGR to RGB.
 
-    """convert image from BGR to RGB.
     The image data is assumed to be in the range of (0, 1).
 
     args:
@@ -139,7 +139,7 @@ class BgrToRgb(nn.Module):
 
 
 def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    """Convert a BGR image to RGB.
+    r"""Convert a BGR image to RGB.
 
     Args:
         input (torch.Tensor): BGR Image to be converted to RGB.
@@ -194,13 +194,7 @@ class RgbToGrayscale(nn.Module):
 def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to grayscale.
 
-    See :class:`~torchgeometry.image.RgbToGrayscale` for details.
-
-    Args:
-        input (torch.Tensor): Image to be converted to grayscale.
-
-    Returns:
-        torch.Tensor: Grayscale version of the image.
+    See :class:`~torchgeometry.color.RgbToGrayscale` for details.
     """
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -217,8 +211,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
 
 
 class Normalize(nn.Module):
-
-    """Normalize a tensor image or a batch of tensor images
+    r"""Normalize a tensor image or a batch of tensor images
     with mean and standard deviation. Input must be a tensor of shape (C, H, W)
     or a batch of tensors (*, C, H, W).
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
@@ -247,7 +240,7 @@ class Normalize(nn.Module):
 
 def normalize(data: torch.Tensor, mean: torch.Tensor,
               std: torch.Tensor) -> torch.Tensor:
-    """Normalise the image with channel-wise mean and standard deviation.
+    r"""Normalise the image with channel-wise mean and standard deviation.
 
     Args:
         data (torch.Tensor): The image tensor to be normalised.

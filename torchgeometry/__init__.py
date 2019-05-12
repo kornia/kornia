@@ -7,12 +7,14 @@ if sys.version_info < (3, 6, 0):
 from .version import __version__
 
 from torchgeometry import core
-from torchgeometry import image
 from torchgeometry import losses
 from torchgeometry import contrib
 from torchgeometry import utils
 from torchgeometry import metrics
+from torchgeometry import color
 from torchgeometry import feature
+from torchgeometry import filters
+from torchgeometry import transform
 
 # Exposes ``torchgeometry.core`` package to top level
 from .core.homography_warper import HomographyWarper, homography_warp

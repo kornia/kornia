@@ -2,13 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "pyrdown",
-    "pyrup",
-]
-
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
@@ -25,15 +18,18 @@ class PyrDown(nn.Module):
     r"""Blurs a tensor and downsamples it.
 
     Args:
-        input (torch.Tensor): the tensor to be downsampled. The tensor must be
-          in the shape of BxCxHxW.
+        input (torch.Tensor): the tensor to be downsampled.
 
     Return:
         torch.Tensor: the downsampled tensor.
 
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H / 2, W / 2)`
+
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = tgm.image.PyrDown()(input)  # 1x2x2x2
+        >>> output = tgm.transform.PyrDown()(input)  # 1x2x2x2
     """
 
     def __init__(self) -> None:
@@ -65,15 +61,18 @@ class PyrUp(nn.Module):
     r"""Upsamples a tensor and then blurs it.
 
     Args:
-        input (torch.Tensor): the tensor to be upsampled. The tensor must be in
-          the shape of BxCxHxW.
+        input (torch.Tensor): the tensor to be upsampled.
 
     Return:
         torch.Tensor: the upsampled tensor.
 
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H * 2, W * 2)`
+
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = tgm.image.PyrUp()(input)  # 1x2x8x8
+        >>> output = tgm.transform.PyrUp()(input)  # 1x2x8x8
     """
 
     def __init__(self):
@@ -108,7 +107,7 @@ class PyrUp(nn.Module):
 def pyrdown(input: torch.Tensor) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
-    See :class:`~torchgeometry.image.PyrDown` for details.
+    See :class:`~torchgeometry.transform.PyrDown` for details.
     """
     return PyrDown()(input)
 
@@ -116,6 +115,6 @@ def pyrdown(input: torch.Tensor) -> torch.Tensor:
 def pyrup(input: torch.Tensor) -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
-    See :class:`~torchgeometry.image.PyrUp` for details.
+    See :class:`~torchgeometry.transform.PyrUp` for details.
     """
     return PyrUp()(input)

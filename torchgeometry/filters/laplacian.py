@@ -17,7 +17,7 @@ def laplacian_1d(window_size) -> torch.Tensor:
 
 
 def get_laplacian_kernel(kernel_size: int) -> torch.Tensor:
-    r"""Function that returns the coefficients of a 1D Laplacian filter
+    r"""Function that returns the coefficients of a 1D Laplacian filter.
 
     Args:
         kernel_size (int): filter size. It should be odd and positive.
@@ -26,7 +26,7 @@ def get_laplacian_kernel(kernel_size: int) -> torch.Tensor:
         Tensor (float): 1D tensor with laplacian filter coefficients.
 
     Shape:
-        - Output: math:`(ksize, 0)`
+        - Output: math:`(\text{kernel_size})`
 
     Examples::
         >>> tgm.image.get_laplacian_kernel(3)
@@ -48,27 +48,27 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
-        ksize (int): filter size should be odd.
+        kernel_size (int): filter size should be odd.
 
     Returns:
         Tensor: 2D tensor with laplacian filter matrix coefficients.
 
     Shape:
-        - Output: :math:`(ksize, ksize)`
+        - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
 
     Examples::
 
         >>> tgm.image.get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
-        [ 1., -8.,  1.],
-        [ 1.,  1.,  1.]])
+                [ 1., -8.,  1.],
+                [ 1.,  1.,  1.]])
 
         >>> tgm.image.get_laplacian_kernel2d(5)
         tensor([[  1.,   1.,   1.,   1.,   1.],
-        [  1.,   1.,   1.,   1.,   1.],
-        [  1.,   1., -24.,   1.,   1.],
-        [  1.,   1.,   1.,   1.,   1.],
-        [  1.,   1.,   1.,   1.,   1.]])
+                [  1.,   1.,   1.,   1.,   1.],
+                [  1.,   1., -24.,   1.,   1.],
+                [  1.,   1.,   1.,   1.,   1.],
+                [  1.,   1.,   1.,   1.,   1.]])
 
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
@@ -102,7 +102,7 @@ class Laplacian(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> laplace = tgm.image.Laplacian(5)
+        >>> laplace = tgm.filters.Laplacian(5)
         >>> output = laplace(input)  # 2x4x5x5
     """
 
@@ -152,23 +152,6 @@ class Laplacian(nn.Module):
 def laplacian(src: torch.Tensor, kernel_size: int) -> torch.Tensor:
     r"""Function that returns a tensor using a Laplacian filter.
 
-    The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It suports batched operation.
-
-    Arguments:
-        src (torch.Tensor): the input tensor.
-        kernel_size (int): the size of the kernel.
-
-    Returns:
-        Tensor: the tensor.
-
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H, W)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 5, 5)
-        >>> output = tgm.image.laplacian(input, (3, 3), (1.5, 1.5))
+    See :class:`~torchgeometry.filters.Laplacian` for details.
     """
     return Laplacian(kernel_size)(src)
