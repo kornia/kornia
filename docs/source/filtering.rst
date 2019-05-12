@@ -11,6 +11,7 @@ The functions in this sections perform various image filtering operations.
 .. autofunction:: get_laplacian_kernel2d
 
 .. autofunction:: box_blur
+.. autofunction:: median_blur
 .. autofunction:: gaussian_blur
 .. autofunction:: laplacian
 .. autofunction:: pyrdown
@@ -19,6 +20,7 @@ The functions in this sections perform various image filtering operations.
 .. autofunction:: sobel_edges
 
 .. autoclass:: BoxBlur
+.. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur
 .. autoclass:: Laplacian
 .. autoclass:: PyrDown
