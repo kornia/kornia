@@ -17,7 +17,7 @@ The functions in this sections perform various image filtering operations.
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: sobel
-.. autofunction:: sobel_edges
+.. autofunction:: spatial_gradient
 
 .. autoclass:: BoxBlur
 .. autoclass:: MedianBlur
@@ -26,4 +26,4 @@ The functions in this sections perform various image filtering operations.
 .. autoclass:: PyrDown
 .. autoclass:: PyrUp
 .. autoclass:: Sobel
-.. autoclass:: SobelEdges
+.. autoclass:: spatial_gradient
