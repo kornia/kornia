@@ -58,7 +58,8 @@ class SpatialGradient(nn.Module):
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1, 1)
 
         # convolve input tensor with sobel kernel
-        return F.conv3d(input[:, :, None], kernel, padding=1, groups=c)
+        kernel_flip: torch.Tensor = kernel.flip(-3)
+        return F.conv3d(input[:, :, None], kernel_flip, padding=1, groups=c)
 
 
 class Sobel(nn.Module):
