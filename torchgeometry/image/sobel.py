@@ -21,14 +21,14 @@ def _get_sobel_kernel_3x3() -> torch.Tensor:
 
 class SpatialGradient(nn.Module):
     r"""Computes the first order image derivative in both x and y using a Sobel
-      operator.
-
-    Args:
-        input (torch.Tensor): the input tensor with shape of BxCxHxW.
+    operator.
 
     Return:
-        torch.Tensor: the sobel edges of the input feature map. The output
-          tensor shape is BxCx2xHxW.
+        torch.Tensor: the sobel edges of the input feature map.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, 2, H, W)`
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -65,12 +65,13 @@ class SpatialGradient(nn.Module):
 class Sobel(nn.Module):
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
-    Args:
-        input (torch.Tensor): the input tensor with shape of BxCxHxW.
-
     Return:
         torch.Tensor: the sobel edge gradient maginitudes map. The output
           tensor shape is BxCxHxW.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -106,7 +107,7 @@ def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
     r"""Computes the first order image derivative in both x and y using a Sobel
       operator.
 
-    See :class:`~torchgeometry.image.SobelEdges` for details.
+    See :class:`~torchgeometry.image.SpatialGradient` for details.
     """
     return SpatialGradient()(input)
 
