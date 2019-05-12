@@ -82,7 +82,7 @@ class CornerHarris(nn.Module):
             [0., 1., 1., 1., 1., 1., 0.],
             [0., 1., 1., 1., 1., 1., 0.],
             [0., 0., 0., 0., 0., 0., 0.],
-        ]]])  # 1x1x7x7                   
+        ]]])  # 1x1x7x7
         >>> # compute the response map
         >>> output = tgm.feature.CornerHarris()(input)
         tensor([[[[0., 0., 0., 0., 0., 0., 0.],
