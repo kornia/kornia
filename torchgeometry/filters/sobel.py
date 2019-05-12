@@ -32,7 +32,7 @@ class SpatialGradient(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = tgm.image.SpatialGradient()(input)  # 1x3x2x4x4
+        >>> output = tgm.filters.SpatialGradient()(input)  # 1x3x2x4x4
     """
 
     def __init__(self) -> None:
@@ -66,8 +66,7 @@ class Sobel(nn.Module):
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
     Return:
-        torch.Tensor: the sobel edge gradient maginitudes map. The output
-          tensor shape is BxCxHxW.
+        torch.Tensor: the sobel edge gradient maginitudes map.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -75,7 +74,7 @@ class Sobel(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = tgm.image.Sobel()(input)  # 1x3x4x4
+        >>> output = tgm.filters.Sobel()(input)  # 1x3x4x4
     """
 
     def __init__(self) -> None:
@@ -105,9 +104,9 @@ class Sobel(nn.Module):
 
 def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
     r"""Computes the first order image derivative in both x and y using a Sobel
-      operator.
+    operator.
 
-    See :class:`~torchgeometry.image.SpatialGradient` for details.
+    See :class:`~torchgeometry.filters.SpatialGradient` for details.
     """
     return SpatialGradient()(input)
 
@@ -115,6 +114,6 @@ def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
 def sobel(input: torch.Tensor) -> torch.Tensor:
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
-    See :class:`~torchgeometry.image.Sobel` for details.
+    See :class:`~torchgeometry.filters.Sobel` for details.
     """
     return Sobel()(input)
