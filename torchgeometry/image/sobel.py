@@ -112,6 +112,17 @@ def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
     return SpatialGradient()(input)
 
 
+def spatial_gradient_2nd_order(input: torch.Tensor) -> torch.Tensor:
+    r"""Computes the second order image derivative in both x and y using a Sobel
+      operator.
+
+    See :class:`~torchgeometry.image.SpatialGradient` for details.
+    """
+    n,ch,h,w = input.size()
+    SG = SpatialGradient()
+    first_order = SG(input)
+    return SG(first_order.view(n,2*ch,h,w)).view(n,ch,4,h,w)
+
 def sobel(input: torch.Tensor) -> torch.Tensor:
     r"""Computes the Sobel operator and returns the magnitude per channel.
 

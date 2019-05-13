@@ -8,6 +8,6 @@ from .color import RgbToBgr, rgb_to_bgr
 from .color import RgbToHsv, rgb_to_hsv
 from .color import Normalize, normalize
 from .pyramid import pyrdown, pyrup, PyrDown, PyrUp
-from .sobel import SpatialGradient, Sobel, sobel, spatial_gradient
+from .sobel import SpatialGradient, Sobel, sobel, spatial_gradient, spatial_gradient_2nd_order
 from .blur import BoxBlur, box_blur
 from .median import MedianBlur, median_blur
