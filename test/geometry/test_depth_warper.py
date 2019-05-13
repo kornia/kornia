@@ -5,7 +5,7 @@ import torchgeometry as tgm
 from torch.autograd import gradcheck
 
 import utils  # test utils
-from torchgeometry.core.depth_warper import normalize_pixel_coordinates
+from torchgeometry.geometry.depth_warper import normalize_pixel_coordinates
 
 
 class TestDepthWarper:

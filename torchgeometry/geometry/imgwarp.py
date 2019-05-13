@@ -3,10 +3,10 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from torchgeometry.core.conversions import deg2rad
-from torchgeometry.core.homography_warper import homography_warp
+from torchgeometry.geometry.conversions import deg2rad
+from torchgeometry.geometry.homography_warper import homography_warp
 # TODO: move to utils or conversions
-from torchgeometry.core.pinhole import normalize_pixel_coordinates
+from torchgeometry.geometry.pinhole import normalize_pixel_coordinates
 
 
 __all__ = [

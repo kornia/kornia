@@ -1,9 +1,9 @@
 Linear Transformations
 ----------------------
 
-.. currentmodule:: torchgeometry
+.. currentmodule:: torchgeometry.geometry
 
-.. autofunction:: boxminus_transformation
-.. autofunction:: boxplus_transformation
+.. autofunction:: relative_transformation
+.. autofunction:: compose_transformations
 .. autofunction:: inverse_transformation
 .. autofunction:: transform_points

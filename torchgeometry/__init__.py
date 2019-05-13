@@ -6,24 +6,14 @@ if sys.version_info < (3, 6, 0):
 
 from .version import __version__
 
-from torchgeometry import core
-from torchgeometry import losses
-from torchgeometry import contrib
-from torchgeometry import utils
-from torchgeometry import metrics
+from torchgeometry import geometry
 from torchgeometry import color
 from torchgeometry import feature
 from torchgeometry import filters
-from torchgeometry import transform
+from torchgeometry import losses
+from torchgeometry import contrib
+from torchgeometry import metrics
+from torchgeometry import utils
 
-# Exposes ``torchgeometry.core`` package to top level
-from .core.homography_warper import HomographyWarper, homography_warp
-from .core.depth_warper import DepthWarper, depth_warp
-from .core.pinhole import *
-from .core.conversions import *
-from .core.imgwarp import *
-from .core.transformations import *
-from .core.affine import (
-    affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
-)
-from .core.crop import center_crop, crop_and_resize
+# Exposes ``torchgeometry.geometry`` package to top level
+from torchgeometry.geometry import *
