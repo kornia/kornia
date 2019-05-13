@@ -1,7 +1,7 @@
-torchgeometry.core
-==================
+torchgeometry.geometry
+======================
 
-.. currentmodule:: torchgeometry.core
+.. currentmodule:: torchgeometry.geometry
 
 .. toctree::
    :maxdepth: 2

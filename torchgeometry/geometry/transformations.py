@@ -3,20 +3,20 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from torchgeometry.core.conversions import convert_points_to_homogeneous
-from torchgeometry.core.conversions import convert_points_from_homogeneous
+from torchgeometry.geometry.conversions import convert_points_to_homogeneous
+from torchgeometry.geometry.conversions import convert_points_from_homogeneous
 
 
 __all__ = [
-    "boxplus_transformation",
-    "boxminus_transformation",
+    "compose_transformations",
+    "relative_transformation",
     "inverse_transformation",
     "transform_points",
     "TransformPoints",
 ]
 
 
-def boxplus_transformation(
+def compose_transformations(
         trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
     r"""Functions that composes two homogeneous transformations.
 
@@ -125,7 +125,7 @@ def inverse_transformation(trans_12):
     return trans_21
 
 
-def boxminus_transformation(
+def relative_transformation(
         trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
     r"""Function that computes the relative homogenous transformation from a
     reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
@@ -171,7 +171,7 @@ def boxminus_transformation(
         raise ValueError("Input number of dims must match. Got {} and {}"
                          .format(trans_01.dim(), trans_02.dim()))
     trans_10: torch.Tensor = inverse_transformation(trans_01)
-    trans_12: torch.Tensor = boxplus_transformation(trans_10, trans_02)
+    trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
     return trans_12
 
 

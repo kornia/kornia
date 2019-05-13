@@ -1,7 +1,7 @@
 Conversions
 -----------
 
-.. currentmodule:: torchgeometry
+.. currentmodule:: torchgeometry.geometry
 
 .. autofunction:: rad2deg
 .. autofunction:: deg2rad
