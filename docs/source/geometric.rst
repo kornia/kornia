@@ -1,7 +1,7 @@
 Image Transformations
 ---------------------
 
-.. currentmodule:: torchgeometry
+.. currentmodule:: torchgeometry.geometry
 
 The functions in this section perform various geometrical transformations of 2D images.
 
@@ -13,6 +13,8 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: invert_affine_transform
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
+.. autofunction:: pyrdown
+.. autofunction:: pyrup
 
 .. autofunction:: affine
 .. autofunction:: rotate
@@ -24,3 +26,5 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Translate
 .. autoclass:: Scale
 .. autoclass:: Shear
+.. autoclass:: PyrDown
+.. autoclass:: PyrUp

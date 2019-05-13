@@ -1,10 +1,10 @@
-torchgeometry/core/homography_warper.py
-torchgeometry/core/depth_warper.py
-torchgeometry/core/pinhole.py
-torchgeometry/core/imgwarp.py
-torchgeometry/core/crop.py
-torchgeometry/core/affine.py
-torchgeometry/transform/pyramid.py
+torchgeometry/geometry/homography_warper.py
+torchgeometry/geometry/depth_warper.py
+torchgeometry/geometry/pinhole.py
+torchgeometry/geometry/imgwarp.py
+torchgeometry/geometry/crop.py
+torchgeometry/geometry/affine_warp.py
+torchgeometry/geometry/pyramid.py
 torchgeometry/feature/harris.py
 torchgeometry/filters/gaussian.py
 torchgeometry/filters/laplacian.py
@@ -19,5 +19,6 @@ torchgeometry/losses/tversky.py
 torchgeometry/losses/depth_smooth.py
 torchgeometry/contrib/spatial_soft_argmax2d.py
 torchgeometry/contrib/extract_patches.py
+torchgeometry/contrib/max_blur_pool.py
 torchgeometry/metrics/confusion_matrix.py
 torchgeometry/metrics/mean_iou.py

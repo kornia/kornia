@@ -20,16 +20,14 @@ TGM focuses on Image and tensor warping functions such as:
    :maxdepth: 2
    :caption: Package Reference
 
-   core
    color
+   contrib
    feature
    filters
-   transform
+   geometry
    losses
    metrics
-   contrib
    utils
-
 
 .. toctree::
    :maxdepth: 2

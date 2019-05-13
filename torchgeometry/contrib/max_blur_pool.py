@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.transform import pyrdown
+from torchgeometry.geometry.pyramid import pyrdown
 
 __all__ = [
     "MaxBlurPool2d",
