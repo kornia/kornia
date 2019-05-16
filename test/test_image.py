@@ -187,6 +187,75 @@ class TestLaplacian:
                          raise_exception=True)
 
 
+class TestHsvToRgb:
+
+    def test_hsv_to_rgb(self):
+
+        expected = torch.tensor([[[21., 22.],
+                                  [22., 22.]],
+
+                                 [[13., 14.],
+                                  [14., 14.]],
+
+                                 [[8., 8.],
+                                  [8., 8.]]])
+
+        data = torch.tensor([[[0.0641, 0.0714],
+                              [0.0714, 0.0714]],
+
+                             [[0.6190, 0.6364],
+                              [0.6364, 0.6364]],
+
+                             [[21.0000, 22.0000],
+                              [22.0000, 22.0000]]])
+
+        f = image.HsvToRgb()
+        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
+
+    def test_batch_hsv_to_rgb(self):
+
+        expected = torch.tensor([[[21., 22.],
+                                  [22., 22.]],
+
+                                 [[13., 14.],
+                                  [14., 14.]],
+
+                                 [[8., 8.],
+                                  [8., 8.]]])  # 3x2x2
+
+        data = torch.tensor([[[0.0641, 0.0714],
+                              [0.0714, 0.0714]],
+
+                             [[0.6190, 0.6364],
+                              [0.6364, 0.6364]],
+
+                             [[21.0000, 22.0000],
+                              [22.0000, 22.0000]]])  # 3x2x2
+
+        f = image.HsvToRgb()
+        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
+        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
+        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(data: torch.Tensor) -> torch.Tensor:
+
+            return image.hsv_to_rgb(data)
+            data = torch.tensor([[[[21., 22.],
+                                   [22., 22.]],
+
+                                  [[13., 14.],
+                                   [14., 14.]],
+
+                                  [[8., 8.],
+                                   [8., 8.]]]])  # 3x2x2
+
+            actual = op_script(data)
+            expected = image.hsv_to_rgb(data)
+            assert_allclose(actual, expected)
+
+
 class TestRgbToHsv:
 
     def test_rgb_to_hsv(self):
@@ -206,11 +275,11 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000, 22.0000],
-                                  [22.0000, 22.0000]]])
+                                 [[21.0000/255, 22.0000/255],
+                                  [22.0000/255, 22.0000/255]]])
 
         f = image.RgbToHsv()
-        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data/255), expected, atol=1e-4, rtol=1e-5)
 
     def test_batch_rgb_to_hsv(self):
 
@@ -229,26 +298,23 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000, 22.0000],
-                                  [22.0000, 22.0000]]])  # 3x2x2
+                                 [[21.0000/255, 22.0000/255],
+                                  [22.0000/255, 22.0000/255]]])  # 3x2x2
         f = image.RgbToHsv()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
-        print(data.shape)
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        print(expected.shape)
-        print(f(data).shape)
-        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data/255), expected, atol=1e-4, rtol=1e-5)
 
     def test_gradcheck(self):
 
         data = torch.tensor([[[[21., 22.],
-                              [22., 22.]],
+                               [22., 22.]],
 
-                             [[13., 14.],
-                              [14., 14.]],
+                              [[13., 14.],
+                               [14., 14.]],
 
-                             [[8., 8.],
-                              [8., 8.]]]])  # 3x2x2
+                              [[8., 8.],
+                               [8., 8.]]]])  # 3x2x2
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
@@ -261,13 +327,13 @@ class TestRgbToHsv:
 
             return image.rgb_to_hsv(data)
             data = torch.tensor([[[[21., 22.],
-                                  [22., 22.]],
+                                   [22., 22.]],
 
-                                 [[13., 14.],
-                                  [14., 14.]],
+                                  [[13., 14.],
+                                   [14., 14.]],
 
-                                 [[8., 8.],
-                                  [8., 8.]]]])  # 3x2x2
+                                  [[8., 8.],
+                                   [8., 8.]]]])  # 3x2x2
 
             actual = op_script(data)
             expected = image.rgb_to_hsv(data)
@@ -304,13 +370,13 @@ class TestBgrToRgb:
 
         # prepare input data
         data = torch.tensor([[[[1., 1.],
-                              [1., 1.]],
+                               [1., 1.]],
 
-                             [[2., 2.],
-                              [2., 2.]],
+                              [[2., 2.],
+                               [2., 2.]],
 
-                             [[3., 3.],
-                              [3., 3.]]],
+                              [[3., 3.],
+                               [3., 3.]]],
 
                              [[[1., 1.],
                                [1., 1.]],
@@ -322,22 +388,22 @@ class TestBgrToRgb:
                                [3., 3.]]]])  # 2x3x2x2
 
         expected = torch.tensor([[[[3., 3.],
-                                  [3., 3.]],
+                                   [3., 3.]],
 
-                                 [[2., 2.],
-                                  [2., 2.]],
+                                  [[2., 2.],
+                                   [2., 2.]],
 
-                                 [[1., 1.],
-                                  [1., 1.]]],
+                                  [[1., 1.],
+                                   [1., 1.]]],
 
-                                [[[3., 3.],
-                                  [3., 3.]],
+                                 [[[3., 3.],
+                                   [3., 3.]],
 
-                                 [[2., 2.],
-                                  [2., 2.]],
+                                  [[2., 2.],
+                                   [2., 2.]],
 
-                                 [[1., 1.],
-                                  [1., 1.]]]])  # 2x3x2x2
+                                  [[1., 1.],
+                                   [1., 1.]]]])  # 2x3x2x2
 
         f = image.BgrToRgb()
         out = f(data)
@@ -446,13 +512,13 @@ class TestRgbToBgr:
 
         # prepare input data
         data = torch.tensor([[[[1., 1.],
-                              [1., 1.]],
+                               [1., 1.]],
 
-                             [[2., 2.],
-                              [2., 2.]],
+                              [[2., 2.],
+                               [2., 2.]],
 
-                             [[3., 3.],
-                              [3., 3.]]],
+                              [[3., 3.],
+                               [3., 3.]]],
 
                              [[[1., 1.],
                                [1., 1.]],
@@ -464,22 +530,22 @@ class TestRgbToBgr:
                                [3., 3.]]]])  # 2x3x2x2
 
         expected = torch.tensor([[[[3., 3.],
-                                  [3., 3.]],
+                                   [3., 3.]],
 
-                                 [[2., 2.],
-                                  [2., 2.]],
+                                  [[2., 2.],
+                                   [2., 2.]],
 
-                                 [[1., 1.],
-                                  [1., 1.]]],
+                                  [[1., 1.],
+                                   [1., 1.]]],
 
-                                [[[3., 3.],
-                                  [3., 3.]],
+                                 [[[3., 3.],
+                                   [3., 3.]],
 
-                                 [[2., 2.],
-                                  [2., 2.]],
+                                  [[2., 2.],
+                                   [2., 2.]],
 
-                                 [[1., 1.],
-                                  [1., 1.]]]])  # 2x3x2x2
+                                  [[1., 1.],
+                                   [1., 1.]]]])  # 2x3x2x2
 
         f = image.RgbToBgr()
         out = f(data)
