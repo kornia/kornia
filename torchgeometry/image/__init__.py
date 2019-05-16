@@ -9,4 +9,6 @@ from .color import RgbToHsv, rgb_to_hsv
 from .color import HsvToRgb, hsv_to_rgb
 from .color import Normalize, normalize
 from .pyramid import pyrdown, pyrup, PyrDown, PyrUp
-from .sobel import SobelEdges, Sobel, sobel, sobel_edges
+from .sobel import SpatialGradient, Sobel, sobel, spatial_gradient
+from .blur import BoxBlur, box_blur
+from .median import MedianBlur, median_blur
