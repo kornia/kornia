@@ -9,6 +9,8 @@ The functions in this section perform various color space conversions.
 .. autofunction:: rgb_to_grayscale 
 .. autoclass:: RgbToHsv
 .. autofunction:: rgb_to_hsv
+.. autoclass:: HsvToRgb
+.. autofunction:: hsv_to_rgb
 .. autoclass:: RgbToBgr
 .. autofunction:: rgb_to_bgr
 .. autoclass:: BgrToRgb 
