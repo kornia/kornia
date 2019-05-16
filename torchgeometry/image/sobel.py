@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 __all__ = [
-    "SobelEdges",
+    "SpatialGradient",
     "Sobel",
     "sobel",
-    "sobel_edges",
+    "spatial_gradient",
 ]
 
 
@@ -19,26 +19,25 @@ def _get_sobel_kernel_3x3() -> torch.Tensor:
     ])
 
 
-class SobelEdges(nn.Module):
-    r"""Computes the Sobel edge maps per channel.
-
-    Args:
-        input (torch.Tensor): the input tensor with shape of BxCxHxW.
+class SpatialGradient(nn.Module):
+    r"""Computes the first order image derivative in both x and y using a Sobel
+    operator.
 
     Return:
-        torch.Tensor: the sobel edges of the input feature map. The output
-          tensor shape is BxCx2xHxW.
+        torch.Tensor: the sobel edges of the input feature map.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, 2, H, W)`
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = tgm.image.SobelEdges()(input)  # 1x3x2x4x4
+        >>> output = tgm.image.SpatialGradient()(input)  # 1x3x2x4x4
     """
 
     def __init__(self) -> None:
-        super(SobelEdges, self).__init__()
+        super(SpatialGradient, self).__init__()
         self.kernel: torch.Tensor = self.get_sobel_kernel()
-        # NOTE: this wil change if we make the kernel size variable
-        self.padding: int = 2
 
     @staticmethod
     def get_sobel_kernel() -> torch.Tensor:
@@ -59,18 +58,20 @@ class SobelEdges(nn.Module):
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1, 1)
 
         # convolve input tensor with sobel kernel
-        return F.conv3d(input[:, :, None], kernel, padding=1, groups=c)
+        kernel_flip: torch.Tensor = kernel.flip(-3)
+        return F.conv3d(input[:, :, None], kernel_flip, padding=1, groups=c)
 
 
 class Sobel(nn.Module):
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
-    Args:
-        input (torch.Tensor): the input tensor with shape of BxCxHxW.
-
     Return:
         torch.Tensor: the sobel edge gradient maginitudes map. The output
           tensor shape is BxCxHxW.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
@@ -88,7 +89,7 @@ class Sobel(nn.Module):
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
         # comput the x/y gradients
-        edges: torch.Tensor = sobel_edges(input)
+        edges: torch.Tensor = spatial_gradient(input)
 
         # unpack the edges
         gx: torch.Tensor = edges[:, :, 0]
@@ -102,12 +103,13 @@ class Sobel(nn.Module):
 # functiona api
 
 
-def sobel_edges(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Sobel edge maps per channel.
+def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
+    r"""Computes the first order image derivative in both x and y using a Sobel
+      operator.
 
-    See :class:`~torchgeometry.image.SobelEdges` for details.
+    See :class:`~torchgeometry.image.SpatialGradient` for details.
     """
-    return SobelEdges()(input)
+    return SpatialGradient()(input)
 
 
 def sobel(input: torch.Tensor) -> torch.Tensor:

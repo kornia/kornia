@@ -12,6 +12,7 @@ from torchgeometry import losses
 from torchgeometry import contrib
 from torchgeometry import utils
 from torchgeometry import metrics
+from torchgeometry import feature
 
 # Exposes ``torchgeometry.core`` package to top level
 from .core.homography_warper import HomographyWarper, homography_warp
