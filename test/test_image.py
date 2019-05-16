@@ -206,11 +206,11 @@ class TestHsvToRgb:
                              [[0.6190, 0.6364],
                               [0.6364, 0.6364]],
 
-                             [[21.0000, 22.0000],
-                              [22.0000, 22.0000]]])
+                             [[21.0000 / 255, 22.0000 / 255],
+                              [22.0000 / 255, 22.0000 / 255]]])
 
         f = image.HsvToRgb()
-        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
+        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
 
     def test_batch_hsv_to_rgb(self):
 
@@ -229,13 +229,13 @@ class TestHsvToRgb:
                              [[0.6190, 0.6364],
                               [0.6364, 0.6364]],
 
-                             [[21.0000, 22.0000],
-                              [22.0000, 22.0000]]])  # 3x2x2
+                             [[21.0000 / 255, 22.0000 / 255],
+                              [22.0000 / 255, 22.0000 / 255]]])  # 3x2x2
 
         f = image.HsvToRgb()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
+        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
 
     def test_jit(self):
         @torch.jit.script
@@ -275,11 +275,11 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000/255, 22.0000/255],
-                                  [22.0000/255, 22.0000/255]]])
+                                 [[21.0000 / 255, 22.0000 / 255],
+                                  [22.0000 / 255, 22.0000 / 255]]])
 
         f = image.RgbToHsv()
-        assert_allclose(f(data/255), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
 
     def test_batch_rgb_to_hsv(self):
 
@@ -298,12 +298,12 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000/255, 22.0000/255],
-                                  [22.0000/255, 22.0000/255]]])  # 3x2x2
+                                 [[21.0000 / 255, 22.0000 / 255],
+                                  [22.0000 / 255, 22.0000 / 255]]])  # 3x2x2
         f = image.RgbToHsv()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data/255), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
 
     def test_gradcheck(self):
 
