@@ -27,7 +27,7 @@ class HsvToRgb(nn.Module):
 
 
 def hsv_to_rgb(image):
-    """Convert an RGB image to HSV.
+    """Convert an HSV image to RGB
     The image data is assumed to be in the range of (0, 1).
 
     Args:
