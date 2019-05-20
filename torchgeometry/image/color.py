@@ -2,10 +2,78 @@ import torch
 import torch.nn as nn
 
 
+class HsvToRgb(nn.Module):
+
+    """Convert image from HSV to Rgb
+    The image data is assumed to be in the range of (0, 1).
+
+    args:
+        image (torch.Tensor): RGB image to be converted to HSV.
+
+    returns:
+        torch.tensor: HSV version of the image.
+
+    shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    """
+
+    def __init__(self) -> None:
+        super(HsvToRgb, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return hsv_to_rgb(image)
+
+
+def hsv_to_rgb(image):
+
+    """Convert an HSV image to RGB
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        input (torch.Tensor): RGB Image to be converted to HSV.
+
+
+    Returns:
+        torch.Tensor: HSV version of the image.
+    """
+
+    if not torch.is_tensor(image):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                         .format(image.shape))
+
+    h: torch.Tensor = image[..., 0, :, :]
+    s: torch.Tensor = image[..., 1, :, :]
+    v: torch.Tensor = image[..., 2, :, :]
+
+    hi: torch.Tensor = torch.floor(h * 6)
+    f: torch.Tensor = h * 6 - hi
+    p: torch.Tensor = v * (1 - s)
+    q: torch.Tensor = v * (1 - f * s)
+    t: torch.Tensor = v * (1 - (1 - f) * s)
+
+    out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3) % 6
+
+    out[out == 0]: torch.Tensor = torch.stack((v, t, p), dim=-3)[out == 0]
+    out[out == 1]: torch.Tensor = torch.stack((q, v, p), dim=-3)[out == 1]
+    out[out == 2]: torch.Tensor = torch.stack((p, v, t), dim=-3)[out == 2]
+    out[out == 3]: torch.Tensor = torch.stack((p, q, v), dim=-3)[out == 3]
+    out[out == 4]: torch.Tensor = torch.stack((t, p, v), dim=-3)[out == 4]
+    out[out == 5]: torch.Tensor = torch.stack((v, p, q), dim=-3)[out == 5]
+
+    return out
+
+
 class RgbToHsv(nn.Module):
 
     """Convert image from RGB to HSV.
     The image data is assumed to be in the range of (0, 1).
+
 
     args:
         image (torch.Tensor): RGB image to be converted to HSV.
@@ -26,8 +94,10 @@ class RgbToHsv(nn.Module):
         return rgb_to_hsv(image)
 
 
+# Inspired by https://gist.github.com/PolarNick239/691387158ff1c41ad73c
 def rgb_to_hsv(image):
     """Convert an RGB image to HSV.
+    The image data is assumed to be in the range of (0, 1).
 
     Args:
         input (torch.Tensor): RGB Image to be converted to HSV.

@@ -6,6 +6,7 @@ from .color import rgb_to_grayscale, RgbToGrayscale
 from .color import BgrToRgb, bgr_to_rgb
 from .color import RgbToBgr, rgb_to_bgr
 from .color import RgbToHsv, rgb_to_hsv
+from .color import HsvToRgb, hsv_to_rgb
 from .color import Normalize, normalize
 from .pyramid import pyrdown, pyrup, PyrDown, PyrUp
 from .sobel import SpatialGradient, Sobel, sobel, spatial_gradient
