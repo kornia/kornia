@@ -3,7 +3,9 @@ from typing import Union
 import torch
 import torch.nn as nn
 
-from torchgeometry.geometry.imgwarp import warp_affine, get_rotation_matrix2d
+from torchgeometry.geometry.transform.imgwarp import (
+    warp_affine, get_rotation_matrix2d,
+)
 
 __all__ = [
     "affine",

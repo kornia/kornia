@@ -57,4 +57,4 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
     if len(input_shape) == 2:
         tensor = torch.squeeze(tensor, dim=-1)
 
-    return tensor.contiguous().cpu().detach().numpy()
+    return tensor.cpu().detach().numpy()

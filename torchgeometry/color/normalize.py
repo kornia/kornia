@@ -8,7 +8,7 @@ class Normalize(nn.Module):
     or a batch of tensors (*, C, H, W).
 
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
-    this transform will normalize each channel of the input ``torch.*Tensor``
+    this transform will normalize each channel of the input ``torch.Tensor``
     i.e. ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
 
     Args:
@@ -43,7 +43,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor,
         std (torch.Tensor): Standard deviations for each channel.
 
         Returns:
-        Tensor: The normalised image tensor.
+            torch.Tensor: The normalised image tensor.
     """
 
     if not torch.is_tensor(data):

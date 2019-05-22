@@ -3,11 +3,11 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from torchgeometry.geometry.conversions import deg2rad
-from torchgeometry.geometry.homography_warper import homography_warp
+from torchgeometry.geometry.warp.homography_warper import homography_warp
 # TODO: move to utils or conversions
-from torchgeometry.geometry.pinhole import normalize_pixel_coordinates
-
+from torchgeometry.geometry.conversions import (
+    deg2rad, normalize_pixel_coordinates
+)
 
 __all__ = [
     "warp_perspective",

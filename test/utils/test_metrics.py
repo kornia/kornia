@@ -100,7 +100,8 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 1],
               [0, 4]]], dtype=torch.float32)
@@ -114,7 +115,8 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]]).repeat(batch_size, 1)
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 1],
               [0, 4]]], dtype=torch.float32)
@@ -127,7 +129,8 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[2, 1, 0, 0, 0, 0, 0, 1, 0, 2, 2, 1, 0, 0, 2, 2]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[4, 1, 2],
               [3, 0, 2],
@@ -141,7 +144,8 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[3, 2, 1, 1, 1, 1, 1, 2, 1, 3, 3, 2, 1, 1, 3, 3]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 0],
               [0, 4, 1, 2],
@@ -179,7 +183,8 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[4, 0, 0, 0],
               [0, 4, 0, 0],
@@ -200,7 +205,8 @@ class TestConfusionMatrix:
               [2, 2, 1, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 0, 0, 1],
               [1, 3, 0, 0],
@@ -221,7 +227,8 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 4],
               [0, 4, 0, 0],
@@ -242,7 +249,8 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(
+            predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 4, 4],
               [0, 0, 0, 0],

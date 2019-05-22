@@ -1,7 +1,7 @@
-Image Transformations
----------------------
+torchgeometry.geometry.transform
+================================
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: torchgeometry.geometry.transform
 
 The functions in this section perform various geometrical transformations of 2D images.
 

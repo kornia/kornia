@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 
-import torchgeometry as tgm
-
 __all__ = [
     # functional api
     "pi",
@@ -16,28 +14,24 @@ __all__ = [
     "quaternion_to_angle_axis",
     "angle_axis_to_quaternion",
     "rtvec_to_pose",
-    # layer api
-    "RadToDeg",
-    "DegToRad",
-    "ConvertPointsFromHomogeneous",
-    "ConvertPointsToHomogeneous",
+    "normalize_pixel_coordinates",
 ]
+
+EPS = 1e-6
 
 """Constant with number pi
 """
 pi = torch.tensor(3.14159265358979323846)
 
 
-def rad2deg(tensor):
+def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Function that converts angles from radians to degrees.
 
-    See :class:`~torchgeometry.RadToDeg` for details.
-
     Args:
-        tensor (Tensor): Tensor of arbitrary shape.
+        tensor (torch.Tensor): Tensor of arbitrary shape.
 
     Returns:
-        Tensor: Tensor with same shape as input.
+        torch.Tensor: Tensor with same shape as input.
 
     Example:
         >>> input = tgm.pi * torch.rand(1, 3, 3)
@@ -50,16 +44,14 @@ def rad2deg(tensor):
     return 180. * tensor / pi.to(tensor.device).type(tensor.dtype)
 
 
-def deg2rad(tensor):
+def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     r"""Function that converts angles from degrees to radians.
 
-    See :class:`~torchgeometry.DegToRad` for details.
-
     Args:
-        tensor (Tensor): Tensor of arbitrary shape.
+        tensor (torch.Tensor): Tensor of arbitrary shape.
 
     Returns:
-        Tensor: Tensor with same shape as input.
+        torch.Tensor: tensor with same shape as input.
 
     Examples::
 
@@ -73,11 +65,8 @@ def deg2rad(tensor):
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points: torch.Tensor,
-                                    eps=1e-6) -> torch.Tensor:
+def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
-
-    See :class:`~torchgeometry.ConvertPointsFromHomogeneous` for details.
 
     Examples::
 
@@ -93,15 +82,13 @@ def convert_points_from_homogeneous(points: torch.Tensor,
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    scale: torch.Tensor = torch.tensor(1.) / torch.clamp(z_vec, eps)
+    scale: torch.Tensor = torch.tensor(1.) / torch.clamp(z_vec, EPS)
 
     return scale * points[..., :-1]
 
 
-def convert_points_to_homogeneous(points):
+def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Function that converts points from Euclidean to homogeneous space.
-
-    See :class:`~torchgeometry.ConvertPointsToHomogeneous` for details.
 
     Examples::
 
@@ -118,14 +105,14 @@ def convert_points_to_homogeneous(points):
     return nn.functional.pad(points, (0, 1), "constant", 1.0)
 
 
-def angle_axis_to_rotation_matrix(angle_axis):
+def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     """Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
 
     Args:
-        angle_axis (Tensor): tensor of 3d vector of axis-angle rotations.
+        angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
 
     Returns:
-        Tensor: tensor of 4x4 rotation matrices.
+        torch.Tensor: tensor of 4x4 rotation matrices.
 
     Shape:
         - Input: :math:`(N, 3)`
@@ -193,15 +180,15 @@ def angle_axis_to_rotation_matrix(angle_axis):
     return rotation_matrix  # Nx4x4
 
 
-def rtvec_to_pose(rtvec):
+def rtvec_to_pose(rtvec: torch.Tensor) -> torch.Tensor:
     """
     Convert axis-angle rotation and translation vector to 4x4 pose matrix
 
     Args:
-        rtvec (Tensor): Rodrigues vector transformations
+        rtvec (torch.Tensor): Rodrigues vector transformations
 
     Returns:
-        Tensor: transformation matrices
+        torch.Tensor: transformation matrices
 
     Shape:
         - Input: :math:`(N, 6)`
@@ -212,19 +199,20 @@ def rtvec_to_pose(rtvec):
         >>> output = tgm.rtvec_to_pose(input)  # Nx4x4
     """
     assert rtvec.shape[-1] == 6, 'rtvec=[rx, ry, rz, tx, ty, tz]'
-    pose = angle_axis_to_rotation_matrix(rtvec[..., :3])
+    pose: torch.Tensor = angle_axis_to_rotation_matrix(rtvec[..., :3])
     pose[..., :3, 3] = rtvec[..., 3:]
     return pose
 
 
-def rotation_matrix_to_angle_axis(rotation_matrix):
+def rotation_matrix_to_angle_axis(
+        rotation_matrix: torch.Tensor) -> torch.Tensor:
     """Convert 3x4 rotation matrix to Rodrigues vector
 
     Args:
-        rotation_matrix (Tensor): rotation matrix.
+        rotation_matrix (torch.Tensor): rotation matrix.
 
     Returns:
-        Tensor: Rodrigues vector transformation.
+        torch.Tensor: Rodrigues vector transformation.
 
     Shape:
         - Input: :math:`(N, 3, 4)`
@@ -235,21 +223,22 @@ def rotation_matrix_to_angle_axis(rotation_matrix):
         >>> output = tgm.rotation_matrix_to_angle_axis(input)  # Nx3
     """
     # todo add check that matrix is a valid rotation matrix
-    quaternion = rotation_matrix_to_quaternion(rotation_matrix)
+    quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
 
 
-def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
+def rotation_matrix_to_quaternion(
+        rotation_matrix: torch.Tensor) -> torch.Tensor:
     """Convert 3x4 rotation matrix to 4d quaternion vector
 
     This algorithm is based on algorithm described in
     https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
 
     Args:
-        rotation_matrix (Tensor): the rotation matrix to convert.
+        rotation_matrix (torch.Tensor): the rotation matrix to convert.
 
     Return:
-        Tensor: the rotation in quaternion
+        torch.Tensor: the rotation in quaternion.
 
     Shape:
         - Input: :math:`(N, 3, 4)`
@@ -274,7 +263,7 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
 
     rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
-    mask_d2 = rmat_t[:, 2, 2] < eps
+    mask_d2 = rmat_t[:, 2, 2] < EPS
 
     mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:, 1, 1]
     mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:, 1, 1]
@@ -286,21 +275,21 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     ], -1)
     t0_rep = t0.repeat(4, 1).t()
 
-    t1 = 1 - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
+    t1 = torch.tensor(1.) - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
     q1 = torch.stack([
         rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
         t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]
     ], -1)
     t1_rep = t1.repeat(4, 1).t()
 
-    t2 = 1 - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    t2 = torch.tensor(1.) - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
     q2 = torch.stack([
         rmat_t[:, 0, 1] - rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
         rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2
     ], -1)
     t2_rep = t2.repeat(4, 1).t()
 
-    t3 = 1 + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    t3 = torch.tensor(1.) + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
     q3 = torch.stack([
         t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
         rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] - rmat_t[:, 1, 0]
@@ -308,9 +297,9 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     t3_rep = t3.repeat(4, 1).t()
 
     mask_c0 = mask_d2 * mask_d0_d1
-    mask_c1 = mask_d2 * (1 - mask_d0_d1)
-    mask_c2 = (1 - mask_d2) * mask_d0_nd1
-    mask_c3 = (1 - mask_d2) * (1 - mask_d0_nd1)
+    mask_c1 = mask_d2 * (torch.tensor(1.) - mask_d0_d1)
+    mask_c2 = (torch.tensor(1.) - mask_d2) * mask_d0_nd1
+    mask_c3 = (torch.tensor(1.) - mask_d2) * (torch.tensor(1.) - mask_d0_nd1)
     mask_c0 = mask_c0.view(-1, 1).type_as(q0)
     mask_c1 = mask_c1.view(-1, 1).type_as(q1)
     mask_c2 = mask_c2.view(-1, 1).type_as(q2)
@@ -428,107 +417,41 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     return torch.cat([w, quaternion], dim=-1)
 
 
+# based on:
+# https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L65-L71
+
+def normalize_pixel_coordinates(
+        pixel_coordinates: torch.Tensor,
+        height: int,
+        width: int) -> torch.Tensor:
+    r"""Normalize pixel coordinates between -1 and 1.
+
+    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+
+    Args:
+        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
+          Shape must be :math:`(B, H, W, 2)`.
+        width (int): the maximum width in the x-axis.
+        height (int): the maximum height in the y-axis.
+
+    Return:
+        torch.Tensor: the nornmalized pixel coordinates.
+    """
+    if pixel_coordinates.shape[-1] != 2:
+        raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
+                         "Got {}".format(pixel_coordinates.shape))
+    # compute normalization factor
+    hw: torch.Tensor = torch.stack([
+        torch.tensor(width), torch.tensor(height)
+    ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+
+    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
+
+    # normalize coordinates and return
+    pixel_coordinates_norm: torch.Tensor = \
+        factor * pixel_coordinates - torch.tensor(1.)
+    return pixel_coordinates_norm
+
+
 # TODO: add below funtionalities
 #  - pose_to_rtvec
-
-# layer api
-
-
-class RadToDeg(nn.Module):
-    r"""Creates an object that converts angles from radians to degrees.
-
-    Args:
-        tensor (Tensor): Tensor of arbitrary shape.
-
-    Returns:
-        Tensor: Tensor with same shape as input.
-
-    Examples::
-
-        >>> input = tgm.pi * torch.rand(1, 3, 3)
-        >>> output = tgm.RadToDeg()(input)
-    """
-
-    def __init__(self):
-        super(RadToDeg, self).__init__()
-
-    def forward(self, input):
-        return rad2deg(input)
-
-
-class DegToRad(nn.Module):
-    r"""Function that converts angles from degrees to radians.
-
-    Args:
-        tensor (Tensor): Tensor of arbitrary shape.
-
-    Returns:
-        Tensor: Tensor with same shape as input.
-
-    Examples::
-
-        >>> input = 360. * torch.rand(1, 3, 3)
-        >>> output = tgm.DegToRad()(input)
-    """
-
-    def __init__(self):
-        super(DegToRad, self).__init__()
-
-    def forward(self, input):
-        return deg2rad(input)
-
-
-class ConvertPointsFromHomogeneous(nn.Module):
-    r"""Creates a transformation that converts points from homogeneous to
-    Euclidean space.
-
-    Args:
-        points (Tensor): tensor of N-dimensional points.
-
-    Returns:
-        Tensor: tensor of N-1-dimensional points.
-
-    Shape:
-        - Input: :math:`(B, D, N)` or :math:`(D, N)`
-        - Output: :math:`(B, D, N + 1)` or :math:`(D, N + 1)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> transform = tgm.ConvertPointsFromHomogeneous()
-        >>> output = transform(input)  # BxNx2
-    """
-
-    def __init__(self):
-        super(ConvertPointsFromHomogeneous, self).__init__()
-
-    def forward(self, input):
-        return convert_points_from_homogeneous(input)
-
-
-class ConvertPointsToHomogeneous(nn.Module):
-    r"""Creates a transformation to convert points from Euclidean to
-    homogeneous space.
-
-    Args:
-        points (Tensor): tensor of N-dimensional points.
-
-    Returns:
-        Tensor: tensor of N+1-dimensional points.
-
-    Shape:
-        - Input: :math:`(B, D, N)` or :math:`(D, N)`
-        - Output: :math:`(B, D, N + 1)` or :math:`(D, N + 1)`
-
-    Examples::
-
-        >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> transform = tgm.ConvertPointsToHomogeneous()
-        >>> output = transform(input)  # BxNx4
-    """
-
-    def __init__(self):
-        super(ConvertPointsToHomogeneous, self).__init__()
-
-    def forward(self, input):
-        return convert_points_to_homogeneous(input)
