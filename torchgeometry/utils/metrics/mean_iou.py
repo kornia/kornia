@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch
-from torchgeometry.metrics import confusion_matrix
+from torchgeometry.utils.metrics import confusion_matrix
 
 
 def mean_iou(
