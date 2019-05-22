@@ -21,7 +21,10 @@ from torchgeometry.color import (
     rgb_to_grayscale, bgr_to_rgb, rgb_to_bgr, rgb_to_hsv, hsv_to_rgb, normalize
 )
 from torchgeometry.contrib import (
-    spatial_soft_argmax2d, extract_tensor_patches, max_blur_pool2d
+    spatial_soft_argmax2d, extract_tensor_patches, max_blur_pool2d,
+)
+from torchgeometry.feature import (
+    non_maxima_suppression2d, corner_harris,
 )
 
 from torchgeometry.geometry import *

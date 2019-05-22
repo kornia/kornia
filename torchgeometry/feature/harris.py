@@ -4,43 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torchgeometry.feature.nms import non_maxima_suppression2d
 from torchgeometry.filters import spatial_gradient, gaussian_blur
-
-
-class NonMaximaSuppression2d(nn.Module):
-    r"""Applies non maxima suppression to filter.
-    """
-
-    def __init__(self, kernel_size: Tuple[int, int]):
-        super(NonMaximaSuppression2d, self).__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.padding: Tuple[int,
-                            int] = self._compute_zero_padding2d(kernel_size)
-        self.max_pool2d = nn.MaxPool2d(kernel_size, stride=1,
-                                       padding=self.padding)
-
-    @staticmethod
-    def _compute_zero_padding2d(
-            kernel_size: Tuple[int, int]) -> Tuple[int, int]:
-        assert isinstance(kernel_size, tuple), type(kernel_size)
-        assert len(kernel_size) == 2, kernel_size
-
-        def pad(x):
-            return (x - 1) // 2  # zero padding function
-
-        ky, kx = kernel_size     # we assume a cubic kernel
-        return (pad(ky), pad(kx))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
-        assert len(x.shape) == 4, x.shape
-        # find local maximum values
-        x_max: torch.Tensor = self.max_pool2d(x)
-
-        # create mask for maximums in the original map
-        x_mask: torch.Tensor = torch.where(
-            x == x_max, torch.ones_like(x), torch.zeros_like(x))
-
-        return x * x_mask  # return original masked by local max
 
 
 class CornerHarris(nn.Module):
@@ -143,16 +108,8 @@ class CornerHarris(nn.Module):
 
 
 def corner_harris(input: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
-    r"""Computes the first order image derivative in both x and y directions
-        using a Sobel operator.
+    r"""Computes the Harris corner detection.
 
     See :class:`~torchgeometry.feature.CornerHarris` for details.
     """
     return CornerHarris(k)(input)
-
-
-def non_maxima_suppression2d(
-        input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Applies non maxima suppression to filter.
-    """
-    return NonMaximaSuppression2d(kernel_size)(input)
