@@ -3,11 +3,12 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchgeometry.image as F_image
+
+from torchgeometry.geometry.transform.pyramid import pyrdown
 
 __all__ = [
-    "MaxBlurPool2d",
     "max_blur_pool2d",
+    "MaxBlurPool2d",
 ]
 
 
@@ -57,7 +58,7 @@ class MaxBlurPool2d(nn.Module):
             padding=self.padding, stride=1)
 
         # blur and downsample
-        x_down: torch.Tensor = F_image.pyrdown(x_max)
+        x_down: torch.Tensor = pyrdown(x_max)
         return x_down
 
 
