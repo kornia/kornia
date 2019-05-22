@@ -26,7 +26,6 @@ TGM focuses on Image and tensor warping functions such as:
    filters
    geometry
    losses
-   metrics
    utils
 
 .. toctree::
