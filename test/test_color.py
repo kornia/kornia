@@ -72,7 +72,7 @@ class TestNormalize:
             std = torch.tensor([2.0, 2.0, 2.0]).repeat(2, 1)
 
             actual = op_script(data, mean, std)
-            expected = color.normalize(data, mean, std)
+            expected = image.normalize(data, mean, std)
             assert_allclose(actual, expected)
 
     def test_gradcheck(self):
@@ -108,11 +108,11 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000, 22.0000],
-                                  [22.0000, 22.0000]]])
+                                 [[21.0000 / 255, 22.0000 / 255],
+                                  [22.0000 / 255, 22.0000 / 255]]])
 
         f = color.RgbToHsv()
-        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
 
     def test_batch_rgb_to_hsv(self):
 
@@ -131,15 +131,12 @@ class TestRgbToHsv:
                                  [[0.6190, 0.6364],
                                   [0.6364, 0.6364]],
 
-                                 [[21.0000, 22.0000],
-                                  [22.0000, 22.0000]]])  # 3x2x2
+                                 [[21.0000 / 255, 22.0000 / 255],
+                                  [22.0000 / 255, 22.0000 / 255]]])  # 3x2x2
         f = color.RgbToHsv()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
-        print(data.shape)
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        print(expected.shape)
-        print(f(data).shape)
-        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
 
     def test_gradcheck(self):
 
