@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .one_hot import one_hot
+from torchgeometry.utils import one_hot
 
 
 # based on:

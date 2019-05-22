@@ -6,22 +6,55 @@ if sys.version_info < (3, 6, 0):
 
 from .version import __version__
 
-from torchgeometry import core
-from torchgeometry import image
-from torchgeometry import losses
+from torchgeometry import color
 from torchgeometry import contrib
-from torchgeometry import utils
-from torchgeometry import metrics
 from torchgeometry import feature
+from torchgeometry import filters
+from torchgeometry import geometry
+from torchgeometry import losses
+from torchgeometry import utils
 
-# Exposes ``torchgeometry.core`` package to top level
-from .core.homography_warper import HomographyWarper, homography_warp
-from .core.depth_warper import DepthWarper, depth_warp
-from .core.pinhole import *
-from .core.conversions import *
-from .core.imgwarp import *
-from .core.transformations import *
-from .core.affine import (
-    affine, rotate, translate, scale, shear, Rotate, Translate, Scale, Shear
+# Exposes package functional to top level
+
+from torchgeometry.color import (
+    rgb_to_grayscale,
+    bgr_to_rgb,
+    rgb_to_bgr,
+    rgb_to_hsv,
+    hsv_to_rgb,
+    normalize,
 )
-from .core.crop import center_crop, crop_and_resize
+from torchgeometry.contrib import (
+    spatial_soft_argmax2d,
+    extract_tensor_patches,
+    max_blur_pool2d,
+)
+from torchgeometry.feature import (
+    non_maxima_suppression2d,
+    corner_harris,
+)
+from torchgeometry.filters import (
+    get_gaussian_kernel,
+    get_gaussian_kernel2d,
+    get_laplacian_kernel,
+    get_laplacian_kernel2d,
+    gaussian_blur,
+    laplacian,
+    sobel,
+    spatial_gradient,
+    box_blur,
+    median_blur,
+)
+from torchgeometry.losses import (
+    ssim,
+    dice_loss,
+    tversky_loss,
+    inverse_depth_smoothness_loss,
+)
+from torchgeometry.utils import (
+    one_hot,
+    create_meshgrid,
+    tensor_to_image,
+    image_to_tensor,
+)
+from torchgeometry.geometry import *

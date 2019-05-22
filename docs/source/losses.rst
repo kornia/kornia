@@ -3,7 +3,6 @@ torchgeometry.losses
 
 .. currentmodule:: torchgeometry.losses
 
-.. autofunction:: one_hot
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
 .. autofunction:: focal_loss
