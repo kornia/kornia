@@ -4,10 +4,10 @@
 # any arguments passed to the dev_env.sh
 script_link="$( readlink "$BASH_SOURCE" )" || script_link="$BASH_SOURCE"
 apparent_sdk_dir="${script_link%/*}"
-if [ "$apparent_sdk_dir" == "$script_link" ]; then
+if [ "$apparent_sdk_dir" = "$script_link" ]; then
   apparent_sdk_dir=.
 fi
-sdk_dir="$( command cd -P "$apparent_sdk_dir" > /dev/null && pwd -P )"
+sdk_dir="$(cd -P "$apparent_sdk_dir" > /dev/null && pwd -P )"
 if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
     $sdk_dir/setup_dev_env.sh	      
 fi	
