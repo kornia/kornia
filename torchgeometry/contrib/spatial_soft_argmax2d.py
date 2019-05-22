@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# TODO: use utils.create_meshgrid and test
 def create_meshgrid(
         x: torch.Tensor,
         normalized_coordinates: Optional[bool]) -> Tuple[torch.Tensor,
@@ -90,6 +91,6 @@ def spatial_soft_argmax2d(
         normalized_coordinates: Optional[bool] = True) -> torch.Tensor:
     r"""Function that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
-    See :class:`torchgeometry.contrib.SpatialSoftArgmax2d` for details.
+    See :class:`~torchgeometry.contrib.SpatialSoftArgmax2d` for details.
     """
     return SpatialSoftArgmax2d(normalized_coordinates)(input)

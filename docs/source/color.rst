@@ -1,20 +1,20 @@
-Image Color Space Conversions
------------------------------
+torchgeometry.color
+-------------------
 
-.. currentmodule:: torchgeometry.image
+.. currentmodule:: torchgeometry.color
 
 The functions in this section perform various color space conversions.
 
-.. autoclass:: RgbToGrayscale      
 .. autofunction:: rgb_to_grayscale 
-.. autoclass:: RgbToHsv
 .. autofunction:: rgb_to_hsv
-.. autoclass:: HsvToRgb
 .. autofunction:: hsv_to_rgb
-.. autoclass:: RgbToBgr
 .. autofunction:: rgb_to_bgr
-.. autoclass:: BgrToRgb 
 .. autofunction:: bgr_to_rgb 
+.. autofunction:: normalize
 
+.. autoclass:: RgbToGrayscale      
+.. autoclass:: RgbToHsv
+.. autoclass:: HsvToRgb
+.. autoclass:: RgbToBgr
+.. autoclass:: BgrToRgb
 .. autoclass:: Normalize
-.. autofunction:: normalize 
