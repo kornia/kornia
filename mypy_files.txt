@@ -1,3 +1,10 @@
+torchgeometry/color/gray.py
+torchgeometry/color/hsv.py
+torchgeometry/color/rgb.py
+torchgeometry/color/normalize.py
+torchgeometry/contrib/spatial_soft_argmax2d.py
+torchgeometry/contrib/extract_patches.py
+torchgeometry/contrib/max_blur_pool.py
 torchgeometry/geometry/homography_warper.py
 torchgeometry/geometry/depth_warper.py
 torchgeometry/geometry/pinhole.py
@@ -11,14 +18,10 @@ torchgeometry/filters/laplacian.py
 torchgeometry/filters/sobel.py
 torchgeometry/filters/blur.py
 torchgeometry/filters/median.py
-torchgeometry/color/_color.py
 torchgeometry/losses/ssim.py
 torchgeometry/losses/dice.py
 torchgeometry/losses/focal.py
 torchgeometry/losses/tversky.py
 torchgeometry/losses/depth_smooth.py
-torchgeometry/contrib/spatial_soft_argmax2d.py
-torchgeometry/contrib/extract_patches.py
-torchgeometry/contrib/max_blur_pool.py
 torchgeometry/metrics/confusion_matrix.py
 torchgeometry/metrics/mean_iou.py
