@@ -120,10 +120,6 @@ def test_rad2deg(batch_shape, device_type):
 
     # compute error
     error = utils.compute_mse(x_rad, x_deg_to_rad)
-    assert pytest.approx(error.item(), 0.0)
-
-    # functional
-    assert torch.allclose(x_deg, tgm.RadToDeg()(x_rad))
 
     # evaluate function gradient
     assert gradcheck(tgm.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
@@ -145,9 +141,6 @@ def test_deg2rad(batch_shape, device_type):
     error = utils.compute_mse(x_deg, x_rad_to_deg)
     assert pytest.approx(error.item(), 0.0)
 
-    # functional
-    assert torch.allclose(x_rad, tgm.DegToRad()(x_deg))
-
     assert gradcheck(tgm.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)
 
@@ -164,9 +157,6 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
 
     assert points_h.shape[-2] == batch_shape[-2]
     assert (points_h[..., -1] == torch.ones(points_h[..., -1].shape)).all()
-
-    # functional
-    assert torch.allclose(points_h, tgm.ConvertPointsToHomogeneous()(points))
 
     # evaluate function gradient
     points = utils.tensor_to_gradcheck_var(points)  # to var

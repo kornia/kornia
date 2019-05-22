@@ -1,7 +1,7 @@
-Conversions
------------
+torchgeometry.geometry.conversions
+==================================
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: torchgeometry.geometry.conversions
 
 .. autofunction:: rad2deg
 .. autofunction:: deg2rad
@@ -13,8 +13,4 @@ Conversions
 .. autofunction:: quaternion_to_angle_axis
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: rtvec_to_pose
-
-.. autoclass:: RadToDeg
-.. autoclass:: DegToRad
-.. autoclass:: ConvertPointsFromHomogeneous
-.. autoclass:: ConvertPointsToHomogeneous
+.. autofunction:: normalize_pixel_coordinates

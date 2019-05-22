@@ -78,7 +78,7 @@ class TestTransformPoints:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(tgm.TransformPoints(dst_homo_src), (points_src,),
+        assert gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
 

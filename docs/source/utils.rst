@@ -11,4 +11,4 @@ torchgeometry.utils
 .. toctree::
    :maxdepth: 2
 
-   metrics
+   utils.metrics

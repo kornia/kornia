@@ -4,11 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.geometry.pyramid import pyrdown
+from torchgeometry.geometry.transform.pyramid import pyrdown
 
 __all__ = [
-    "MaxBlurPool2d",
     "max_blur_pool2d",
+    "MaxBlurPool2d",
 ]
 
 

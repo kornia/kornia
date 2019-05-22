@@ -1,7 +1,8 @@
-Linear Transformations
-----------------------
+torchgeometry.geometry.linalg
+=============================
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: torchgeometry.geometry.linalg
+
 
 .. autofunction:: relative_transformation
 .. autofunction:: compose_transformations

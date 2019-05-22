@@ -6,8 +6,8 @@ torchgeometry.geometry
 .. toctree::
    :maxdepth: 2
 
-   geometric
-   transformations
-   pinhole
-   conversions
-   warping
+   geometry.camera
+   geometry.conversions
+   geometry.linalg
+   geometry.transform
+   geometry.warp

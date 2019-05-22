@@ -1,7 +1,7 @@
 Pinhole Camera
 --------------
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: torchgeometry.geometry.camera
 
 In this module we have all the functions and data structures needed to describe the projection of a 3D scene space onto a 2D image plane.
 
@@ -48,17 +48,6 @@ The camera rotation and translation are expressed in terms of Euclidean coordina
 
 .. autoclass:: PinholeCamera
     :members:
-.. autoclass:: PinholeCamerasList
 
 .. autofunction:: cam2pixel
 .. autofunction:: pixel2cam
-.. autofunction:: normalize_pixel_coordinates
-
-.. TODO(edgar): deprecate in v0.2
-.. autofunction:: homography_i_H_ref
-.. autofunction:: pinhole_matrix
-.. autofunction:: inverse_pinhole_matrix
-.. autofunction:: scale_pinhole
-
-.. autoclass:: PinholeMatrix
-.. autoclass:: InversePinholeMatrix

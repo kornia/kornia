@@ -1,16 +1,5 @@
-# image transforms
-from .crop import *
-from .affine_warp import *
-from .imgwarp import *
-from .pyramid import *
-
-# linear transforms
-from .transformations import *
-from .conversions import *
-
-# warpers
-from .homography_warper import *
-from .depth_warper import *
-
-# camera models
-from .pinhole import *
+from torchgeometry.geometry.camera import *
+from torchgeometry.geometry.conversions import *
+from torchgeometry.geometry.linalg import *
+from torchgeometry.geometry.transform import *
+from torchgeometry.geometry.warp import *
