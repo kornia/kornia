@@ -14,19 +14,18 @@ class TestRgbToGrayscale:
         channels, height, width = 3, 4, 5
         img = torch.ones(channels, height, width)
         assert K.rgb_to_grayscale(img).shape == (1, height, width)
-        #assert color.RgbToGrayscale()(img).shape == (1, height, width)
 
     def test_rgb_to_grayscale_batch(self):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
-        assert color.RgbToGrayscale()(img).shape == \
+        assert K.rgb_to_grayscale(img).shape == \
             (batch_size, 1, height, width)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(color.rgb_to_grayscale, (img,), raise_exception=True)
+        assert gradcheck(K.rgb_to_grayscale, (img,), raise_exception=True)
 
     def test_jit(self):
         batch_size, channels, height, width = 2, 3, 64, 64

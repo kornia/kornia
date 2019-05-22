@@ -91,6 +91,7 @@ class TestRgbToHsv:
             expected = color.rgb_to_hsv(data)
             assert_allclose(actual, expected)
 
+
 class TestHsvToRgb:
 
     def test_hsv_to_rgb(self):
