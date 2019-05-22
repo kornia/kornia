@@ -1,7 +1,7 @@
-Warping
--------
+torchgeometry.geometry.warp
+===========================
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: torchgeometry.geometry.warp
 
 .. autoclass:: HomographyWarper
     :members:

@@ -5,25 +5,8 @@ import torch
 import torch.nn as nn
 
 from torchgeometry.geometry.conversions import rtvec_to_pose
-from torchgeometry.geometry.transformations import transform_points
-from torchgeometry.geometry.transformations import inverse_transformation
-
-
-__all__ = [
-    "PinholeCamera",
-    "PinholeCamerasList",
-    # functional api
-    "pinhole_matrix",
-    "inverse_pinhole_matrix",
-    "scale_pinhole",
-    "homography_i_H_ref",
-    "pixel2cam",
-    "cam2pixel",
-    "normalize_pixel_coordinates",
-    # layer api
-    "PinholeMatrix",
-    "InversePinholeMatrix",
-]
+from torchgeometry.geometry.linalg import transform_points
+from torchgeometry.geometry.linalg import inverse_transformation
 
 
 class PinholeCamera:
@@ -413,9 +396,9 @@ def pinhole_matrix(pinholes, eps=1e-6):
         >>> pinhole = torch.rand(1, 12)    # Nx12
         >>> pinhole_matrix = tgm.pinhole_matrix(pinhole)  # Nx4x4
     """
-    warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
-                  "use PinholeCamera.camera_matrix instead",
-                  PendingDeprecationWarning)
+    # warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
+    #              "use PinholeCamera.camera_matrix instead",
+    #              PendingDeprecationWarning)
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
@@ -451,9 +434,9 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
         >>> pinhole = torch.rand(1, 12)    # Nx12
         >>> pinhole_matrix_inv = tgm.inverse_pinhole_matrix(pinhole)  # Nx4x4
     """
-    warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
-                  "use PinholeCamera.intrinsics_inverse() instead",
-                  PendingDeprecationWarning)
+    # warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
+    #              "use PinholeCamera.intrinsics_inverse() instead",
+    #              PendingDeprecationWarning)
     assert len(pinhole.shape) == 2 and pinhole.shape[1] == 12, pinhole.shape
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
@@ -491,9 +474,9 @@ def scale_pinhole(pinholes, scale):
         >>> scales = 2.0 * torch.ones(1)   # N
         >>> pinhole_i_scaled = tgm.scale_pinhole(pinhole_i)  # Nx12
     """
-    warnings.warn("scale_pinhole will be deprecated in version 0.2, "
-                  "use PinholeCamera.scale() instead",
-                  PendingDeprecationWarning)
+    # warnings.warn("scale_pinhole will be deprecated in version 0.2, "
+    #              "use PinholeCamera.scale() instead",
+    #              PendingDeprecationWarning)
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     assert len(scale.shape) == 1, scale.shape
     pinholes_scaled = pinholes.clone()
@@ -597,42 +580,6 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor,
     return cam_coords * depth.permute(0, 2, 3, 1)
 
 
-# based on:
-# https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L65-L71
-
-def normalize_pixel_coordinates(
-        pixel_coordinates: torch.Tensor,
-        height: int,
-        width: int) -> torch.Tensor:
-    r"""Normalize pixel coordinates between -1 and 1.
-
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
-
-    Args:
-        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
-          Shape must be :math:`(B, H, W, 2)`.
-        width (int): the maximum width in the x-axis.
-        height (int): the maximum height in the y-axis.
-
-    Return:
-        torch.Tensor: the nornmalized pixel coordinates.
-    """
-    if pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
-                         "Got {}".format(pixel_coordinates.shape))
-    # compute normalization factor
-    hw: torch.Tensor = torch.stack([
-        torch.tensor(width), torch.tensor(height)
-    ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
-
-    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
-
-    # normalize coordinates and return
-    pixel_coordinates_norm: torch.Tensor = \
-        factor * pixel_coordinates - torch.tensor(1.)
-    return pixel_coordinates_norm
-
-
 # based on
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
@@ -677,7 +624,7 @@ def cam2pixel(
 # layer api
 
 
-class PinholeMatrix(nn.Module):
+'''class PinholeMatrix(nn.Module):
     r"""Creates an object that returns the pinhole matrix from a pinhole model
 
     Args:
@@ -726,4 +673,4 @@ class InversePinholeMatrix(nn.Module):
         super(InversePinholeMatrix, self).__init__()
 
     def forward(self, input):
-        return inverse_pinhole_matrix(input)
+        return inverse_pinhole_matrix(input)'''

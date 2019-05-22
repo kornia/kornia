@@ -12,7 +12,6 @@ __all__ = [
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
-    "TransformPoints",
 ]
 
 
@@ -213,11 +212,14 @@ def transform_points(trans_01: torch.Tensor,
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
     return points_0
 
+# TODO:
+# - project_points: from opencv
+
 
 # layer api
 
-
-class TransformPoints(nn.Module):
+# NOTE: is it needed ?
+'''class TransformPoints(nn.Module):
     r"""Creates an object to transform a set of points.
 
     Args:
@@ -246,7 +248,7 @@ class TransformPoints(nn.Module):
         return transform_points(self.dst_homo_src, points_src)
 
 
-'''class InversePose(nn.Module):
+class InversePose(nn.Module):
     r"""Creates a transformation that inverts a 4x4 pose.
 
     Args:

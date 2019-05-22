@@ -3,12 +3,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torchgeometry.geometry.transformations import transform_points
-from torchgeometry.geometry.transformations import relative_transformation
+from torchgeometry.geometry.linalg import transform_points
+from torchgeometry.geometry.linalg import relative_transformation
 from torchgeometry.geometry.conversions import convert_points_to_homogeneous
-from torchgeometry.geometry.pinhole import PinholeCamera, PinholeCamerasList
-from torchgeometry.geometry.pinhole import normalize_pixel_coordinates
-from torchgeometry.geometry.pinhole import cam2pixel, pixel2cam
+from torchgeometry.geometry.conversions import normalize_pixel_coordinates
+from torchgeometry.geometry.camera import PinholeCamera
+from torchgeometry.geometry.camera import cam2pixel, pixel2cam
 from torchgeometry.utils import create_meshgrid
 
 
@@ -202,7 +202,7 @@ def depth_warp(pinhole_dst: PinholeCamera,
     r"""Function that warps a tensor from destination frame to reference
     given the depth in the reference frame.
 
-    See :class:`~torchgeometry.DepthWarper` for details.
+    See :class:`~torchgeometry.geometry.warp.DepthWarper` for details.
 
     Example:
         >>> # pinholes camera models

@@ -2,8 +2,9 @@ from typing import Tuple
 
 import torch
 
-from torchgeometry.geometry.imgwarp import warp_perspective
-from torchgeometry.geometry.imgwarp import get_perspective_transform
+from torchgeometry.geometry.transform.imgwarp import (
+    warp_perspective, get_perspective_transform
+)
 
 __all__ = [
     "crop_and_resize",

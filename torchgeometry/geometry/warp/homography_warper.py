@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torchgeometry.utils import create_meshgrid
-from torchgeometry.geometry.transformations import transform_points
+from torchgeometry.geometry.linalg import transform_points
 
 
 __all__ = [
@@ -120,7 +120,7 @@ def homography_warp(patch_src: torch.Tensor,
                     padding_mode: Optional[str] = 'zeros') -> torch.Tensor:
     r"""Function that warps image patchs or tensors by homographies.
 
-    See :class:`~torchgeometry.HomographyWarper` for details.
+    See :class:`~torchgeometry.geometry.warp.HomographyWarper` for details.
 
     Args:
         patch_src (torch.Tensor): The image or tensor to warp. Should be from

@@ -124,71 +124,6 @@ class TestPinholeCamera:
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
-    def test_pinhole_camera_list_attributes(self):
-        batch_size = 1
-        height, width = 4, 6
-        fx, fy, cx, cy = 1, 2, width / 2, height / 2
-        tx, ty, tz = 1, 2, 3
-
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
-
-        pinhole_1 = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
-        pinhole_2 = pinhole_1.clone()
-        pinholes_list = [pinhole_1, pinhole_2]
-        pinholes = tgm.PinholeCamerasList(pinholes_list)
-
-        assert pinholes.batch_size == batch_size
-        assert pinholes.num_cameras == 2
-        assert torch.allclose(pinholes.fx, torch.ones(1, 2) * fx)
-        assert torch.allclose(pinholes.fy, torch.ones(1, 2) * fy)
-        assert torch.allclose(pinholes.cx, torch.ones(1, 2) * cx)
-        assert torch.allclose(pinholes.cy, torch.ones(1, 2) * cy)
-        assert torch.allclose(pinholes.tx, torch.ones(1, 2) * tx)
-        assert torch.allclose(pinholes.ty, torch.ones(1, 2) * ty)
-        assert torch.allclose(pinholes.tz, torch.ones(1, 2) * tz)
-        assert pinholes.rt_matrix.shape == (batch_size, 2, 3, 4)
-        assert pinholes.camera_matrix.shape == (batch_size, 2, 3, 3)
-        assert pinholes.rotation_matrix.shape == (batch_size, 2, 3, 3)
-        assert pinholes.translation_vector.shape == (batch_size, 2, 3, 1)
-
-    def test_pinhole_camera_list_get_pinhole(self):
-        batch_size = 1
-        height, width = 4, 6
-        fx, fy, cx, cy = 1, 2, width / 2, height / 2
-        tx, ty, tz = 1, 2, 3
-
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
-
-        pinhole_1 = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
-        pinhole_2 = pinhole_1.clone()
-        pinholes_list = [pinhole_1, pinhole_2]
-        pinholes = tgm.PinholeCamerasList(pinholes_list)
-
-        pinhole_11 = pinholes.get_pinhole(0)
-
-        assert pinhole_1.batch_size == pinhole_11.batch_size
-        assert torch.allclose(pinhole_1.fx, pinhole_11.fx)
-        assert torch.allclose(pinhole_1.fy, pinhole_11.fy)
-        assert torch.allclose(pinhole_1.cx, pinhole_11.cx)
-        assert torch.allclose(pinhole_1.cy, pinhole_11.cy)
-        assert torch.allclose(pinhole_1.tx, pinhole_11.tx)
-        assert torch.allclose(pinhole_1.ty, pinhole_11.ty)
-        assert torch.allclose(pinhole_1.tz, pinhole_11.tz)
-        assert torch.allclose(pinhole_1.rt_matrix, pinhole_11.rt_matrix)
-        assert torch.allclose(
-            pinhole_1.camera_matrix,
-            pinhole_11.camera_matrix)
-        assert torch.allclose(
-            pinhole_1.rotation_matrix, pinhole_11.rotation_matrix)
-        assert torch.allclose(
-            pinhole_1.translation_vector, pinhole_11.translation_vector)
-
     def test_pinhole_camera_scale(self):
         batch_size = 2
         height, width = 4, 6
@@ -259,7 +194,7 @@ class TestPinholeCamera:
             pinhole_scale.width, pinhole.width * scale_val)
 
 
-@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
+'''@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_scale_pinhole(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
@@ -386,7 +321,7 @@ def test_homography_i_H_ref(batch_size, device_type):
     assert gradcheck(tgm.homography_i_H_ref,
                      (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
                       utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
-                     raise_exception=True)
+                     raise_exception=True)'''
 
 
 class TestNormalizePixelCoordinates:
