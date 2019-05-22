@@ -16,7 +16,7 @@ class TestMeanIoU:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 0]])
 
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
             [[1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -30,7 +30,7 @@ class TestMeanIoU:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 0]]).repeat(batch_size, 1)
 
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
             [[1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -44,8 +44,8 @@ class TestMeanIoU:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]])
 
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
             [[0.75, 0.80]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -65,7 +65,7 @@ class TestMeanIoU:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
             [[1.0, 1.0, 1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -85,7 +85,7 @@ class TestMeanIoU:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        mean_iou = tgm.metrics.mean_iou(predicted, actual, num_classes)
+        mean_iou = tgm.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
             [[0.0, 1.0, 0.5, 0.5]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
@@ -100,7 +100,7 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 1],
               [0, 4]]], dtype=torch.float32)
@@ -114,7 +114,7 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[1, 1, 1, 1, 0, 0, 0, 1]]).repeat(batch_size, 1)
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 1],
               [0, 4]]], dtype=torch.float32)
@@ -127,7 +127,7 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[2, 1, 0, 0, 0, 0, 0, 1, 0, 2, 2, 1, 0, 0, 2, 2]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[4, 1, 2],
               [3, 0, 2],
@@ -141,7 +141,7 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[3, 2, 1, 1, 1, 1, 1, 2, 1, 3, 3, 2, 1, 1, 3, 3]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 0],
               [0, 4, 1, 2],
@@ -157,7 +157,7 @@ class TestConfusionMatrix:
         predicted = torch.tensor(
             [[2, 1, 0, 0, 0, 0, 0, 1, 0, 2, 2, 1, 0, 0, 2, 2]])
 
-        conf_mat = tgm.metrics.confusion_matrix(
+        conf_mat = tgm.utils.metrics.confusion_matrix(
             predicted, actual, num_classes, normalized)
 
         conf_mat_real = torch.tensor(
@@ -179,7 +179,7 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[4, 0, 0, 0],
               [0, 4, 0, 0],
@@ -200,7 +200,7 @@ class TestConfusionMatrix:
               [2, 2, 1, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[3, 0, 0, 1],
               [1, 3, 0, 0],
@@ -221,7 +221,7 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 4],
               [0, 4, 0, 0],
@@ -242,7 +242,7 @@ class TestConfusionMatrix:
               [2, 2, 3, 3],
               [2, 2, 3, 3]]])
 
-        conf_mat = tgm.metrics.confusion_matrix(predicted, actual, num_classes)
+        conf_mat = tgm.utils.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
             [[[0, 0, 4, 4],
               [0, 0, 0, 0],

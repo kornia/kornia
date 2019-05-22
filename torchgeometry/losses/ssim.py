@@ -155,6 +155,6 @@ def ssim(
     r"""Function that measures the Structural Similarity (SSIM) index between
     each element in the input `x` and target `y`.
 
-    See :class:`torchgeometry.losses.SSIM` for details.
+    See :class:`~torchgeometry.losses.SSIM` for details.
     """
     return SSIM(window_size, reduction, max_val)(img1, img2)
