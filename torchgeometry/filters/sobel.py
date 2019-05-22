@@ -2,13 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-__all__ = [
-    "SpatialGradient",
-    "Sobel",
-    "sobel",
-    "spatial_gradient",
-]
-
 
 def _get_sobel_kernel_3x3() -> torch.Tensor:
     """Utility function that returns a sobel kernel of 3x3"""
