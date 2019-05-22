@@ -5,6 +5,8 @@ torchgeometry/color/normalize.py
 torchgeometry/contrib/spatial_soft_argmax2d.py
 torchgeometry/contrib/extract_patches.py
 torchgeometry/contrib/max_blur_pool.py
+torchgeometry/feature/harris.py
+torchgeometry/feature/nms.py
 torchgeometry/geometry/homography_warper.py
 torchgeometry/geometry/depth_warper.py
 torchgeometry/geometry/pinhole.py
@@ -12,7 +14,6 @@ torchgeometry/geometry/imgwarp.py
 torchgeometry/geometry/crop.py
 torchgeometry/geometry/affine_warp.py
 torchgeometry/geometry/pyramid.py
-torchgeometry/feature/harris.py
 torchgeometry/filters/gaussian.py
 torchgeometry/filters/laplacian.py
 torchgeometry/filters/sobel.py
