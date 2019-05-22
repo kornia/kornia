@@ -6,14 +6,19 @@ if sys.version_info < (3, 6, 0):
 
 from .version import __version__
 
-from torchgeometry import geometry
 from torchgeometry import color
+from torchgeometry import contrib
 from torchgeometry import feature
 from torchgeometry import filters
+from torchgeometry import geometry
 from torchgeometry import losses
-from torchgeometry import contrib
 from torchgeometry import metrics
 from torchgeometry import utils
 
-# Exposes ``torchgeometry.geometry`` package to top level
+# Exposes package functional to top level
+
+from torchgeometry.color import (
+    rgb_to_grayscale, bgr_to_rgb, rgb_to_bgr, rgb_to_hsv, hsv_to_rgb, normalize
+)
+
 from torchgeometry.geometry import *
