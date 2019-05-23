@@ -7,7 +7,8 @@ import sphinx_rtd_theme
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-sys.path.insert(0, os.path.abspath('../..'))
+base_path = os.path.abspath(os.path.join(__file__, "..", "..", "..", "torchgeometry"))
+sys.path.append(base_path)
 
 # -- General configuration ------------------------------------------------
 
