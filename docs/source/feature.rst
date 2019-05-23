@@ -1,7 +1,7 @@
-torchgeometry.feature
+kornia.feature
 =====================
 
-.. currentmodule:: torchgeometry.feature
+.. currentmodule:: kornia.feature
 
 .. autofunction:: corner_harris
 .. autofunction:: non_maxima_suppression2d

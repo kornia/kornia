@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
@@ -13,7 +13,7 @@ from common import device_type
 def test_warp_perspective_rotation(batch_shape, device_type):
     # generate input data
     batch_size, channels, height, width = batch_shape
-    alpha = 0.5 * tgm.pi * torch.ones(batch_size)  # 90 deg rotation
+    alpha = 0.5 * kornia.pi * torch.ones(batch_size)  # 90 deg rotation
 
     # create data patch
     device = torch.device(device_type)
@@ -28,14 +28,14 @@ def test_warp_perspective_rotation(batch_shape, device_type):
 
     # apply transformation and inverse
     _, _, h, w = patch.shape
-    patch_warped = tgm.warp_perspective(patch, M, dsize=(height, width))
-    patch_warped_inv = tgm.warp_perspective(
+    patch_warped = kornia.warp_perspective(patch, M, dsize=(height, width))
+    patch_warped_inv = kornia.warp_perspective(
         patch_warped, torch.inverse(M), dsize=(height, width))
 
     # generate mask to compute error
     mask = torch.ones_like(patch)
-    mask_warped_inv = tgm.warp_perspective(
-        tgm.warp_perspective(patch, M, dsize=(height, width)),
+    mask_warped_inv = kornia.warp_perspective(
+        kornia.warp_perspective(patch, M, dsize=(height, width)),
         torch.inverse(M),
         dsize=(height, width))
 
@@ -46,7 +46,7 @@ def test_warp_perspective_rotation(batch_shape, device_type):
     patch = utils.tensor_to_gradcheck_var(patch)  # to var
     M = utils.tensor_to_gradcheck_var(M, requires_grad=False)  # to var
     assert gradcheck(
-        tgm.warp_perspective, (patch, M, (
+        kornia.warp_perspective, (patch, M, (
             height,
             width,
         )),
@@ -71,16 +71,16 @@ def test_get_perspective_transform(batch_size, device_type):
     points_dst = points_src + norm
 
     # compute transform from source to target
-    dst_homo_src = tgm.get_perspective_transform(points_src, points_dst)
+    dst_homo_src = kornia.get_perspective_transform(points_src, points_dst)
 
     assert utils.check_equal_torch(
-        tgm.transform_points(dst_homo_src, points_src), points_dst)
+        kornia.transform_points(dst_homo_src, points_src), points_dst)
 
     # compute gradient check
     points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
     points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
     assert gradcheck(
-        tgm.get_perspective_transform, (
+        kornia.get_perspective_transform, (
             points_src,
             points_dst,
         ),
@@ -99,7 +99,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     center = center_base
     angle = 90. * angle_base
     scale = scale_base
-    M = tgm.get_rotation_matrix2d(center, angle, scale)
+    M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.0)
@@ -111,7 +111,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     center = center_base
     angle = 90. * angle_base
     scale = 2. * scale_base
-    M = tgm.get_rotation_matrix2d(center, angle, scale)
+    M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.0)
@@ -123,7 +123,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     center = center_base
     angle = 45. * angle_base
     scale = scale_base
-    M = tgm.get_rotation_matrix2d(center, angle, scale)
+    M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
         pytest.approx(M[i, 0, 0].item(), 0.7071)
@@ -136,7 +136,7 @@ def test_rotation_matrix2d(batch_size, device_type):
     angle = utils.tensor_to_gradcheck_var(angle)  # to var
     scale = utils.tensor_to_gradcheck_var(scale)  # to var
     assert gradcheck(
-        tgm.get_rotation_matrix2d, (center, angle, scale),
+        kornia.get_rotation_matrix2d, (center, angle, scale),
         raise_exception=True)
 
 
@@ -168,9 +168,9 @@ class TestWarpPerspective:
         ]])
 
         # compute transformation between points
-        dst_trans_src = tgm.get_perspective_transform(points_src,
-                                                      points_dst).expand(
-                                                          batch_size, -1, -1)
+        dst_trans_src = kornia.get_perspective_transform(points_src,
+                                                         points_dst).expand(
+            batch_size, -1, -1)
 
         # warp tensor
         patch = torch.FloatTensor([[[
@@ -187,8 +187,8 @@ class TestWarpPerspective:
         ]]])
 
         # warp and assert
-        patch_warped = tgm.warp_perspective(patch, dst_trans_src,
-                                            (dst_h, dst_w))
+        patch_warped = kornia.warp_perspective(patch, dst_trans_src,
+                                               (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
 
     def test_crop_center_resize(self, device_type):
@@ -215,7 +215,7 @@ class TestWarpPerspective:
         ]])
 
         # compute transformation between points
-        dst_trans_src = tgm.get_perspective_transform(points_src, points_dst)
+        dst_trans_src = kornia.get_perspective_transform(points_src, points_dst)
 
         # warp tensor
         patch = torch.FloatTensor([[[
@@ -233,8 +233,8 @@ class TestWarpPerspective:
         ]]])
 
         # warp and assert
-        patch_warped = tgm.warp_perspective(patch, dst_trans_src,
-                                            (dst_h, dst_w))
+        patch_warped = kornia.warp_perspective(patch, dst_trans_src,
+                                               (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
 
 
@@ -243,7 +243,7 @@ class TestWarpAffine:
         batch_size, channels, height, width = 1, 2, 3, 4
         aff_ab = torch.eye(2, 3)[None]  # 1x2x3
         img_b = torch.rand(batch_size, channels, height, width)
-        img_a = tgm.warp_affine(img_b, aff_ab, (height, width))
+        img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
         assert img_b.shape == img_a.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -254,7 +254,7 @@ class TestWarpAffine:
         aff_ab[..., -1] += offset
         img_b = torch.arange(float(height * width)).view(
             1, channels, height, width).repeat(batch_size, 1, 1, 1)
-        img_a = tgm.warp_affine(img_b, aff_ab, (height, width))
+        img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
         assert utils.check_equal_torch(img_b[..., :2, :3], img_a[..., 1:, 1:])
 
     def test_gradcheck(self):
@@ -265,7 +265,7 @@ class TestWarpAffine:
             aff_ab, requires_grad=False)  # to var
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
         assert gradcheck(
-            tgm.warp_affine, (
+            kornia.warp_affine, (
                 img_b,
                 aff_ab,
                 (height, width),
@@ -277,9 +277,9 @@ class TestRemap:
     def test_smoke(self):
         height, width = 3, 4
         input = torch.ones(1, 1, height, width)
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
-        input_warped = tgm.remap(input, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(input, grid[..., 0], grid[..., 1])
         assert_allclose(input, input_warped)
 
     def test_shift(self):
@@ -295,11 +295,11 @@ class TestRemap:
             [0., 0., 0., 0.],
         ]]])
 
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid += 1.  # apply shift in both x/y direction
 
-        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
     def test_shift_batch(self):
@@ -321,13 +321,13 @@ class TestRemap:
         ]]])
 
         # generate a batch of grids
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid = grid.repeat(2, 1, 1, 1)
         grid[0, ..., 0] += 1.  # apply shift in the x direction
         grid[1, ..., 1] += 1.  # apply shift in the y direction
 
-        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
     def test_shift_batch_broadcast(self):
@@ -343,11 +343,11 @@ class TestRemap:
             [0., 0., 0., 0.],
         ]]])
 
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid += 1.  # apply shift in both x/y direction
 
-        input_warped = tgm.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
     def test_gradcheck(self):
@@ -355,38 +355,38 @@ class TestRemap:
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
 
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid = utils.tensor_to_gradcheck_var(
             grid, requires_grad=False)  # to var
 
-        assert gradcheck(tgm.remap, (img, grid[..., 0], grid[..., 1],),
+        assert gradcheck(kornia.remap, (img, grid[..., 0], grid[..., 1],),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(input, map1, map2):
-            return tgm.remap(input, map1, map2)
+            return kornia.remap(input, map1, map2)
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width)
 
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid += 1.  # apply some shift
 
         input = (img, grid[..., 0], grid[..., 1],)
         actual = op_script(*input)
-        expected = tgm.remap(*input)
+        expected = kornia.remap(*input)
         assert_allclose(actual, expected)
 
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input, map1, map2):
-            return tgm.remap(input, map1, map2)
+            return kornia.remap(input, map1, map2)
         # 1. Trace op
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width)
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid += 1.  # apply some shift
         input_tuple = (img, grid[..., 0], grid[..., 1])
@@ -395,21 +395,21 @@ class TestRemap:
         # 2. Generate different input
         batch_size, channels, height, width = 2, 2, 2, 5
         img = torch.ones(batch_size, channels, height, width)
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         grid += 2.  # apply some shift
 
         # 3. Apply to different input
         input_tuple = (img, grid[..., 0], grid[..., 1])
         actual = op_script(*input_tuple)
-        expected = tgm.remap(*input_tuple)
+        expected = kornia.remap(*input_tuple)
         assert_allclose(actual, expected)
 
 
 class TestInvertAffineTransform:
     def test_smoke(self):
         matrix = torch.eye(2, 3)
-        matrix_inv = tgm.invert_affine_transform(matrix)
+        matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix, matrix_inv)
 
     def test_rot90(self):
@@ -420,8 +420,8 @@ class TestInvertAffineTransform:
             [0., -1., 0.],
             [1., 0., 0.],
         ]])
-        matrix = tgm.get_rotation_matrix2d(center, angle, scale)
-        matrix_inv = tgm.invert_affine_transform(matrix)
+        matrix = kornia.get_rotation_matrix2d(center, angle, scale)
+        matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix_inv, expected)
 
     def test_rot90_batch(self):
@@ -432,34 +432,34 @@ class TestInvertAffineTransform:
             [0., -1., 0.],
             [1., 0., 0.],
         ]])
-        matrix = tgm.get_rotation_matrix2d(
+        matrix = kornia.get_rotation_matrix2d(
             center, angle, scale).repeat(2, 1, 1)
-        matrix_inv = tgm.invert_affine_transform(matrix)
+        matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix_inv, expected)
 
     def test_gradcheck(self):
         matrix = torch.eye(2, 3)
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
-        assert gradcheck(tgm.invert_affine_transform, (matrix,),
+        assert gradcheck(kornia.invert_affine_transform, (matrix,),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(input):
-            return tgm.invert_affine_transform(input)
+            return kornia.invert_affine_transform(input)
         matrix = torch.eye(2, 3)
         op_traced = torch.jit.trace(op_script, matrix)
         actual = op_traced(matrix)
-        expected = tgm.invert_affine_transform(matrix)
+        expected = kornia.invert_affine_transform(matrix)
         assert_allclose(actual, expected)
 
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input):
-            return tgm.invert_affine_transform(input)
+            return kornia.invert_affine_transform(input)
         matrix = torch.eye(2, 3)
         matrix_2 = torch.eye(2, 3).repeat(2, 1, 1)
         op_traced = torch.jit.trace(op_script, matrix)
         actual = op_traced(matrix_2)
-        expected = tgm.invert_affine_transform(matrix_2)
+        expected = kornia.invert_affine_transform(matrix_2)
         assert_allclose(actual, expected)

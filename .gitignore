@@ -15,3 +15,5 @@ torchgeometry.egg-info/
 .dev_env
 .mypy_cache/*
 .coverage
+*bak
+*ipynb_checkpoints*

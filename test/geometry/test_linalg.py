@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 
 import utils  # test utilities
@@ -59,11 +59,11 @@ class TestTransformPoints:
         dst_homo_src = dst_homo_src.to(torch.device(device_type))
 
         # transform the points from dst to ref
-        points_dst = tgm.transform_points(dst_homo_src, points_src)
+        points_dst = kornia.transform_points(dst_homo_src, points_src)
 
         # transform the points from ref to dst
         src_homo_dst = torch.inverse(dst_homo_src)
-        points_dst_to_src = tgm.transform_points(src_homo_dst, points_dst)
+        points_dst_to_src = kornia.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
         error = utils.compute_mse(points_src, points_dst_to_src)
@@ -78,7 +78,7 @@ class TestTransformPoints:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(tgm.transform_points, (dst_homo_src, points_src,),
+        assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
 
@@ -90,7 +90,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size=1)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        trans_02 = kornia.compose_transformations(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -100,7 +100,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = tgm.compose_transformations(trans_01, trans_12)
+        trans_02 = kornia.compose_transformations(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -110,7 +110,7 @@ class TestComposeTransforms:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
-        assert gradcheck(tgm.compose_transformations, (trans_01, trans_12,),
+        assert gradcheck(kornia.compose_transformations, (trans_01, trans_12,),
                          raise_exception=True)
 
 
@@ -121,8 +121,8 @@ class TestInverseTransformation:
         trans_01 = identity_matrix(batch_size=1)[0]
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = tgm.inverse_transformation(trans_01)
-        trans_01_hat = tgm.inverse_transformation(trans_10)
+        trans_10 = kornia.inverse_transformation(trans_01)
+        trans_01_hat = kornia.inverse_transformation(trans_10)
         assert utils.check_equal_torch(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -131,14 +131,14 @@ class TestInverseTransformation:
         trans_01 = identity_matrix(batch_size)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = tgm.inverse_transformation(trans_01)
-        trans_01_hat = tgm.inverse_transformation(trans_10)
+        trans_10 = kornia.inverse_transformation(trans_01)
+        trans_01_hat = kornia.inverse_transformation(trans_10)
         assert utils.check_equal_torch(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size):
         offset = 10
-        x, y, z = 0, 0, tgm.pi
+        x, y, z = 0, 0, kornia.pi
         ones = torch.ones(batch_size)
         rmat_01 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
@@ -146,15 +146,15 @@ class TestInverseTransformation:
         trans_01[..., :3, -1] += offset  # add offset to translation vector
         trans_01[..., :3, :3] = rmat_01[..., :3, :3]
 
-        trans_10 = tgm.inverse_transformation(trans_01)
-        trans_01_hat = tgm.inverse_transformation(trans_10)
+        trans_10 = kornia.inverse_transformation(trans_01)
+        trans_01_hat = kornia.inverse_transformation(trans_10)
         assert utils.check_equal_torch(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size):
         trans_01 = identity_matrix(batch_size)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
-        assert gradcheck(tgm.inverse_transformation, (trans_01,),
+        assert gradcheck(kornia.inverse_transformation, (trans_01,),
                          raise_exception=True)
 
 
@@ -166,14 +166,14 @@ class TestRelativeTransformation:
         trans_02 = identity_matrix(batch_size=1)[0]
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_12 = tgm.relative_transformation(trans_01, trans_02)
-        trans_02_hat = tgm.compose_transformations(trans_01, trans_12)
+        trans_12 = kornia.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size):
         offset = 10.
-        x, y, z = 0., 0., tgm.pi
+        x, y, z = 0., 0., kornia.pi
         ones = torch.ones(batch_size)
         rmat_02 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
@@ -182,8 +182,8 @@ class TestRelativeTransformation:
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
-        trans_12 = tgm.relative_transformation(trans_01, trans_02)
-        trans_02_hat = tgm.compose_transformations(trans_01, trans_12)
+        trans_12 = kornia.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
         assert utils.check_equal_torch(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -193,5 +193,5 @@ class TestRelativeTransformation:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
-        assert gradcheck(tgm.relative_transformation, (trans_01, trans_02,),
+        assert gradcheck(kornia.relative_transformation, (trans_01, trans_02,),
                          raise_exception=True)

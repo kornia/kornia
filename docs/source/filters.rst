@@ -1,7 +1,7 @@
-torchgeometry.filters
+kornia.filters
 ---------------------
 
-.. currentmodule:: torchgeometry.filters
+.. currentmodule:: kornia.filters
 
 The functions in this sections perform various image filtering operations.
 
