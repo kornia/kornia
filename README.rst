@@ -19,7 +19,7 @@
     :target: https://kornia.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
-*Kornia* is an differentiable computer vision library for `PyTorch <https://pytorch.org/>`_.
+*Kornia* is a differentiable computer vision library for `PyTorch <https://pytorch.org/>`_.
 
 It consists of a set of routines and differentiable modules to solve generic computer vision problems. At its core, the package uses *PyTorch* as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
 
@@ -99,7 +99,7 @@ If you are using kornia in your research-related documents, it is recommended th
 
  @misc{Arraiy2018,
   author    = {E. Riba, M. Fathollahi, W. Chaney, E. Rublee and G. Bradski}
-  title     = {kornia: when PyTorch meets geometry},
+  title     = {torchgeometry: when PyTorch meets geometry},
   booktitle = {PyTorch Developer Conference},
   year      = {2018},
   url       = {https://drive.google.com/file/d/1xiao1Xj9WzjJ08YY_nYwsthE-wxfyfhG/view?usp=sharing}
