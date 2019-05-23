@@ -1,7 +1,7 @@
-torchgeometry.geometry.camera
+kornia.geometry.camera
 =============================
 
-.. currentmodule:: torchgeometry.geometry.camera
+.. currentmodule:: kornia.geometry.camera
 
 .. toctree::
    :maxdepth: 2

@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry
+import kornia
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])

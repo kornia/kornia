@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
@@ -26,7 +26,7 @@ class TestRotate:
         ]])
         # prepare transformation
         angle = torch.tensor([90.])
-        transform = tgm.Rotate(angle)
+        transform = kornia.Rotate(angle)
         assert_allclose(transform(inp), expected)
 
     def test_angle90_batch2(self):
@@ -50,7 +50,7 @@ class TestRotate:
         ]]])
         # prepare transformation
         angle = torch.tensor([90., -90.])
-        transform = tgm.Rotate(angle)
+        transform = kornia.Rotate(angle)
         assert_allclose(transform(inp), expected)
 
     def test_angle90_batch2_broadcast(self):
@@ -74,7 +74,7 @@ class TestRotate:
         ]]])
         # prepare transformation
         angle = torch.tensor([90.])
-        transform = tgm.Rotate(angle)
+        transform = kornia.Rotate(angle)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self):
@@ -86,15 +86,15 @@ class TestRotate:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(tgm.rotate, (input, angle,), raise_exception=True)
+        assert gradcheck(kornia.rotate, (input, angle,), raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     def test_jit(self):
         angle = torch.tensor([90.])
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        rot = tgm.Rotate(angle)
-        rot_traced = torch.jit.trace(tgm.Rotate(angle), img)
+        rot = kornia.Rotate(angle)
+        rot_traced = torch.jit.trace(kornia.Rotate(angle), img)
         assert_allclose(rot(img), rot_traced(img))
 
 
@@ -115,7 +115,7 @@ class TestTranslate:
         ]])
         # prepare transformation
         translation = torch.tensor([[1., 0.]])
-        transform = tgm.Translate(translation)
+        transform = kornia.Translate(translation)
         assert_allclose(transform(inp), expected)
 
     def test_dxdy_batch(self):
@@ -139,7 +139,7 @@ class TestTranslate:
         ]]])
         # prepare transformation
         translation = torch.tensor([[1., 0.], [1., 1.]])
-        transform = tgm.Translate(translation)
+        transform = kornia.Translate(translation)
         assert_allclose(transform(inp), expected)
 
     def test_dxdy_batch_broadcast(self):
@@ -163,7 +163,7 @@ class TestTranslate:
         ]]])
         # prepare transformation
         translation = torch.tensor([[1., 0.]])
-        transform = tgm.Translate(translation)
+        transform = kornia.Translate(translation)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self):
@@ -175,7 +175,7 @@ class TestTranslate:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(tgm.translate, (input, translation,),
+        assert gradcheck(kornia.translate, (input, translation,),
                          raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
@@ -183,8 +183,8 @@ class TestTranslate:
         translation = torch.tensor([[1., 0.]])
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        trans = tgm.Translate(translation)
-        trans_traced = torch.jit.trace(tgm.Translate(translation), img)
+        trans = kornia.Translate(translation)
+        trans_traced = torch.jit.trace(kornia.Translate(translation), img)
         assert_allclose(trans(img), trans_traced(img))
 
 
@@ -199,7 +199,7 @@ class TestScale:
         ]])
         # prepare transformation
         scale_factor = torch.tensor([2.])
-        transform = tgm.Scale(scale_factor)
+        transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp).sum().item(), 12.25)
 
     def test_scale_factor_05(self):
@@ -218,7 +218,7 @@ class TestScale:
         ]])
         # prepare transformation
         scale_factor = torch.tensor([0.5])
-        transform = tgm.Scale(scale_factor)
+        transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
     def test_scale_factor_05_batch2(self):
@@ -237,7 +237,7 @@ class TestScale:
         ]])
         # prepare transformation
         scale_factor = torch.tensor([0.5, 0.5])
-        transform = tgm.Scale(scale_factor)
+        transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
     def test_scale_factor_05_batch2_broadcast(self):
@@ -256,7 +256,7 @@ class TestScale:
         ]])
         # prepare transformation
         scale_factor = torch.tensor([0.5])
-        transform = tgm.Scale(scale_factor)
+        transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self):
@@ -268,7 +268,7 @@ class TestScale:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(tgm.scale, (input, scale_factor,),
+        assert gradcheck(kornia.scale, (input, scale_factor,),
                          raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
@@ -276,8 +276,8 @@ class TestScale:
         scale_factor = torch.tensor([0.5])
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        trans = tgm.Scale(scale_factor)
-        trans_traced = torch.jit.trace(tgm.Scale(scale_factor), img)
+        trans = kornia.Scale(scale_factor)
+        trans_traced = torch.jit.trace(kornia.Scale(scale_factor), img)
         assert_allclose(trans(img), trans_traced(img))
 
 
@@ -299,7 +299,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]])
-        transform = tgm.Shear(shear)
+        transform = kornia.Shear(shear)
         assert_allclose(transform(inp), expected)
 
     def test_shear_y(self):
@@ -319,7 +319,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]])
-        transform = tgm.Shear(shear)
+        transform = kornia.Shear(shear)
         assert_allclose(transform(inp), expected)
 
     def test_shear_batch2(self):
@@ -345,7 +345,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]])
-        transform = tgm.Shear(shear)
+        transform = kornia.Shear(shear)
         assert_allclose(transform(inp), expected)
 
     def test_shear_batch2_broadcast(self):
@@ -366,7 +366,7 @@ class TestShear:
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]])
-        transform = tgm.Shear(shear)
+        transform = kornia.Shear(shear)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self):
@@ -378,13 +378,13 @@ class TestShear:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(tgm.shear, (input, shear,), raise_exception=True)
+        assert gradcheck(kornia.shear, (input, shear,), raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     def test_jit(self):
         shear = torch.tensor([[0.5, 0.0]])
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        trans = tgm.Shear(shear)
-        trans_traced = torch.jit.trace(tgm.Shear(shear), img)
+        trans = kornia.Shear(shear)
+        trans_traced = torch.jit.trace(kornia.Shear(shear), img)
         assert_allclose(trans(img), trans_traced(img))
