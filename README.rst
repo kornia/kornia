@@ -1,7 +1,7 @@
 .. raw:: html
 
   <p align="center">
-    <img width="50%" src="https://github.com/arraiy/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
+    <img width="50%" src="https://github.com/arraiyopensource/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
   </p>
 
 --------------------------------------------------------------------------------
