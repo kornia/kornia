@@ -1,7 +1,7 @@
 Pinhole Camera
 --------------
 
-.. currentmodule:: torchgeometry.geometry.camera
+.. currentmodule:: kornia.geometry.camera
 
 In this module we have all the functions and data structures needed to describe the projection of a 3D scene space onto a 2D image plane.
 

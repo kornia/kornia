@@ -6,7 +6,7 @@ test-cpu: FORCE
 	pytest --typetest cpu -vx
 
 test-cpu-cov: FORCE
-	pytest --typetest cpu -vx --cov=torchgeometry test
+	pytest --typetest cpu -vx --cov=kornia test
 
 test-gpu: FORCE
 	pytest --typetest cuda -vx
@@ -15,7 +15,7 @@ lint: FORCE
 	python verify.py --check lint
 
 autopep8: FORCE
-	autopep8 --in-place --aggressive --recursive torchgeometry/ test/
+	autopep8 --in-place --aggressive --recursive kornia/ test/
 
 mypy: FORCE
 	python verify.py --check mypy
@@ -27,6 +27,6 @@ install: FORCE
 	python setup.py install
 
 uninstall: FORCE
-	pip uninstall torchgeometry
+	pip uninstall kornia
 
 FORCE:

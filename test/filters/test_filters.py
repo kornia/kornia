@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 from common import device_type
 
-import torchgeometry.filters as filters
+import kornia.filters as filters
 import utils
 
 

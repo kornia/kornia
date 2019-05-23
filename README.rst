@@ -1,22 +1,22 @@
 .. raw:: html
 
   <p align="center">
-    <img width="50%" src="https://github.com/arraiy/torchgeometry/blob/master/docs/source/_static/img/torchgeometry_logo.svg" />
+    <img width="50%" src="https://github.com/arraiy/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
   </p>
 
 --------------------------------------------------------------------------------
 
-.. image:: https://travis-ci.com/arraiyopensource/torchgeometry.svg?branch=master
-    :target: https://travis-ci.com/arraiyopensource/torchgeometry
+.. image:: https://travis-ci.com/arraiyopensource/kornia.svg?branch=master
+    :target: https://travis-ci.com/arraiyopensource/kornia
 
-.. image:: https://codecov.io/github/arraiyopensource/torchgeometry/branch/master/graph/badge.svg
-    :target: https://codecov.io/github/arraiyopensource/torchgeometry
+.. image:: https://codecov.io/github/arraiyopensource/kornia/branch/master/graph/badge.svg
+    :target: https://codecov.io/github/arraiyopensource/kornia
 
-.. image:: https://badge.fury.io/py/torchgeometry.svg
-    :target: https://badge.fury.io/py/torchgeometry
+.. image:: https://badge.fury.io/py/kornia.svg
+    :target: https://badge.fury.io/py/kornia
 
-.. image:: https://readthedocs.org/projects/torchgeometry/badge/?version=latest
-    :target: https://torchgeometry.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/kornia/badge/?version=latest
+    :target: https://kornia.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
 The *PyTorch Geometry* package is a geometric computer vision library for `PyTorch <https://pytorch.org/>`_.
@@ -30,7 +30,7 @@ Installation
 
 .. code:: bash
 
-    pip install torchgeometry
+    pip install kornia
 
 **From source:**
 
@@ -42,7 +42,7 @@ Installation
 
 .. code:: bash
 
-    pip install git+https://github.com/arraiyopensource/torchgeometry
+    pip install git+https://github.com/arraiyopensource/kornia
 
 Quick Usage
 ===========
@@ -50,7 +50,7 @@ Quick Usage
 .. code:: python
 
  import torch
- import torchgeometry as tgm
+ import kornia as tgm
 
  x_rad = tgm.pi * torch.rand(1, 3, 3)
  x_deg = tgm.rad2deg(x_rad)
@@ -60,19 +60,19 @@ Quick Usage
 Examples
 ========
 
-Run our Jupyter notebooks `examples <https://github.com/arraiyopensource/torchgeometry/tree/master/examples/>`_ to learn to use the library.
+Run our Jupyter notebooks `examples <https://github.com/arraiyopensource/kornia/tree/master/examples/>`_ to learn to use the library.
 
 
 Cite
 ============
 
-If you are using torchgeometry in your research-related documents, it is recommended that you cite the poster.
+If you are using kornia in your research-related documents, it is recommended that you cite the poster.
 
 .. code:: bash
 
  @misc{Arraiy2018,
   author    = {E. Riba, M. Fathollahi, W. Chaney, E. Rublee and G. Bradski}
-  title     = {torchgeometry: when PyTorch meets geometry},
+  title     = {kornia: when PyTorch meets geometry},
   booktitle = {PyTorch Developer Conference},
   year      = {2018},
   url       = {https://drive.google.com/file/d/1xiao1Xj9WzjJ08YY_nYwsthE-wxfyfhG/view?usp=sharing}
@@ -81,4 +81,4 @@ If you are using torchgeometry in your research-related documents, it is recomme
 
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/torchgeometry/blob/master/CONTRIBUTING.rst>`_ notes.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes.

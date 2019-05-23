@@ -1,7 +1,7 @@
-torchgeometry.geometry.conversions
+kornia.geometry.conversions
 ==================================
 
-.. currentmodule:: torchgeometry.geometry.conversions
+.. currentmodule:: kornia.geometry.conversions
 
 .. autofunction:: rad2deg
 .. autofunction:: deg2rad

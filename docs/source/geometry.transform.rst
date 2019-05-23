@@ -1,7 +1,7 @@
-torchgeometry.geometry.transform
+kornia.geometry.transform
 ================================
 
-.. currentmodule:: torchgeometry.geometry.transform
+.. currentmodule:: kornia.geometry.transform
 
 The functions in this section perform various geometrical transformations of 2D images.
 
