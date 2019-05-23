@@ -1,17 +1,17 @@
-Contributing to PyTorch Geometry
-================================
+Contributing to Kornia
+======================
 
-**Welcome !!** This is the PyTorch Geometry library contributors corner. If you are reading this, it means that you have interest in **Computer Vision and Geometry**, and willing to contribute to the project.
+**Welcome !!** This is the Kornia library contributors corner. If you are reading this, it means that you have interest in **Differentiable Computer Vision**, and willing to contribute to the project.
 
 Everyone is welcomed to get involved with the project. There are different ways in how you can put your two cents:
 
 
-1. Ask/Answer questions in the ``#geometry`` PyTorch Slack channel:
+1. Ask/Answer questions in the ``#kornia`` PyTorch Slack channel:
 
    - We suggest you to join the channel in order to get more involved to the PyTorch ecosystem. Send an email to `slack@pytorch.org <slack@pytorch.org>`_ in order to get access.
    - Please, don't use GitHub issues for Q&A.
 
-2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/torchgeometry/issues>`_:
+2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
 
    - Do a quick search first to see whether others reported a similar issue.
    - In case you find an unreported bug, please open a new ticket.
@@ -26,7 +26,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
    - We will always have an open ticket showing the current roadmap.
    - Pick an unassigned feature (or potentially propose new one) or an open bug ticket.
-   - Follow the instructions from Developing PyTorch Geometry in order to setup your development environment and start coding.
+   - Follow the instructions from Developing Kornia in order to setup your development environment and start coding.
    - Checkout our coding conventions. See more details below.
    - Run the test framework locally and make sure all works as expected before sending a pull request.
    - Open a Pull Request, get the green light from the CI and get your code merged.
@@ -39,8 +39,8 @@ Everyone is welcomed to get involved with the project. There are different ways 
    - Currently looking for some kind of server donation in order to test *CUDA* code. (Please contact us).
 
 
-Developing PyTorch Geometry
-===========================
+Developing Kornia
+=================
 
 In order to start to develop, please follow the steps below:
 
@@ -48,15 +48,15 @@ In order to start to develop, please follow the steps below:
 
 .. code:: bash
 
-    pip uninstall torchgeometry
-    pip uninstall torchgeometry  # run this command twice
+    pip uninstall kornia
+    pip uninstall kornia  # run this command twice
 
-2. Clone a copy of PyTorch Geometry from source:
+2. Clone a copy of Kornia from source:
 
 .. code:: bash
 
-    git clone https://github.com/arraiyopensource/torchgeometry.git
-    cd torchgeometry
+    git clone https://github.com/arraiyopensource/kornia.git
+    cd kornia
 
 3. Create a new branch with a meaningful name reflecting your contribution. See an example:
 
@@ -72,7 +72,7 @@ In order to start to develop, please follow the steps below:
 
    source ./path.bash.inc
    python setup.py develop
-   python -c "import torchgeometry; print(torchgeometry.__version__)"
+   python -c "import kornia; print(kornia.__version__)"
 
 To install, or update the conda environment run ``setup_dev_env.sh``
 
@@ -120,7 +120,7 @@ Pull Request
 ============
 
 Once you finish implementing a feature or bug-fix, please send a Pull Request to
-https://github.com/arraiyopensource/torchgeometry through the website.
+https://github.com/arraiyopensource/kornia through the website.
 
 If you are not familiar with creating a Pull Request, here are some guides:
 
@@ -146,7 +146,7 @@ To run the test suite locally, make sure that you have activated the conda envir
 
 .. code:: bash
 
-    python setup.py test
+    make test
 
 Licence
 =======

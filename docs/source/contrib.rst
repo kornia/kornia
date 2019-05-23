@@ -1,7 +1,7 @@
-torchgeometry.contrib
+kornia.contrib
 =====================
 
-.. currentmodule:: torchgeometry.contrib
+.. currentmodule:: kornia.contrib
 
 .. autofunction:: spatial_soft_argmax2d
 .. autofunction:: extract_tensor_patches

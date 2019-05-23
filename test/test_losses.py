@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 
 import utils
@@ -15,7 +15,7 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        assert tgm.losses.focal_loss(
+        assert kornia.losses.focal_loss(
             logits,
             labels,
             alpha=0.5,
@@ -31,7 +31,7 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        assert tgm.losses.focal_loss(
+        assert kornia.losses.focal_loss(
             logits,
             labels,
             alpha=0.5,
@@ -44,7 +44,7 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        assert tgm.losses.focal_loss(
+        assert kornia.losses.focal_loss(
             logits,
             labels,
             alpha=0.5,
@@ -63,7 +63,7 @@ class TestFocalLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(tgm.losses.focal_loss,
+        assert gradcheck(kornia.losses.focal_loss,
                          (logits, labels, alpha, gamma), raise_exception=True)
 
     def test_run_all(self):
@@ -80,7 +80,7 @@ class TestTverskyLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        criterion = tgm.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
 
     def _test_all_zeros(self):
@@ -91,7 +91,7 @@ class TestTverskyLoss:
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, dtype=torch.int64)
 
-        criterion = tgm.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 
@@ -107,7 +107,7 @@ class TestTverskyLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(tgm.losses.tversky_loss,
+        assert gradcheck(kornia.losses.tversky_loss,
                          (logits, labels, alpha, beta), raise_exception=True)
 
     def test_run_all(self):
@@ -123,7 +123,7 @@ class TestDiceLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        criterion = tgm.losses.DiceLoss()
+        criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
 
     def _test_all_zeros(self):
@@ -134,7 +134,7 @@ class TestDiceLoss:
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, dtype=torch.int64)
 
-        criterion = tgm.losses.DiceLoss()
+        criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 
@@ -149,7 +149,7 @@ class TestDiceLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(tgm.losses.dice_loss,
+        assert gradcheck(kornia.losses.dice_loss,
                          (logits, labels,), raise_exception=True)
 
     def test_run_all(self):
@@ -163,7 +163,7 @@ class TestDepthSmoothnessLoss:
         image = self.image.clone()
         depth = self.depth.clone()
 
-        criterion = tgm.losses.InverseDepthSmoothnessLoss()
+        criterion = kornia.losses.InverseDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
     # TODO: implement me
@@ -179,7 +179,7 @@ class TestDepthSmoothnessLoss:
         depth = self.depth.clone()
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(tgm.losses.inverse_depth_smoothness_loss,
+        assert gradcheck(kornia.losses.inverse_depth_smoothness_loss,
                          (depth, image,), raise_exception=True)
 
     @pytest.mark.parametrize("batch_shape",
@@ -202,7 +202,7 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     img1 = torch.rand(batch_shape).to(device)
     img2 = torch.rand(batch_shape).to(device)
 
-    ssim = tgm.losses.SSIM(window_size, reduction_type)
+    ssim = kornia.losses.SSIM(window_size, reduction_type)
     ssim_loss_val = ssim(img1, img2)
 
     if reduction_type == 'none':
@@ -215,7 +215,7 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
 
     # functional
     assert utils.check_equal_torch(
-        ssim_loss_val, tgm.losses.ssim(
+        ssim_loss_val, kornia.losses.ssim(
             img1, img2, window_size, reduction_type))
 
     # evaluate function gradient

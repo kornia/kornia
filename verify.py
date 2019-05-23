@@ -16,7 +16,7 @@ def main(checks):
         print("Verifying with " + str(checks))
         if "lint" in checks:
             print("Linter (flake8):", flush=True)
-            run("flake8 torchgeometry test examples", shell=True, check=True)
+            run("flake8 kornia test examples", shell=True, check=True)
             print("lint checks passed")
 
         if "mypy" in checks:

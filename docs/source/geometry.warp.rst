@@ -1,7 +1,7 @@
-torchgeometry.geometry.warp
+kornia.geometry.warp
 ===========================
 
-.. currentmodule:: torchgeometry.geometry.warp
+.. currentmodule:: kornia.geometry.warp
 
 .. autoclass:: HomographyWarper
     :members:

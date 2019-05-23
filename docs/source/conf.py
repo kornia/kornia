@@ -7,7 +7,7 @@ import sphinx_rtd_theme
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-base_path = os.path.abspath(os.path.join(__file__, "..", "..", "..", "torchgeometry"))
+base_path = os.path.abspath(os.path.join(__file__, "..", "..", "..", "kornia"))
 sys.path.append(base_path)
 
 # -- General configuration ------------------------------------------------
@@ -60,12 +60,12 @@ author = u'Arraiy, Inc.'
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 
-#version = 'master (' + torchgeometry.__version__ + ' )'
+#version = 'master (' + kornia.__version__ + ' )'
 version = ''
 
 if 'READTHEDOCS' not in os.environ:
     # if developing locally, use pyro.__version__ as version
-    from torchgeometry import __version__  # noqaE402
+    from kornia import __version__  # noqaE402
     version = __version__
 
 #release = 'master'
@@ -110,7 +110,7 @@ html_theme_options = {
     'logo_only': True,
 }
 
-html_logo = '_static/img/torchgeometry_logo.svg'
+html_logo = '_static/img/kornia_logo.svg'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -176,8 +176,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'torchgeometry', 'torchgeometry Documentation',
-     author, 'torchgeometry', 'One line description of project.',
+    (master_doc, 'kornia', 'kornia Documentation',
+     author, 'kornia', 'One line description of project.',
      'Miscellaneous'),
 ]
 

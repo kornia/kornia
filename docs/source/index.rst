@@ -1,20 +1,16 @@
-:github_url: https://github.com/arraiy/torchgeometry
+:github_url: https://github.com/arraiy/kornia
              
-torchgeometry
-=============
+kornia
+======
 
-The *PyTorch Geometry* (TGM) package is a geometric computer vision library for `PyTorch <https://pytorch.org/>`_.
+Kornia is a differentiable computer vision library for PyTorch.
 
-It consists of a set of routines and differentiable modules to solve generic geometry computer vision problems. At its core, the package uses *PyTorch* as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
+It consists of a set of routines and differentiable modules to solve generic computer vision problems. At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
+Overview
 
-In this first version, we provide different functions designed mainly for computer vision applications, such as image and tensors warping modules which rely on the epipolar geometry theory. The roadmap will include adding more and more functionality so that developers in the short term can use the package for the purpose of optimizing their loss functions to solve geometry problems.
+Inspired by OpenCV, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low level image processing such as filtering and edge detection that operate directly on tensors.
 
-TGM focuses on Image and tensor warping functions such as:
-
-* Calibration
-* Epipolar geometry
-* Homography
-* Depth
+At a granular level, Kornia is a library that consists of the following components:
 
 .. toctree::
    :maxdepth: 2

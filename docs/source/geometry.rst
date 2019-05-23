@@ -1,7 +1,7 @@
-torchgeometry.geometry
+kornia.geometry
 ======================
 
-.. currentmodule:: torchgeometry.geometry
+.. currentmodule:: kornia.geometry
 
 .. toctree::
    :maxdepth: 2

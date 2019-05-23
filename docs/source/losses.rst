@@ -1,7 +1,7 @@
-torchgeometry.losses
+kornia.losses
 ====================
 
-.. currentmodule:: torchgeometry.losses
+.. currentmodule:: kornia.losses
 
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
