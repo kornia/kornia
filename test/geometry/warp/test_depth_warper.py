@@ -1,11 +1,11 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 
 import utils  # test utils
-from torchgeometry.geometry.conversions import normalize_pixel_coordinates
+from kornia.geometry.conversions import normalize_pixel_coordinates
 
 
 class TestDepthWarper:
@@ -19,9 +19,9 @@ class TestDepthWarper:
         tx, ty, tz = 0, 0, 0
 
         # create pinhole cameras
-        pinhole_src = tgm.PinholeCamera.from_parameters(
+        pinhole_src = kornia.PinholeCamera.from_parameters(
             fx, fy, cx, cy, height, width, tx, ty, tz, batch_size)
-        pinhole_dst = tgm.PinholeCamera.from_parameters(
+        pinhole_dst = kornia.PinholeCamera.from_parameters(
             fx, fy, cx, cy, height, width, tx, ty, tz, batch_size)
         return pinhole_src, pinhole_dst
 
@@ -32,7 +32,7 @@ class TestDepthWarper:
         pinhole_dst.tx += 1.  # apply offset to tx
 
         # create warper
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         assert warper._dst_proj_src is None
 
         # initialize projection matrices
@@ -58,7 +58,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width)
 
         # create warper, initialize projection matrices and warp grid
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         grid_warped = warper.warp_grid(depth_src)
@@ -86,7 +86,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width)
 
         # create warper, initialize projection matrices and warp grid
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         grid_warped = warper.warp_grid(depth_src)
@@ -114,7 +114,7 @@ class TestDepthWarper:
         depth_src = torch.ones(batch_size, 1, height, width)
 
         # create warper, initialize projection matrices and warp grid
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # create patch to warp
@@ -134,7 +134,7 @@ class TestDepthWarper:
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size)
 
         # create warper, initialize projection matrices and warp grid
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # test compute_projection
@@ -147,7 +147,7 @@ class TestDepthWarper:
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size)
 
         # create warper, initialize projection matrices and warp grid
-        warper = tgm.DepthWarper(pinhole_dst, height, width)
+        warper = kornia.DepthWarper(pinhole_dst, height, width)
         warper.compute_projection_matrix(pinhole_src)
 
         # test compute_subpixel_step
@@ -169,7 +169,7 @@ class TestDepthWarper:
         img_dst = utils.tensor_to_gradcheck_var(img_dst)  # to var
 
         # evaluate function gradient
-        assert gradcheck(tgm.depth_warp,
+        assert gradcheck(kornia.depth_warp,
                          (pinhole_dst,
                           pinhole_src,
                           depth_src,

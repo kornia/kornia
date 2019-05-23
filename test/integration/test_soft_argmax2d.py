@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchgeometry as tgm
+import kornia as kornia
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class TestIntegrationSoftArgmax2d:
         criterion = nn.MSELoss()
 
         # spatial soft-argmax2d module
-        soft_argmax2d = tgm.contrib.SpatialSoftArgmax2d(
+        soft_argmax2d = kornia.contrib.SpatialSoftArgmax2d(
             normalized_coordinates=False)
 
         # NOTE: check where this comes from

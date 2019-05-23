@@ -1,7 +1,7 @@
-torchgeometry.geometry.linalg
+kornia.geometry.linalg
 =============================
 
-.. currentmodule:: torchgeometry.geometry.linalg
+.. currentmodule:: kornia.geometry.linalg
 
 
 .. autofunction:: relative_transformation

@@ -2,7 +2,7 @@ import pytest
 from common import device_type
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 import torch.nn as nn
 
 
@@ -14,9 +14,9 @@ class WarpPerspective(nn.Module):
         self.output_height, self.output_width = output_size
 
     def forward(self, x, M):
-        x = tgm.warp_perspective(x, M,
-                                 dsize=(self.output_height,
-                                        self.output_width))
+        x = kornia.warp_perspective(x, M,
+                                    dsize=(self.output_height,
+                                           self.output_width))
         return x
 
 
@@ -28,9 +28,9 @@ class WarpAffine(nn.Module):
         self.output_height, self.output_width = output_size
 
     def forward(self, x, M):
-        x = tgm.warp_affine(x, M,
-                            dsize=(self.output_height,
-                                   self.output_width))
+        x = kornia.warp_affine(x, M,
+                               dsize=(self.output_height,
+                                      self.output_width))
         return x
 
 

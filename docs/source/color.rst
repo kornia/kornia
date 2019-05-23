@@ -1,7 +1,7 @@
-torchgeometry.color
+kornia.color
 -------------------
 
-.. currentmodule:: torchgeometry.color
+.. currentmodule:: kornia.color
 
 The functions in this section perform various color space conversions.
 

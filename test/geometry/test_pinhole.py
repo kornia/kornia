@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
@@ -30,8 +30,8 @@ class TestPinholeCamera:
         extrinsics = torch.eye(4)[None]
         height = torch.ones(1)
         width = torch.ones(1)
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
-        assert isinstance(pinhole, tgm.PinholeCamera)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
+        assert isinstance(pinhole, kornia.PinholeCamera)
 
     def test_pinhole_camera_attributes(self):
         batch_size = 1
@@ -44,7 +44,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size) * height
         width = torch.ones(batch_size) * width
 
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.batch_size == batch_size
         assert pinhole.fx.item() == fx
@@ -72,7 +72,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size) * height
         width = torch.ones(batch_size) * width
 
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.tx.item() == tx
         assert pinhole.ty.item() == ty
@@ -107,7 +107,7 @@ class TestPinholeCamera:
         height = torch.ones(batch_size) * height
         width = torch.ones(batch_size) * width
 
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
         assert pinhole.batch_size == batch_size
         assert pinhole.fx.shape[0] == batch_size
@@ -137,7 +137,7 @@ class TestPinholeCamera:
         width = torch.ones(batch_size) * width
         scale_factor = torch.ones(batch_size) * scale_val
 
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.scale(scale_factor)
 
         assert utils.check_equal_torch(
@@ -172,7 +172,7 @@ class TestPinholeCamera:
         width = torch.ones(batch_size) * width
         scale_factor = torch.ones(batch_size) * scale_val
 
-        pinhole = tgm.PinholeCamera(intrinsics, extrinsics, height, width)
+        pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.clone()
         pinhole_scale.scale_(scale_factor)
 
@@ -201,14 +201,14 @@ def test_scale_pinhole(batch_size, device_type):
     pinholes = torch.rand(batch_size, 12).to(device)
     scales = torch.rand(batch_size).to(device)
 
-    pinholes_scale = tgm.scale_pinhole(pinholes, scales)
+    pinholes_scale = kornia.scale_pinhole(pinholes, scales)
     assert utils.check_equal_torch(
         pinholes_scale[..., :6] / scales.unsqueeze(-1), pinholes[..., :6])
 
     # evaluate function gradient
     pinholes = utils.tensor_to_gradcheck_var(pinholes)  # to var
     scales = utils.tensor_to_gradcheck_var(scales)  # to var
-    assert gradcheck(tgm.scale_pinhole, (pinholes, scales,),
+    assert gradcheck(kornia.scale_pinhole, (pinholes, scales,),
                      raise_exception=True)
 
 
@@ -227,7 +227,7 @@ def test_pinhole_matrix(batch_size, device_type):
         fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
     pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
 
-    pinhole_matrix = tgm.pinhole_matrix(pinhole)
+    pinhole_matrix = kornia.pinhole_matrix(pinhole)
 
     ones = torch.ones(batch_size)
     assert bool((pinhole_matrix[:, 0, 0] == fx * ones).all())
@@ -236,11 +236,11 @@ def test_pinhole_matrix(batch_size, device_type):
     assert bool((pinhole_matrix[:, 1, 2] == cy * ones).all())
 
     # functional
-    assert tgm.PinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
+    assert kornia.PinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
 
     # evaluate function gradient
     pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
-    assert gradcheck(tgm.pinhole_matrix, (pinhole,),
+    assert gradcheck(kornia.pinhole_matrix, (pinhole,),
                      raise_exception=True)
 
 
@@ -259,7 +259,7 @@ def test_inverse_pinhole_matrix(batch_size, device_type):
         fx, fy, cx, cy, image_height, image_width, rx, ry, rx, tx, ty, tz)
     pinhole = pinhole.repeat(batch_size, 1).to(torch.device(device_type))
 
-    pinhole_matrix = tgm.inverse_pinhole_matrix(pinhole)
+    pinhole_matrix = kornia.inverse_pinhole_matrix(pinhole)
 
     ones = torch.ones(batch_size)
     assert utils.check_equal_torch(pinhole_matrix[:, 0, 0], (1. / fx) * ones)
@@ -270,11 +270,11 @@ def test_inverse_pinhole_matrix(batch_size, device_type):
         pinhole_matrix[:, 1, 2], (-1. * cy / fx) * ones)
 
     # functional
-    assert tgm.InversePinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
+    assert kornia.InversePinholeMatrix()(pinhole).shape == (batch_size, 4, 4)
 
     # evaluate function gradient
     pinhole = utils.tensor_to_gradcheck_var(pinhole)  # to var
-    assert gradcheck(tgm.pinhole_matrix, (pinhole,),
+    assert gradcheck(kornia.pinhole_matrix, (pinhole,),
                      raise_exception=True)
 
 
@@ -310,15 +310,15 @@ def test_homography_i_H_ref(batch_size, device_type):
     pinhole_i = pinhole_i.repeat(batch_size, 1).to(device)
 
     # compute homography from ref to i
-    i_H_ref = tgm.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
+    i_H_ref = kornia.homography_i_H_ref(pinhole_i, pinhole_ref) + eps
     i_H_ref_inv = torch.inverse(i_H_ref)
 
     # compute homography from i to ref
-    ref_H_i = tgm.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
+    ref_H_i = kornia.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
     assert utils.check_equal_torch(i_H_ref_inv, ref_H_i)
 
     # evaluate function gradient
-    assert gradcheck(tgm.homography_i_H_ref,
+    assert gradcheck(kornia.homography_i_H_ref,
                      (utils.tensor_to_gradcheck_var(pinhole_ref) + eps,
                       utils.tensor_to_gradcheck_var(pinhole_i) + eps,),
                      raise_exception=True)'''
@@ -327,11 +327,11 @@ def test_homography_i_H_ref(batch_size, device_type):
 class TestNormalizePixelCoordinates:
     def test_small(self):
         height, width = 3, 4
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
-        expected = tgm.utils.create_meshgrid(
+        expected = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=True)
-        grid_norm = tgm.normalize_pixel_coordinates(
+        grid_norm = kornia.normalize_pixel_coordinates(
             grid, height, width)
         assert_allclose(grid_norm, expected)
 
@@ -339,13 +339,13 @@ class TestNormalizePixelCoordinates:
         @torch.jit.script
         def op_script(input: torch.Tensor, height: int,
                       width: int) -> torch.Tensor:
-            return tgm.normalize_pixel_coordinates(input, height, width)
+            return kornia.normalize_pixel_coordinates(input, height, width)
         height, width = 3, 4
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
 
         actual = op_script(grid, height, width)
-        expected = tgm.normalize_pixel_coordinates(
+        expected = kornia.normalize_pixel_coordinates(
             grid, height, width)
 
         assert_allclose(actual, expected)
@@ -353,10 +353,10 @@ class TestNormalizePixelCoordinates:
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input, height, width):
-            return tgm.normalize_pixel_coordinates(input, height, width)
+            return kornia.normalize_pixel_coordinates(input, height, width)
         # 1. Trace op
         height, width = 3, 4
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False)
         op_traced = torch.jit.trace(
             op_script,
@@ -364,13 +364,13 @@ class TestNormalizePixelCoordinates:
 
         # 2. Generate new input
         height, width = 2, 5
-        grid = tgm.utils.create_meshgrid(
+        grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False).repeat(2, 1, 1, 1)
 
         # 3. Evaluate
         actual = op_traced(
             grid, torch.tensor(height), torch.tensor(width))
-        expected = tgm.normalize_pixel_coordinates(
+        expected = kornia.normalize_pixel_coordinates(
             grid, height, width)
 
         assert_allclose(actual, expected)

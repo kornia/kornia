@@ -4,8 +4,8 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 from common import device_type
 
-import torchgeometry as K
-import torchgeometry.color as color
+import kornia as K
+import kornia.color as color
 import utils
 
 

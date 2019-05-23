@@ -4,7 +4,7 @@
 # You can set these variables from the command line.
 SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
-SPHINXPROJ    = torchgeometry
+SPHINXPROJ    = kornia
 SOURCEDIR     = source
 BUILDDIR      = build
 

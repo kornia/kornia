@@ -1,6 +1,6 @@
-:github_url: https://github.com/arraiy/torchgeometry
+:github_url: https://github.com/arraiy/kornia
              
-torchgeometry
+kornia
 =============
 
 The *PyTorch Geometry* (TGM) package is a geometric computer vision library for `PyTorch <https://pytorch.org/>`_.
