@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchgeometry as tgm
+import kornia as kornia
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class TestIntegrationFocalLoss:
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)
 
-        criterion = tgm.losses.FocalLoss(
+        criterion = kornia.losses.FocalLoss(
             alpha=self.alpha, gamma=self.gamma, reduction='mean')
         # NOTE: uncomment to compare against vanilla cross entropy
         # criterion = nn.CrossEntropyLoss()

@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchgeometry as dgm
+import kornia as dgm
 
 
 def load_depth(file_name):
@@ -102,7 +102,7 @@ def DepthWarperApp():
     img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name,
                                       args.frame_i_id)
 
-    # instantiate the homography warper from `torchgeometry`
+    # instantiate the homography warper from `kornia`
     warper = dgm.DepthWarper(cam_i)
     warper.compute_homographies(cam_ref)
 

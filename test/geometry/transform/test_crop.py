@@ -3,7 +3,7 @@ from typing import Tuple
 import pytest
 
 import torch
-import torchgeometry as tgm
+import kornia as kornia
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
@@ -32,7 +32,7 @@ class TestCropAndResize:
             [2., 2.],
         ]])  # 1x4x2
 
-        patches = tgm.crop_and_resize(inp, boxes, (height, width))
+        patches = kornia.crop_and_resize(inp, boxes, (height, width))
         assert_allclose(patches, expected)
 
     def test_crop_batch(self):
@@ -69,7 +69,7 @@ class TestCropAndResize:
             [3., 3.],
         ]])  # 2x4x2
 
-        patches = tgm.crop_and_resize(inp, boxes, (height, width))
+        patches = kornia.crop_and_resize(inp, boxes, (height, width))
         assert_allclose(patches, expected)
 
     def test_crop_batch_broadcast(self):
@@ -101,7 +101,7 @@ class TestCropAndResize:
             [2., 2.],
         ]])  # 1x4x2
 
-        patches = tgm.crop_and_resize(inp, boxes, (height, width))
+        patches = kornia.crop_and_resize(inp, boxes, (height, width))
         assert_allclose(patches, expected)
 
     def test_gradcheck(self):
@@ -119,7 +119,7 @@ class TestCropAndResize:
             boxes, requires_grad=False)  # to var
 
         crop_height, crop_width = 4, 2
-        assert gradcheck(tgm.crop_and_resize,
+        assert gradcheck(kornia.crop_and_resize,
                          (img, boxes, (crop_height, crop_width),),
                          raise_exception=True)
 
@@ -128,7 +128,7 @@ class TestCropAndResize:
         def op_script(input: torch.Tensor,
                       boxes: torch.Tensor,
                       size: Tuple[int, int]) -> torch.Tensor:
-            return tgm.crop_and_resize(input, boxes, size)
+            return kornia.crop_and_resize(input, boxes, size)
         img = torch.tensor([[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
@@ -144,7 +144,7 @@ class TestCropAndResize:
 
         crop_height, crop_width = 4, 2
         actual = op_script(img, boxes, (crop_height, crop_width))
-        expected = tgm.crop_and_resize(img, boxes, (crop_height, crop_width))
+        expected = kornia.crop_and_resize(img, boxes, (crop_height, crop_width))
         assert_allclose(actual, expected)
 
 
@@ -163,7 +163,7 @@ class TestCenterCrop:
             [9., 10., 11., 12.],
         ]])
 
-        out_crop = tgm.center_crop(inp, (height, width))
+        out_crop = kornia.center_crop(inp, (height, width))
         assert_allclose(out_crop, expected)
 
     def test_center_crop_h4_w2(self):
@@ -182,7 +182,7 @@ class TestCenterCrop:
             [14., 15.],
         ]])
 
-        out_crop = tgm.center_crop(inp, (height, width))
+        out_crop = kornia.center_crop(inp, (height, width))
         assert_allclose(out_crop, expected)
 
     def test_center_crop_h4_w2_batch(self):
@@ -211,7 +211,7 @@ class TestCenterCrop:
             [8., 12.],
         ]])
 
-        out_crop = tgm.center_crop(inp, (height, width))
+        out_crop = kornia.center_crop(inp, (height, width))
         assert_allclose(out_crop, expected)
 
     def test_gradcheck(self):
@@ -220,27 +220,27 @@ class TestCenterCrop:
         img = utils.tensor_to_gradcheck_var(img)  # to var
 
         crop_height, crop_width = 4, 2
-        assert gradcheck(tgm.center_crop, (img, (crop_height, crop_width),),
+        assert gradcheck(kornia.center_crop, (img, (crop_height, crop_width),),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
                       size: Tuple[int, int]) -> torch.Tensor:
-            return tgm.center_crop(input, size)
+            return kornia.center_crop(input, size)
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.ones(batch_size, channels, height, width)
 
         crop_height, crop_width = 4, 2
         actual = op_script(img, (crop_height, crop_width))
-        expected = tgm.center_crop(img, (crop_height, crop_width))
+        expected = kornia.center_crop(img, (crop_height, crop_width))
         assert_allclose(actual, expected)
 
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
                       size: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
-            return tgm.center_crop(input, size)
+            return kornia.center_crop(input, size)
         # 1. Trace op
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.ones(batch_size, channels, height, width)
@@ -258,5 +258,5 @@ class TestCenterCrop:
         crop_height, crop_width = 2, 3
         actual = op_trace(
             img, (torch.tensor(crop_height), torch.tensor(crop_width)))
-        expected = tgm.center_crop(img, (crop_height, crop_width))
+        expected = kornia.center_crop(img, (crop_height, crop_width))
         assert_allclose(actual, expected)

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torchgeometry as dgm
+import kornia as dgm
 
 
 def load_homography(file_name):
@@ -87,7 +87,7 @@ def HomographyRegressionApp():
     img_dst, _ = load_image(os.path.join(args.input_dir, 'img2.ppm'))
     dst_homo_src_gt = load_homography(os.path.join(args.input_dir, 'H1to2p'))
 
-    # instantiate the homography warper from `torchgeometry`
+    # instantiate the homography warper from `kornia`
     height, width = img_src.shape[-2:]
     warper = dgm.HomographyWarper(height, width)
 
