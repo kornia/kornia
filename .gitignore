@@ -1,7 +1,7 @@
 build/
 dist/
-torchgeometry/version.py
-torchgeometry.egg-info/
+kornia/version.py
+kornia.egg-info/
 */**/__pycache__
 */**/*.pyc
 */**/*~
