@@ -52,7 +52,7 @@ source_suffix = ['.rst', '.ipynb']
 master_doc = 'index'
 
 # General information about the project.
-project = u'PyTorch Geometry'
+project = u'Kornia'
 copyright = u'2018, Arraiy, Inc.'
 author = u'Arraiy, Inc.'
 
@@ -128,7 +128,7 @@ html_context = {
 # -- Options for HTMLHelp output ------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'PyTorchGeometry'
+htmlhelp_basename = 'Kornia'
 
 
 # -- Options for LaTeX output ---------------------------------------------
@@ -155,7 +155,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'PytorchGeometry.tex', u'PyTorch Geometry Documentation',
+    (master_doc, 'kornia.tex', u'Kornia',
      u'Arraiy', 'manual'),
 ]
 
@@ -165,7 +165,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'PyTorch Geometry', 'PyTorch Geometry Documentation',
+    (master_doc, 'Kornia', u'Kornia Documentation',
      [author], 1)
 ]
 
@@ -176,8 +176,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kornia', 'kornia Documentation',
-     author, 'kornia', 'One line description of project.',
+    (master_doc, 'kornia', 'Kornia Documentation',
+     author, 'Kornia', 'Differentiable Computer Vision in Pytorch.',
      'Miscellaneous'),
 ]
 
@@ -242,11 +242,7 @@ def patched_make_field(self, types, domain, items, **kw):
 
 TypedField.make_field = patched_make_field
 
+
 # @jpchen's hack to get rtd builder to install latest pytorch
 if 'READTHEDOCS' in os.environ:
-    os.system("pip install pytorch-cpu==1.0.0")
-#    os.system('pip install http://download.pytorch.org/whl/cpu/torch-0.4.1-cp27-cp27mu-linux_x86_64.whl')
-    # for pytorch 1.0 (currently fails with OOM
-    # https://readthedocs.org/projects/pyro-ppl/builds/8159615/
-    #     os.system('pip install torch_nightly==1.0.0.dev20181127 -f '
-    #               'https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html')
+    os.system('pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl')
