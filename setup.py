@@ -72,7 +72,7 @@ if __name__ == '__main__':
 	url='https://github.com/arraiyopensource/kornia',
 	description='differentiable computer vision for deep learning',
 	long_description=long_description,
-	license='BSD',
+	license='Apache License 2.0',
 	python_requires='>=3.6',
 	    
 	# Test
@@ -84,4 +84,14 @@ if __name__ == '__main__':
 
 	zip_safe=True,
 	install_requires=requirements,
+        classifiers=[
+            'Intended Audience :: Developers',
+            'Intended Audience :: Education',
+            'Intended Audience :: Science/Research',
+            'Operating System :: POSIX :: Linux',
+            'Programming Language :: Python :: 3 :: Only',
+            'License :: OSI Approved :: Apache Software License',
+            'Topic :: Scientific/Engineering :: Image Recognition',
+            'Topic :: Software Development :: Libraries',
+         ],
     )
