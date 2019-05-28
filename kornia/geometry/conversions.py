@@ -81,8 +81,8 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
             points.shape))
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    z_vec[(z_vec >= 0) * (z_vec < 1e-6)] = EPS
-    z_vec[(z_vec < 0) * (z_vec > -1e-6)] = -EPS
+    z_vec[(z_vec >= 0) * (z_vec < EPS)] = EPS
+    z_vec[(z_vec < 0) * (z_vec > -EPS)] = -EPS
     scale: torch.Tensor = torch.tensor(1.) / z_vec
 
     return scale * points[..., :-1]
