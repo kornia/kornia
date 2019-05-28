@@ -79,10 +79,10 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
+
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    z_vec[(z_vec >= 0.) * (z_vec < EPS)] = EPS
-    z_vec[(z_vec < 0.) * (z_vec > -EPS)] = -EPS
+    z_vec = torch.where(torch.abs(z_vec) > EPS, z_vec, torch.sign(z_vec) * EPS)
     scale: torch.Tensor = torch.tensor(1.) / z_vec
 
     return scale * points[..., :-1]
