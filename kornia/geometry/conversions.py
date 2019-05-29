@@ -430,7 +430,7 @@ def normalize_pixel_coordinates(
 
     Args:
         pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
-          Shape must be :math:`(B, H, W, 2)`.
+          Shape can be :math:`(*, 2)`.
         width (int): the maximum width in the x-axis.
         height (int): the maximum height in the y-axis.
 
