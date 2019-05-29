@@ -176,7 +176,7 @@ class TestConvertPointsFromHomogeneous:
         expected = torch.FloatTensor([
             [1, 2],
             [0, 0.5],
-            [2e6, 1e6],
+            [2, 1],
         ]).to(torch.device(device_type))
 
         # to euclidean
@@ -192,7 +192,7 @@ class TestConvertPointsFromHomogeneous:
         ]]).to(torch.device(device_type))
 
         expected = torch.FloatTensor([[
-            [2e6, 1e6],
+            [2, 1],
         ], [
             [0, 0.5],
         ]]).to(torch.device(device_type))
