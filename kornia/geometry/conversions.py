@@ -82,7 +82,13 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
-    scale: torch.Tensor = torch.tensor(1.) / torch.clamp(z_vec, EPS)
+    # set the results of division by zeror/near-zero to 1.0
+    # follow the convention of opencv:
+    # https://github.com/opencv/opencv/pull/14411/files
+    scale: torch.Tensor = torch.where(
+        torch.abs(z_vec) > EPS,
+        torch.tensor(1.) / z_vec,
+        torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 
