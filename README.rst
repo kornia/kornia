@@ -77,12 +77,12 @@ Quick Usage
 .. code:: python
 
  import torch
- import kornia as tgm
+ import kornia
 
- x_rad = tgm.pi * torch.rand(1, 3, 3)
- x_deg = tgm.rad2deg(x_rad)
+ x_rad = kornia.pi * torch.rand(1, 3, 3)
+ x_deg = kornia.rad2deg(x_rad)
 
- torch.allclose(x_rad, tgm.deg2rad(x_deg))  # True
+ torch.allclose(x_rad, kornia.deg2rad(x_deg))  # True
 
 Examples
 ========
@@ -108,4 +108,4 @@ If you are using kornia in your research-related documents, it is recommended th
 
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes. The participation in this open source project is subject to `Code of Conduct <https://github.com/arraiyopensource/kornia/blob/master/CODE_OF_CONDUCT.md>`_.
