@@ -1,13 +1,13 @@
 import pytest
 import numpy as np
 
+import kornia
+from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
+from test.common import device_type
+
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-import kornia as kornia
-from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
-from ..common import device_type
 
 
 # based on:
@@ -345,7 +345,7 @@ class TestNormalizePixelCoordinates:
         assert_allclose(actual, expected)
 
 
-'''class TestDenormalizePixelCoordinates:
+class TestDenormalizePixelCoordinates:
     def test_tensor_bhw2(self):
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
@@ -362,14 +362,14 @@ class TestNormalizePixelCoordinates:
     def test_list(self):
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=True)
         grid = grid.contiguous().view(-1, 2)
 
         expected = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=True)
+            height, width, normalized_coordinates=False)
         expected = expected.contiguous().view(-1, 2)
 
-        grid_norm = kornia.normalize_pixel_coordinates(
+        grid_norm = kornia.denormalize_pixel_coordinates(
             grid, height, width)
 
         assert_allclose(grid_norm, expected)
@@ -378,38 +378,13 @@ class TestNormalizePixelCoordinates:
         @torch.jit.script
         def op_script(input: torch.Tensor, height: int,
                       width: int) -> torch.Tensor:
-            return kornia.normalize_pixel_coordinates(input, height, width)
+            return kornia.denormalize_pixel_coordinates(input, height, width)
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=True)
 
         actual = op_script(grid, height, width)
-        expected = kornia.normalize_pixel_coordinates(
+        expected = kornia.denormalize_pixel_coordinates(
             grid, height, width)
 
         assert_allclose(actual, expected)
-
-    def test_jit_trace(self):
-        @torch.jit.script
-        def op_script(input, height, width):
-            return kornia.normalize_pixel_coordinates(input, height, width)
-        # 1. Trace op
-        height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
-        op_traced = torch.jit.trace(
-            op_script,
-            (grid, torch.tensor(height), torch.tensor(width),))
-
-        # 2. Generate new input
-        height, width = 2, 5
-        grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False).repeat(2, 1, 1, 1)
-
-        # 3. Evaluate
-        actual = op_traced(
-            grid, torch.tensor(height), torch.tensor(width))
-        expected = kornia.normalize_pixel_coordinates(
-            grid, height, width)
-
-        assert_allclose(actual, expected)'''
