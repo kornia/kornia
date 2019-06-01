@@ -2,9 +2,7 @@ import pytest
 
 import torch
 import kornia as kornia
-
-import utils
-from common import device_type
+import kornia.testing as utils
 
 
 class TestMeanIoU:

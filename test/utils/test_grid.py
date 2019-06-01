@@ -2,8 +2,7 @@ import pytest
 
 import torch
 import kornia as kornia
-
-import utils  # test utils
+import kornia.testing as utils  # test utils
 
 
 def test_create_meshgrid():
