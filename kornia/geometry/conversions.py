@@ -452,12 +452,9 @@ def normalize_pixel_coordinates(
         torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
+    factor: torch.Tensor = torch.tensor(2.) / (hw - 1)
 
-    # normalize coordinates and return
-    pixel_coordinates_norm: torch.Tensor = \
-        factor * pixel_coordinates - torch.tensor(1.)
-    return pixel_coordinates_norm
+    return factor * pixel_coordinates - 1
 
 
 def denormalize_pixel_coordinates(
@@ -486,7 +483,7 @@ def denormalize_pixel_coordinates(
         torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
+    factor: torch.Tensor = torch.tensor(2.) / (hw - 1)
 
     return torch.tensor(1.) / factor * (pixel_coordinates + 1)
 
