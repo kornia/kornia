@@ -14,3 +14,4 @@ kornia.geometry.conversions
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: rtvec_to_pose
 .. autofunction:: normalize_pixel_coordinates
+.. autofunction:: denormalize_pixel_coordinates
