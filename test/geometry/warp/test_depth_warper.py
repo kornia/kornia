@@ -1,11 +1,11 @@
 import pytest
 
-import torch
-import kornia as kornia
-from torch.autograd import gradcheck
-
-import utils  # test utils
+import kornia
+import kornia.testing as utils  # test utils
 from kornia.geometry.conversions import normalize_pixel_coordinates
+
+import torch
+from torch.autograd import gradcheck
 
 
 class TestDepthWarper:

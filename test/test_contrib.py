@@ -1,11 +1,11 @@
 import pytest
 
+import kornia
+import kornia.testing as utils  # test utils
+
 import torch
-import kornia as kornia
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-import utils
 
 
 class TestMaxBlurPool2d:

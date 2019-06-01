@@ -2,13 +2,12 @@ import pytest
 import numpy as np
 
 import torch
-import kornia as kornia
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-import utils  # test utils
-from utils import check_equal_torch, check_equal_numpy
-from common import device_type
+import kornia as kornia
+from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
+from ..common import device_type
 
 
 # based on:
@@ -31,26 +30,26 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.Tensor([0, 0, 0])
         expected = torch.Tensor([1, 0, 0, 0])
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_small_angle(self):
         theta = 1e-2
         angle_axis = torch.Tensor([theta, 0, 0])
         expected = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_x_rotation(self):
         half_sqrt2 = 0.5 * np.sqrt(2)
         angle_axis = torch.Tensor([kornia.pi / 2, 0, 0])
         expected = torch.Tensor([half_sqrt2, half_sqrt2, 0, 0])
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert utils.check_equal_torch(quaternion, expected)
+        assert_allclose(quaternion, expected)
 
     def test_gradcheck(self):
         eps = 1e-12
         angle_axis = torch.Tensor([0, 0, 0]) + eps
-        angle_axis = utils.tensor_to_gradcheck_var(angle_axis)
+        angle_axis = tensor_to_gradcheck_var(angle_axis)
         # evaluate function gradient
         assert gradcheck(kornia.angle_axis_to_quaternion, (angle_axis,),
                          raise_exception=True)
@@ -73,38 +72,38 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.Tensor([1, 0, 0, 0])
         expected = torch.Tensor([0, 0, 0])
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_y_rotation(self):
         quaternion = torch.Tensor([0, 0, 1, 0])
         expected = torch.Tensor([0, kornia.pi, 0])
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_z_rotation(self):
         quaternion = torch.Tensor([np.sqrt(3) / 2, 0, 0, 0.5])
         expected = torch.Tensor([0, 0, kornia.pi / 3])
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_small_angle(self):
         theta = 1e-2
         quaternion = torch.Tensor([np.cos(theta / 2), np.sin(theta / 2), 0, 0])
         expected = torch.Tensor([theta, 0, 0])
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert utils.check_equal_torch(angle_axis, expected)
+        assert_allclose(angle_axis, expected)
 
     def test_gradcheck(self):
         eps = 1e-12
         quaternion = torch.Tensor([1, 0, 0, 0]) + eps
-        quaternion = utils.tensor_to_gradcheck_var(quaternion)
+        quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
         assert gradcheck(kornia.quaternion_to_angle_axis, (quaternion,),
                          raise_exception=True)
 
 
 def test_pi():
-    assert pytest.approx(kornia.pi.item(), 3.141592)
+    assert_allclose(kornia.pi, 3.141592)
 
 
 @pytest.mark.parametrize("batch_shape", [
@@ -119,10 +118,10 @@ def test_rad2deg(batch_shape, device_type):
     x_deg_to_rad = kornia.deg2rad(x_deg)
 
     # compute error
-    error = utils.compute_mse(x_rad, x_deg_to_rad)
+    assert_allclose(x_rad, x_deg_to_rad)
 
     # evaluate function gradient
-    assert gradcheck(kornia.rad2deg, (utils.tensor_to_gradcheck_var(x_rad),),
+    assert gradcheck(kornia.rad2deg, (tensor_to_gradcheck_var(x_rad),),
                      raise_exception=True)
 
 
@@ -137,11 +136,9 @@ def test_deg2rad(batch_shape, device_type):
     x_rad = kornia.deg2rad(x_deg)
     x_rad_to_deg = kornia.rad2deg(x_rad)
 
-    # compute error
-    error = utils.compute_mse(x_deg, x_rad_to_deg)
-    assert pytest.approx(error.item(), 0.0)
+    assert_allclose(x_deg, x_rad_to_deg)
 
-    assert gradcheck(kornia.deg2rad, (utils.tensor_to_gradcheck_var(x_deg),),
+    assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)
 
 
@@ -159,7 +156,7 @@ def test_convert_points_to_homogeneous(batch_shape, device_type):
     assert (points_h[..., -1] == torch.ones(points_h[..., -1].shape)).all()
 
     # evaluate function gradient
-    points = utils.tensor_to_gradcheck_var(points)  # to var
+    points = tensor_to_gradcheck_var(points)  # to var
     assert gradcheck(kornia.convert_points_to_homogeneous, (points,),
                      raise_exception=True)
 
@@ -215,7 +212,7 @@ class TestConvertPointsFromHomogeneous:
         points_h = torch.rand(batch_shape)
 
         # evaluate function gradient
-        points_h = utils.tensor_to_gradcheck_var(points_h)  # to var
+        points_h = tensor_to_gradcheck_var(points_h)  # to var
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
@@ -225,17 +222,17 @@ def test_angle_axis_to_rotation_matrix(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
     angle_axis = torch.rand(batch_size, 3).to(device)
-    eye_batch = utils.create_eye_batch(batch_size, 4).to(device)
+    eye_batch = create_eye_batch(batch_size, 4).to(device)
 
     # apply transform
     rotation_matrix = kornia.angle_axis_to_rotation_matrix(angle_axis)
 
     rotation_matrix_eye = torch.matmul(
         rotation_matrix, rotation_matrix.transpose(1, 2))
-    assert check_equal_torch(rotation_matrix_eye, eye_batch)
+    assert_allclose(rotation_matrix_eye, eye_batch)
 
     # evaluate function gradient
-    angle_axis = utils.tensor_to_gradcheck_var(angle_axis)  # to var
+    angle_axis = tensor_to_gradcheck_var(angle_axis)  # to var
     assert gradcheck(kornia.angle_axis_to_rotation_matrix, (angle_axis,),
                      raise_exception=True)
 
@@ -246,7 +243,7 @@ def test_rtvec_to_pose_gradcheck(batch_size, device_type):
     rtvec = torch.rand(batch_size, 6).to(torch.device(device_type))
 
     # evaluate function gradient
-    rtvec = utils.tensor_to_gradcheck_var(rtvec)  # to var
+    rtvec = tensor_to_gradcheck_var(rtvec)  # to var
     assert gradcheck(kornia.rtvec_to_pose, (rtvec,), raise_exception=True)
 
 
@@ -256,7 +253,7 @@ def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
     rmat = torch.rand(batch_size, 3, 4).to(torch.device(device_type))
 
     # evaluate function gradient
-    rmat = utils.tensor_to_gradcheck_var(rmat)  # to var
+    rmat = tensor_to_gradcheck_var(rmat)  # to var
     assert gradcheck(kornia.rotation_matrix_to_angle_axis,
                      (rmat,), raise_exception=True)
 
@@ -275,7 +272,7 @@ def test_rotation_matrix_to_angle_axis(device_type):
     rmat = torch.stack([rmat_2, rmat_1], dim=0).to(device)
     rvec = torch.stack([rvec_2, rvec_1], dim=0).to(device)
 
-    assert check_equal_torch(kornia.rotation_matrix_to_angle_axis(rmat), rvec)
+    assert_allclose(kornia.rotation_matrix_to_angle_axis(rmat), rvec)
 
 
 class TestNormalizePixelCoordinates:
@@ -346,3 +343,73 @@ class TestNormalizePixelCoordinates:
             grid, height, width)
 
         assert_allclose(actual, expected)
+
+
+'''class TestDenormalizePixelCoordinates:
+    def test_tensor_bhw2(self):
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+
+        expected = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+
+        grid_norm = kornia.denormalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(grid_norm, expected)
+
+    def test_list(self):
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        grid = grid.contiguous().view(-1, 2)
+
+        expected = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+        expected = expected.contiguous().view(-1, 2)
+
+        grid_norm = kornia.normalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(grid_norm, expected)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input: torch.Tensor, height: int,
+                      width: int) -> torch.Tensor:
+            return kornia.normalize_pixel_coordinates(input, height, width)
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+
+        actual = op_script(grid, height, width)
+        expected = kornia.normalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(input, height, width):
+            return kornia.normalize_pixel_coordinates(input, height, width)
+        # 1. Trace op
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=False)
+        op_traced = torch.jit.trace(
+            op_script,
+            (grid, torch.tensor(height), torch.tensor(width),))
+
+        # 2. Generate new input
+        height, width = 2, 5
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=False).repeat(2, 1, 1, 1)
+
+        # 3. Evaluate
+        actual = op_traced(
+            grid, torch.tensor(height), torch.tensor(width))
+        expected = kornia.normalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)'''

@@ -1,12 +1,12 @@
 import pytest
 
-import torch
 import kornia as kornia
+import kornia.testing as utils  # test utils
+from test.common import device_type
+
+import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-import utils
-from common import device_type
 
 
 class TestRotate:
