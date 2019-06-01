@@ -15,6 +15,7 @@ __all__ = [
     "angle_axis_to_quaternion",
     "rtvec_to_pose",
     "normalize_pixel_coordinates",
+    "denormalize_pixel_coordinates",
 ]
 
 EPS = 1e-6
@@ -441,7 +442,7 @@ def normalize_pixel_coordinates(
         height (int): the maximum height in the y-axis.
 
     Return:
-        torch.Tensor: the nornmalized pixel coordinates.
+        torch.Tensor: the normalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
@@ -457,6 +458,37 @@ def normalize_pixel_coordinates(
     pixel_coordinates_norm: torch.Tensor = \
         factor * pixel_coordinates - torch.tensor(1.)
     return pixel_coordinates_norm
+
+
+def denormalize_pixel_coordinates(
+        pixel_coordinates: torch.Tensor,
+        height: int,
+        width: int) -> torch.Tensor:
+    r"""Denormalize pixel coordinates.
+
+    The input is assumed to be -1 if on extreme left, 1 if on
+    extreme right (x = w-1).
+
+    Args:
+        pixel_coordinate (torch.Tensor): the normalized grid coordinates.
+          Shape can be :math:`(*, 2)`.
+        width (int): the maximum width in the x-axis.
+        height (int): the maximum height in the y-axis.
+
+    Return:
+        torch.Tensor: the denormalized pixel coordinates.
+    """
+    if pixel_coordinates.shape[-1] != 2:
+        raise ValueError("Input pixel_coordinates must be of shape (*, 2). "
+                         "Got {}".format(pixel_coordinates.shape))
+    # compute normalization factor
+    hw: torch.Tensor = torch.stack([
+        torch.tensor(width), torch.tensor(height)
+    ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+
+    factor: torch.Tensor = torch.tensor(2.) / (hw - torch.tensor(1.))
+
+    return torch.tensor(1.) / factor * (pixel_coordinates + 1)
 
 
 # TODO: add below funtionalities
