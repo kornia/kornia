@@ -1,12 +1,13 @@
-import pytest
 from typing import Tuple
 
+import pytest
+
+import kornia
+import kornia.testing as utils  # test utils
+
 import torch
-import kornia as kornia
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-
-import utils  # test utils
 
 
 class TestMedianBlur:

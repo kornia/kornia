@@ -1,12 +1,12 @@
 import pytest
 
-import torch
 import kornia as kornia
+import kornia.testing as utils  # test utils
+from test.common import device_type
+
+import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-import utils  # test utils
-from common import device_type
 
 
 @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 32), (2, 3, 16, 31)])

@@ -2,12 +2,12 @@ from typing import Tuple
 
 import pytest
 
-import torch
 import kornia as kornia
+import kornia.testing as utils  # test utils
+
+import torch
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-
-import utils  # test utils
 
 
 class TestCropAndResize:

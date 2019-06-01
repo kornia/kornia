@@ -1,11 +1,12 @@
 import pytest
+
+import kornia
+import kornia.testing as utils  # test utils
+from test.common import device_type
+
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-from common import device_type
-
-import kornia.color as color
-import utils
 
 
 class TestBgrToRgb:
@@ -31,7 +32,7 @@ class TestBgrToRgb:
                                  [[1., 1.],
                                   [1., 1.]]])  # 3x2x2
 
-        f = color.BgrToRgb()
+        f = kornia.color.BgrToRgb()
         assert_allclose(f(data), expected)
 
     def test_batch_bgr_to_rgb(self):
@@ -73,7 +74,7 @@ class TestBgrToRgb:
                                   [[1., 1.],
                                    [1., 1.]]]])  # 2x3x2x2
 
-        f = color.BgrToRgb()
+        f = kornia.color.BgrToRgb()
         out = f(data)
         assert_allclose(out, expected)
 
@@ -91,14 +92,13 @@ class TestBgrToRgb:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(color.BgrToRgb(), (data,),
+        assert gradcheck(kornia.color.BgrToRgb(), (data,),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
-
-            return color.bgr_to_rgb(data)
+            return kornia.bgr_to_rgb(data)
 
             data = torch.tensor([[[1., 1.],
                                   [1., 1.]],
@@ -110,7 +110,7 @@ class TestBgrToRgb:
                                   [3., 3.]]])  # 3x2x2
 
             actual = op_script(data)
-            expected = color.bgr_to_rgb(data)
+            expected = kornia.bgr_to_rgb(data)
             assert_allclose(actual, expected)
 
 
@@ -137,7 +137,7 @@ class TestRgbToBgr:
                                  [[1., 1.],
                                   [1., 1.]]])  # 3x2x2
 
-        f = color.RgbToBgr()
+        f = kornia.color.RgbToBgr()
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self):
@@ -154,14 +154,13 @@ class TestRgbToBgr:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(color.RgbToBgr(), (data,),
+        assert gradcheck(kornia.color.RgbToBgr(), (data,),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
-
-            return color.rgb_to_bgr(data)
+            return kornia.rgb_to_bgr(data)
 
             data = torch.tensor([[[1., 1.],
                                   [1., 1.]],
@@ -173,7 +172,7 @@ class TestRgbToBgr:
                                   [3., 3.]]])  # 3x2x2
 
             actual = op_script(data)
-            expected = color.rgb_to_bgr(data)
+            expected = kornia.rgb_to_bgr(data)
             assert_allclose(actual, expected)
 
     def test_batch_rgb_to_bgr(self):
@@ -215,6 +214,6 @@ class TestRgbToBgr:
                                   [[1., 1.],
                                    [1., 1.]]]])  # 2x3x2x2
 
-        f = color.RgbToBgr()
+        f = kornia.color.RgbToBgr()
         out = f(data)
         assert_allclose(out, expected)
