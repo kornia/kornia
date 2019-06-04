@@ -11,6 +11,8 @@ kornia.geometry.conversions
 .. autofunction:: rotation_matrix_to_quaternion
 .. autofunction:: quaternion_to_angle_axis
 .. autofunction:: quaternion_to_rotation_matrix
+.. autofunction:: quaternion_log_to_exp
+.. autofunction:: quaternion_exp_to_log
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
 .. autofunction:: rtvec_to_pose
