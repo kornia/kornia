@@ -1,11 +1,11 @@
 import pytest
 
-import torch
 import kornia as kornia
-from torch.autograd import gradcheck
+import kornia.testing as utils  # test utils
+from test.common import device_type
 
-import utils  # test utils
-from common import device_type
+import torch
+from torch.autograd import gradcheck
 
 
 class TestHomographyWarper:

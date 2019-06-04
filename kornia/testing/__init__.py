@@ -1,8 +1,14 @@
+"""
+The testing package contains testing-specific utilities.
+"""
+
+
 import torch
 import numpy as np
 
-
-# test utilites
+__all__ = [
+    'tensor_to_gradcheck_var', 'create_eye_batch',
+]
 
 
 def create_pinhole(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz):
