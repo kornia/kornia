@@ -18,6 +18,8 @@ __all__ = [
     "rotation_matrix_to_quaternion",
     "quaternion_to_angle_axis",
     "quaternion_to_rotation_matrix",
+    "quaternion_log_to_exp",
+    "quaternion_exp_to_log",
     "rtvec_to_pose",
     "denormalize_pixel_coordinates",
     "normalize_pixel_coordinates",
@@ -459,6 +461,82 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     angle_axis[..., 1] += q2 * k
     angle_axis[..., 2] += q3 * k
     return angle_axis
+
+
+def quaternion_log_to_exp(quaternion: torch.Tensor,
+                          eps: float = 1e-8) -> torch.Tensor:
+    r"""Applies exponential map to log quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          converted. The tensor can be of shape :math:`(*, 3)`.
+
+    Return:
+        torch.Tensor: the quaternion exponential map of shape :math:`(*, 4)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 0.])
+        >>> kornia.quaternion_log_to_exp(quaternion)
+        tensor([0., 0., 0., 1.])
+    """
+    if not torch.is_tensor(quaternion):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 3:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 3). Got {}".format(
+                quaternion.shape))
+    # compute quaternion norm
+    norm_q: torch.Tensor = torch.norm(
+        quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+
+    # compute scalar and vector
+    quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
+    quaternion_scalar: torch.Tensor = torch.cos(norm_q)
+
+    # compose quaternion and return
+    quaternion_exp: torch.Tensor = torch.cat(
+        [quaternion_vector, quaternion_scalar], dim=-1)
+    return quaternion_exp
+
+
+def quaternion_exp_to_log(quaternion: torch.Tensor,
+                          eps: float = 1e-8) -> torch.Tensor:
+    r"""Applies the log map to a quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          converted. The tensor can be of shape :math:`(*, 4)`.
+
+    Return:
+        torch.Tensor: the quaternion log map of shape :math:`(*, 3)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 0., 1.])
+        >>> kornia.quaternion_exp_to_log(quaternion)
+        tensor([0., 0., 0.])
+    """
+    if not torch.is_tensor(quaternion):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    # unpack quaternion vector and scalar
+    quaternion_vector: torch.Tensor = quaternion[..., 0:3]
+    quaternion_scalar: torch.Tensor = quaternion[..., 3:4]
+
+    # compute quaternion norm
+    norm_q: torch.Tensor = torch.norm(
+        quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+
+    # apply log map
+    quaternion_log: torch.Tensor = quaternion_vector * torch.acos(
+        torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
+    return quaternion_log
 
 
 # based on:
