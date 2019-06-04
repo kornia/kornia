@@ -1,5 +1,9 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 
 __all__ = [
     # functional api
@@ -9,13 +13,15 @@ __all__ = [
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
     "angle_axis_to_rotation_matrix",
+    "angle_axis_to_quaternion",
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
     "quaternion_to_angle_axis",
-    "angle_axis_to_quaternion",
+    "quaternion_to_rotation_matrix",
     "rtvec_to_pose",
-    "normalize_pixel_coordinates",
     "denormalize_pixel_coordinates",
+    "normalize_pixel_coordinates",
+    "normalize_quaternion",
 ]
 
 EPS = 1e-6
@@ -317,6 +323,92 @@ def rotation_matrix_to_quaternion(
                     t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
     q *= 0.5
     return q
+
+
+def normalize_quaternion(quaternion: torch.Tensor,
+                         eps: Optional[float] = 1e-12) -> torch.Tensor:
+    r"""Normalizes a quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          normalized. The tensor can be of shape :math:`(*, 4)`.
+        eps (Optional[bool]): small value to avoid division by zero.
+          Default: 1e-12.
+
+    Return:
+        torch.Tensor: the normalized quaternion of shape :math:`(*, 4)`.
+
+    Example:
+        >>> quaternion = torch.tensor([1., 0., 1., 0.])
+        >>> kornia.normalize_quaternion(quaternion)
+        tensor([0.7071, 0.0000, 0.7071, 0.0000])
+    """
+    if not torch.is_tensor(quaternion):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    return F.normalize(quaternion, p=2, dim=-1, eps=eps)
+
+
+# based on:
+# https://github.com/matthew-brett/transforms3d/blob/8965c48401d9e8e66b6a8c37c65f2fc200a076fa/transforms3d/quaternions.py#L101
+# https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/geometry/transformation/rotation_matrix_3d.py#L247
+
+def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
+    r"""Converts a quaternion to a rotation matrix.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          normalized. The tensor can be of shape :math:`(*, 4)`.
+
+    Return:
+        torch.Tensor: the rotation matrix of shape :math:`(*, 3, 3)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 1., 0.])
+        >>> kornia.quaternion_to_rotation_matrix(quaternion)
+        tensor([[[-1.,  0.,  0.],
+                 [ 0., -1.,  0.],
+                 [ 0.,  0.,  1.]]])
+    """
+    if not torch.is_tensor(quaternion):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    # normalize the input quaternion
+    quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
+
+    # unpack the normalized quaternion components
+    x, y, z, w = torch.chunk(quaternion_norm, chunks=4, dim=-1)
+
+    # compute the actual conversion
+    tx: torch.Tensor = 2.0 * x
+    ty: torch.Tensor = 2.0 * y
+    tz: torch.Tensor = 2.0 * z
+    twx: torch.Tensor = tx * w
+    twy: torch.Tensor = ty * w
+    twz: torch.Tensor = tz * w
+    txx: torch.Tensor = tx * x
+    txy: torch.Tensor = ty * x
+    txz: torch.Tensor = tz * x
+    tyy: torch.Tensor = ty * y
+    tyz: torch.Tensor = tz * y
+    tzz: torch.Tensor = tz * z
+    one: torch.Tensor = torch.tensor(1.)
+
+    matrix: torch.Tensor = torch.stack([
+        one - (tyy + tzz), txy - twz, txz + twy,
+        txy + twz, one - (txx + tzz), tyz - twx,
+        txz - twy, tyz + twx, one - (txx + tyy)], dim=-1)
+    return matrix.view(-1, 3, 3)
 
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
