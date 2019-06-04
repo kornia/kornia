@@ -1,11 +1,11 @@
 import pytest
 
-import torch
-import kornia as kornia
-from torch.autograd import gradcheck
+import kornia
+import kornia.testing as utils  # test utils
+from test.common import TEST_DEVICES
 
-import utils  # test utilities
-from common import TEST_DEVICES
+import torch
+from torch.autograd import gradcheck
 
 
 def identity_matrix(batch_size):
