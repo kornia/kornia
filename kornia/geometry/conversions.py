@@ -363,7 +363,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
-          normalized. The tensor can be of shape :math:`(*, 4)`.
+          converted. The tensor can be of shape :math:`(*, 4)`.
 
     Return:
         torch.Tensor: the rotation matrix of shape :math:`(*, 3, 3)`.
