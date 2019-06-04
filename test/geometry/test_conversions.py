@@ -55,6 +55,72 @@ class TestAngleAxisToQuaternion:
                          raise_exception=True)
 
 
+class TestQuaternionToRotationMatrix:
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        quaternion = torch.zeros(batch_size, 4)
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert matrix.shape == (batch_size, 3, 3)
+
+    def test_unit_quaternion(self):
+        quaternion = torch.tensor([0., 0., 0., 1.])
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_x_rotation(self):
+        quaternion = torch.tensor([1., 0., 0., 0.])
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., -1., 0.],
+            [0., 0., -1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_y_rotation(self):
+        quaternion = torch.tensor([0., 1., 0., 0.])
+        expected = torch.tensor([
+            [-1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., -1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_z_rotation(self):
+        quaternion = torch.tensor([0., 0., 1., 0.])
+        expected = torch.tensor([
+            [-1., 0., 0.],
+            [0., -1., 0.],
+            [0., 0., 1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_gradcheck(self):
+        quaternion = torch.tensor([0., 0., 0., 1.])
+        quaternion = tensor_to_gradcheck_var(quaternion)
+        # evaluate function gradient
+        assert gradcheck(kornia.quaternion_to_rotation_matrix, (quaternion,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return kornia.quaternion_to_rotation_matrix(input)
+
+        quaternion = torch.tensor([0., 0., 1., 0.])
+        actual = op_script(quaternion)
+        expected = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(actual, expected)
+
+
 class TestQuaternionToAngleAxis:
 
     def test_smoke(self):
