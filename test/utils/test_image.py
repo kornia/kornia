@@ -3,8 +3,7 @@ import numpy as np
 
 import torch
 import kornia as kornia
-
-import utils  # test utils
+import kornia.testing as utils  # test utils
 
 
 @pytest.mark.parametrize("batch_shape",

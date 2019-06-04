@@ -1,11 +1,12 @@
 import pytest
+
+import kornia
+import kornia.testing as utils  # test utils
+from test.common import device_type
+
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-from common import device_type
-
-import kornia.color as color
-import utils
 
 
 class TestNormalize:
@@ -13,7 +14,7 @@ class TestNormalize:
         mean = [0.5]
         std = [0.1]
         repr = 'Normalize(mean=[0.5], std=[0.1])'
-        assert str(color.Normalize(mean, std)) == repr
+        assert str(kornia.color.Normalize(mean, std)) == repr
 
     def test_normalize(self):
 
@@ -25,7 +26,7 @@ class TestNormalize:
         # expected output
         expected = torch.tensor([0.25]).repeat(1, 2, 2).view_as(data)
 
-        f = color.Normalize(mean, std)
+        f = kornia.color.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_broadcast_normalize(self):
@@ -40,7 +41,7 @@ class TestNormalize:
         # expected output
         expected = torch.tensor([1.25, 1, 0.5]).repeat(2, 1, 1).view_as(data)
 
-        f = color.Normalize(mean, std)
+        f = kornia.color.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_batch_normalize(self):
@@ -55,15 +56,14 @@ class TestNormalize:
         # expected output
         expected = torch.tensor([1.25, 1, 0.5]).repeat(2, 1, 1).view_as(data)
 
-        f = color.Normalize(mean, std)
+        f = kornia.color.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor, mean: torch.Tensor,
                       std: torch.Tensor) -> torch.Tensor:
-
-            return color.normalize(data, mean, std)
+            return kornia.normalize(data, mean, std)
 
             data = torch.ones(2, 3, 1, 1)
             data += 2
@@ -85,5 +85,5 @@ class TestNormalize:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(color.Normalize(mean, std), (data,),
+        assert gradcheck(kornia.color.Normalize(mean, std), (data,),
                          raise_exception=True)
