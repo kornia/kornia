@@ -142,23 +142,71 @@ def test_deg2rad(batch_shape, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-def test_convert_points_to_homogeneous(batch_shape, device_type):
-    # generate input data
-    points = torch.rand(batch_shape)
-    points = points.to(torch.device(device_type))
+class TestConvertPointsToHomogeneous:
+    def test_convert_points(self, device_type):
+        # generate input data
+        points_h = torch.tensor([
+            [1., 2., 1.],
+            [0., 1., 2.],
+            [2., 1., 0.],
+            [-1., -2., -1.],
+            [0., 1., -2.],
+        ]).to(torch.device(device_type))
 
-    # to homogeneous
-    points_h = kornia.convert_points_to_homogeneous(points)
+        expected = torch.tensor([
+            [1., 2., 1., 1.],
+            [0., 1., 2., 1.],
+            [2., 1., 0., 1.],
+            [-1., -2., -1., 1.],
+            [0., 1., -2., 1.],
+        ]).to(torch.device(device_type))
 
-    assert points_h.shape[-2] == batch_shape[-2]
-    assert (points_h[..., -1] == torch.ones(points_h[..., -1].shape)).all()
+        # to euclidean
+        points = kornia.convert_points_to_homogeneous(points_h)
+        assert_allclose(points, expected)
 
-    # evaluate function gradient
-    points = tensor_to_gradcheck_var(points)  # to var
-    assert gradcheck(kornia.convert_points_to_homogeneous, (points,),
-                     raise_exception=True)
+    def test_convert_points_batch(self, device_type):
+        # generate input data
+        points_h = torch.tensor([[
+            [2., 1., 0.],
+        ], [
+            [0., 1., 2.],
+        ], [
+            [0., 1., -2.],
+        ]]).to(torch.device(device_type))
+
+        expected = torch.tensor([[
+            [2., 1., 0., 1.],
+        ], [
+            [0., 1., 2., 1.],
+        ], [
+            [0., 1., -2., 1.],
+        ]]).to(torch.device(device_type))
+
+        # to euclidean
+        points = kornia.convert_points_to_homogeneous(points_h)
+        assert_allclose(points, expected)
+
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_gradcheck(self, batch_shape):
+        points_h = torch.rand(batch_shape)
+
+        # evaluate function gradient
+        points_h = tensor_to_gradcheck_var(points_h)  # to var
+        assert gradcheck(kornia.convert_points_to_homogeneous, (points_h,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return kornia.convert_points_to_homogeneous(input)
+
+        points_h = torch.zeros(1, 2, 3)
+        actual = op_script(points_h)
+        expected = kornia.convert_points_to_homogeneous(points_h)
+
+        assert_allclose(actual, expected)
 
 
 class TestConvertPointsFromHomogeneous:
