@@ -165,6 +165,11 @@ class TestSpatialSoftArgmax2d:
         m = kornia.contrib.SpatialSoftArgmax2d()
         assert m(input).shape == (1, 1, 2)
 
+    def test_smoke_batch(self):
+        input = torch.zeros(2, 1, 2, 3)
+        m = kornia.contrib.SpatialSoftArgmax2d()
+        assert m(input).shape == (2, 1, 2)
+
     def test_top_left(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
@@ -177,7 +182,6 @@ class TestSpatialSoftArgmax2d:
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
-        #import pdb;pdb.set_trace()
         coord = kornia.contrib.spatial_soft_argmax2d(input, False)
         assert pytest.approx(coord[..., 0].item(), 0.0)
         assert pytest.approx(coord[..., 1].item(), 0.0)
@@ -217,11 +221,15 @@ class TestSpatialSoftArgmax2d:
 
     def test_jit(self):
         @torch.jit.script
-        def op_script(input: torch.Tensor, normalize_coords: bool) -> torch.Tensor:
-            return kornia.spatial_soft_argmax2d(input, normalize_coords)
+        def op_script(input: torch.Tensor,
+                      temperature: torch.Tensor,
+                      normalize_coords: bool,
+                      eps: float) -> torch.Tensor:
+            return kornia.spatial_soft_argmax2d(
+                input, temperature, normalize_coords, eps)
 
         input = torch.rand(1, 2, 3, 4)
-        actual = op_script(input, True)
+        actual = op_script(input, torch.tensor(1.0), True, 1e-8)
         expected = kornia.spatial_soft_argmax2d(input)
 
         assert_allclose(actual, expected)
