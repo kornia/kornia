@@ -6,6 +6,7 @@ from test.common import TEST_DEVICES
 
 import torch
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 
 def identity_matrix(batch_size):
@@ -66,8 +67,7 @@ class TestTransformPoints:
         points_dst_to_src = kornia.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
-        error = utils.compute_mse(points_src, points_dst_to_src)
-        assert pytest.approx(error.item(), 0.0)
+        assert_allclose(points_src, points_dst_to_src)
 
     def test_gradcheck(self):
         # generate input data
@@ -80,6 +80,31 @@ class TestTransformPoints:
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
         assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(transform, points):
+            return kornia.transform_points(transform, points)
+
+        points = torch.ones(1, 2, 2)
+        transform = torch.eye(3)[None]
+        actual = op_script(transform, points)
+        expected = kornia.transform_points(transform, points)
+
+        assert_allclose(actual, expected)
+
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(transform, points):
+            return kornia.transform_points(transform, points)
+
+        points = torch.ones(1, 2, 2)
+        transform = torch.eye(3)[None]
+        op_script_trace = torch.jit.trace(op_script, (transform, points,))
+        actual = op_script_trace(transform, points)
+        expected = kornia.transform_points(transform, points)
+
+        assert_allclose(actual, expected)
 
 
 class TestComposeTransforms:
