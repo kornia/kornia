@@ -78,7 +78,7 @@ class SpatialSoftArgmax2d(nn.Module):
 
 def spatial_soft_argmax2d(
         input: torch.Tensor,
-        normalized_coordinates: Optional[bool] = True) -> torch.Tensor:
+        normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Function that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
     See :class:`~kornia.contrib.SpatialSoftArgmax2d` for details.
