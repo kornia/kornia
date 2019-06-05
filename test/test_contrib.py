@@ -137,9 +137,20 @@ class TestExtractTensorPatches:
         assert utils.check_equal_torch(input[0, :, 1:3, 0:3], patches[0, 2])
         assert utils.check_equal_torch(input[0, :, 1:3, 1:4], patches[0, 3])
 
-    # TODO: implement me
     def test_jit(self):
-        pass
+        @torch.jit.script
+        def op_script(input: torch.Tensor, height: int,
+                      width: int) -> torch.Tensor:
+            return kornia.denormalize_pixel_coordinates(input, height, width)
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+
+        actual = op_script(grid, height, width)
+        expected = kornia.denormalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)
 
     def test_gradcheck(self):
         input = torch.rand(2, 3, 4, 4)
@@ -204,9 +215,16 @@ class TestSpatialSoftArgmax2d:
         assert pytest.approx(coord[1, 1, 0].item(), 1.0)  # bottom-right
         assert pytest.approx(coord[1, 1, 1].item(), 1.0)
 
-    # TODO: implement me
-    def _test_jit(self):
-        pass
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input: torch.Tensor, normalize_coords: bool) -> torch.Tensor:
+            return kornia.spatial_soft_argmax2d(input, normalize_coords)
+
+        input = torch.rand(1, 2, 3, 4)
+        actual = op_script(input, True)
+        expected = kornia.spatial_soft_argmax2d(input)
+
+        assert_allclose(actual, expected)
 
     def test_gradcheck(self):
         input = torch.rand(2, 3, 3, 2)
