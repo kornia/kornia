@@ -148,13 +148,13 @@ class TestExtractTensorPatches:
                          (input, 3,), raise_exception=True)
 
 
-class TestSoftArgmax2d:
-    def _test_smoke(self):
+class TestSpatialSoftArgmax2d:
+    def test_smoke(self):
         input = torch.zeros(1, 1, 2, 3)
         m = kornia.contrib.SpatialSoftArgmax2d()
         assert m(input).shape == (1, 1, 2)
 
-    def _test_top_left(self):
+    def test_top_left(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
@@ -162,15 +162,16 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), -1.0)
         assert pytest.approx(coord[..., 1].item(), -1.0)
 
-    def _test_top_left_normalized(self):
+    def test_top_left_normalized(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
+        #import pdb;pdb.set_trace()
         coord = kornia.contrib.spatial_soft_argmax2d(input, False)
         assert pytest.approx(coord[..., 0].item(), 0.0)
         assert pytest.approx(coord[..., 1].item(), 0.0)
 
-    def _test_bottom_right(self):
+    def test_bottom_right(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., -1, 1] = 10.
 
@@ -178,7 +179,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), 1.0)
         assert pytest.approx(coord[..., 1].item(), 1.0)
 
-    def _test_bottom_right_normalized(self):
+    def test_bottom_right_normalized(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., -1, 1] = 10.
 
@@ -186,7 +187,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), 2.0)
         assert pytest.approx(coord[..., 1].item(), 1.0)
 
-    def _test_batch2_n2(self):
+    def test_batch2_n2(self):
         input = torch.zeros(2, 2, 2, 3)
         input[0, 0, 0, 0] = 10.  # top-left
         input[0, 1, 0, -1] = 10.  # top-right
@@ -207,17 +208,8 @@ class TestSoftArgmax2d:
     def _test_jit(self):
         pass
 
-    def _test_gradcheck(self):
+    def test_gradcheck(self):
         input = torch.rand(2, 3, 3, 2)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.contrib.spatial_soft_argmax2d,
                          (input), raise_exception=True)
-
-    def test_run_all(self):
-        self._test_smoke()
-        self._test_top_left()
-        self._test_top_left_normalized()
-        self._test_bottom_right()
-        self._test_bottom_right_normalized()
-        self._test_batch2_n2()
-        self._test_gradcheck()

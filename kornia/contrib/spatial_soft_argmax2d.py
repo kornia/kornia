@@ -4,22 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-# TODO: use utils.create_meshgrid and test
-def create_meshgrid(
-        x: torch.Tensor,
-        normalized_coordinates: Optional[bool]) -> Tuple[torch.Tensor,
-                                                         torch.Tensor]:
-    assert len(x.shape) == 4, x.shape
-    _, _, height, width = x.shape
-    _device, _dtype = x.device, x.dtype
-    if normalized_coordinates:
-        xs = torch.linspace(-1.0, 1.0, width, device=_device, dtype=_dtype)
-        ys = torch.linspace(-1.0, 1.0, height, device=_device, dtype=_dtype)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=_device, dtype=_dtype)
-        ys = torch.linspace(0, height - 1, height, device=_device, dtype=_dtype)
-    return torch.meshgrid(ys, xs)  # pos_y, pos_x
+from kornia.utils import create_meshgrid
 
 
 class SpatialSoftArgmax2d(nn.Module):
@@ -68,15 +53,20 @@ class SpatialSoftArgmax2d(nn.Module):
             1.0) / (exp_x.sum(dim=-1, keepdim=True) + self.eps)
 
         # create coordinates grid
-        pos_y, pos_x = create_meshgrid(input, self.normalized_coordinates)
-        pos_x = pos_x.reshape(-1)
-        pos_y = pos_y.reshape(-1)
+        grid: torch.Tensor = create_meshgrid(
+            height, width, self.normalized_coordinates)
+        grid = grid.to(input.device).to(input.dtype)
+
+        pos_x: torch.Tensor = grid[..., 0].reshape(-1)
+        pos_y: torch.Tensor = grid[..., 1].reshape(-1)
+
 
         # compute the expected coordinates
         expected_y: torch.Tensor = torch.sum(
             (pos_y * exp_x) * exp_x_sum, dim=-1, keepdim=True)
         expected_x: torch.Tensor = torch.sum(
             (pos_x * exp_x) * exp_x_sum, dim=-1, keepdim=True)
+
         output: torch.Tensor = torch.cat([expected_x, expected_y], dim=-1)
         return output.view(batch_size, channels, 2)  # BxNx2
 
