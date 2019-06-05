@@ -216,6 +216,17 @@ class TestConvertPointsFromHomogeneous:
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return kornia.convert_points_from_homogeneous(input)
+
+        points_h = torch.zeros(1, 2, 3)
+        actual = op_script(points_h)
+        expected = kornia.convert_points_from_homogeneous(points_h)
+
+        assert_allclose(actual, expected)
+
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_angle_axis_to_rotation_matrix(batch_size, device_type):
