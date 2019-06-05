@@ -93,6 +93,19 @@ class TestTransformPoints:
 
         assert_allclose(actual, expected)
 
+    def test_jit_trace(self):
+        @torch.jit.script
+        def op_script(transform, points):
+            return kornia.transform_points(transform, points)
+
+        points = torch.ones(1, 2, 2)
+        transform = torch.eye(3)[None]
+        op_script_trace = torch.jit.trace(op_script, (transform, points,))
+        actual = op_script_trace(transform, points)
+        expected = kornia.transform_points(transform, points)
+
+        assert_allclose(actual, expected)
+
 
 class TestComposeTransforms:
 
