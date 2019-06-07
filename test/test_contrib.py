@@ -137,9 +137,20 @@ class TestExtractTensorPatches:
         assert utils.check_equal_torch(input[0, :, 1:3, 0:3], patches[0, 2])
         assert utils.check_equal_torch(input[0, :, 1:3, 1:4], patches[0, 3])
 
-    # TODO: implement me
     def test_jit(self):
-        pass
+        @torch.jit.script
+        def op_script(input: torch.Tensor, height: int,
+                      width: int) -> torch.Tensor:
+            return kornia.denormalize_pixel_coordinates(input, height, width)
+        height, width = 3, 4
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=True)
+
+        actual = op_script(grid, height, width)
+        expected = kornia.denormalize_pixel_coordinates(
+            grid, height, width)
+
+        assert_allclose(actual, expected)
 
     def test_gradcheck(self):
         input = torch.rand(2, 3, 4, 4)
@@ -148,13 +159,18 @@ class TestExtractTensorPatches:
                          (input, 3,), raise_exception=True)
 
 
-class TestSoftArgmax2d:
-    def _test_smoke(self):
+class TestSpatialSoftArgmax2d:
+    def test_smoke(self):
         input = torch.zeros(1, 1, 2, 3)
         m = kornia.contrib.SpatialSoftArgmax2d()
         assert m(input).shape == (1, 1, 2)
 
-    def _test_top_left(self):
+    def test_smoke_batch(self):
+        input = torch.zeros(2, 1, 2, 3)
+        m = kornia.contrib.SpatialSoftArgmax2d()
+        assert m(input).shape == (2, 1, 2)
+
+    def test_top_left(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
@@ -162,7 +178,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), -1.0)
         assert pytest.approx(coord[..., 1].item(), -1.0)
 
-    def _test_top_left_normalized(self):
+    def test_top_left_normalized(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., 0, 0] = 10.
 
@@ -170,7 +186,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), 0.0)
         assert pytest.approx(coord[..., 1].item(), 0.0)
 
-    def _test_bottom_right(self):
+    def test_bottom_right(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., -1, 1] = 10.
 
@@ -178,7 +194,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), 1.0)
         assert pytest.approx(coord[..., 1].item(), 1.0)
 
-    def _test_bottom_right_normalized(self):
+    def test_bottom_right_normalized(self):
         input = torch.zeros(1, 1, 2, 3)
         input[..., -1, 1] = 10.
 
@@ -186,7 +202,7 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[..., 0].item(), 2.0)
         assert pytest.approx(coord[..., 1].item(), 1.0)
 
-    def _test_batch2_n2(self):
+    def test_batch2_n2(self):
         input = torch.zeros(2, 2, 2, 3)
         input[0, 0, 0, 0] = 10.  # top-left
         input[0, 1, 0, -1] = 10.  # top-right
@@ -203,21 +219,23 @@ class TestSoftArgmax2d:
         assert pytest.approx(coord[1, 1, 0].item(), 1.0)  # bottom-right
         assert pytest.approx(coord[1, 1, 1].item(), 1.0)
 
-    # TODO: implement me
-    def _test_jit(self):
-        pass
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input: torch.Tensor,
+                      temperature: torch.Tensor,
+                      normalize_coords: bool,
+                      eps: float) -> torch.Tensor:
+            return kornia.spatial_soft_argmax2d(
+                input, temperature, normalize_coords, eps)
 
-    def _test_gradcheck(self):
+        input = torch.rand(1, 2, 3, 4)
+        actual = op_script(input, torch.tensor(1.0), True, 1e-8)
+        expected = kornia.spatial_soft_argmax2d(input)
+
+        assert_allclose(actual, expected)
+
+    def test_gradcheck(self):
         input = torch.rand(2, 3, 3, 2)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.contrib.spatial_soft_argmax2d,
                          (input), raise_exception=True)
-
-    def test_run_all(self):
-        self._test_smoke()
-        self._test_top_left()
-        self._test_top_left_normalized()
-        self._test_bottom_right()
-        self._test_bottom_right_normalized()
-        self._test_batch2_n2()
-        self._test_gradcheck()
