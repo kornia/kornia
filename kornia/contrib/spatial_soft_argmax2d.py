@@ -44,7 +44,7 @@ def spatial_soft_argmax2d(
                          .format(input.shape))
     # unpack shapes and create view from input tensor
     batch_size, channels, height, width = input.shape
-    x: torch.Tensor = temperature * input.view(batch_size, channels, -1)
+    x: torch.Tensor = input.view(batch_size, channels, -1)
 
     # compute softmax along the feature map
     x_soft: torch.Tensor = F.softmax(x * temperature, dim=-1)
