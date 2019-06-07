@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from kornia.utils import create_meshgrid
 
@@ -45,10 +46,8 @@ def spatial_soft_argmax2d(
     batch_size, channels, height, width = input.shape
     x: torch.Tensor = temperature * input.view(batch_size, channels, -1)
 
-    # compute softmax with max substraction trick
-    exp_x = torch.exp(x - torch.max(x, dim=-1, keepdim=True)[0])
-    exp_x_sum = torch.tensor(
-        1.0) / (exp_x.sum(dim=-1, keepdim=True) + eps)
+    # compute softmax along the feature map
+    x_soft: torch.Tensor = F.softmax(x * temperature, dim=-1)
 
     # create coordinates grid
     grid: torch.Tensor = create_meshgrid(
@@ -59,10 +58,8 @@ def spatial_soft_argmax2d(
     pos_y: torch.Tensor = grid[..., 1].reshape(-1)
 
     # compute the expected coordinates
-    expected_y: torch.Tensor = torch.sum(
-        (pos_y * exp_x) * exp_x_sum, dim=-1, keepdim=True)
-    expected_x: torch.Tensor = torch.sum(
-        (pos_x * exp_x) * exp_x_sum, dim=-1, keepdim=True)
+    expected_y: torch.Tensor = torch.sum(pos_y * x_soft, dim=-1, keepdim=True)
+    expected_x: torch.Tensor = torch.sum(pos_x * x_soft, dim=-1, keepdim=True)
 
     output: torch.Tensor = torch.cat([expected_x, expected_y], dim=-1)
     return output.view(batch_size, channels, 2)  # BxNx2
