@@ -25,7 +25,7 @@ def project_points(
     """
     if not torch.is_tensor(point_3d):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}"
-                        .format(type(points_3d)))
+                        .format(type(point_3d)))
     if not torch.is_tensor(camera_matrix):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
@@ -35,7 +35,8 @@ def project_points(
         raise ValueError("Input points_3d must be in the shape of (*, 3)."
                          " Got {}".format(point_3d.shape))
     if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
+        raise ValueError(
+            "Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. [u, v, w]' = K * [x y z 1]'
     # project back using depth dividing in a safe way
     xy_coords: torch.Tensor = convert_points_from_homogeneous(point_3d)
@@ -79,7 +80,7 @@ def unproject_points(
     """
     if not torch.is_tensor(point_2d):
         raise TypeError("Input point_2d type is not a torch.Tensor. Got {}"
-                        .format(type(points_2d)))
+                        .format(type(point_2d)))
     if not torch.is_tensor(depth):
         raise TypeError("Input depth type is not a torch.Tensor. Got {}"
                         .format(type(depth)))
@@ -95,7 +96,8 @@ def unproject_points(
         raise ValueError("Input depth must be in the shape of (*, 1)."
                          " Got {}".format(depth.shape))
     if not camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError("Input camera_matrix must be in the shape of (*, 3, 3).")
+        raise ValueError(
+            "Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. K_inv * [u v 1]'
     # inverse the camera matrix
     camera_matrix_inv: torch.Tensor = torch.inverse(camera_matrix)
