@@ -5,7 +5,7 @@ import torch.nn as nn
 class Normalize(nn.Module):
     r"""Normalize a tensor image or a batch of tensor images
     with mean and standard deviation. Input must be a tensor of shape (C, H, W)
-    or a batch of tensors (*, C, H, W).
+    or a batch of tensors :math:`(*, C, H, W)`.
 
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
     this transform will normalize each channel of the input ``torch.Tensor``
