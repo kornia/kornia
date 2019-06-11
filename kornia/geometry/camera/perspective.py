@@ -1,6 +1,7 @@
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 
 from kornia.geometry.conversions import convert_points_to_homogeneous
 
@@ -62,7 +63,7 @@ def unproject_points(
     xyz_norm: torch.Tensor = xyz.view((*point_2d.shape[:-1], 3))
 
     if normalize:
-        xyz_norm = F.normalize(x, dim=-1, p=2)
+        xyz_norm = F.normalize(xyz_norm, dim=-1, p=2)
 
     # apply depth
     return xyz_norm * depth
