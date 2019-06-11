@@ -23,7 +23,7 @@ $sdk_dir/.dev_env/bin/conda install -y \
   jupyter \
   matplotlib \
   numpy \
-  pytorch==1.1.0 \
+  pytorch-nightly \
   torchvision \
   opencv \
   -c pytorch

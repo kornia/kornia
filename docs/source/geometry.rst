@@ -1,5 +1,5 @@
 kornia.geometry
-======================
+===============
 
 .. currentmodule:: kornia.geometry
 
