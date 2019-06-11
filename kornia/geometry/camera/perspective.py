@@ -16,12 +16,12 @@ def project_points(
 
     Args:
         point3d (torch.Tensor): tensor containing the 3d points to be projected
-            to the camera plane. The shape of the tensor can be (*, 3).
+            to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
             matrix. The tensor shape must be Bx4x4.
 
     Returns:
-        torch.Tensor: array of (u, v) cam coordinates with shape (*, 2).
+        torch.Tensor: array of (u, v) cam coordinates with shape :math:`(*, 2)`.
     """
     if not torch.is_tensor(point_3d):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}"
@@ -66,9 +66,9 @@ def unproject_points(
 
     Args:
         point2d (torch.Tensor): tensor containing the 2d to be projected to
-            world coordinates. The shape of the tensor can be (*, 2).
+            world coordinates. The shape of the tensor can be :math:`(*, 2)`.
         depth (torch.Tensor): tensor containing the depth value of each 2d
-            points. The tensor shape must be equal to point2d (*, 1).
+            points. The tensor shape must be equal to point2d :math:`(*, 1)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
             matrix. The tensor shape must be Bx4x4.
         normalize (Optional[bool]): wether to normalize the pointcloud. This
@@ -76,7 +76,8 @@ def unproject_points(
             ray length from the camera position. Default is `False`.
 
     Returns:
-        torch.Tensor: tensor of (x, y, z) world coordinates with shape (*, 3).
+        torch.Tensor: tensor of (x, y, z) world coordinates with shape
+        :math:`(*, 3)`.
     """
     if not torch.is_tensor(point_2d):
         raise TypeError("Input point_2d type is not a torch.Tensor. Got {}"
