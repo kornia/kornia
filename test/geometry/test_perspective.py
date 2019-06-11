@@ -138,7 +138,8 @@ class TestUnprojectPoints:
     def test_jit(self):
         @torch.jit.script
         def op_script(points_2d, depth, camera_matrix):
-            return kornia.unproject_points(points_2d, depth, camera_matrix, False)
+            return kornia.unproject_points(
+                points_2d, depth, camera_matrix, False)
 
         points_2d = torch.zeros(1, 2)
         depth = torch.ones(1, 1)
