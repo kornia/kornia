@@ -70,6 +70,7 @@ class SpatialSoftArgmax2d(nn.Module):
 
     See :class:`~kornia.contrib.spatial_soft_argmax2d` for details.
     """
+
     def __init__(self,
                  temperature: torch.Tensor = torch.tensor(1.0),
                  normalized_coordinates: bool = True,
