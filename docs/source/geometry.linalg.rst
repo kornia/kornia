@@ -1,5 +1,5 @@
 kornia.geometry.linalg
-=============================
+======================
 
 .. currentmodule:: kornia.geometry.linalg
 
