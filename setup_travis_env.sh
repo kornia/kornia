@@ -19,7 +19,7 @@ fi
 
 # Install CPU-PyTorch
 $sdk_dir/.dev_env/bin/conda install -y \
-  pytorch-nightly \
+  pytorch-nightly-cpu \
   -c pytorch
   
 # Tests dependencies
