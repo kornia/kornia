@@ -42,6 +42,18 @@ class TestUnprojectPoints:
         actual = kornia.unproject_points(point_2d, depth, camera_matrix)
         assert_allclose(actual, expected)
 
+    def test_unproject_center_normalize(self):
+        point_2d = torch.tensor([[0., 0.]])
+        depth = torch.tensor([[2.]])
+        camera_matrix = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        expected = torch.tensor([[0., 0., 2.]])
+        actual = kornia.unproject_points(point_2d, depth, camera_matrix, True)
+        assert_allclose(actual, expected)
+
     def test_gradcheck(self):
         points_2d = torch.zeros(1, 2)
         depth = torch.ones(1, 1)
