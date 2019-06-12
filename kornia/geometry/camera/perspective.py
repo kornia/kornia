@@ -38,21 +38,25 @@ def project_points(
         raise ValueError(
             "Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. [u, v, w]' = K * [x y z 1]'
+    # u = fx * X / Z + cx
+    # v = fy * Y / Z + cy
+
     # project back using depth dividing in a safe way
     xy_coords: torch.Tensor = convert_points_from_homogeneous(point_3d)
-    x_coord: torch.Tensor = xy_coords[..., 0]
-    y_coord: torch.Tensor = xy_coords[..., 1]
+    x_coord: torch.Tensor = xy_coords[..., 0:1]
+    y_coord: torch.Tensor = xy_coords[..., 1:2]
 
     # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0, 0]
-    fy: torch.Tensor = camera_matrix[..., 1, 1]
-    cx: torch.Tensor = camera_matrix[..., 0, 2]
-    cy: torch.Tensor = camera_matrix[..., 1, 2]
+    fx: torch.Tensor = camera_matrix[..., 0:1, 0]
+    fy: torch.Tensor = camera_matrix[..., 1:2, 1]
+    cx: torch.Tensor = camera_matrix[..., 0:1, 2]
+    cy: torch.Tensor = camera_matrix[..., 1:2, 2]
 
     # apply intrinsics ans return
     u_coord: torch.Tensor = x_coord * fx + cx
     v_coord: torch.Tensor = y_coord * fy + cy
-    return torch.stack([u_coord, v_coord], dim=-1)
+
+    return torch.cat([u_coord, v_coord], dim=-1)
 
 
 def unproject_points(
@@ -100,21 +104,27 @@ def unproject_points(
         raise ValueError(
             "Input camera_matrix must be in the shape of (*, 3, 3).")
     # projection eq. K_inv * [u v 1]'
-    # inverse the camera matrix
-    camera_matrix_inv: torch.Tensor = torch.inverse(camera_matrix)
+    # x = (u - cx) * Z / fx
+    # y = (v - cy) * Z / fy
 
-    # compute ray from center to camera
-    uvw: torch.Tensor = convert_points_to_homogeneous(point_2d)
+    # unpack coordinates
+    u_coord: torch.Tensor = point_2d[..., 0:1]
+    v_coord: torch.Tensor = point_2d[..., 1:2]
 
-    # apply inverse intrinsics to points
-    xyz: torch.Tensor = torch.matmul(
-        camera_matrix_inv.view(-1, 3, 3), uvw.view(-1, 3, 1))
+    # unpack intrinsics
+    fx: torch.Tensor = camera_matrix[..., 0:1, 0]
+    fy: torch.Tensor = camera_matrix[..., 1:2, 1]
+    cx: torch.Tensor = camera_matrix[..., 0:1, 2]
+    cy: torch.Tensor = camera_matrix[..., 1:2, 2]
 
-    # back to input shape and normalize if specified
-    xyz_norm: torch.Tensor = xyz.view((*point_2d.shape[:-1], 3))
+    # projective
+    x_coord: torch.Tensor = (u_coord - cx) / fx
+    y_coord: torch.Tensor = (v_coord - cy) / fy
+
+    xyz: torch.Tensor = torch.cat([x_coord, y_coord], dim=-1)
+    xyz = convert_points_to_homogeneous(xyz)
 
     if normalize:
-        xyz_norm = F.normalize(xyz_norm, dim=-1, p=2)
+        xyz = F.normalize(xyz, dim=-1, p=2)
 
-    # apply depth
-    return xyz_norm * depth
+    return xyz * depth
