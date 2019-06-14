@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from kornia.utils import create_meshgrid
+import kornia.contrib.dsnt as dsnt
 
 
 def spatial_soft_argmax2d(
@@ -18,7 +17,7 @@ def spatial_soft_argmax2d(
 
     Arguments:
         temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): wether to return the
+        normalized_coordinates (bool): whether to return the
           coordinates normalized in the range of [-1, 1]. Otherwise,
           it will return the coordinates in the range of the input shape.
           Default is True.
@@ -36,33 +35,10 @@ def spatial_soft_argmax2d(
         >>> coords = kornia.spatial_soft_argmax2d(input, False)
         tensor([[[1.0000, 1.0000]]])
     """
-    if not torch.is_tensor(input):
-        raise TypeError("Input input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
-    if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
-    # unpack shapes and create view from input tensor
-    batch_size, channels, height, width = input.shape
-    x: torch.Tensor = input.view(batch_size, channels, -1)
-
-    # compute softmax along the feature map
-    x_soft: torch.Tensor = F.softmax(x * temperature, dim=-1)
-
-    # create coordinates grid
-    grid: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates)
-    grid = grid.to(input.device).to(input.dtype)
-
-    pos_x: torch.Tensor = grid[..., 0].reshape(-1)
-    pos_y: torch.Tensor = grid[..., 1].reshape(-1)
-
-    # compute the expected coordinates
-    expected_y: torch.Tensor = torch.sum(pos_y * x_soft, dim=-1, keepdim=True)
-    expected_x: torch.Tensor = torch.sum(pos_x * x_soft, dim=-1, keepdim=True)
-
-    output: torch.Tensor = torch.cat([expected_x, expected_y], dim=-1)
-    return output.view(batch_size, channels, 2)  # BxNx2
+    input_soft: torch.Tensor = dsnt.spatial_softmax_2d(input, temperature)
+    output: torch.Tensor = dsnt.spatial_softargmax_2d(input_soft,
+                                                      normalized_coordinates)
+    return output
 
 
 class SpatialSoftArgmax2d(nn.Module):
