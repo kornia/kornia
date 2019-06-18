@@ -1,5 +1,9 @@
+from typing import Optional
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
 
 __all__ = [
     # functional api
@@ -9,16 +13,18 @@ __all__ = [
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
     "angle_axis_to_rotation_matrix",
+    "angle_axis_to_quaternion",
     "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
     "quaternion_to_angle_axis",
-    "angle_axis_to_quaternion",
-    "rtvec_to_pose",
-    "normalize_pixel_coordinates",
+    "quaternion_to_rotation_matrix",
+    "quaternion_log_to_exp",
+    "quaternion_exp_to_log",
     "denormalize_pixel_coordinates",
+    "normalize_pixel_coordinates",
+    "normalize_quaternion",
 ]
 
-EPS = 1e-6
 
 """Constant with number pi
 """
@@ -38,7 +44,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         >>> input = kornia.pi * torch.rand(1, 3, 3)
         >>> output = kornia.rad2deg(input)
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
 
@@ -59,14 +65,15 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
         >>> input = 360. * torch.rand(1, 3, 3)
         >>> output = kornia.deg2rad(input)
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
+def convert_points_from_homogeneous(
+        points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
     Examples::
@@ -74,7 +81,7 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = kornia.convert_points_from_homogeneous(input)  # BxNx2
     """
-    if not torch.is_tensor(points):
+    if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
     if len(points.shape) < 2:
@@ -83,11 +90,12 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
+
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     scale: torch.Tensor = torch.where(
-        torch.abs(z_vec) > EPS,
+        torch.abs(z_vec) > eps,
         torch.tensor(1.) / z_vec,
         torch.ones_like(z_vec))
 
@@ -102,18 +110,18 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = kornia.convert_points_to_homogeneous(input)  # BxNx4
     """
-    if not torch.is_tensor(points):
+    if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return nn.functional.pad(points, (0, 1), "constant", 1.0)
+    return torch.nn.functional.pad(points, (0, 1), "constant", 1.0)
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
-    """Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
+    r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
 
     Args:
         angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
@@ -123,12 +131,20 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
     Shape:
         - Input: :math:`(N, 3)`
-        - Output: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 3, 3)`
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx4x4
+        >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx3x3
     """
+    if not isinstance(angle_axis, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(angle_axis)))
+
+    if not angle_axis.shape[-1] == 3:
+        raise ValueError(
+            "Input size must be a (*, 3) tensor. Got {}".format(
+                angle_axis.shape))
 
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
@@ -179,41 +195,17 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
     # create output pose matrix
     batch_size = angle_axis.shape[0]
-    rotation_matrix = torch.eye(4).to(angle_axis.device).type_as(angle_axis)
-    rotation_matrix = rotation_matrix.view(1, 4, 4).repeat(batch_size, 1, 1)
+    rotation_matrix = torch.eye(3).to(angle_axis.device).type_as(angle_axis)
+    rotation_matrix = rotation_matrix.view(1, 3, 3).repeat(batch_size, 1, 1)
     # fill output matrix with masked values
     rotation_matrix[..., :3, :3] = \
         mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
     return rotation_matrix  # Nx4x4
 
 
-def rtvec_to_pose(rtvec: torch.Tensor) -> torch.Tensor:
-    """
-    Convert axis-angle rotation and translation vector to 4x4 pose matrix
-
-    Args:
-        rtvec (torch.Tensor): Rodrigues vector transformations
-
-    Returns:
-        torch.Tensor: transformation matrices
-
-    Shape:
-        - Input: :math:`(N, 6)`
-        - Output: :math:`(N, 4, 4)`
-
-    Example:
-        >>> input = torch.rand(3, 6)  # Nx6
-        >>> output = kornia.rtvec_to_pose(input)  # Nx4x4
-    """
-    assert rtvec.shape[-1] == 6, 'rtvec=[rx, ry, rz, tx, ty, tz]'
-    pose: torch.Tensor = angle_axis_to_rotation_matrix(rtvec[..., :3])
-    pose[..., :3, 3] = rtvec[..., 3:]
-    return pose
-
-
 def rotation_matrix_to_angle_axis(
         rotation_matrix: torch.Tensor) -> torch.Tensor:
-    """Convert 3x4 rotation matrix to Rodrigues vector
+    r"""Convert 3x3 rotation matrix to Rodrigues vector.
 
     Args:
         rotation_matrix (torch.Tensor): rotation matrix.
@@ -222,24 +214,28 @@ def rotation_matrix_to_angle_axis(
         torch.Tensor: Rodrigues vector transformation.
 
     Shape:
-        - Input: :math:`(N, 3, 4)`
+        - Input: :math:`(N, 3, 3)`
         - Output: :math:`(N, 3)`
 
     Example:
-        >>> input = torch.rand(2, 3, 4)  # Nx4x4
+        >>> input = torch.rand(2, 3, 3)  # Nx3x3
         >>> output = kornia.rotation_matrix_to_angle_axis(input)  # Nx3
     """
-    # todo add check that matrix is a valid rotation matrix
+    if not isinstance(rotation_matrix, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(rotation_matrix)))
+
+    if not rotation_matrix.shape[-2:] == (3, 3):
+        raise ValueError(
+            "Input size must be a (*, 3, 3) tensor. Got {}".format(
+                rotation_matrix.shape))
     quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
 
 
 def rotation_matrix_to_quaternion(
         rotation_matrix: torch.Tensor) -> torch.Tensor:
-    """Convert 3x4 rotation matrix to 4d quaternion vector
-
-    This algorithm is based on algorithm described in
-    https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
+    r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
     Args:
         rotation_matrix (torch.Tensor): the rotation matrix to convert.
@@ -248,75 +244,164 @@ def rotation_matrix_to_quaternion(
         torch.Tensor: the rotation in quaternion.
 
     Shape:
-        - Input: :math:`(N, 3, 4)`
-        - Output: :math:`(N, 4)`
+        - Input: :math:`(*, 3, 3)`
+        - Output: :math:`(*, 4)`
 
     Example:
         >>> input = torch.rand(4, 3, 4)  # Nx3x4
         >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
     """
-    if not torch.is_tensor(rotation_matrix):
+    if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(rotation_matrix)))
 
-    if len(rotation_matrix.shape) > 3:
+    if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(
-            "Input size must be a three dimensional tensor. Got {}".format(
-                rotation_matrix.shape))
-    if not rotation_matrix.shape[-2:] == (3, 4):
-        raise ValueError(
-            "Input size must be a N x 3 x 4  tensor. Got {}".format(
+            "Input size must be a (*, 3, 3) tensor. Got {}".format(
                 rotation_matrix.shape))
 
-    rmat_t = torch.transpose(rotation_matrix, 1, 2)
+    def safe_zero_division(numerator: torch.Tensor,
+                           denominator: torch.Tensor) -> torch.Tensor:
+        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
+        return numerator / torch.clamp(denominator, min=eps)
 
-    mask_d2 = rmat_t[:, 2, 2] < EPS
+    rotation_matrix_vec: torch.Tensor = rotation_matrix.view(
+        *rotation_matrix.shape[:-2], 9)
 
-    mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:, 1, 1]
-    mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:, 1, 1]
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(
+        rotation_matrix_vec, chunks=9, dim=-1)
 
-    t0 = 1 + rmat_t[:, 0, 0] - rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q0 = torch.stack([
-        rmat_t[:, 1, 2] - rmat_t[:, 2, 1], t0,
-        rmat_t[:, 0, 1] + rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2]
-    ], -1)
-    t0_rep = t0.repeat(4, 1).t()
+    trace: torch.Tensor = m00 + m11 + m22
 
-    t1 = torch.tensor(1.) - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q1 = torch.stack([
-        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
-        t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]
-    ], -1)
-    t1_rep = t1.repeat(4, 1).t()
+    def trace_positive_cond():
+        sq = torch.sqrt(trace + 1.0) * 2.  # sq = 4 * qw.
+        qw = 0.25 * sq
+        qx = safe_zero_division(m21 - m12, sq)
+        qy = safe_zero_division(m02 - m20, sq)
+        qz = safe_zero_division(m10 - m01, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    t2 = torch.tensor(1.) - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q2 = torch.stack([
-        rmat_t[:, 0, 1] - rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
-        rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2
-    ], -1)
-    t2_rep = t2.repeat(4, 1).t()
+    def cond_1():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m21 - m12, sq)
+        qx = 0.25 * sq
+        qy = safe_zero_division(m01 - m10, sq)
+        qz = safe_zero_division(m02 - m20, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    t3 = torch.tensor(1.) + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q3 = torch.stack([
-        t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
-        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] - rmat_t[:, 1, 0]
-    ], -1)
-    t3_rep = t3.repeat(4, 1).t()
+    def cond_2():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m02 - m20, sq)
+        qx = safe_zero_division(m01 - m10, sq)
+        qy = 0.25 * sq
+        qz = safe_zero_division(m12 - m21, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    mask_c0 = mask_d2 * mask_d0_d1
-    mask_c1 = mask_d2 * (torch.tensor(1.) - mask_d0_d1)
-    mask_c2 = (torch.tensor(1.) - mask_d2) * mask_d0_nd1
-    mask_c3 = (torch.tensor(1.) - mask_d2) * (torch.tensor(1.) - mask_d0_nd1)
-    mask_c0 = mask_c0.view(-1, 1).type_as(q0)
-    mask_c1 = mask_c1.view(-1, 1).type_as(q1)
-    mask_c2 = mask_c2.view(-1, 1).type_as(q2)
-    mask_c3 = mask_c3.view(-1, 1).type_as(q3)
+    def cond_3():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m10 - m01, sq)
+        qx = safe_zero_division(m02 - m20, sq)
+        qy = safe_zero_division(m12 - m21, sq)
+        qz = 0.25 * sq
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
-    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
-                    t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
-    q *= 0.5
-    return q
+    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
+    where_1 = torch.where(
+        (m00 > m22) & (m00 > m22), cond_1(), where_2)
+
+    quaternion: torch.Tensor = torch.where(
+        trace > 0., trace_positive_cond(), where_1)
+    return quaternion
+
+
+def normalize_quaternion(quaternion: torch.Tensor,
+                         eps: Optional[float] = 1e-12) -> torch.Tensor:
+    r"""Normalizes a quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          normalized. The tensor can be of shape :math:`(*, 4)`.
+        eps (Optional[bool]): small value to avoid division by zero.
+          Default: 1e-12.
+
+    Return:
+        torch.Tensor: the normalized quaternion of shape :math:`(*, 4)`.
+
+    Example:
+        >>> quaternion = torch.tensor([1., 0., 1., 0.])
+        >>> kornia.normalize_quaternion(quaternion)
+        tensor([0.7071, 0.0000, 0.7071, 0.0000])
+    """
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    return F.normalize(quaternion, p=2, dim=-1, eps=eps)
+
+
+# based on:
+# https://github.com/matthew-brett/transforms3d/blob/8965c48401d9e8e66b6a8c37c65f2fc200a076fa/transforms3d/quaternions.py#L101
+# https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/geometry/transformation/rotation_matrix_3d.py#L247
+
+def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
+    r"""Converts a quaternion to a rotation matrix.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          converted. The tensor can be of shape :math:`(*, 4)`.
+
+    Return:
+        torch.Tensor: the rotation matrix of shape :math:`(*, 3, 3)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 1., 0.])
+        >>> kornia.quaternion_to_rotation_matrix(quaternion)
+        tensor([[[-1.,  0.,  0.],
+                 [ 0., -1.,  0.],
+                 [ 0.,  0.,  1.]]])
+    """
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    # normalize the input quaternion
+    quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
+
+    # unpack the normalized quaternion components
+    x, y, z, w = torch.chunk(quaternion_norm, chunks=4, dim=-1)
+
+    # compute the actual conversion
+    tx: torch.Tensor = 2.0 * x
+    ty: torch.Tensor = 2.0 * y
+    tz: torch.Tensor = 2.0 * z
+    twx: torch.Tensor = tx * w
+    twy: torch.Tensor = ty * w
+    twz: torch.Tensor = tz * w
+    txx: torch.Tensor = tx * x
+    txy: torch.Tensor = ty * x
+    txz: torch.Tensor = tz * x
+    tyy: torch.Tensor = ty * y
+    tyz: torch.Tensor = tz * y
+    tzz: torch.Tensor = tz * z
+    one: torch.Tensor = torch.tensor(1.)
+
+    matrix: torch.Tensor = torch.stack([
+        one - (tyy + tzz), txy - twz, txz + twy,
+        txy + twz, one - (txx + tzz), tyz - twx,
+        txz - twy, tyz + twx, one - (txx + tyy)
+    ], dim=-1).view(-1, 3, 3)
+
+    if len(quaternion.shape) == 1:
+        matrix = torch.squeeze(matrix, dim=0)
+    return matrix
 
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
@@ -369,12 +454,88 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     return angle_axis
 
 
+def quaternion_log_to_exp(quaternion: torch.Tensor,
+                          eps: float = 1e-8) -> torch.Tensor:
+    r"""Applies exponential map to log quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          converted. The tensor can be of shape :math:`(*, 3)`.
+
+    Return:
+        torch.Tensor: the quaternion exponential map of shape :math:`(*, 4)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 0.])
+        >>> kornia.quaternion_log_to_exp(quaternion)
+        tensor([0., 0., 0., 1.])
+    """
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 3:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 3). Got {}".format(
+                quaternion.shape))
+    # compute quaternion norm
+    norm_q: torch.Tensor = torch.norm(
+        quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+
+    # compute scalar and vector
+    quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
+    quaternion_scalar: torch.Tensor = torch.cos(norm_q)
+
+    # compose quaternion and return
+    quaternion_exp: torch.Tensor = torch.cat(
+        [quaternion_vector, quaternion_scalar], dim=-1)
+    return quaternion_exp
+
+
+def quaternion_exp_to_log(quaternion: torch.Tensor,
+                          eps: float = 1e-8) -> torch.Tensor:
+    r"""Applies the log map to a quaternion.
+
+    Args:
+        quaternion (torch.Tensor): a tensor containing a quaternion to be
+          converted. The tensor can be of shape :math:`(*, 4)`.
+
+    Return:
+        torch.Tensor: the quaternion log map of shape :math:`(*, 3)`.
+
+    Example:
+        >>> quaternion = torch.tensor([0., 0., 0., 1.])
+        >>> kornia.quaternion_exp_to_log(quaternion)
+        tensor([0., 0., 0.])
+    """
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(quaternion)))
+
+    if not quaternion.shape[-1] == 4:
+        raise ValueError(
+            "Input must be a tensor of shape (*, 4). Got {}".format(
+                quaternion.shape))
+    # unpack quaternion vector and scalar
+    quaternion_vector: torch.Tensor = quaternion[..., 0:3]
+    quaternion_scalar: torch.Tensor = quaternion[..., 3:4]
+
+    # compute quaternion norm
+    norm_q: torch.Tensor = torch.norm(
+        quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+
+    # apply log map
+    quaternion_log: torch.Tensor = quaternion_vector * torch.acos(
+        torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
+    return quaternion_log
+
+
 # based on:
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
-    """Convert an angle axis to a quaternion.
+    r"""Convert an angle axis to a quaternion.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
@@ -486,7 +647,3 @@ def denormalize_pixel_coordinates(
     factor: torch.Tensor = torch.tensor(2.) / (hw - 1)
 
     return torch.tensor(1.) / factor * (pixel_coordinates + 1)
-
-
-# TODO: add below funtionalities
-#  - pose_to_rtvec
