@@ -25,7 +25,6 @@ __all__ = [
     "normalize_quaternion",
 ]
 
-EPS = 1e-6
 
 """Constant with number pi
 """
@@ -45,7 +44,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         >>> input = kornia.pi * torch.rand(1, 3, 3)
         >>> output = kornia.rad2deg(input)
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
 
@@ -66,14 +65,15 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
         >>> input = 360. * torch.rand(1, 3, 3)
         >>> output = kornia.deg2rad(input)
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(tensor)))
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
 
 
-def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
+def convert_points_from_homogeneous(
+        points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
     Examples::
@@ -81,7 +81,7 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = kornia.convert_points_from_homogeneous(input)  # BxNx2
     """
-    if not torch.is_tensor(points):
+    if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
     if len(points.shape) < 2:
@@ -90,11 +90,12 @@ def convert_points_from_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
     # we check for points at infinity
     z_vec: torch.Tensor = points[..., -1:]
+
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
     scale: torch.Tensor = torch.where(
-        torch.abs(z_vec) > EPS,
+        torch.abs(z_vec) > eps,
         torch.tensor(1.) / z_vec,
         torch.ones_like(z_vec))
 
@@ -109,18 +110,18 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 4, 3)  # BxNx3
         >>> output = kornia.convert_points_to_homogeneous(input)  # BxNx4
     """
-    if not torch.is_tensor(points):
+    if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return nn.functional.pad(points, (0, 1), "constant", 1.0)
+    return torch.nn.functional.pad(points, (0, 1), "constant", 1.0)
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
-    """Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
+    r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
 
     Args:
         angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
@@ -136,6 +137,14 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx3x3
     """
+    if not isinstance(angle_axis, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(angle_axis)))
+
+    if not angle_axis.shape[-1] == 3:
+        raise ValueError(
+            "Input size must be a (*, 3) tensor. Got {}".format(
+                angle_axis.shape))
 
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
         # We want to be careful to only evaluate the square root if the
@@ -196,7 +205,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
 def rotation_matrix_to_angle_axis(
         rotation_matrix: torch.Tensor) -> torch.Tensor:
-    """Convert 3x4 rotation matrix to Rodrigues vector
+    r"""Convert 3x3 rotation matrix to Rodrigues vector.
 
     Args:
         rotation_matrix (torch.Tensor): rotation matrix.
@@ -212,14 +221,21 @@ def rotation_matrix_to_angle_axis(
         >>> input = torch.rand(2, 3, 3)  # Nx3x3
         >>> output = kornia.rotation_matrix_to_angle_axis(input)  # Nx3
     """
-    # todo add check that matrix is a valid rotation matrix
+    if not isinstance(rotation_matrix, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(rotation_matrix)))
+
+    if not rotation_matrix.shape[-2:] == (3, 3):
+        raise ValueError(
+            "Input size must be a (*, 3, 3) tensor. Got {}".format(
+                rotation_matrix.shape))
     quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_angle_axis(quaternion)
 
 
 def rotation_matrix_to_quaternion(
         rotation_matrix: torch.Tensor) -> torch.Tensor:
-    """Convert 3x3 rotation matrix to 4d quaternion vector.
+    r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
     Args:
         rotation_matrix (torch.Tensor): the rotation matrix to convert.
@@ -519,7 +535,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
-    """Convert an angle axis to a quaternion.
+    r"""Convert an angle axis to a quaternion.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
