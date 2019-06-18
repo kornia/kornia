@@ -4,7 +4,6 @@ import warnings
 import torch
 import torch.nn as nn
 
-from kornia.geometry.conversions import rtvec_to_pose
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.linalg import inverse_transformation
 
