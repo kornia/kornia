@@ -136,6 +136,12 @@ class TestQuaternionLogToExp:
         expected = torch.tensor([0., 0., 0., 1.])
         assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
 
+    def test_pi_quaternion(self):
+        one = torch.tensor(1.)
+        quaternion_log = torch.tensor([1., 0., 0.])
+        expected = torch.tensor([torch.sin(one), 0., 0., torch.cos(one)])
+        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+
     def test_back_and_forth(self):
         quaternion_log = torch.tensor([0., 0., 0.])
         quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log)
@@ -150,14 +156,12 @@ class TestQuaternionLogToExp:
                          raise_exception=True)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, eps: float) -> torch.Tensor:
-            return kornia.quaternion_log_to_exp(input, eps)
+        op = kornia.quaternion_log_to_exp
+        op_script = torch.jit.script(op)
 
-        eps = 1e-8
         quaternion = torch.tensor([0., 0., 1.])
-        actual = op_script(quaternion, eps)
-        expected = kornia.quaternion_log_to_exp(quaternion, eps)
+        actual = op_script(quaternion)
+        expected = op(quaternion)
         assert_allclose(actual, expected)
 
 
@@ -174,28 +178,31 @@ class TestQuaternionExpToLog:
         expected = torch.tensor([0., 0., 0.])
         assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
 
+    def test_pi_quaternion(self):
+        quaternion_exp = torch.tensor([1., 0., 0., 0.])
+        expected = torch.tensor([kornia.pi / 2, 0., 0.])
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
+
     def test_back_and_forth(self):
-        quaternion_exp = torch.tensor([0., 0., 0., 1.])
+        quaternion_exp = torch.tensor([1., 0., 0., 0.])
         quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
         quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log)
         assert_allclose(quaternion_exp, quaternion_exp_hat)
 
     def test_gradcheck(self):
-        quaternion = torch.tensor([0., 0., 0., 1.])
+        quaternion = torch.tensor([1., 0., 0., 0.])
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
         assert gradcheck(kornia.quaternion_exp_to_log, (quaternion,),
                          raise_exception=True)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, eps: float) -> torch.Tensor:
-            return kornia.quaternion_exp_to_log(input, eps)
+        op = kornia.quaternion_exp_to_log
+        op_script = torch.jit.script(op)
 
-        eps = 1e-8
         quaternion = torch.tensor([0., 0., 1., 0.])
-        actual = op_script(quaternion, eps)
-        expected = kornia.quaternion_exp_to_log(quaternion, eps)
+        actual = op_script(quaternion)
+        expected = op(quaternion)
         assert_allclose(actual, expected)
 
 
