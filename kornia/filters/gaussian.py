@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 from torch.nn.functional import conv2d
-
+import torch.nn.functional as F
 
 def gaussian(window_size, sigma):
     def gauss_fcn(x):
@@ -85,7 +85,7 @@ def get_gaussian_kernel2d(kernel_size: Tuple[int, int],
     return kernel_2d
 
 
-class GaussianBlur(nn.Module):
+class GaussianBlur2d(nn.Module):
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
@@ -110,18 +110,23 @@ class GaussianBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float]) -> None:
-        super(GaussianBlur, self).__init__()
+                 sigma: Tuple[float, float],
+                 border_mode: str) -> None:
+        super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
-        self._padding: Tuple[int, int] = self.compute_zero_padding(kernel_size)
+        self._padding: Tuple[int, int, int, int] = self.compute_padding(kernel_size)
         self.kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
+        assert border_mode in ['constant', 'reflect', 'replicate',  'circular']
+        self.border_mode = border_mode
 
     @staticmethod
-    def compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
-        """Computes zero padding tuple."""
+    def compute_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
+        """Computes padding tuple."""
+        # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
+        # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
         computed = [(k - 1) // 2 for k in kernel_size]
-        return computed[0], computed[1]
+        return computed[1], computed[1], computed[0], computed[0]
 
     def forward(self, x: torch.Tensor):  # type: ignore
         if not torch.is_tensor(x):
@@ -138,7 +143,7 @@ class GaussianBlur(nn.Module):
         # TODO: explore solution when using jit.trace since it raises a warning
         # because the shape is converted to a tensor instead to a int.
         # convolve tensor with gaussian kernel
-        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
+        return conv2d(F.pad(x, (self._padding), self.border_mode), kernel, padding=0, stride=1, groups=c)
 
 
 ######################
@@ -146,13 +151,14 @@ class GaussianBlur(nn.Module):
 ######################
 
 
-def gaussian_blur(input: torch.Tensor,
+def gaussian_blur2d(input: torch.Tensor,
                   kernel_size: Tuple[int,
                                      int],
                   sigma: Tuple[float,
-                               float]) -> torch.Tensor:
+                               float],
+                  border='replicate') -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
     """
-    return GaussianBlur(kernel_size, sigma)(input)
+    return GaussianBlur2d(kernel_size, sigma, border)(input)

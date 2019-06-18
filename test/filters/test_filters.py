@@ -35,7 +35,7 @@ class TestGaussianBlur:
         sigma = (1.5, 2.1)
 
         input = torch.rand(batch_shape).to(torch.device(device_type))
-        gauss = kornia.filters.GaussianBlur(kernel_size, sigma)
+        gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, 'replicate')
         assert gauss(input).shape == batch_shape
 
     def test_gradcheck(self):
@@ -47,18 +47,18 @@ class TestGaussianBlur:
         # evaluate function gradient
         input = torch.rand(batch_shape)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.gaussian_blur, (input, kernel_size, sigma,),
+        assert gradcheck(kornia.gaussian_blur2d, (input, kernel_size, sigma,'replicate'),
                          raise_exception=True)
 
     def test_jit(self):
         @torch.jit.script
         def op_script(img):
 
-            return kornia.gaussian_blur(img, (5, 5), (1.2, 1.2))
+            return kornia.gaussian_blur2d(img, (5, 5), (1.2, 1.2), 'replicate')
 
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        expected = kornia.filters.GaussianBlur((5, 5), (1.2, 1.2))(img)
+        expected = kornia.filters.GaussianBlur2d((5, 5), (1.2, 1.2), 'replicate')(img)
         actual = op_script(img)
         assert_allclose(actual, expected)
 

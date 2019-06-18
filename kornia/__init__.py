@@ -38,7 +38,7 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_laplacian_kernel,
     get_laplacian_kernel2d,
-    gaussian_blur,
+    gaussian_blur2d,
     laplacian,
     sobel,
     spatial_gradient,
