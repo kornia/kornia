@@ -20,7 +20,6 @@ __all__ = [
     "quaternion_to_rotation_matrix",
     "quaternion_log_to_exp",
     "quaternion_exp_to_log",
-    "rtvec_to_pose",
     "denormalize_pixel_coordinates",
     "normalize_pixel_coordinates",
     "normalize_quaternion",
@@ -121,7 +120,7 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
-    """Convert 3d vector of axis-angle rotation to 4x4 rotation matrix
+    """Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
 
     Args:
         angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
@@ -131,11 +130,11 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
     Shape:
         - Input: :math:`(N, 3)`
-        - Output: :math:`(N, 4, 4)`
+        - Output: :math:`(N, 3, 3)`
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx4x4
+        >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx3x3
     """
 
     def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
@@ -187,36 +186,12 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
     # create output pose matrix
     batch_size = angle_axis.shape[0]
-    rotation_matrix = torch.eye(4).to(angle_axis.device).type_as(angle_axis)
-    rotation_matrix = rotation_matrix.view(1, 4, 4).repeat(batch_size, 1, 1)
+    rotation_matrix = torch.eye(3).to(angle_axis.device).type_as(angle_axis)
+    rotation_matrix = rotation_matrix.view(1, 3, 3).repeat(batch_size, 1, 1)
     # fill output matrix with masked values
     rotation_matrix[..., :3, :3] = \
         mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
     return rotation_matrix  # Nx4x4
-
-
-def rtvec_to_pose(rtvec: torch.Tensor) -> torch.Tensor:
-    """
-    Convert axis-angle rotation and translation vector to 4x4 pose matrix
-
-    Args:
-        rtvec (torch.Tensor): Rodrigues vector transformations
-
-    Returns:
-        torch.Tensor: transformation matrices
-
-    Shape:
-        - Input: :math:`(N, 6)`
-        - Output: :math:`(N, 4, 4)`
-
-    Example:
-        >>> input = torch.rand(3, 6)  # Nx6
-        >>> output = kornia.rtvec_to_pose(input)  # Nx4x4
-    """
-    assert rtvec.shape[-1] == 6, 'rtvec=[rx, ry, rz, tx, ty, tz]'
-    pose: torch.Tensor = angle_axis_to_rotation_matrix(rtvec[..., :3])
-    pose[..., :3, 3] = rtvec[..., 3:]
-    return pose
 
 
 def rotation_matrix_to_angle_axis(
@@ -230,11 +205,11 @@ def rotation_matrix_to_angle_axis(
         torch.Tensor: Rodrigues vector transformation.
 
     Shape:
-        - Input: :math:`(N, 3, 4)`
+        - Input: :math:`(N, 3, 3)`
         - Output: :math:`(N, 3)`
 
     Example:
-        >>> input = torch.rand(2, 3, 4)  # Nx4x4
+        >>> input = torch.rand(2, 3, 3)  # Nx3x3
         >>> output = kornia.rotation_matrix_to_angle_axis(input)  # Nx3
     """
     # todo add check that matrix is a valid rotation matrix
@@ -244,10 +219,7 @@ def rotation_matrix_to_angle_axis(
 
 def rotation_matrix_to_quaternion(
         rotation_matrix: torch.Tensor) -> torch.Tensor:
-    """Convert 3x4 rotation matrix to 4d quaternion vector
-
-    This algorithm is based on algorithm described in
-    https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
+    """Convert 3x3 rotation matrix to 4d quaternion vector.
 
     Args:
         rotation_matrix (torch.Tensor): the rotation matrix to convert.
@@ -256,75 +228,74 @@ def rotation_matrix_to_quaternion(
         torch.Tensor: the rotation in quaternion.
 
     Shape:
-        - Input: :math:`(N, 3, 4)`
-        - Output: :math:`(N, 4)`
+        - Input: :math:`(*, 3, 3)`
+        - Output: :math:`(*, 4)`
 
     Example:
         >>> input = torch.rand(4, 3, 4)  # Nx3x4
         >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
     """
-    if not torch.is_tensor(rotation_matrix):
+    if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(rotation_matrix)))
 
-    if len(rotation_matrix.shape) > 3:
+    if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(
-            "Input size must be a three dimensional tensor. Got {}".format(
-                rotation_matrix.shape))
-    if not rotation_matrix.shape[-2:] == (3, 4):
-        raise ValueError(
-            "Input size must be a N x 3 x 4  tensor. Got {}".format(
+            "Input size must be a (*, 3, 3) tensor. Got {}".format(
                 rotation_matrix.shape))
 
-    rmat_t = torch.transpose(rotation_matrix, 1, 2)
+    def safe_zero_division(numerator: torch.Tensor,
+                           denominator: torch.Tensor) -> torch.Tensor:
+        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
+        return numerator / torch.clamp(denominator, min=eps)
 
-    mask_d2 = rmat_t[:, 2, 2] < EPS
+    rotation_matrix_vec: torch.Tensor = rotation_matrix.view(
+        *rotation_matrix.shape[:-2], 9)
 
-    mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:, 1, 1]
-    mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:, 1, 1]
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(
+        rotation_matrix_vec, chunks=9, dim=-1)
 
-    t0 = 1 + rmat_t[:, 0, 0] - rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q0 = torch.stack([
-        rmat_t[:, 1, 2] - rmat_t[:, 2, 1], t0,
-        rmat_t[:, 0, 1] + rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2]
-    ], -1)
-    t0_rep = t0.repeat(4, 1).t()
+    trace: torch.Tensor = m00 + m11 + m22
 
-    t1 = torch.tensor(1.) - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
-    q1 = torch.stack([
-        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
-        t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]
-    ], -1)
-    t1_rep = t1.repeat(4, 1).t()
+    def trace_positive_cond():
+        sq = torch.sqrt(trace + 1.0) * 2.  # sq = 4 * qw.
+        qw = 0.25 * sq
+        qx = safe_zero_division(m21 - m12, sq)
+        qy = safe_zero_division(m02 - m20, sq)
+        qz = safe_zero_division(m10 - m01, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    t2 = torch.tensor(1.) - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q2 = torch.stack([
-        rmat_t[:, 0, 1] - rmat_t[:, 1, 0], rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
-        rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2
-    ], -1)
-    t2_rep = t2.repeat(4, 1).t()
+    def cond_1():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m21 - m12, sq)
+        qx = 0.25 * sq
+        qy = safe_zero_division(m01 - m10, sq)
+        qz = safe_zero_division(m02 - m20, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    t3 = torch.tensor(1.) + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
-    q3 = torch.stack([
-        t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
-        rmat_t[:, 2, 0] - rmat_t[:, 0, 2], rmat_t[:, 0, 1] - rmat_t[:, 1, 0]
-    ], -1)
-    t3_rep = t3.repeat(4, 1).t()
+    def cond_2():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m02 - m20, sq)
+        qx = safe_zero_division(m01 - m10, sq)
+        qy = 0.25 * sq
+        qz = safe_zero_division(m12 - m21, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    mask_c0 = mask_d2 * mask_d0_d1
-    mask_c1 = mask_d2 * (torch.tensor(1.) - mask_d0_d1)
-    mask_c2 = (torch.tensor(1.) - mask_d2) * mask_d0_nd1
-    mask_c3 = (torch.tensor(1.) - mask_d2) * (torch.tensor(1.) - mask_d0_nd1)
-    mask_c0 = mask_c0.view(-1, 1).type_as(q0)
-    mask_c1 = mask_c1.view(-1, 1).type_as(q1)
-    mask_c2 = mask_c2.view(-1, 1).type_as(q2)
-    mask_c3 = mask_c3.view(-1, 1).type_as(q3)
+    def cond_3():
+        sq = torch.sqrt(trace + 1.0 + m00 - m11 - m22) * 2.  # sq = 4 * qw.
+        qw = safe_zero_division(m10 - m01, sq)
+        qx = safe_zero_division(m02 - m20, sq)
+        qy = safe_zero_division(m12 - m21, sq)
+        qz = 0.25 * sq
+        return torch.cat([qx, qy, qz, qw], dim=-1)
 
-    q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
-    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
-                    t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
-    q *= 0.5
-    return q
+    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
+    where_1 = torch.where(
+        (m00 > m22) & (m00 > m22), cond_1(), where_2)
+
+    quaternion: torch.Tensor = torch.where(
+        trace > 0., trace_positive_cond(), where_1)
+    return quaternion
 
 
 def normalize_quaternion(quaternion: torch.Tensor,
@@ -345,7 +316,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
         >>> kornia.normalize_quaternion(quaternion)
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
     """
-    if not torch.is_tensor(quaternion):
+    if not isinstance(quaternion, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(quaternion)))
 
@@ -377,7 +348,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
                  [ 0., -1.,  0.],
                  [ 0.,  0.,  1.]]])
     """
-    if not torch.is_tensor(quaternion):
+    if not isinstance(quaternion, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(quaternion)))
 
@@ -409,8 +380,12 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     matrix: torch.Tensor = torch.stack([
         one - (tyy + tzz), txy - twz, txz + twy,
         txy + twz, one - (txx + tzz), tyz - twx,
-        txz - twy, tyz + twx, one - (txx + tyy)], dim=-1)
-    return matrix.view(-1, 3, 3)
+        txz - twy, tyz + twx, one - (txx + tyy)
+    ], dim=-1).view(-1, 3, 3)
+
+    if len(quaternion.shape) == 1:
+        matrix = torch.squeeze(matrix, dim=0)
+    return matrix
 
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
@@ -656,7 +631,3 @@ def denormalize_pixel_coordinates(
     factor: torch.Tensor = torch.tensor(2.) / (hw - 1)
 
     return torch.tensor(1.) / factor * (pixel_coordinates + 1)
-
-
-# TODO: add below funtionalities
-#  - pose_to_rtvec
