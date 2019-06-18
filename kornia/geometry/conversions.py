@@ -479,7 +479,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
         >>> kornia.quaternion_log_to_exp(quaternion)
         tensor([0., 0., 0., 1.])
     """
-    if not torch.is_tensor(quaternion):
+    if not isinstance(quaternion, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(quaternion)))
 
@@ -517,7 +517,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
         >>> kornia.quaternion_exp_to_log(quaternion)
         tensor([0., 0., 0.])
     """
-    if not torch.is_tensor(quaternion):
+    if not isinstance(quaternion, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(quaternion)))
 
