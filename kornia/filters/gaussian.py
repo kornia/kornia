@@ -156,7 +156,7 @@ def gaussian_blur2d(input: torch.Tensor,
                                      int],
                   sigma: Tuple[float,
                                float],
-                  border='replicate') -> torch.Tensor:
+                  border:str ='replicate') -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
