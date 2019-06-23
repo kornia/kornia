@@ -16,14 +16,8 @@ class TestFocalLoss:
         labels = labels.long()
 
         assert kornia.losses.focal_loss(
-            logits,
-            labels,
-            alpha=0.5,
-            gamma=2.0,
-            reduction='none').shape == (
-            2,
-            3,
-            2)
+            logits, labels, alpha=0.5, gamma=2.0, reduction="none"
+        ).shape == (2, 3, 2)
 
     def _test_smoke_sum(self):
         num_classes = 3
@@ -31,12 +25,11 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        assert kornia.losses.focal_loss(
-            logits,
-            labels,
-            alpha=0.5,
-            gamma=2.0,
-            reduction='sum').shape == ()
+        assert (
+            kornia.losses.focal_loss(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="sum"
+            ).shape == ()
+        )
 
     def _test_smoke_mean(self):
         num_classes = 3
@@ -44,12 +37,11 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.long()
 
-        assert kornia.losses.focal_loss(
-            logits,
-            labels,
-            alpha=0.5,
-            gamma=2.0,
-            reduction='mean').shape == ()
+        assert (
+            kornia.losses.focal_loss(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
+            ).shape == ()
+        )
 
     # TODO: implement me
     def _test_jit(self):
@@ -63,8 +55,11 @@ class TestFocalLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.focal_loss,
-                         (logits, labels, alpha, gamma), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.focal_loss,
+            (logits, labels, alpha, gamma),
+            raise_exception=True,
+        )
 
     def test_run_all(self):
         self._test_smoke_none()
@@ -107,8 +102,11 @@ class TestTverskyLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.tversky_loss,
-                         (logits, labels, alpha, beta), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.tversky_loss,
+            (logits, labels, alpha, beta),
+            raise_exception=True,
+        )
 
     def test_run_all(self):
         self._test_smoke()
@@ -149,8 +147,9 @@ class TestDiceLoss:
         labels = labels.long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.dice_loss,
-                         (logits, labels,), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.dice_loss, (logits, labels), raise_exception=True
+        )
 
     def test_run_all(self):
         self._test_smoke()
@@ -179,11 +178,13 @@ class TestDepthSmoothnessLoss:
         depth = self.depth.clone()
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(kornia.losses.inverse_depth_smoothness_loss,
-                         (depth, image,), raise_exception=True)
+        assert gradcheck(
+            kornia.losses.inverse_depth_smoothness_loss,
+            (depth, image),
+            raise_exception=True,
+        )
 
-    @pytest.mark.parametrize("batch_shape",
-                             [(1, 1, 10, 16), (2, 4, 8, 15), ])
+    @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
     def test_run_all(self, batch_shape, device_type):
         self.image = torch.rand(batch_shape).to(torch.device(device_type))
         self.depth = torch.rand(batch_shape).to(torch.device(device_type))
@@ -193,9 +194,8 @@ class TestDepthSmoothnessLoss:
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("reduction_type", ['none', 'mean', 'sum'])
-@pytest.mark.parametrize("batch_shape",
-                         [(1, 1, 10, 16), (2, 4, 8, 15), ])
+@pytest.mark.parametrize("reduction_type", ["none", "mean", "sum"])
+@pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
 def test_ssim(batch_shape, device_type, window_size, reduction_type):
     # input data
     device = torch.device(device_type)
@@ -205,7 +205,7 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     ssim = kornia.losses.SSIM(window_size, reduction_type)
     ssim_loss_val = ssim(img1, img2)
 
-    if reduction_type == 'none':
+    if reduction_type == "none":
         assert ssim_loss_val.shape == batch_shape
     else:
         assert ssim_loss_val.dim() == 0
@@ -215,10 +215,11 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
 
     # functional
     assert utils.check_equal_torch(
-        ssim_loss_val, kornia.losses.ssim(
-            img1, img2, window_size, reduction_type))
+        ssim_loss_val,
+        kornia.losses.ssim(img1, img2, window_size, reduction_type),
+    )
 
     # evaluate function gradient
     img1 = utils.tensor_to_gradcheck_var(img1)  # to var
     img2 = utils.tensor_to_gradcheck_var(img2, requires_grad=False)  # to var
-    assert gradcheck(ssim, (img1, img2,), raise_exception=True)
+    assert gradcheck(ssim, (img1, img2), raise_exception=True)
