@@ -139,7 +139,8 @@ class GaussianBlur2d(nn.Module):
         self.border_mode = border_mode
 
     @staticmethod
-    def compute_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
+    def compute_padding(kernel_size:
+                        Tuple[int, int]) -> Tuple[int, int, int, int]:
         """Computes padding tuple."""
         # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
         # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
