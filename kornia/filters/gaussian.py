@@ -37,14 +37,12 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
         >>> kornia.image.get_gaussian_kernel(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
-    if (
-        not isinstance(kernel_size, int)
-        or kernel_size % 2 == 0
-        or kernel_size <= 0
-    ):
+    if (not isinstance(kernel_size, int) or (kernel_size % 2 == 0) or (
+            kernel_size <= 0)):
         raise TypeError(
             "kernel_size must be an odd positive integer. "
-            "Got {}".format(kernel_size))
+            "Got {}".format(kernel_size)
+        )
     window_1d: torch.Tensor = gaussian(kernel_size, sigma)
     return window_1d
 
@@ -139,8 +137,9 @@ class GaussianBlur2d(nn.Module):
         self.border_mode = border_mode
 
     @staticmethod
-    def compute_padding(kernel_size:
-                        Tuple[int, int]) -> Tuple[int, int, int, int]:
+    def compute_padding(
+        kernel_size: Tuple[int, int]
+    ) -> Tuple[int, int, int, int]:
         """Computes padding tuple."""
         # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
         # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
