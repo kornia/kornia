@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.feature.nms import non_maxima_suppression2d
-from kornia.filters import spatial_gradient, gaussian_blur
+from kornia.filters import spatial_gradient, gaussian_blur2d
 
 
 class CornerHarris(nn.Module):
@@ -80,7 +80,7 @@ class CornerHarris(nn.Module):
 
         # compute the structure tensor M elements
         def g(x):
-            return gaussian_blur(x, (3, 3), (1., 1.))
+            return gaussian_blur2d(x, (3, 3), (1., 1.))
 
         dx2: torch.Tensor = g(dx * dx)
         dy2: torch.Tensor = g(dy * dy)
