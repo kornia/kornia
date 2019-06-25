@@ -43,7 +43,7 @@ class PyrDown(nn.Module):
         >>> output = kornia.transform.PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self, border_type: str = 'replicate') -> None:
+    def __init__(self, border_type: str = 'reflect') -> None:
         super(PyrDown, self).__init__()
         self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
@@ -84,7 +84,7 @@ class PyrUp(nn.Module):
         >>> output = kornia.transform.PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self, border_type: str = 'replicate'):
+    def __init__(self, border_type: str = 'reflect'):
         super(PyrUp, self).__init__()
         self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
@@ -112,7 +112,7 @@ class PyrUp(nn.Module):
 
 def pyrdown(
         input: torch.Tensor,
-        border_type: str = 'replicate') -> torch.Tensor:
+        border_type: str = 'reflect') -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
     See :class:`~kornia.transform.PyrDown` for details.
@@ -120,7 +120,7 @@ def pyrdown(
     return PyrDown(border_type)(input)
 
 
-def pyrup(input: torch.Tensor, border_type: str = 'replicate') -> torch.Tensor:
+def pyrup(input: torch.Tensor, border_type: str = 'reflect') -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
     See :class:`~kornia.transform.PyrUp` for details.
