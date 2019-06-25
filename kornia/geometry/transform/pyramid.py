@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
+
 __all__ = [
     "PyrDown",
     "PyrUp",
@@ -12,20 +14,22 @@ __all__ = [
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
-    return torch.tensor([
+    return torch.tensor([[
         [1., 4., 6., 4., 1.],
         [4., 16., 24., 16., 4.],
         [6., 24., 36., 24., 6.],
         [4., 16., 24., 16., 4.],
         [1., 4., 6., 4., 1.]
-    ]) / 256.
+    ]]) / 256.
 
 
 class PyrDown(nn.Module):
     r"""Blurs a tensor and downsamples it.
 
     Args:
-        input (torch.Tensor): the tensor to be downsampled.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Return:
         torch.Tensor: the downsampled tensor.
@@ -39,8 +43,9 @@ class PyrDown(nn.Module):
         >>> output = kornia.transform.PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self) -> None:
+    def __init__(self, border_type: str = 'replicate') -> None:
         super(PyrDown, self).__init__()
+        self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -50,14 +55,9 @@ class PyrDown(nn.Module):
         if not len(input.shape) == 4:
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
-        # prepare kernel
-        b, c, h, w = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
         # blur image
-        x_blur: torch.Tensor = F.conv2d(
-            input, kernel, padding=2, stride=1, groups=c)
+        x_blur: torch.Tensor = kornia.filter2D(
+            input, self.kernel, self.border_type)
 
         # reject even rows and columns.
         out: torch.Tensor = x_blur[..., ::2, ::2]
@@ -68,7 +68,9 @@ class PyrUp(nn.Module):
     r"""Upsamples a tensor and then blurs it.
 
     Args:
-        input (torch.Tensor): the tensor to be upsampled.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Return:
         torch.Tensor: the upsampled tensor.
@@ -82,8 +84,9 @@ class PyrUp(nn.Module):
         >>> output = kornia.transform.PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self):
+    def __init__(self, border_type: str = 'replicate'):
         super(PyrUp, self).__init__()
+        self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -93,35 +96,33 @@ class PyrUp(nn.Module):
         if not len(input.shape) == 4:
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
-        # prepare kernel
-        b, c, height, width = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
         # upsample tensor
+        b, c, height, width = input.shape
         x_up: torch.Tensor = F.interpolate(input, size=(height * 2, width * 2),
                                            mode='bilinear', align_corners=True)
 
         # blurs upsampled tensor
-        x_blur: torch.Tensor = F.conv2d(
-            x_up, kernel, padding=2, stride=1, groups=c)
+        x_blur: torch.Tensor = kornia.filter2D(
+            x_up, self.kernel, self.border_type)
         return x_blur
 
 
 # functiona api
 
 
-def pyrdown(input: torch.Tensor) -> torch.Tensor:
+def pyrdown(
+        input: torch.Tensor,
+        border_type: str = 'replicate') -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
     See :class:`~kornia.transform.PyrDown` for details.
     """
-    return PyrDown()(input)
+    return PyrDown(border_type)(input)
 
 
-def pyrup(input: torch.Tensor) -> torch.Tensor:
+def pyrup(input: torch.Tensor, border_type: str = 'replicate') -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
     See :class:`~kornia.transform.PyrUp` for details.
     """
-    return PyrUp()(input)
+    return PyrUp(border_type)(input)
