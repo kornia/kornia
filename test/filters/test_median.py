@@ -48,6 +48,7 @@ class TestMedianBlur:
         assert gradcheck(kornia.filters.median_blur, (img, (5, 3),),
                          raise_exception=True)
 
+    @pytest.mark.skip("")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
