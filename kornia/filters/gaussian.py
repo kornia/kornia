@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.nn.functional import conv2d
 import torch.nn.functional as F
 
+import kornia
 
 def gaussian(window_size, sigma):
     def gauss_fcn(x):
@@ -48,8 +49,7 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
 
 
 def get_gaussian_kernel2d(
-    kernel_size: Tuple[int, int], sigma: Tuple[float, float]
-) -> torch.Tensor:
+    kernel_size: Tuple[int, int], sigma: Tuple[float, float]) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -120,58 +120,19 @@ class GaussianBlur2d(nn.Module):
         >>> output = gauss(input)  # 2x4x5x5
     """
 
-    def __init__(
-        self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
-        border_mode: str,
-    ) -> None:
+    def __init__(self, kernel_size: Tuple[int, int], 
+                 sigma: Tuple[float, float], border_type: str) -> None:
         super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
-        self._padding: Tuple[int, int, int, int] = self.compute_padding(
-            kernel_size
-        )
-        self.kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
-        assert border_mode in ["constant", "reflect", "replicate", "circular"]
-        self.border_mode = border_mode
+        self.kernel: torch.Tensor = torch.unsqueeze(
+            get_gaussian_kernel2d(kernel_size, sigma), dim=0)
 
-    @staticmethod
-    def compute_padding(
-        kernel_size: Tuple[int, int]
-    ) -> Tuple[int, int, int, int]:
-        """Computes padding tuple."""
-        # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
-        # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
-        computed = [(k - 1) // 2 for k in kernel_size]
-        return computed[1], computed[1], computed[0], computed[0]
+        assert border_type in ["constant", "reflect", "replicate", "circular"]
+        self.border_type = border_type
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        if not torch.is_tensor(x):
-            raise TypeError(
-                "Input x type is not a torch.Tensor. Got {}".format(type(x))
-            )
-        if not len(x.shape) == 4:
-            raise ValueError(
-                "Invalid input shape, we expect BxCxHxW. Got: {}".format(
-                    x.shape
-                )
-            )
-        # prepare kernel
-        b, c, h, w = x.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
-        # TODO: explore solution when using jit.trace since it raises a warning
-        # because the shape is converted to a tensor instead to a int.
-        # convolve tensor with gaussian kernel
-        return conv2d(
-            F.pad(x, (self._padding), self.border_mode),
-            kernel,
-            padding=0,
-            stride=1,
-            groups=c,
-        )
+        return kornia.filter2D(x, self.kernel, self.border_type)
 
 
 ######################
@@ -179,14 +140,10 @@ class GaussianBlur2d(nn.Module):
 ######################
 
 
-def gaussian_blur2d(
-    input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float],
-    border: str = "replicate",
-) -> torch.Tensor:
+def gaussian_blur2d(input: torch.Tensor, kernel_size: Tuple[int, int],
+    sigma: Tuple[float, float], border_type: str = "replicate") -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
     """
-    return GaussianBlur2d(kernel_size, sigma, border)(input)
+    return GaussianBlur2d(kernel_size, sigma, border_type)(input)
