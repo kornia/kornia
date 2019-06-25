@@ -2,10 +2,9 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from torch.nn.functional import conv2d
-import torch.nn.functional as F
 
 import kornia
+
 
 def gaussian(window_size, sigma):
     def gauss_fcn(x):
@@ -49,7 +48,8 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
 
 
 def get_gaussian_kernel2d(
-    kernel_size: Tuple[int, int], sigma: Tuple[float, float]) -> torch.Tensor:
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float]) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -105,6 +105,9 @@ class GaussianBlur2d(nn.Module):
     Arguments:
         kernel_size (Tuple[int, int]): the size of the kernel.
         sigma (Tuple[float, float]): the standard deviation of the kernel.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
         Tensor: the blurred tensor.
@@ -120,7 +123,7 @@ class GaussianBlur2d(nn.Module):
         >>> output = gauss(input)  # 2x4x5x5
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], 
+    def __init__(self, kernel_size: Tuple[int, int],
                  sigma: Tuple[float, float], border_type: str) -> None:
         super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
@@ -140,8 +143,11 @@ class GaussianBlur2d(nn.Module):
 ######################
 
 
-def gaussian_blur2d(input: torch.Tensor, kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float], border_type: str = "replicate") -> torch.Tensor:
+def gaussian_blur2d(
+        input: torch.Tensor,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = "replicate") -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
