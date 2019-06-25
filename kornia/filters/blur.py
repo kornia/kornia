@@ -49,7 +49,7 @@ class BoxBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int],
-                 border_type: str = 'replicate') -> None:
+                 border_type: str = 'reflect') -> None:
         super(BoxBlur, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.border_type: str = border_type
@@ -64,7 +64,7 @@ class BoxBlur(nn.Module):
 
 def box_blur(input: torch.Tensor,
              kernel_size: Tuple[int, int],
-             border_type: str = 'replicate') -> torch.Tensor:
+             border_type: str = 'reflect') -> torch.Tensor:
     r"""Blurs an image using the box filter.
 
     See :class:`~kornia.filters.BoxBlur` for details.
