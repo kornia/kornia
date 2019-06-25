@@ -111,7 +111,7 @@ class Laplacian(nn.Module):
     """
 
     def __init__(self,
-                 kernel_size: int, border_type: str = 'replicate') -> None:
+                 kernel_size: int, border_type: str = 'reflect') -> None:
         super(Laplacian, self).__init__()
         self.kernel_size: int = kernel_size
         self.border_type: str = border_type
@@ -129,7 +129,7 @@ class Laplacian(nn.Module):
 
 def laplacian(
         input: torch.Tensor,
-        kernel_size: int, border_type: str = 'replicate') -> torch.Tensor:
+        kernel_size: int, border_type: str = 'reflect') -> torch.Tensor:
     r"""Function that returns a tensor using a Laplacian filter.
 
     See :class:`~kornia.filters.Laplacian` for details.

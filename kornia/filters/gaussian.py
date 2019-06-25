@@ -124,7 +124,8 @@ class GaussianBlur2d(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float], border_type: str) -> None:
+                 sigma: Tuple[float, float],
+                 border_type: str = 'reflect') -> None:
         super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
@@ -147,7 +148,7 @@ def gaussian_blur2d(
         input: torch.Tensor,
         kernel_size: Tuple[int, int],
         sigma: Tuple[float, float],
-        border_type: str = "replicate") -> torch.Tensor:
+        border_type: str = 'reflect') -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
