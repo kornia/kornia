@@ -5,9 +5,10 @@ kornia.filters
 
 The functions in this sections perform various image filtering operations.
 
+.. autofunction:: filter2D
 .. autofunction:: box_blur
 .. autofunction:: median_blur
-.. autofunction:: gaussian_blur
+.. autofunction:: gaussian_blur2d
 .. autofunction:: laplacian
 .. autofunction:: sobel
 .. autofunction:: spatial_gradient
@@ -19,7 +20,7 @@ The functions in this sections perform various image filtering operations.
 
 .. autoclass:: BoxBlur
 .. autoclass:: MedianBlur
-.. autoclass:: GaussianBlur
+.. autoclass:: GaussianBlur2d
 .. autoclass:: Laplacian
 .. autoclass:: Sobel
 .. autoclass:: SpatialGradient

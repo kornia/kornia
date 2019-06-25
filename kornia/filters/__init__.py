@@ -6,6 +6,7 @@ from .sobel import SpatialGradient, spatial_gradient
 from .sobel import Sobel, sobel
 from .blur import BoxBlur, box_blur
 from .median import MedianBlur, median_blur
+from .filter import filter2D
 
 __all__ = [
     "get_gaussian_kernel",
@@ -18,6 +19,7 @@ __all__ = [
     "spatial_gradient",
     "box_blur",
     "median_blur",
+    "filter2D",
     "GaussianBlur2d",
     "Laplacian",
     "SpatialGradient",

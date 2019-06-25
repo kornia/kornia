@@ -2,7 +2,8 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from torch.nn.functional import conv2d
+
+import kornia
 
 
 def laplacian_1d(window_size) -> torch.Tensor:
@@ -91,6 +92,9 @@ class Laplacian(nn.Module):
 
     Arguments:
         kernel_size (int): the size of the kernel.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
         Tensor: the tensor.
@@ -106,42 +110,16 @@ class Laplacian(nn.Module):
         >>> output = laplace(input)  # 2x4x5x5
     """
 
-    def __init__(self, kernel_size: int) -> None:
+    def __init__(self,
+                 kernel_size: int, border_type: str = 'reflect') -> None:
         super(Laplacian, self).__init__()
         self.kernel_size: int = kernel_size
-        self._padding: int = self.compute_zero_padding(kernel_size)
-        self.kernel: torch.Tensor = self.get_laplacian_kernel(kernel_size)
+        self.border_type: str = border_type
+        self.kernel: torch.Tensor = torch.unsqueeze(
+            get_laplacian_kernel2d(kernel_size), dim=0)
 
-    @staticmethod
-    def get_laplacian_kernel(kernel_size) -> torch.Tensor:
-        """Returns a 2D Laplacian kernel array."""
-        kernel: torch.Tensor = get_laplacian_kernel2d(kernel_size)
-        return kernel
-
-    @staticmethod
-    def compute_zero_padding(kernel_size: int):
-        """Computes zero padding."""
-        computed = (kernel_size - 1) // 2
-        return computed
-
-    def forward(self, x: torch.Tensor):  # type: ignore
-        if not torch.is_tensor(x):
-            raise TypeError("Input x type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
-        if not len(x.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(x.shape))
-        # prepare kernel
-        b, c, h, w = x.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
-        # convolve tensor with gaussian kernel
-        # TODO: Filter2D convolves an image with the kernel. A wrapper fucntion
-        #  for conv2d something similar to the one
-        #       given in OpenCV. Also see separable filters.
-        # https://github.com/opencv/opencv/blob/7fb70e170154d064ef12d8fec61c0ae70812ce3d/modules/imgproc/src/deriv.cpp#L822
-        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
+    def forward(self, input: torch.Tensor):  # type: ignore
+        return kornia.filter2D(input, self.kernel, self.border_type)
 
 
 ######################
@@ -149,9 +127,11 @@ class Laplacian(nn.Module):
 ######################
 
 
-def laplacian(src: torch.Tensor, kernel_size: int) -> torch.Tensor:
+def laplacian(
+        input: torch.Tensor,
+        kernel_size: int, border_type: str = 'reflect') -> torch.Tensor:
     r"""Function that returns a tensor using a Laplacian filter.
 
     See :class:`~kornia.filters.Laplacian` for details.
     """
-    return Laplacian(kernel_size)(src)
+    return Laplacian(kernel_size, border_type)(input)
