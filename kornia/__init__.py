@@ -44,6 +44,7 @@ from kornia.filters import (
     spatial_gradient,
     box_blur,
     median_blur,
+    filter2D,
 )
 from kornia.losses import (
     ssim,
