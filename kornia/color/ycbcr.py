@@ -52,7 +52,8 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     cb: torch.Tensor = -0.16874 * r - 0.33126 * g + 0.50000 * b
     cr: torch.Tensor = 0.50000 * r - 0.41869 * g - 0.081 * b
 
-    return torch.stack([y, cb, cr], dim=-3) 
+    return torch.stack([y, cb, cr], dim=-3)
+
 
 class YcbcrToRgb(torch.nn.Module):
     r"""Convert image from YCbCr to RGB.
@@ -69,7 +70,7 @@ class YcbcrToRgb(torch.nn.Module):
         - output: :math:`(*, 3, H, W)`
 
     """
-    
+
     def __init__(self):
         super(YcbcrToRgb, self).__init__()
 
@@ -104,4 +105,4 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     g: torch.Tensor = y - 0.34414 * cb - 0.71414 * cr
     b: torch.Tensor = y + 1.77200 * cb
 
-    return torch.stack([r, g, b], dim=-3) 
+    return torch.stack([r, g, b], dim=-3)
