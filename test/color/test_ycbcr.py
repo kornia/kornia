@@ -38,7 +38,7 @@ class TestRgbToYcbcr:
                                   [255, 21, 107]]]) / 255
 
         f = kornia.color.RgbToYcbcr()
-        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
 
     def test_batch_rgb_to_ycbcr(self):
 
@@ -69,7 +69,7 @@ class TestRgbToYcbcr:
         f = kornia.color.RgbToYcbcr()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(data), expected, atol=1e-4, rtol=1e-5)
 
     def test_gradcheck(self):
 
@@ -141,7 +141,7 @@ class TestYcbcrToRgb:
                               [255, 21, 107]]]) / 255
 
         f = kornia.color.YcbcrToRgb()
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
+        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
 
     def test_batch_ycbcr_to_rgb(self):
 
@@ -172,7 +172,7 @@ class TestYcbcrToRgb:
         f = kornia.color.YcbcrToRgb()
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
+        assert_allclose(f(data), expected, atol=1e-3, rtol=1e-3)
 
     def test_jit(self):
         @torch.jit.script

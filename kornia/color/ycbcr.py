@@ -18,7 +18,7 @@ class RgbToYcbcr(torch.nn.Module):
 
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super(RgbToYcbcr, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -52,7 +52,9 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     cb: torch.Tensor = -0.16874 * r - 0.33126 * g + 0.50000 * b + 128
     cr: torch.Tensor = 0.50000 * r - 0.41869 * g - 0.08131 * b + 128
 
-    return torch.stack([y, cb, cr], dim=-3)
+    out: torch.Tensor = torch.stack([y, cb, cr], dim=-3)
+
+    return out
 
 
 class YcbcrToRgb(torch.nn.Module):
@@ -71,7 +73,7 @@ class YcbcrToRgb(torch.nn.Module):
 
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super(YcbcrToRgb, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -101,12 +103,14 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     cb: torch.Tensor = image[..., 1, :, :]
     cr: torch.Tensor = image[..., 2, :, :]
 
-    y_ = y
-    cb_ = cb - 128
-    cr_ = cr - 128
+    y_: torch.Tensor = y
+    cb_: torch.Tensor = cb - 128
+    cr_: torch.Tensor = cr - 128
 
     r: torch.Tensor = y + 1.40200 * cr_
     g: torch.Tensor = y - 0.34414 * cb_ - 0.71414 * cr_
     b: torch.Tensor = y + 1.77200 * cb_
 
-    return torch.stack([r, g, b], dim=-3)
+    out: torch.Tensor = torch.stack([r, g, b], dim=-3)
+
+    return out
