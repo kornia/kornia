@@ -3,7 +3,7 @@ from .rgb import BgrToRgb, bgr_to_rgb
 from .rgb import RgbToBgr, rgb_to_bgr
 from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
-from .ycbcr import RgbToYcrcb, rgb_to_ycrcb
+from .ycbcr import RgbToYcbcr, rgb_to_ycbcr
 from .ycbcr import YcbcrToRgb, ycbcr_to_rgb
 from .normalize import Normalize, normalize
 
@@ -21,7 +21,7 @@ __all__ = [
     "RgbToBgr",
     "RgbToHsv",
     "HsvToRgb",
-    "RgbToYcrc",
+    "RgbToYcbcr",
     "YcbcrToRgb",
     "Normalize",
 ]
