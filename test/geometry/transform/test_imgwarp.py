@@ -39,7 +39,7 @@ def test_warp_perspective_rotation(batch_shape, device_type):
         torch.inverse(M),
         dsize=(height, width))
 
-    assert utils.check_equal_torch(mask_warped_inv * patch,
+    assert_allclose(mask_warped_inv * patch,
                                    mask_warped_inv * patch_warped_inv)
 
     # evaluate function gradient
@@ -73,7 +73,7 @@ def test_get_perspective_transform(batch_size, device_type):
     # compute transform from source to target
     dst_homo_src = kornia.get_perspective_transform(points_src, points_dst)
 
-    assert utils.check_equal_torch(
+    assert_allclose(
         kornia.transform_points(dst_homo_src, points_src), points_dst)
 
     # compute gradient check
@@ -255,7 +255,7 @@ class TestWarpAffine:
         img_b = torch.arange(float(height * width)).view(
             1, channels, height, width).repeat(batch_size, 1, 1, 1)
         img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
-        assert utils.check_equal_torch(img_b[..., :2, :3], img_a[..., 1:, 1:])
+        assert_allclose(img_b[..., :2, :3], img_a[..., 1:, 1:])
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 2, 3, 4
