@@ -49,7 +49,3 @@ def compute_patch_error(x, y, h, w):
 
 def check_equal_torch(a, b, eps=1e-4):
     return (torch.norm(a - b) <= (a.numel() * eps)).item()
-
-
-def check_equal_numpy(a, b):
-    return np.linalg.norm(a - b) <= (a.size * np.finfo(np.float32).eps)
