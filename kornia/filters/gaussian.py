@@ -2,14 +2,17 @@ from typing import Tuple
 
 import torch
 import torch.nn as nn
-from torch.nn.functional import conv2d
+
+import kornia
 
 
 def gaussian(window_size, sigma):
     def gauss_fcn(x):
-        return -(x - window_size // 2)**2 / float(2 * sigma**2)
+        return -(x - window_size // 2) ** 2 / float(2 * sigma ** 2)
+
     gauss = torch.stack(
-        [torch.exp(torch.tensor(gauss_fcn(x))) for x in range(window_size)])
+        [torch.exp(torch.tensor(gauss_fcn(x))) for x in range(window_size)]
+    )
     return gauss / gauss.sum()
 
 
@@ -34,16 +37,19 @@ def get_gaussian_kernel(kernel_size: int, sigma: float) -> torch.Tensor:
         >>> kornia.image.get_gaussian_kernel(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
-            kernel_size <= 0:
-        raise TypeError("kernel_size must be an odd positive integer. "
-                        "Got {}".format(kernel_size))
+    if (not isinstance(kernel_size, int) or (kernel_size % 2 == 0) or (
+            kernel_size <= 0)):
+        raise TypeError(
+            "kernel_size must be an odd positive integer. "
+            "Got {}".format(kernel_size)
+        )
     window_1d: torch.Tensor = gaussian(kernel_size, sigma)
     return window_1d
 
 
-def get_gaussian_kernel2d(kernel_size: Tuple[int, int],
-                          sigma: Tuple[float, float]) -> torch.Tensor:
+def get_gaussian_kernel2d(
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float]) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -71,21 +77,26 @@ def get_gaussian_kernel2d(kernel_size: Tuple[int, int],
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
     """
     if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
-        raise TypeError("kernel_size must be a tuple of length two. Got {}"
-                        .format(kernel_size))
+        raise TypeError(
+            "kernel_size must be a tuple of length two. Got {}".format(
+                kernel_size
+            )
+        )
     if not isinstance(sigma, tuple) or len(sigma) != 2:
-        raise TypeError("sigma must be a tuple of length two. Got {}"
-                        .format(sigma))
+        raise TypeError(
+            "sigma must be a tuple of length two. Got {}".format(sigma)
+        )
     ksize_x, ksize_y = kernel_size
     sigma_x, sigma_y = sigma
     kernel_x: torch.Tensor = get_gaussian_kernel(ksize_x, sigma_x)
     kernel_y: torch.Tensor = get_gaussian_kernel(ksize_y, sigma_y)
     kernel_2d: torch.Tensor = torch.matmul(
-        kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t())
+        kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t()
+    )
     return kernel_2d
 
 
-class GaussianBlur(nn.Module):
+class GaussianBlur2d(nn.Module):
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
@@ -94,6 +105,9 @@ class GaussianBlur(nn.Module):
     Arguments:
         kernel_size (Tuple[int, int]): the size of the kernel.
         sigma (Tuple[float, float]): the standard deviation of the kernel.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
         Tensor: the blurred tensor.
@@ -110,35 +124,19 @@ class GaussianBlur(nn.Module):
     """
 
     def __init__(self, kernel_size: Tuple[int, int],
-                 sigma: Tuple[float, float]) -> None:
-        super(GaussianBlur, self).__init__()
+                 sigma: Tuple[float, float],
+                 border_type: str = 'reflect') -> None:
+        super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
-        self._padding: Tuple[int, int] = self.compute_zero_padding(kernel_size)
-        self.kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
+        self.kernel: torch.Tensor = torch.unsqueeze(
+            get_gaussian_kernel2d(kernel_size, sigma), dim=0)
 
-    @staticmethod
-    def compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
-        """Computes zero padding tuple."""
-        computed = [(k - 1) // 2 for k in kernel_size]
-        return computed[0], computed[1]
+        assert border_type in ["constant", "reflect", "replicate", "circular"]
+        self.border_type = border_type
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        if not torch.is_tensor(x):
-            raise TypeError("Input x type is not a torch.Tensor. Got {}"
-                            .format(type(x)))
-        if not len(x.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(x.shape))
-        # prepare kernel
-        b, c, h, w = x.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(x.device).to(x.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
-        # TODO: explore solution when using jit.trace since it raises a warning
-        # because the shape is converted to a tensor instead to a int.
-        # convolve tensor with gaussian kernel
-        return conv2d(x, kernel, padding=self._padding, stride=1, groups=c)
+        return kornia.filter2D(x, self.kernel, self.border_type)
 
 
 ######################
@@ -146,13 +144,13 @@ class GaussianBlur(nn.Module):
 ######################
 
 
-def gaussian_blur(input: torch.Tensor,
-                  kernel_size: Tuple[int,
-                                     int],
-                  sigma: Tuple[float,
-                               float]) -> torch.Tensor:
+def gaussian_blur2d(
+        input: torch.Tensor,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = 'reflect') -> torch.Tensor:
     r"""Function that blurs a tensor using a Gaussian filter.
 
     See :class:`~kornia.filters.GaussianBlur` for details.
     """
-    return GaussianBlur(kernel_size, sigma)(input)
+    return GaussianBlur2d(kernel_size, sigma, border_type)(input)

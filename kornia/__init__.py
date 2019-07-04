@@ -38,12 +38,13 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_laplacian_kernel,
     get_laplacian_kernel2d,
-    gaussian_blur,
+    gaussian_blur2d,
     laplacian,
     sobel,
     spatial_gradient,
     box_blur,
     median_blur,
+    filter2D,
 )
 from kornia.losses import (
     ssim,

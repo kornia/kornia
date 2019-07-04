@@ -1,3 +1,5 @@
+from typing import Optional
+
 import pytest
 import numpy as np
 
@@ -53,6 +55,215 @@ class TestAngleAxisToQuaternion:
         # evaluate function gradient
         assert gradcheck(kornia.angle_axis_to_quaternion, (angle_axis,),
                          raise_exception=True)
+
+
+class TestRotationMatrixToQuaternion:
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        matrix = torch.zeros(batch_size, 3, 3)
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        assert quaternion.shape == (batch_size, 4)
+
+    def test_identity(self):
+        matrix = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        expected = torch.tensor(
+            [0., 0., 0., 1.],
+        )
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        assert_allclose(quaternion, expected)
+
+    def test_rot_x_45(self):
+        matrix = torch.tensor([
+            [1., 0., 0.],
+            [0., 0., -1.],
+            [0., 1., 0.],
+        ])
+        pi_half2 = torch.cos(kornia.pi / 4)
+        expected = torch.tensor(
+            [pi_half2, 0., 0., pi_half2],
+        )
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        assert_allclose(quaternion, expected)
+
+    def test_back_and_forth(self):
+        matrix = torch.tensor([
+            [1., 0., 0.],
+            [0., 0., -1.],
+            [0., 1., 0.],
+        ])
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        matrix_hat = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, matrix_hat)
+
+    def test_gradcheck(self):
+        matrix = torch.eye(3)
+        matrix = tensor_to_gradcheck_var(matrix)
+        # evaluate function gradient
+        assert gradcheck(kornia.rotation_matrix_to_quaternion, (matrix,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        op = kornia.quaternion_log_to_exp
+        op_script = torch.jit.script(op)
+
+        quaternion = torch.tensor([0., 0., 1.])
+        actual = op_script(quaternion)
+        expected = op(quaternion)
+        assert_allclose(actual, expected)
+
+
+class TestQuaternionToRotationMatrix:
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        quaternion = torch.zeros(batch_size, 4)
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert matrix.shape == (batch_size, 3, 3)
+
+    def test_unit_quaternion(self):
+        quaternion = torch.tensor([0., 0., 0., 1.])
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_x_rotation(self):
+        quaternion = torch.tensor([1., 0., 0., 0.])
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., -1., 0.],
+            [0., 0., -1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_y_rotation(self):
+        quaternion = torch.tensor([0., 1., 0., 0.])
+        expected = torch.tensor([
+            [-1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., -1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_z_rotation(self):
+        quaternion = torch.tensor([0., 0., 1., 0.])
+        expected = torch.tensor([
+            [-1., 0., 0.],
+            [0., -1., 0.],
+            [0., 0., 1.],
+        ])
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, expected)
+
+    def test_gradcheck(self):
+        quaternion = torch.tensor([0., 0., 0., 1.])
+        quaternion = tensor_to_gradcheck_var(quaternion)
+        # evaluate function gradient
+        assert gradcheck(kornia.quaternion_to_rotation_matrix, (quaternion,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(input):
+            return kornia.quaternion_to_rotation_matrix(input)
+
+        quaternion = torch.tensor([0., 0., 1., 0.])
+        actual = op_script(quaternion)
+        expected = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(actual, expected)
+
+
+class TestQuaternionLogToExp:
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        quaternion_log = torch.zeros(batch_size, 3)
+        quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log)
+        assert quaternion_exp.shape == (batch_size, 4)
+
+    def test_unit_quaternion(self):
+        quaternion_log = torch.tensor([0., 0., 0.])
+        expected = torch.tensor([0., 0., 0., 1.])
+        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+
+    def test_pi_quaternion(self):
+        one = torch.tensor(1.)
+        quaternion_log = torch.tensor([1., 0., 0.])
+        expected = torch.tensor([torch.sin(one), 0., 0., torch.cos(one)])
+        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+
+    def test_back_and_forth(self):
+        quaternion_log = torch.tensor([0., 0., 0.])
+        quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log)
+        quaternion_log_hat = kornia.quaternion_exp_to_log(quaternion_exp)
+        assert_allclose(quaternion_log, quaternion_log_hat)
+
+    def test_gradcheck(self):
+        quaternion = torch.tensor([0., 0., 1.])
+        quaternion = tensor_to_gradcheck_var(quaternion)
+        # evaluate function gradient
+        assert gradcheck(kornia.quaternion_log_to_exp, (quaternion,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        op = kornia.quaternion_log_to_exp
+        op_script = torch.jit.script(op)
+
+        quaternion = torch.tensor([0., 0., 1.])
+        actual = op_script(quaternion)
+        expected = op(quaternion)
+        assert_allclose(actual, expected)
+
+
+class TestQuaternionExpToLog:
+
+    @pytest.mark.parametrize("batch_size", (1, 3, 8))
+    def test_smoke_batch(self, batch_size):
+        quaternion_exp = torch.zeros(batch_size, 4)
+        quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
+        assert quaternion_log.shape == (batch_size, 3)
+
+    def test_unit_quaternion(self):
+        quaternion_exp = torch.tensor([0., 0., 0., 1.])
+        expected = torch.tensor([0., 0., 0.])
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
+
+    def test_pi_quaternion(self):
+        quaternion_exp = torch.tensor([1., 0., 0., 0.])
+        expected = torch.tensor([kornia.pi / 2, 0., 0.])
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
+
+    def test_back_and_forth(self):
+        quaternion_exp = torch.tensor([1., 0., 0., 0.])
+        quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
+        quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log)
+        assert_allclose(quaternion_exp, quaternion_exp_hat)
+
+    def test_gradcheck(self):
+        quaternion = torch.tensor([1., 0., 0., 0.])
+        quaternion = tensor_to_gradcheck_var(quaternion)
+        # evaluate function gradient
+        assert gradcheck(kornia.quaternion_exp_to_log, (quaternion,),
+                         raise_exception=True)
+
+    def test_jit(self):
+        op = kornia.quaternion_exp_to_log
+        op_script = torch.jit.script(op)
+
+        quaternion = torch.tensor([0., 0., 1., 0.])
+        actual = op_script(quaternion)
+        expected = op(quaternion)
+        assert_allclose(actual, expected)
 
 
 class TestQuaternionToAngleAxis:
@@ -198,13 +409,12 @@ class TestConvertPointsToHomogeneous:
                          raise_exception=True)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.convert_points_to_homogeneous(input)
+        op = kornia.convert_points_to_homogeneous
+        op_script = torch.jit.script(op)
 
         points_h = torch.zeros(1, 2, 3)
         actual = op_script(points_h)
-        expected = kornia.convert_points_to_homogeneous(points_h)
+        expected = op(points_h)
 
         assert_allclose(actual, expected)
 
@@ -265,13 +475,12 @@ class TestConvertPointsFromHomogeneous:
                          raise_exception=True)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.convert_points_from_homogeneous(input)
+        op = kornia.convert_points_from_homogeneous
+        op_script = torch.jit.script(op)
 
         points_h = torch.zeros(1, 2, 3)
         actual = op_script(points_h)
-        expected = kornia.convert_points_from_homogeneous(points_h)
+        expected = op(points_h)
 
         assert_allclose(actual, expected)
 
@@ -281,7 +490,7 @@ def test_angle_axis_to_rotation_matrix(batch_size, device_type):
     # generate input data
     device = torch.device(device_type)
     angle_axis = torch.rand(batch_size, 3).to(device)
-    eye_batch = create_eye_batch(batch_size, 4).to(device)
+    eye_batch = create_eye_batch(batch_size, 3).to(device)
 
     # apply transform
     rotation_matrix = kornia.angle_axis_to_rotation_matrix(angle_axis)
@@ -296,42 +505,32 @@ def test_angle_axis_to_rotation_matrix(batch_size, device_type):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_rtvec_to_pose_gradcheck(batch_size, device_type):
-    # generate input data
-    rtvec = torch.rand(batch_size, 6).to(torch.device(device_type))
-
-    # evaluate function gradient
-    rtvec = tensor_to_gradcheck_var(rtvec)  # to var
-    assert gradcheck(kornia.rtvec_to_pose, (rtvec,), raise_exception=True)
-
-
-@pytest.mark.parametrize("batch_size", [1, 2, 5])
+'''@pytest.mark.parametrize("batch_size", [1, 2, 5])
 def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
     # generate input data
-    rmat = torch.rand(batch_size, 3, 4).to(torch.device(device_type))
+    rmat = torch.rand(batch_size, 3, 3).to(torch.device(device_type))
 
     # evaluate function gradient
     rmat = tensor_to_gradcheck_var(rmat)  # to var
     assert gradcheck(kornia.rotation_matrix_to_angle_axis,
-                     (rmat,), raise_exception=True)
+                     (rmat,), raise_exception=True)'''
 
 
-def test_rotation_matrix_to_angle_axis(device_type):
+'''def test_rotation_matrix_to_angle_axis(device_type):
     device = torch.device(device_type)
-    rmat_1 = torch.tensor([[-0.30382753, -0.95095137, -0.05814062, 0.],
-                           [-0.71581715, 0.26812278, -0.64476041, 0.],
-                           [0.62872461, -0.15427791, -0.76217038, 0.]])
+    rmat_1 = torch.tensor([[-0.30382753, -0.95095137, -0.05814062],
+                           [-0.71581715, 0.26812278, -0.64476041],
+                           [0.62872461, -0.15427791, -0.76217038]])
     rvec_1 = torch.tensor([1.50485376, -2.10737739, 0.7214174])
 
-    rmat_2 = torch.tensor([[0.6027768, -0.79275544, -0.09054801, 0.],
-                           [-0.67915707, -0.56931658, 0.46327563, 0.],
-                           [-0.41881476, -0.21775548, -0.88157628, 0.]])
+    rmat_2 = torch.tensor([[0.6027768, -0.79275544, -0.09054801],
+                           [-0.67915707, -0.56931658, 0.46327563],
+                           [-0.41881476, -0.21775548, -0.88157628]])
     rvec_2 = torch.tensor([-2.44916812, 1.18053411, 0.4085298])
     rmat = torch.stack([rmat_2, rmat_1], dim=0).to(device)
     rvec = torch.stack([rvec_2, rvec_1], dim=0).to(device)
 
-    assert_allclose(kornia.rotation_matrix_to_angle_axis(rmat), rvec)
+    assert_allclose(kornia.rotation_matrix_to_angle_axis(rmat), rvec)'''
 
 
 class TestNormalizePixelCoordinates:
@@ -364,42 +563,15 @@ class TestNormalizePixelCoordinates:
         assert_allclose(grid_norm, expected)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, height: int,
-                      width: int) -> torch.Tensor:
-            return kornia.normalize_pixel_coordinates(input, height, width)
+        op = kornia.normalize_pixel_coordinates
+        op_script = torch.jit.script(op)
+
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=True)
 
         actual = op_script(grid, height, width)
-        expected = kornia.normalize_pixel_coordinates(
-            grid, height, width)
-
-        assert_allclose(actual, expected)
-
-    def test_jit_trace(self):
-        @torch.jit.script
-        def op_script(input, height, width):
-            return kornia.normalize_pixel_coordinates(input, height, width)
-        # 1. Trace op
-        height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
-        op_traced = torch.jit.trace(
-            op_script,
-            (grid, torch.tensor(height), torch.tensor(width),))
-
-        # 2. Generate new input
-        height, width = 2, 5
-        grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False).repeat(2, 1, 1, 1)
-
-        # 3. Evaluate
-        actual = op_traced(
-            grid, torch.tensor(height), torch.tensor(width))
-        expected = kornia.normalize_pixel_coordinates(
-            grid, height, width)
+        expected = op(grid, height, width)
 
         assert_allclose(actual, expected)
 
@@ -434,16 +606,14 @@ class TestDenormalizePixelCoordinates:
         assert_allclose(grid_norm, expected)
 
     def test_jit(self):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, height: int,
-                      width: int) -> torch.Tensor:
-            return kornia.denormalize_pixel_coordinates(input, height, width)
+        op = kornia.denormalize_pixel_coordinates
+        op_script = torch.jit.script(op)
+
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=True)
 
         actual = op_script(grid, height, width)
-        expected = kornia.denormalize_pixel_coordinates(
-            grid, height, width)
+        expected = op(grid, height, width)
 
         assert_allclose(actual, expected)
