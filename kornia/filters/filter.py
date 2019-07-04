@@ -5,13 +5,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def compute_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+def compute_padding(kernel_size: Tuple[int, int]) -> List[int]:
     """Computes padding tuple."""
     # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
     assert len(kernel_size) == 2, kernel_size
     computed = [(k - 1) // 2 for k in kernel_size]
-    return computed[1], computed[1], computed[0], computed[0]
+    return [computed[1], computed[1], computed[0], computed[0]]
 
 
 def filter2D(input: torch.Tensor, kernel: torch.Tensor,
@@ -68,7 +68,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
-    padding_shape: Tuple[int, int, int, int] = compute_padding((height, width))
+    padding_shape: List[int] = compute_padding((height, width))
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
     # convolve the tensor with the kernel

@@ -6,6 +6,7 @@ from test.common import device_type
 
 import torch
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 
 class TestFocalLoss:
@@ -214,7 +215,7 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     assert pytest.approx(ssim(img2, img2).sum().item(), 0.0)
 
     # functional
-    assert utils.check_equal_torch(
+    assert_allclose(
         ssim_loss_val,
         kornia.losses.ssim(img1, img2, window_size, reduction_type),
     )

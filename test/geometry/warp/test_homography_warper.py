@@ -6,6 +6,7 @@ from test.common import device_type
 
 import torch
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 
 class TestHomographyWarper:
@@ -24,7 +25,7 @@ class TestHomographyWarper:
 
         # warp from source to destination
         patch_dst = warper(patch_src, dst_homo_src)
-        assert utils.check_equal_torch(patch_src, patch_dst)
+        assert_allclose(patch_src, patch_dst)
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [
@@ -43,9 +44,9 @@ class TestHomographyWarper:
 
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
-        assert utils.check_equal_torch(
+        assert_allclose(
             warper.grid[..., 0] + offset, flow[..., 0])
-        assert utils.check_equal_torch(
+        assert_allclose(
             warper.grid[..., 1], flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [
@@ -61,13 +62,13 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., 0, 0], patch_dst[..., 0, 0])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., 0, -1], patch_dst[..., 0, -1])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., -1, 0], patch_dst[..., -1, 0])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., -1, -1], patch_dst[..., -1, -1])
 
     @pytest.mark.parametrize("shape", [
@@ -83,7 +84,7 @@ class TestHomographyWarper:
         # instantiate warper and from source to destination
         warper = kornia.HomographyWarper(height, width)
         patch_dst = warper(patch_src, dst_homo_src)
-        assert utils.check_equal_torch(patch_src[..., 1:], patch_dst[..., :-1])
+        assert_allclose(patch_src[..., 1:], patch_dst[..., :-1])
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3), ])
@@ -103,13 +104,13 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., 0, 0], patch_dst[..., 0, -1])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., 0, -1], patch_dst[..., -1, -1])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., -1, 0], patch_dst[..., 0, 0])
-        assert utils.check_equal_torch(
+        assert_allclose(
             patch_src[..., -1, -1], patch_dst[..., -1, 0])
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
@@ -152,7 +153,7 @@ class TestHomographyWarper:
             patch_dst_to_src_functional = kornia.homography_warp(
                 patch_dst, torch.inverse(dst_homo_src_i), (height, width))
 
-            assert utils.check_equal_torch(
+            assert_allclose(
                 patch_dst_to_src, patch_dst_to_src_functional)
 
     @pytest.mark.parametrize("batch_shape", [

@@ -155,7 +155,7 @@ def warp_affine(src: torch.Tensor,
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(src.shape))
     # we generate a 3x3 transformation matrix from 2x3 affine
-    M_3x3: torch.Tensor = F.pad(M, (0, 0, 0, 1, 0, 0),
+    M_3x3: torch.Tensor = F.pad(M, [0, 0, 0, 1, 0, 0],
                                 mode="constant", value=0)
     M_3x3[:, 2, 2] += 1.0
 
@@ -441,7 +441,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     if not (len(matrix.shape) == 3 or matrix.shape[-2:] == (2, 3)):
         raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
                          .format(matrix.shape))
-    matrix_tmp: torch.Tensor = F.pad(matrix, (0, 0, 0, 1), "constant", 0.0)
+    matrix_tmp: torch.Tensor = F.pad(matrix, [0, 0, 0, 1], "constant", 0.0)
     matrix_tmp[..., 2, 2] += 1.0
 
     matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
