@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,23 +31,23 @@ class DepthWarper(nn.Module):
           frame.
         height (int): the height of the image to warp.
         width (int): the width of the image to warp.
-        mode (Optional[str]): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (Optional[str]): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
            'zeros' | 'border' | 'reflection'. Default: 'zeros'.
     """
 
     def __init__(self,
                  pinhole_dst: PinholeCamera,
                  height: int, width: int,
-                 mode: Optional[str] = 'bilinear',
-                 padding_mode: Optional[str] = 'zeros'):
+                 mode: str = 'bilinear',
+                 padding_mode: str = 'zeros'):
         super(DepthWarper, self).__init__()
         # constructor members
         self.width: int = width
         self.height: int = height
-        self.mode: Optional[str] = mode
-        self.padding_mode: Optional[str] = padding_mode
+        self.mode: str = mode
+        self.padding_mode: str = padding_mode
         self.eps = 1e-6
 
         # state members
