@@ -41,12 +41,6 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
-def compute_mse(x, y):
-    """Computes the mean square error between the inputs.
-    """
-    return torch.sqrt(((x - y) ** 2).sum())
-
-
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
