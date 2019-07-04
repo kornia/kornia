@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -117,7 +115,7 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return torch.nn.functional.pad(points, (0, 1), "constant", 1.0)
+    return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
@@ -317,7 +315,7 @@ def rotation_matrix_to_quaternion(
 
 
 def normalize_quaternion(quaternion: torch.Tensor,
-                         eps: Optional[float] = 1e-12) -> torch.Tensor:
+                         eps: float = 1e-12) -> torch.Tensor:
     r"""Normalizes a quaternion.
 
     Args:

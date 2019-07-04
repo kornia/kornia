@@ -11,13 +11,6 @@ __all__ = [
 ]
 
 
-def create_pinhole(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz):
-    """Creates pinhole model encoded to a torch.Tensor.
-    """
-    return torch.Tensor([
-        [fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz]])
-
-
 def create_checkerboard(h, w, nw):
     """Creates a synthetic checkerd board of shape HxW and window size `nw`.
     """
@@ -48,21 +41,7 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
-def compute_mse(x, y):
-    """Computes the mean square error between the inputs.
-    """
-    return torch.sqrt(((x - y) ** 2).sum())
-
-
 def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
-
-
-def check_equal_torch(a, b, eps=1e-4):
-    return (torch.norm(a - b) <= (a.numel() * eps)).item()
-
-
-def check_equal_numpy(a, b):
-    return np.linalg.norm(a - b) <= (a.size * np.finfo(np.float32).eps)

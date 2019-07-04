@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -31,7 +31,8 @@ class NonMaximaSuppression2d(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
         assert len(x.shape) == 4, x.shape
         # find local maximum values
-        x_max: torch.Tensor = self.max_pool2d(x)
+        x_max: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]] = \
+            self.max_pool2d(x)
 
         # create mask for maximums in the original map
         x_mask: torch.Tensor = torch.where(

@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -26,27 +26,27 @@ class HomographyWarper(nn.Module):
     Args:
         height (int): The height of the image to warp.
         width (int): The width of the image to warp.
-        mode (Optional[str]): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (Optional[str]): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        normalized_coordinates (Optional[bool]): wether to use a grid with
-                                                 normalized coordinates.
+        normalized_coordinates (bool): wether to use a grid with
+          normalized coordinates.
     """
 
     def __init__(
             self,
             height: int,
             width: int,
-            mode: Optional[str] = 'bilinear',
-            padding_mode: Optional[str] = 'zeros',
-            normalized_coordinates: Optional[bool] = True) -> None:
+            mode: str = 'bilinear',
+            padding_mode: str = 'zeros',
+            normalized_coordinates: bool = True) -> None:
         super(HomographyWarper, self).__init__()
         self.width: int = width
         self.height: int = height
-        self.mode: Optional[str] = mode
-        self.padding_mode: Optional[str] = padding_mode
-        self.normalized_coordinates: Optional[bool] = normalized_coordinates
+        self.mode: str = mode
+        self.padding_mode: str = padding_mode
+        self.normalized_coordinates: bool = normalized_coordinates
 
         # create base grid to compute the flow
         self.grid: torch.Tensor = create_meshgrid(
@@ -116,8 +116,8 @@ class HomographyWarper(nn.Module):
 def homography_warp(patch_src: torch.Tensor,
                     dst_homo_src: torch.Tensor,
                     dsize: Tuple[int, int],
-                    mode: Optional[str] = 'bilinear',
-                    padding_mode: Optional[str] = 'zeros') -> torch.Tensor:
+                    mode: str = 'bilinear',
+                    padding_mode: str = 'zeros') -> torch.Tensor:
     r"""Function that warps image patchs or tensors by homographies.
 
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
@@ -129,9 +129,9 @@ def homography_warp(patch_src: torch.Tensor,
                                      from source to destination of shape
                                      :math:`(N, 3, 3)`.
         dsize (Tuple[int, int]): The height and width of the image to warp.
-        mode (Optional[str]): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (Optional[str]): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
 
     Return:
