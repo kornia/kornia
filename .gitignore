@@ -1,6 +1,6 @@
 build/
 dist/
-kornia/version.py
+*version.py
 kornia.egg-info/
 */**/__pycache__
 */**/*.pyc
