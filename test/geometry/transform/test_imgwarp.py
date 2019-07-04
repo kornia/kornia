@@ -40,7 +40,7 @@ def test_warp_perspective_rotation(batch_shape, device_type):
         dsize=(height, width))
 
     assert_allclose(mask_warped_inv * patch,
-                                   mask_warped_inv * patch_warped_inv)
+                    mask_warped_inv * patch_warped_inv)
 
     # evaluate function gradient
     patch = utils.tensor_to_gradcheck_var(patch)  # to var
