@@ -11,13 +11,6 @@ __all__ = [
 ]
 
 
-def create_pinhole(fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz):
-    """Creates pinhole model encoded to a torch.Tensor.
-    """
-    return torch.Tensor([
-        [fx, fy, cx, cy, height, width, rx, ry, rz, tx, ty, tz]])
-
-
 def create_checkerboard(h, w, nw):
     """Creates a synthetic checkerd board of shape HxW and window size `nw`.
     """
