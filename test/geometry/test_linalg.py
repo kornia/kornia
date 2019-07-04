@@ -116,7 +116,7 @@ class TestComposeTransforms:
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert utils.check_equal_torch(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_translation_Bx4x4(self, batch_size):
@@ -126,7 +126,7 @@ class TestComposeTransforms:
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert utils.check_equal_torch(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size):
@@ -148,7 +148,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert utils.check_equal_torch(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_translation_Bx4x4(self, batch_size):
@@ -158,7 +158,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert utils.check_equal_torch(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size):
@@ -173,7 +173,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert utils.check_equal_torch(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size):
@@ -193,7 +193,7 @@ class TestRelativeTransformation:
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert utils.check_equal_torch(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size):
@@ -209,7 +209,7 @@ class TestRelativeTransformation:
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert utils.check_equal_torch(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size):

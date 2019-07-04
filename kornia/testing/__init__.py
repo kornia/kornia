@@ -45,7 +45,3 @@ def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
-
-
-def check_equal_torch(a, b, eps=1e-4):
-    return (torch.norm(a - b) <= (a.numel() * eps)).item()
