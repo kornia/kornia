@@ -7,7 +7,7 @@ class RgbToYcbcr(torch.nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     args:
-        image (torch.Tensor): RGB image to be converted to YCbCr
+        image (torch.Tensor): RGB iRGB image to be converted to YCbCr.
 
     returns:
         torch.Tensor: YCbCr version of the image.
@@ -49,8 +49,8 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     b: torch.Tensor = image[..., 2, :, :]
 
     y: torch.Tensor = 0.29900 * r + 0.58700 * g + 0.11400 * b
-    cb: torch.Tensor = -0.16874 * r - 0.33126 * g + 0.50000 * b + 128
-    cr: torch.Tensor = 0.50000 * r - 0.41869 * g - 0.08131 * b + 128
+    cb: torch.Tensor = -0.168736 * r - 0.331264 * g + 0.50000 * b + 128
+    cr: torch.Tensor = 0.50000 * r - 0.418688 * g - 0.081312 * b + 128
 
     out: torch.Tensor = torch.stack([y, cb, cr], dim=-3)
 
@@ -103,7 +103,6 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     cb: torch.Tensor = image[..., 1, :, :]
     cr: torch.Tensor = image[..., 2, :, :]
 
-    y_: torch.Tensor = y
     cb_: torch.Tensor = cb - 128
     cr_: torch.Tensor = cr - 128
 
