@@ -107,7 +107,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     cr_: torch.Tensor = cr - 128. / 255
 
     r: torch.Tensor = y + 1.40200 * cr_
-    g: torch.Tensor = y - 0.34414 * cb_ - 0.71414 * cr_
+    g: torch.Tensor = y - 0.344136 * cb_ - 0.714136 * cr_
     b: torch.Tensor = y + 1.77200 * cb_
 
     out: torch.Tensor = torch.stack([r, g, b], dim=-3)
