@@ -237,6 +237,7 @@ def rotation_matrix_to_quaternion(
         rotation_matrix: torch.Tensor,
         eps: float = 1e-8) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
+    The quaternion vector has components in (x, y, z, w) format.
 
     Args:
         rotation_matrix (torch.Tensor): the rotation matrix to convert.
@@ -250,7 +251,7 @@ def rotation_matrix_to_quaternion(
         - Output: :math:`(*, 4)`
 
     Example:
-        >>> input = torch.rand(4, 3, 4)  # Nx3x4
+        >>> input = torch.rand(4, 3, 3)  # Nx3x3
         >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
     """
     if not isinstance(rotation_matrix, torch.Tensor):
@@ -319,6 +320,7 @@ def rotation_matrix_to_quaternion(
 def normalize_quaternion(quaternion: torch.Tensor,
                          eps: Optional[float] = 1e-12) -> torch.Tensor:
     r"""Normalizes a quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -351,6 +353,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
 
 def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     r"""Converts a quaternion to a rotation matrix.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -408,6 +411,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
+    The quaternion should be in (x, y, z, w) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
@@ -459,6 +463,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 def quaternion_log_to_exp(quaternion: torch.Tensor,
                           eps: float = 1e-8) -> torch.Tensor:
     r"""Applies exponential map to log quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -497,6 +502,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
 def quaternion_exp_to_log(quaternion: torch.Tensor,
                           eps: float = 1e-8) -> torch.Tensor:
     r"""Applies the log map to a quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -538,6 +544,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     r"""Convert an angle axis to a quaternion.
+    The quaternion vector has components in (x, y, z, w) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
