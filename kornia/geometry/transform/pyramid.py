@@ -1,12 +1,15 @@
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 import kornia
+from kornia.filters import gaussian_blur2d
+from typing import Tuple, List
 
 __all__ = [
     "PyrDown",
     "PyrUp",
+    "ScalePyramid",
     "pyrdown",
     "pyrup",
 ]
@@ -105,6 +108,101 @@ class PyrUp(nn.Module):
         x_blur: torch.Tensor = kornia.filter2D(
             x_up, self.kernel, self.border_type)
         return x_blur
+
+
+class ScalePyramid(nn.Module):
+    r"""Creates an scale pyramid of image, usually used for local feature
+    detection. Images are consequently smoothed with Gaussian blur and
+    downscaled.
+    Arguments:
+        n_levels (int): number of the levels in octave.
+        init_sigma (float): initial blur level.
+        min_size (int): the minimum size of the octave in pixels. Default is 5
+    Returns:
+        Tuple(List(Tensors), List(Tensors), List(Tensors)):
+        1st output: images
+        2nd output: sigmas (coefficients for scale conversion)
+        3rd output: pixelDists (coefficients for coordinate conversion)
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output 1st: :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
+        - Output 2nd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
+        - Output 3rd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
+
+    Examples::
+        >>> input = torch.rand(2, 4, 100, 100)
+        >>> sp, sigmas, pds = kornia.ScalePyramid(3, 15)(input)
+    """
+
+    def __init__(self,
+                 n_levels: int = 3,
+                 init_sigma: float = 1.6,
+                 min_size: int = 5):
+        super(ScalePyramid, self).__init__()
+        self.n_levels = n_levels
+        self.init_sigma = init_sigma
+        self.min_size = min_size
+        self.border = min_size // 2 - 1
+        self.sigma_step = 2 ** (1. / float(self.n_levels))
+        return
+
+    def get_kernel_size(self, sigma: float):
+        ksize = int(2.0 * 3.0 * sigma + 1.0)
+        if ksize % 2 == 0:
+            ksize += 1
+        return ksize
+
+    def forward(self, x: torch.Tensor) -> Tuple[  # type: ignore
+            List, List, List]:
+        bs, ch, h, w = x.size()
+        pixel_distance = 1.0
+        cur_sigma = 0.5
+        if self.init_sigma > cur_sigma:
+            sigma = math.sqrt(self.init_sigma**2 - cur_sigma**2)
+            cur_sigma = self.init_sigma
+            ksize = self.get_kernel_size(sigma)
+            cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
+        else:
+            cur_level = x
+        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device)]
+        pixel_dists = [pixel_distance * torch.ones(
+                       bs,
+                       self.n_levels).to(
+                       x.device)]
+        pyr = [[cur_level.unsqueeze(1)]]
+        oct_idx = 0
+        while True:
+            cur_level = pyr[-1][0].squeeze(1)
+            for level_idx in range(1, self.n_levels):
+                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
+                cur_level = gaussian_blur2d(
+                    cur_level, (ksize, ksize), (sigma, sigma))
+                cur_sigma *= self.sigma_step
+                pyr[-1].append(cur_level.unsqueeze(1))
+                sigmas[-1][:, level_idx] = cur_sigma
+                pixel_dists[-1][:, level_idx] = pixel_distance
+            nextOctaveFirstLevel = F.avg_pool2d(
+                cur_level, kernel_size=2, stride=2, padding=0)
+            pixel_distance *= 2.0
+            cur_sigma = self.init_sigma
+            if (min(nextOctaveFirstLevel.size(2),
+                    nextOctaveFirstLevel.size(3)) <= self.min_size):
+                break
+            pyr.append([nextOctaveFirstLevel.unsqueeze(1)])
+            sigmas.append(cur_sigma * torch.ones(
+                          bs,
+                          self.n_levels).to(
+                          x.device))
+            pixel_dists.append(
+                pixel_distance * torch.ones(
+                    bs,
+                    self.n_levels).to(
+                    x.device))
+            oct_idx += 1
+        for i in range(len(pyr)):
+            pyr[i] = torch.cat(pyr[i], dim=1)  # type: ignore
+        return pyr, sigmas, pixel_dists
 
 
 # functiona api
