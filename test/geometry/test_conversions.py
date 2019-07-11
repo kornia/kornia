@@ -100,6 +100,18 @@ class TestRotationMatrixToQuaternion:
         matrix_hat = kornia.quaternion_to_rotation_matrix(quaternion)
         assert_allclose(matrix, matrix_hat)
 
+    def test_corner_case(self):
+        matrix = torch.tensor([
+            [-0.7799533010, -0.5432914495, 0.3106555045],
+            [0.0492402576, -0.5481169224, -0.8349509239],
+            [0.6238971353, -0.6359263659, 0.4542570710]
+        ])
+        quaternion_true = torch.tensor([0.280136495828629, -0.440902262926102,
+                                        0.834015488624573, 0.177614107728004])
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        torch.set_printoptions(precision=10)
+        assert_allclose(quaternion_true, quaternion)
+
     def test_gradcheck(self):
         matrix = torch.eye(3)
         matrix = tensor_to_gradcheck_var(matrix)
