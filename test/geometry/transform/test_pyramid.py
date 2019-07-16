@@ -76,10 +76,10 @@ class TestScalePyramid:
         inp = torch.zeros(3, 2, 6, 6)
         SP = kornia.geometry.ScalePyramid(n_levels=1)
         out = SP(inp)
-        assert len(out == 3)
-        assert len(out[0] == 1)
-        assert len(out[1] == 1)
-        assert len(out[2] == 1)
+        assert len(out) == 3
+        assert len(out[0]) == 1
+        assert len(out[1]) == 1
+        assert len(out[2]) == 1
 
     def test_shape_batch(self):
         inp = torch.zeros(3, 2, 6, 6)
