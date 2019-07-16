@@ -60,7 +60,7 @@ class PyrDown(nn.Module):
             input, self.kernel, self.border_type)
 
         # reject even rows and columns.
-        out: torch.Tensor = x_blur[..., ::2, ::2]
+        out: torch.Tensor = F.avg_pool2d(x_blur, 2,2)
         return out
 
 
