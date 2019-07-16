@@ -1,6 +1,6 @@
 import pytest
 
-import kornia
+import kornia as kornia
 import kornia.testing as utils  # test utils
 
 import torch
@@ -23,7 +23,6 @@ class TestPyrUp:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-
         assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
 
     @pytest.mark.skip("")
@@ -47,10 +46,10 @@ class TestPyrDown:
         inp = torch.zeros(2, 2, 4, 4)
         pyr = kornia.geometry.PyrDown()
         assert pyr(inp).shape == (2, 2, 2, 2)
-    
-   def test_symmetry_preserving(self):
+
+    def test_symmetry_preserving(self):
         inp = torch.zeros(1, 1, 6, 6)
-        inp[:,:,2:4,2:4] = 1.0
+        inp[:, :, 2:4, 2:4] = 1.0
         pyr_out = kornia.geometry.PyrDown()(inp).squeeze()
         assert torch.allclose(pyr_out, pyr_out.flip(0))
         assert torch.allclose(pyr_out, pyr_out.flip(1))
@@ -59,7 +58,6 @@ class TestPyrDown:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-
         assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
 
     @pytest.mark.skip("")
@@ -78,7 +76,7 @@ class TestScalePyramid:
         inp = torch.zeros(3, 2, 6, 6)
         SP = kornia.geometry.ScalePyramid(n_levels=1)
         out = SP(inp)
-        assert len(out) == 3)
+        assert len(out == 3)
         assert len(out[0] == 1)
         assert len(out[1] == 1)
         assert len(out[2] == 1)
@@ -94,10 +92,21 @@ class TestScalePyramid:
         SP = kornia.geometry.ScalePyramid(n_levels=5)
         sp, sigmas, pd = SP(inp)
         assert sp[0].shape == (1, 5, 1, 6, 6)
-    
-   def test_symmetry_preserving(self):
-        inp = torch.zeros(1,1,12,12)
-        inp[0,0,4:8,4:8] = 1.0
+
+    def test_blur_order(self):
+        inp = torch.rand(1, 1, 12, 12)
+        SP = kornia.geometry.ScalePyramid(n_levels=5)
+        sp, sigmas, pd = SP(inp)
+        for i, pyr_level in enumerate(sp):
+            for ii, img in enumerate(pyr_level):
+                img = img.squeeze().view(5, -1)
+                max_per_blur_level_val, _ = img.max(dim=1)
+                assert torch.argmax(max_per_blur_level_val).item() == 0
+        return
+
+    def test_symmetry_preserving(self):
+        inp = torch.zeros(1, 1, 12, 12)
+        inp[0, 0, 4:8, 4:8] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=5)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
@@ -105,14 +114,4 @@ class TestScalePyramid:
                 img = img.squeeze()
                 assert torch.allclose(img, img.flip(1))
                 assert torch.allclose(img, img.flip(2))
-
-   def test_blur_order(self):
-        inp = torch.rand(1,1,12,12)
-        SP = kornia.geometry.ScalePyramid(n_levels=5)
-        sp, sigmas, pd = SP(inp)
-        for i, pyr_level in enumerate(sp):
-            for ii, img in enumerate(pyr_level):
-                img = img.squeeze().view(n_levels,-1)
-                max_per_blur_level_val, _ = img.max(dim=1)
-                assert torch.argmax(max_per_blur_level_val).item() == 0
-
+        return
