@@ -1,7 +1,7 @@
 from typing import Optional
 
 import torch
-from kornia.utils.metrics import confusion_matrix
+from kornia.utils.metrics.confusion_matrix import confusion_matrix
 
 
 def mean_iou(
