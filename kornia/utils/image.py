@@ -69,7 +69,11 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
         image = image
     elif len(input_shape) == 3:
         # (C, H, W) -> (H, W, C)
-        image = image.transpose(1, 2, 0)
+        if input_shape[0] == 1:
+            # Grayscale for proper plt.imshow needs to be (H,W)
+            image = image.squeeze()
+        else:
+            image = image.transpose(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.transpose(0, 2, 3, 1)
