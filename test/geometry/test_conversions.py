@@ -119,6 +119,7 @@ class TestRotationMatrixToQuaternion:
         assert gradcheck(kornia.rotation_matrix_to_quaternion, (matrix,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.quaternion_log_to_exp
         op_script = torch.jit.script(op)
@@ -184,6 +185,7 @@ class TestQuaternionToRotationMatrix:
         assert gradcheck(kornia.quaternion_to_rotation_matrix, (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):
@@ -227,6 +229,7 @@ class TestQuaternionLogToExp:
         assert gradcheck(kornia.quaternion_log_to_exp, (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.quaternion_log_to_exp
         op_script = torch.jit.script(op)
@@ -268,6 +271,7 @@ class TestQuaternionExpToLog:
         assert gradcheck(kornia.quaternion_exp_to_log, (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.quaternion_exp_to_log
         op_script = torch.jit.script(op)
@@ -420,6 +424,7 @@ class TestConvertPointsToHomogeneous:
         assert gradcheck(kornia.convert_points_to_homogeneous, (points_h,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.convert_points_to_homogeneous
         op_script = torch.jit.script(op)
@@ -486,6 +491,7 @@ class TestConvertPointsFromHomogeneous:
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.convert_points_from_homogeneous
         op_script = torch.jit.script(op)
@@ -574,6 +580,7 @@ class TestNormalizePixelCoordinates:
 
         assert_allclose(grid_norm, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.normalize_pixel_coordinates
         op_script = torch.jit.script(op)
@@ -617,6 +624,7 @@ class TestDenormalizePixelCoordinates:
 
         assert_allclose(grid_norm, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.denormalize_pixel_coordinates
         op_script = torch.jit.script(op)
