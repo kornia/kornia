@@ -363,6 +363,7 @@ class TestRemap:
         assert gradcheck(kornia.remap, (img, grid[..., 0], grid[..., 1],),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input, map1, map2):
@@ -443,6 +444,7 @@ class TestInvertAffineTransform:
         assert gradcheck(kornia.invert_affine_transform, (matrix,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):

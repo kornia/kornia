@@ -51,6 +51,7 @@ class TestProjectPoints:
                          (points_3d, camera_matrix),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(points_3d, camera_matrix):
@@ -135,6 +136,7 @@ class TestUnprojectPoints:
                          (points_2d, depth, camera_matrix),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(points_2d, depth, camera_matrix):

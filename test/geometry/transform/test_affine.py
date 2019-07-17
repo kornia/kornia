@@ -89,6 +89,7 @@ class TestRotate:
         assert gradcheck(kornia.rotate, (input, angle,), raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         angle = torch.tensor([90.])
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -179,6 +180,7 @@ class TestTranslate:
                          raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         translation = torch.tensor([[1., 0.]])
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -272,6 +274,7 @@ class TestScale:
                          raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         scale_factor = torch.tensor([0.5])
         batch_size, channels, height, width = 2, 3, 64, 64
@@ -381,6 +384,7 @@ class TestShear:
         assert gradcheck(kornia.shear, (input, shear,), raise_exception=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         shear = torch.tensor([[0.5, 0.0]])
         batch_size, channels, height, width = 2, 3, 64, 64

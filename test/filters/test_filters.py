@@ -67,6 +67,7 @@ class TestFilter2D:
                          raise_exception=True)
 
     @pytest.mark.skip(reason="not found compute_padding()")
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.filter2D
         op = torch.jit.script(op)

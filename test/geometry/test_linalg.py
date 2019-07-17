@@ -81,6 +81,7 @@ class TestTransformPoints:
         assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(transform, points):

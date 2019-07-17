@@ -3,13 +3,13 @@
 test: mypy lint test-cpu
 
 test-cpu: FORCE
-	pytest --typetest cpu -vx
+	pytest --typetest cpu -v
 
 test-cpu-cov: FORCE
-	pytest --typetest cpu -vx --cov=kornia test
+	pytest --typetest cpu -v --cov=kornia test
 
 test-gpu: FORCE
-	pytest --typetest cuda -vx
+	pytest --typetest cuda -v
 
 lint: FORCE
 	python verify.py --check lint
