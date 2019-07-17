@@ -46,6 +46,7 @@ class TestSpatialGradient:
         assert gradcheck(kornia.filters.spatial_gradient, (img,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):
@@ -89,6 +90,7 @@ class TestSobel:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.sobel, (img,), raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):

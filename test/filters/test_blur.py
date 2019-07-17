@@ -73,6 +73,7 @@ class TestBoxBlur:
                          raise_exception=True)
 
     @pytest.mark.skip(reason="undefined value BoxBlur")
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         op = kornia.filters.box_blur
         op_script = torch.jit.script(op)
