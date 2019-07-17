@@ -238,6 +238,7 @@ class TestCenterCrop:
         expected = kornia.center_crop(img, (crop_height, crop_width))
         assert_allclose(actual, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
