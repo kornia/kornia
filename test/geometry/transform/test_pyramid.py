@@ -26,6 +26,7 @@ class TestPyrUp:
         assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
 
     @pytest.mark.skip("")
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):
@@ -61,6 +62,7 @@ class TestPyrDown:
         assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
 
     @pytest.mark.skip("")
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input):

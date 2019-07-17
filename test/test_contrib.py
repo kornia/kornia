@@ -25,6 +25,7 @@ class TestMaxBlurPool2d:
         assert gradcheck(kornia.contrib.max_blur_pool2d,
                          (input, 3,), raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
@@ -137,6 +138,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 1:3, 0:3], patches[0, 2])
         assert_allclose(input[0, :, 1:3, 1:4], patches[0, 3])
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor, height: int,
@@ -219,6 +221,7 @@ class TestSpatialSoftArgmax2d:
         assert pytest.approx(coord[1, 1, 0].item(), 1.0)  # bottom-right
         assert pytest.approx(coord[1, 1, 1].item(), 1.0)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
