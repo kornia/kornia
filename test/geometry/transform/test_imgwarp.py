@@ -380,6 +380,7 @@ class TestRemap:
         expected = kornia.remap(*input)
         assert_allclose(actual, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input, map1, map2):
@@ -455,6 +456,7 @@ class TestInvertAffineTransform:
         expected = kornia.invert_affine_transform(matrix)
         assert_allclose(actual, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(input):
