@@ -123,6 +123,7 @@ class TestCropAndResize:
                          (img, boxes, (crop_height, crop_width),),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
@@ -223,6 +224,7 @@ class TestCenterCrop:
         assert gradcheck(kornia.center_crop, (img, (crop_height, crop_width),),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input: torch.Tensor,
