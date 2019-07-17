@@ -28,3 +28,4 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Shear
 .. autoclass:: PyrDown
 .. autoclass:: PyrUp
+.. autoclass:: ScalePyramid
