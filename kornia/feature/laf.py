@@ -97,38 +97,6 @@ def make_upright(A:torch.Tensor) -> torch.Tensor:
     A2_ell = torch.cat([((A[:,:,1:2,1:2]*A[:,:,0:1,1:2]+A[:,:,1:2,0:1]*A[:,:,0:1,0:1])/(b2a2*det)),
                         (det / b2a2).contiguous()], dim = 3)
     return torch.cat([torch.cat([A1_ell, A2_ell], dim = 2), A[:,:,:,2:3]], dim=3)
-    
-
-
-
-def invSqrt2x2Sym(a:torch.Tensor, b:torch.Tensor, c:torch.Tensor) -> Tuple:
-    """
-    Aux. function. Caclulates inverse square root of batch of batch
-    of symmetric 2x2 matrices,  given a11, a12 and a22 elements
-    """
-    eps = 1e-12
-    mask = (b != 0).float()
-    r1 = mask * (c - a) / (2. * b + eps)
-    t1 = torch.sign(r1) / (torch.abs(r1) + torch.sqrt(1. + r1*r1));
-    r = 1.0 / torch.sqrt( 1. + t1*t1)
-    t = t1*r;
-    r = r * mask + 1.0 * (1.0 - mask);
-    t = t * mask;
-
-    x = 1. / torch.sqrt( r*r*a - 2.0*r*t*b + t*t*c)
-    z = 1. / torch.sqrt( t*t*a + 2.0*r*t*b + r*r*c)
-
-    d = torch.sqrt( x * z)
-
-    x = x / d
-    z = z / d
-
-    new_a = r*r*x + t*t*z
-    new_b = -r*t*x + t*r*z
-    new_c = t*t*x + r*r *z
-
-    return new_a, new_b, new_c,
-
 
 def ell2LAF(ells:torch.Tensor) -> torch.Tensor:
     """
@@ -156,20 +124,12 @@ def ell2LAF(ells:torch.Tensor) -> torch.Tensor:
         raise TypeError(
             "ellipse shape should be must be [BxNx5]. "
             "Got {}".format(ells.size()))
-    
-    LAF = torch.zeros(B,N,2,3).to(ells.device)
-    LAF[:,:,0,2] = ells[:,:,0]
-    LAF[:,:,1,2] = ells[:,:,1]
-    a = ells[:,:,2]
-    b = ells[:,:,3]
-    c = ells[:,:,4]
-    sc = torch.sqrt(torch.sqrt(a*c - b*b + 1e-12))
-    ia,ib,ic = invSqrt2x2Sym(a,b,c)  #because sqrtm returns ::-1, ::-1 matrix, don`t know why 
-    A = torch.cat([torch.cat([(ia/sc).view(B,N,1,1), (ib/sc).view(B,N,1,1)], dim = 3),
-                   torch.cat([(ib/sc).view(B,N,1,1), (ic/sc).view(B,N,1,1)], dim = 3)], dim = 2)
-    sc = get_laf_scale(A)
-    LAF[:,:,0:2,0:2] = make_upright(A / sc.repeat(1,1,2,2)) * sc.repeat(1,1,2,2)
-    return LAF
+    ell_shape = torch.cat([torch.cat([ells[:,:,2:3], ells[:,:,3:4]],dim=2).unsqueeze(2),
+                           torch.cat([ells[:,:,3:4], ells[:,:,4:5]],dim=2).unsqueeze(2)],
+                          dim=2).view(-1,2,2)
+    out = torch.matrix_power(torch.cholesky(ell_shape, False),-1).view(B,N,2,2)
+    out = torch.cat([out, ells[:,:,:2].view(B,N,2,1)],dim=3)
+    return out
 
 def LAF2pts(LAF:torch.Tensor, n_pts:int = 50)-> torch.Tensor:
     """
