@@ -117,3 +117,14 @@ class TestScalePyramid:
                 assert torch.allclose(img, img.flip(1))
                 assert torch.allclose(img, img.flip(2))
         return
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 1, 2, 7, 9
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        from kornia.geometry import ScalePyramid as SP
+
+        def sp_tuple(img):
+            sp, sigmas, pd = SP()(img)
+            return tuple(sp)
+        assert gradcheck(sp_tuple, (img,), raise_exception=True)
