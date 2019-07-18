@@ -32,7 +32,7 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     See :class:`~kornia.color.RgbToBgr` for details.
 
     Args:
-        input (torch.Tensor): RGB Image to be converted to BGR.
+        image (torch.Tensor): RGB Image to be converted to BGR.
 
     Returns:
         torch.Tensor: BGR version of the image.
