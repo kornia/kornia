@@ -1,3 +1,5 @@
+# flake8: noqa E127
+# flake8: noqa E128
 from typing import Tuple
 
 import kornia
@@ -36,7 +38,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor,
     n_dims = len(ang.size())
     cos_a = torch.cos(ang).unsqueeze(-1).unsqueeze(-1)
     sin_a = torch.sin(ang).unsqueeze(-1).unsqueeze(-1)
-    A1_ang = torch.cat([cos_a, sin_a], dim=n_dims + 1)
+    A1_ang = torch.cat([ cos_a, sin_a], dim=n_dims + 1)
     A2_ang = torch.cat([-sin_a, cos_a], dim=n_dims + 1)
     return torch.cat([A1_ang, A2_ang], dim=n_dims)
 
@@ -66,12 +68,12 @@ def get_laf_scale(A: torch.Tensor) -> torch.Tensor:
             "LAF shape should be must be [BxNx2x3]. "
             "Got {}".format(A.size())
         )
-    return torch.sqrt(torch.abs(
-     A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2]- A[:, :, 1:2, 0:1] * A[:, :, 0:1, 1:2] + eps)
-    )
+    out = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -\
+          A[:, :, 1:2, 0:1] * A[:, :, 0:1, 1:2] + eps  # noqa: E127
+    return out.abs().sqrt()
 
 
-def make_upright(A: torch.Tensor) -> torch.Tensor:
+def make_upright(A: torch.Tensor) -> torch.Tensor: # noqa: E128
     """
     Rectifies the affine matrix, so that it becomes upright
     Args:
@@ -96,14 +98,13 @@ def make_upright(A: torch.Tensor) -> torch.Tensor:
     det = get_laf_scale(A)
     eps = 1e-10
     b2a2 = torch.sqrt(A[:, :, 0:1, 1:2]**2 + A[:, :, 0:1, 0:1]**2)
-    A1_ell = torch.cat(
-        [(b2a2 / det).contiguous(),# type: ignore
-         torch.zeros_like(det)], dim=3)  # type: ignore
-    A2_ell = torch.cat([((A[:, :, 1:2, 1:2] * A[:, :, 0:1, 1:2] +\
-                        A[:, :, 1:2, 0:1] * A[:, :, 0:1, 0:1]) / (b2a2 * det)),
-                        (det / b2a2).contiguous()], dim=3)  # type: ignore
-    return torch.cat(
-        [torch.cat([A1_ell, A2_ell], dim=2), A[:, :, :, 2:3]], dim=3)
+    A1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
+                        torch.zeros_like(det)], dim=3)  # type: ignore
+    A2_ell = torch.cat([((A[:, :, 1:2, 1:2] * A[:, :, 0:1, 1:2] +
+                          A[:, :, 1:2, 0:1] * A[:, :, 0:1, 0:1]) / (b2a2 * det)),
+                          (det / b2a2).contiguous()], dim=3)  # type: ignore
+    return torch.cat([torch.cat([A1_ell, A2_ell], dim=2),
+                      A[:, :, :, 2:3]], dim=3)
 
 
 def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
@@ -132,13 +133,10 @@ def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
         raise TypeError(
             "ellipse shape should be must be [BxNx5]. "
             "Got {}".format(ells.size()))
-    ell_shape = torch.cat([torch.cat([ells[:, :, 2:3],
-                           ells[:, :, 3:4]], dim=2).unsqueeze(2),
-                           torch.cat([ells[:, :, 3:4],
-                           ells[:, :, 4:5]], dim=2).unsqueeze(2)],
-                          dim=2).view(-1, 2, 2)
-    out = torch.matrix_power(torch.cholesky(
-        ell_shape, False), -1).view(B, N, 2, 2)
+    ell_shape = torch.cat([torch.cat([ells[:, :, 2:3], ells[:, :, 3:4]], dim=2).unsqueeze(2),
+                           torch.cat([ells[:, :, 3:4], ells[:, :, 4:5]], dim=2).unsqueeze(2)],
+                           dim=2).view(-1, 2, 2)
+    out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
     out = torch.cat([out, ells[:, :, :2].view(B, N, 2, 1)], dim=3)
     return out
 
@@ -166,19 +164,17 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
         )
     B, N, _, _ = LAF.size()
     pts = torch.cat([torch.sin(torch.linspace(0, 2 * math.pi, n_pts)).unsqueeze(-1),
-                     torch.cos(torch.linspace(
-                         0, 2 * math.pi, n_pts)).unsqueeze(-1),
-                     torch.ones(n_pts, 1)
-                     ], dim=1)
+                     torch.cos(torch.linspace(0, 2 * math.pi, n_pts)).unsqueeze(-1),
+                     torch.ones(n_pts, 1)], dim=1)
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), pts],
+    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), 
+                     pts],
                     dim=0).unsqueeze(0).expand(B * N, 51, 3)
-
-    HLAF = torch.cat([LAF.view(-1, 2, 3), torch.tensor([0, 0, 1.]
-                                                       ).view(1, 1, 3).expand(B * N, 1, 3)], dim=1)
+    aux = torch.tensor([0, 0, 1.]).view(1, 1, 3).expand(B * N, 1, 3)
+    HLAF = torch.cat([LAF.view(-1, 2, 3), aux],dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(
-        pts_h.view(B, N, n_pts + 1, 3))
+           pts_h.view(B, N, n_pts + 1, 3))
 
 
 def visualize_LAF(img: torch.Tensor, LAF: torch.Tensor,
@@ -315,9 +311,12 @@ def extract_patches_simple(img: torch.Tensor,
     # for loop temporarily, to be refactored
     for i in range(B):
         grid = generate_patch_grid_from_normalized_LAF(
-            img[i:i + 1], LAF[i:i + 1], PS)
+               img[i:i + 1], LAF[i:i + 1], PS)
         out.append(F.grid_sample(
-            img[i:i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border"))
+            img[i:i + 1].expand(grid.size(0), ch, h, w), 
+            grid,
+            padding_mode="border")
+            )
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
@@ -351,15 +350,11 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 continue
             scale_mask = scale_mask.byte().view(-1)
             grid = generate_patch_grid_from_normalized_LAF(
-                cur_img[i:i + 1], LAF[i:i + 1, scale_mask, :, :], PS)
-            out[i,scale_mask,:, :,:] = out[i,
-                         scale_mask,
-                         :,
-                         :,
-                         :].clone() * 0 + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0),
-                                                                                ch,
-                                                                                h,
-                                                                                w),
+                cur_img[i:i + 1],
+                LAF[i:i + 1, scale_mask, :, :],
+                PS)
+            out[i, scale_mask, :, :, :] = out[i, scale_mask, :, :,:].clone() * 0\
+                + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0),ch, h, w),
                                                         grid,
                                                         padding_mode="border")
         cur_img = kornia.pyrdown(cur_img)
