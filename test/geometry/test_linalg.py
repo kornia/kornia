@@ -94,6 +94,7 @@ class TestTransformPoints:
 
         assert_allclose(actual, expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_trace(self):
         @torch.jit.script
         def op_script(transform, points):
