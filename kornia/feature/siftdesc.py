@@ -5,6 +5,7 @@ import math
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from kornia.feature.laf import extract_patches_from_pyramid
 
 def get_sift_pooling_kernel(ksize:int = 25)-> torch.Tensor:
     """
@@ -105,24 +106,24 @@ class SIFTDescriptor(nn.Module):
         self.patch_size = patch_size
         self.sigma_type = sigma_type
         if self.mask_type == 'CircularGauss':
-            self.gk = get_sift_weighting_kernel(ksize=patch_size,
+            gk = get_sift_weighting_kernel(ksize=patch_size,
                                                 circ=True,
                                                 sigma_type=sigma_type)
         elif self.mask_type == 'Gauss':
-            self.gk = get_sift_weighting_kernel(ksize=patch_size,
+            gk = get_sift_weighting_kernel(ksize=patch_size,
                                                 circ=False,
                                                 sigma_type=sigma_type)
         elif self.mask_type == 'Uniform':
-            self.gk = torch.ones(patch_size,patch_size).float() / float(patch_size**2)
+            gk = torch.ones(patch_size,patch_size).float() / float(patch_size**2)
         else:
             raise ValueError(masktype, 'is unknown mask type. Try Gauss, CircularGauss or Uniform')
-            
+        self.register_buffer('gk', gk)    
         self.bin_ksize, self.bin_stride, self.pad = get_sift_bin_ksize_stride_pad(patch_size, num_spatial_bins)
         self.gx =  nn.Conv2d(1, 1, kernel_size=(1,3),  bias = False)
-        self.gx.weight.data = torch.tensor([[[[-1.0, 0.0, 1.0]]]]).float()
+        self.gx.weight.data = torch.tensor([[[[-1.0, 0.0, 1.0]]]])
         
         self.gy = nn.Conv2d(1, 1, kernel_size=(3,1),  bias = False)
-        self.gy.weight.data = torch.tensor([[[[-1], [0], [1]]]]).float()
+        self.gy.weight.data = torch.tensor([[[[-1.0], [0.0], [1.0]]]])
         
         nw = get_sift_pooling_kernel(ksize = self.bin_ksize).float()
         
@@ -136,14 +137,28 @@ class SIFTDescriptor(nn.Module):
         return self.pk.weight.data
     def get_weighting_kernel(self):
         return self.gk.data
+    def describe_patches(self, patches):
+        return self.forward(patches)
+    def describe_lafs(self, img, laf):
+        patches = extract_patches_from_pyramid(img, laf, self.patch_size)
+        B,N,CH, H, W = patches.size()
+        descs = self.forward(patches.view(B*N,CH,H,W)).view(B,N,-1)
+        return descs
     def forward(self, x):
+        self.to(x.device).to(x.dtype)
+        shape = x.shape
+        if len(shape) != 4:
+            raise TypeError(
+            "input shape should be must be [Bx1x{}x{}]. "
+            "Got {}".format(self.patch_size, self.patch_size, x.size())
+             )   
         N,CH,W,H = x.size()
         if (W!=self.patch_size) or (H!=self.patch_size) or\
             (CH!=1):
             raise TypeError(
             "input shape should be must be [Bx1x{}x{}]. "
             "Got {}".format(self.patch_size, self.patch_size, x.size())
-        )   
+             )   
         gx = self.gx(F.pad(x, (1, 1, 0, 0), 'replicate'))
         gy = self.gy(F.pad(x, (0, 0, 1, 1), 'replicate'))
         mag = torch.sqrt(gx * gx + gy * gy + self.eps)

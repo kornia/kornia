@@ -129,20 +129,20 @@ class SoftNMS3d(nn.Module):
         self.pd = padding
         self.T = temperature
         self.only_hard_peaks = only_hard_peaks
-        self.register_buffer('kernel', get_softmaxpool_kernel(*self.ksize).float())
-        self.register_buffer('kernel_ones', torch.ones_like(self.kernel).float())
-        self.register_buffer('kernel_resp', torch.ones(1,*self.kernel.shape[1:]).float())
-        kernel_global_coord =  torch.zeros(2,2,*self.kernel.shape[2:]).float()
+        kernel = get_softmaxpool_kernel(*self.ksize).float()
+        self.register_buffer('kernel', kernel[1:])
+        self.register_buffer('kernel_ones', torch.ones_like(kernel).float())
+        self.register_buffer('kernel_resp', torch.ones(1,*kernel.shape[1:]).float())
+        kernel_global_coord =  torch.zeros(2,2,*kernel.shape[2:]).float()
         kernel_global_coord.data[0, 0, self.ksize[1]//2, self.ksize[2]//2] =  1 # type: ignore
         kernel_global_coord.data[1, 1, self.ksize[1]//2, self.ksize[2]//2] =  1 # type: ignore
         self.register_buffer('kernel_global_coord', kernel_global_coord)
         return
-    def forward(self, x:torch.Tensor, sigmas:torch.Tensor = None)-> Tuple: # type: ignore
+    def forward(self, x:torch.Tensor, sigmas)-> Tuple: # type: ignore
         self.kernel_ones.to(x.dtype)
         self.kernel.to(x.dtype)
-        if sigmas is not None:
-            sigmas.to(x.dtype)
-            self.kernel[0,:,:,:]  = self.kernel[0,:,:,:]*0 +sigmas.view(1,-1,1,1)
+        sigmas.to(x.dtype)
+        kernel  = torch.cat([torch.zeros_like(self.kernel[1:2,:,:,:]) + sigmas.view(1,-1,1,1),self.kernel],dim=0)
         n,ch,h,w = x.size()
         grid_global = create_meshgrid(h,w, False).permute(0,3,1,2)
         grid_global_pooled = F.conv2d(grid_global.to(x.device).flip(1), 
@@ -155,10 +155,10 @@ class SoftNMS3d(nn.Module):
                        stride = self.stride,
                        padding = self.pd) + 1e-12
         maxima_coords = F.conv2d(resp_exp,
-                                 self.kernel,
+                                 kernel,
                                  stride = self.stride,
                                  padding = self.pd) / den
-        maxima_coords[:,1:,:,:] = maxima_coords[:,1:,:,:] + grid_global_pooled
+        maxima_coords[:,1:,:,:] = maxima_coords[:,1:,:,:].clone() + grid_global_pooled
         resp_maxima = F.conv2d(resp_exp*x,
                                self.kernel_resp,
                                stride = self.stride,

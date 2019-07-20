@@ -18,10 +18,19 @@ from .laf import (extract_patches_from_pyramid,
 from .scale_space_detector import (
 PassLAF,
 ScaleSpaceDetector)                 
+
 from .affine_shape import AffineShapeEstimator
 from .siftdesc import SIFTDescriptor
+
+__all__ = [
+    "NonMaximaSuppression2d",
+    "CornerHarris",
+    "HessianResp",
     "NonMaximaSuppression3d",
     "SoftNMS3d",
+    "non_maxima_suppression2d",
+    "corner_harris",
+    "hessian",
     "non_maxima_suppression3d",
     "extract_patches_from_pyramid",
     "extract_patches_simple",

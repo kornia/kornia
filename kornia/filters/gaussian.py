@@ -136,7 +136,7 @@ class GaussianBlur2d(nn.Module):
         self.border_type = border_type
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return kornia.filter2D(x, self.kernel, self.border_type)
+        return kornia.filters.filter2D(x, self.kernel, self.border_type)
 
 
 ######################
