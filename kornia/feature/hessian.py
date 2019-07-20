@@ -8,27 +8,24 @@ from kornia.feature.nms import non_maxima_suppression2d
 from kornia.filters import spatial_gradient, gaussian_blur2d
 
 
-class CornerHarris(nn.Module):
-    r"""Computes the Harris corner detection.
+class HessianResp(nn.Module):
+    r"""Computes the Hessian extrema detection.
 
     The response map is computed according the following formulation:
 
     .. math::
-        R = det(M) - k \cdot trace(M)^2
+        R = det(I_2)
 
     where:
 
     .. math::
-        M = \sum_{(x,y) \in W}
+        I = \sum_{(x,y) \in W}
         \begin{bmatrix}
-            I^{2}_x & I_x I_y \\
-            I_x I_y & I^{2}_y \\
+            I_{xx} & I_{xy} \\
+            I_{yx} & I_{yy} \\
         \end{bmatrix}
 
-    and :math:`k` is an empirically determined constant
-    :math:`k ∈ [ 0.04 , 0.06 ]`
-
-    Args:
+   Args:
         - k (torch.Tensor): the Harris detector free parameter.
         - do_blur (bool): perform Gaussian smoothing. Set to True, if use alone, False if on scale pyramid
         - nms (bool): perform hard non maxima supression
@@ -44,37 +41,44 @@ class CornerHarris(nn.Module):
     Examples:
         >>> input = torch.tensor([[[
             [0., 0., 0., 0., 0., 0., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 1., 1., 1., 0., 0., 0.],
+            [0., 1., 1., 1., 0., 0., 0.],
+            [0., 1., 1., 1., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
             [0., 0., 0., 0., 0., 0., 0.],
         ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> output = kornia.feature.CornerHarris()(input)
+        >>> output = kornia.feature.HessianResp()(input)
         tensor([[[[0., 0., 0., 0., 0., 0., 0.],
-                  [0., 1., 0., 0., 0., 1., 0.],
+                  [0., 0., 0., 0., 0., 0., 0.],
+                  [0., 0., 1., 0., 0., 0., 0.],
                   [0., 0., 0., 0., 0., 0., 0.],
                   [0., 0., 0., 0., 0., 0., 0.],
                   [0., 0., 0., 0., 0., 0., 0.],
-                  [0., 1., 0., 0., 0., 1., 0.],
                   [0., 0., 0., 0., 0., 0., 0.]]]])
     """
-
-    def __init__(self, 
-                 k: torch.Tensor,
+    def __init__(self,
                  do_blur:bool = True,
                  nms:bool = True,
                  normalize:bool = True) -> None:
-        super(CornerHarris, self).__init__()
-        self.k: torch.Tensor = k
-        # TODO: add as signature parameter
-        self.kernel_size: Tuple[int, int] = (3, 3)
+        super(HessianResp, self).__init__()
         self.nms = nms
         self.normalize = normalize
         self.do_blur = do_blur
 
+        self.gx =  nn.Conv2d(1, 1, kernel_size=(1,3), bias = False)
+        self.gx.weight.data = torch.tensor([[[[0.5, 0, -0.5]]]])
+
+        self.gy =  nn.Conv2d(1, 1, kernel_size=(3,1), bias = False)
+        self.gy.weight.data = torch.tensor([[[[0.5], [0], [-0.5]]]])
+
+        self.gxx =  nn.Conv2d(1, 1, kernel_size=(1,3),bias = False)
+        self.gxx.weight.data = torch.tensor([[[[1.0, -2.0, 1.0]]]])
+        
+        self.gyy =  nn.Conv2d(1, 1, kernel_size=(3,1), bias = False)
+        self.gyy.weight.data = torch.tensor([[[[1.0], [-2.0], [1.0]]]])
+        return
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -82,33 +86,23 @@ class CornerHarris(nn.Module):
         if not len(input.shape) == 4:
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
-        # compute the first order gradients with sobel operator
-        # TODO: implement support for kernel different than three
-        gradients: torch.Tensor = spatial_gradient(input)
-        dx: torch.Tensor = gradients[:, :, 0]
-        dy: torch.Tensor = gradients[:, :, 1]
-
-        # compute the structure tensor M elements
-        def g(x):
+        self.to(input.device).to(input.dtype)
+        B,CH,H,W = input.size()
+        x = input.view(B*CH,1,H,W)
+        def blur(x):
             return gaussian_blur2d(x, (3, 3), (1., 1.))
         if self.do_blur: #if using alone
-            dx2 = g(dx * dx)
-            dy2 = g(dy * dy)
-            dxy = g(dx * dy)
-        else: #if run on scale pyramid
-            dx2 = dx.pow(2)
-            dy2 = dy.pow(2)
-            dxy = dx * dy            
-        det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
-        trace_m: torch.Tensor = dx2 + dy2
+            xb  = blur(x)
+        else:
+            xb = x
 
-        # compute the response map
-        scores: torch.Tensor = det_m - self.k * (trace_m ** 2)
-
-        # threshold
-        # TODO: add as signature parameter ?
-        scores = torch.clamp(scores, min=0)
-
+        gxx = self.gxx(F.pad(xb, (1, 1, 0, 0), 'replicate'))
+        gyy = self.gyy(F.pad(xb, (0, 0, 1, 1), 'replicate'))
+        gxy = self.gy(F.pad(self.gx(F.pad(xb, (1, 1, 0, 0), 'replicate')),
+                            (0, 0, 1, 1), 'replicate'))
+        
+        scores = torch.abs(gxx * gyy - gxy * gxy).view(B,CH,H,W)
+        
         # apply non maxima suppresion
         if self.nms:
             scores = non_maxima_suppression2d(scores, kernel_size=(3, 3))
@@ -138,13 +132,12 @@ class CornerHarris(nn.Module):
 # functiona api
 
 
-def corner_harris(input: torch.Tensor,
-                  k: torch.Tensor,
+def hessian(input: torch.Tensor,
                   do_blur:bool = True,
                   nms:bool = True,
                   normalize:bool = True) -> torch.Tensor:
-    r"""Computes the Harris corner detection.
+    r"""Computes the hessian responce.
 
-    See :class:`~kornia.feature.CornerHarris` for details.
+    See :class:`~kornia.feature.HessianResp` for details.
     """
-    return CornerHarris(k, do_blur, nms, normalize)(input)
+    return HessianResp(do_blur, nms, normalize)(input)

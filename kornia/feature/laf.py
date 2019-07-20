@@ -48,8 +48,6 @@ def get_laf_scale(A: torch.Tensor) -> torch.Tensor:
     Returns a scale of the LAFs
     Args:
         LAF: (torch.Tensor): tensor [BxNx2x3] or [BxNx2x2].
-
-
     Returns:
         torch.Tensor: tensor  BxNx1x1 .
 
@@ -73,11 +71,32 @@ def get_laf_scale(A: torch.Tensor) -> torch.Tensor:
     return out.abs().sqrt()
 
 
-def make_upright(A: torch.Tensor) -> torch.Tensor: # noqa: E128
+def scale_LAF(laf:torch.Tensor, scale)-> torch.Tensor:
+    """
+    Changes the scale of local features.
+    x,y, orientation and shape remain the same
+    Args:
+        laf: (torch.Tensor): tensor of LAFs.
+        scale: (torch.Tensor of float): scale multiplied
+        
+
+    Returns:
+        torch.Tensor: tensor of same shape.
+
+    Shape:
+        - Input: :math:`(B, N, 2, 3)`
+        - Output:  :math:`(B, N, 2, 3)`
+    """
+    out = torch.cat([laf[:, :, :2, :2] * scale,
+                     laf[:, :, :, 2:3]], dim=3)
+    return out
+
+
+def make_upright(laf: torch.Tensor, keep_scale:bool = True) -> torch.Tensor: # noqa: E128
     """
     Rectifies the affine matrix, so that it becomes upright
     Args:
-        A: (torch.Tensor): tensor of LAFs.
+        laf: (torch.Tensor): tensor of LAFs.
 
     Returns:
         torch.Tensor: tensor of same shape.
@@ -89,22 +108,24 @@ def make_upright(A: torch.Tensor) -> torch.Tensor: # noqa: E128
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
         >>> output = kornia.make_upright(input)  #  BxNx2x3
     """
-    n_dims = len(A.size())
+    n_dims = len(laf.size())
     if (n_dims != 4):
         raise TypeError(
             "LAF shape should be must be [BxNx2x3]. "
-            "Got {}".format(A.size())
+            "Got {}".format(laf.size())
         )
-    det = get_laf_scale(A)
+    det = get_laf_scale(laf)
     eps = 1e-10
-    b2a2 = torch.sqrt(A[:, :, 0:1, 1:2]**2 + A[:, :, 0:1, 0:1]**2)
+    b2a2 = torch.sqrt(laf[:, :, 0:1, 1:2]**2 + laf[:, :, 0:1, 0:1]**2)
     A1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
                         torch.zeros_like(det)], dim=3)  # type: ignore
-    A2_ell = torch.cat([((A[:, :, 1:2, 1:2] * A[:, :, 0:1, 1:2] +
-                          A[:, :, 1:2, 0:1] * A[:, :, 0:1, 0:1]) / (b2a2 * det)),
+    A2_ell = torch.cat([((laf[:, :, 1:2, 1:2] * laf[:, :, 0:1, 1:2] +
+                          laf[:, :, 1:2, 0:1] * laf[:, :, 0:1, 0:1]) / (b2a2 * det)),
                           (det / b2a2).contiguous()], dim=3)  # type: ignore
-    return torch.cat([torch.cat([A1_ell, A2_ell], dim=2),
-                      A[:, :, :, 2:3]], dim=3)
+    A = torch.cat([A1_ell, A2_ell], dim=2)
+    if keep_scale:
+        A = det * A
+    return torch.cat([A, laf[:, :, :, 2:3]], dim=3)
 
 
 def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
@@ -169,9 +190,9 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     # Add origin to draw also the orientation
     pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), 
                      pts],
-                    dim=0).unsqueeze(0).expand(B * N, 51, 3)
+                    dim=0).unsqueeze(0).to(LAF.device).expand(B * N, 51, 3)
     aux = torch.tensor([0, 0, 1.]).view(1, 1, 3).expand(B * N, 1, 3)
-    HLAF = torch.cat([LAF.view(-1, 2, 3), aux],dim=1)
+    HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device)],dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(
            pts_h.view(B, N, n_pts + 1, 3))
@@ -226,8 +247,7 @@ def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype) * min_size
     coef[0, 0, 0, 2] = w
     coef[0, 0, 1, 2] = h
-    coef.to(LAF.device)
-    return coef.expand_as(LAF) * LAF
+    return coef.to(LAF.device).expand_as(LAF) * LAF
 
 
 def normalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
@@ -263,9 +283,32 @@ def normalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype) / min_size
     coef[0, 0, 0, 2] = 1.0 / w
     coef[0, 0, 1, 2] = 1.0 / h
-    coef.to(LAF.device)
-    return coef.expand_as(LAF) * LAF
+    return coef.to(LAF.device).expand_as(LAF) * LAF
 
+def maxima_coords_to_LAF(maxima_coords: torch.Tensor,
+                         mrSize:float = 3.0) -> torch.Tensor:
+    """
+    Converts maxima_coords from detector to LAFs.
+    Args:
+        maxima_coords: (torch.Tensor).
+        mrSize: float: scale multiplier
+        
+    Returns:
+        LAF: (torch.Tensor).
+
+    Shape:
+        - Input: :math:`(B, 3, H, W)`
+        - Output:  :math:`(B, H*W, 2, 3)`
+    """
+    n, ch, h, w = maxima_coords.size()
+    mc = maxima_coords.permute(0,2,3,1).view(n, h*w, 3)
+    scales = mrSize * mc[:,:,0]
+    y = mc[:,:, 1:2].unsqueeze(2)
+    x = mc[:,:, 2:3].unsqueeze(2)
+    angles = torch.zeros_like(scales)
+    rotmat = angle_to_rotation_matrix(angles)
+    rotmat = rotmat * scales.view(n,-1,1,1)
+    return torch.cat([rotmat, torch.cat([x, y], dim = 2)], dim = 3)
 
 def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
                                             LAF: torch.Tensor,
