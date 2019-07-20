@@ -19,14 +19,7 @@ from .scale_space_detector import (
 PassLAF,
 ScaleSpaceDetector)                 
 from .affine_shape import AffineShapeEstimator
-                 
-__all__ = [
-    "non_maxima_suppression2d",
-    "corner_harris",
-    "hessian",
-    "HessianResp",
-    "NonMaximaSuppression2d",
-    "CornerHarris",
+from .siftdesc import SIFTDescriptor
     "NonMaximaSuppression3d",
     "SoftNMS3d",
     "non_maxima_suppression3d",
@@ -42,5 +35,6 @@ __all__ = [
     "angle_to_rotation_matrix",
     "PassLAF",
     "ScaleSpaceDetector",
-    "AffineShapeEstimator"
+    "AffineShapeEstimator",
+    "SIFTDescriptor",
 ]
