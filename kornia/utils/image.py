@@ -68,11 +68,16 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
         # (H, W) -> (H, W)
         image = image
     elif len(input_shape) == 3:
-        # (C, H, W) -> (H, W, C)
-        image = image.transpose(1, 2, 0)
+        if input_shape[0] == 1:
+            image = image.squeeze(0)
+        else:
+            # (C, H, W) -> (H, W, C)
+            image = image.transpose(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
         image = image.transpose(0, 2, 3, 1)
+        if input_shape[1] == 1:
+            image = image.squeeze(3)
     else:
         raise ValueError(
             "Cannot process tensor with shape {}".format(input_shape))

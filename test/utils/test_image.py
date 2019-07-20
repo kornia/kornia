@@ -8,7 +8,7 @@ import kornia.testing as utils  # test utils
 
 @pytest.mark.parametrize("input_shape, expected",
                          [((4, 4), (4, 4)),
-                          ((1, 4, 4), (4, 4, 1)),
+                          ((1, 4, 4), (4, 4)),
                           ((3, 4, 4), (4, 4, 3)),
                           ((2, 3, 4, 4), (2, 4, 4, 3)),
                           ((1, 3, 4, 4), (1, 4, 4, 3)), ])
