@@ -91,6 +91,7 @@ class TestCornerHarris:
         assert gradcheck(kornia.feature.corner_harris, (img, k),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(input, k):

@@ -23,6 +23,7 @@ from kornia.color import (
     rgb_to_hsv,
     hsv_to_rgb,
     normalize,
+    adjust_brightness,
 )
 from kornia.contrib import (
     spatial_soft_argmax2d,
