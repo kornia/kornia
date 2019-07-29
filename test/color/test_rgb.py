@@ -95,6 +95,7 @@ class TestBgrToRgb:
         assert gradcheck(kornia.color.BgrToRgb(), (data,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -157,6 +158,7 @@ class TestRgbToBgr:
         assert gradcheck(kornia.color.RgbToBgr(), (data,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
