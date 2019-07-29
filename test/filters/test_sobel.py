@@ -45,6 +45,31 @@ class TestSpatialGradient:
         edges = kornia.filters.spatial_gradient(inp)
         assert_allclose(edges, expected)
 
+    def test_edges_sep(self):
+        inp = torch.tensor([[[
+            [0., 0., 0., 0., 0.],
+            [0., 0., 1., 0., 0.],
+            [0., 1., 1., 1., 0.],
+            [0., 0., 1., 0., 0.],
+            [0., 0., 0., 0., 0.],
+        ]]])
+
+        expected = torch.tensor([[[[
+            [0., 0., 0., 0., 0.],
+            [0., 1., 0., -1., 0.],
+            [1., 1., 0., -1., -1.],
+            [0., 1., 0., -1., 0.],
+            [0., 0., 0., 0., 0.]
+        ], [
+            [0., 0., 1., 0., 0.],
+            [0., 1., 1., 1., 0.],
+            [0., 0., 0., 0., 0.],
+            [0., -1., -1., -1., 0.],
+            [0., 0., -1., 0., 0.]
+        ]]]])
+        edges = kornia.filters.spatial_gradient(inp, 'NoBlur')
+        assert_allclose(edges, expected)
+
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
