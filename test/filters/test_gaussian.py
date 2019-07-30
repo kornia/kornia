@@ -12,7 +12,7 @@ from torch.testing import assert_allclose
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel(window_size, sigma):
-    kernel = kornia.get_gaussian_kernel(window_size, sigma)
+    kernel = kornia.get_gaussian_kernel1d(window_size, sigma)
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(1.0)
 
@@ -69,7 +69,7 @@ class TestGaussianBlur:
 
 @pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel(window_size):
-    kernel = kornia.get_laplacian_kernel(window_size)
+    kernel = kornia.get_laplacian_kernel1d(window_size)
     assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(0.0)
 

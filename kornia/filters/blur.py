@@ -4,15 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-
-
-def _get_box_filter(kernel_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Utility function that returns a box filter."""
-    kx: float = float(kernel_size[0])
-    ky: float = float(kernel_size[1])
-    scale: torch.Tensor = torch.tensor(1.) / torch.tensor([kx * ky])
-    tmp_kernel: torch.Tensor = torch.ones(1, kernel_size[0], kernel_size[1])
-    return scale.to(tmp_kernel.dtype) * tmp_kernel
+from kornia.filters.kernels import get_box_kernel2d
 
 
 class BoxBlur(nn.Module):
@@ -53,7 +45,7 @@ class BoxBlur(nn.Module):
         super(BoxBlur, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.border_type: str = border_type
-        self.kernel: torch.Tensor = _get_box_filter(kernel_size)
+        self.kernel: torch.Tensor = get_box_kernel2d(kernel_size)
 
     def forward(self, input: torch.Tensor):  # type: ignore
         return kornia.filter2D(input, self.kernel, self.border_type)
