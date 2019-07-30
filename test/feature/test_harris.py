@@ -19,6 +19,12 @@ class TestCornerHarris:
         sobel = kornia.feature.CornerHarris(k=0.04)
         assert sobel(inp).shape == (2, 6, 4, 4)
 
+    def test_shape_batch_updateresp(self):
+        inp = torch.zeros(2, 6, 4, 4)
+        sobel = kornia.feature.CornerHarris(k=0.04)
+        sigmas = torch.ones(2, 6)
+        assert sobel.update_response(inp, sigmas).shape == (2, 6, 4, 4)
+
     def test_corners(self):
         inp = torch.tensor([[[
             [0., 0., 0., 0., 0., 0., 0.],
@@ -116,6 +122,17 @@ class TestCornerHarris:
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.feature.corner_harris, (img, k),
+                         raise_exception=True)
+
+    def test_gradcheck_updateresp(self):
+        k = 0.04
+        batch_size, channels, height, width = 1, 2, 5, 4
+        img = torch.rand(batch_size, channels, height, width)
+        sigmas = torch.rand(batch_size, channels)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        sigmas = utils.tensor_to_gradcheck_var(sigmas)  # to var
+        det = kornia.feature.CornerHarris(k)
+        assert gradcheck(det.update_response, (img, sigmas),
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
