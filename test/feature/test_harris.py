@@ -43,6 +43,33 @@ class TestCornerHarris:
         scores = kornia.feature.corner_harris(inp, k=0.04)
         assert_allclose(scores, expected)
 
+    def test_corners_no_blur_no_norm(self):
+        inp = torch.tensor([[[
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 1., 1., 1., 1., 1., 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+        ]]])
+
+        expected = torch.tensor([[[
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 0.1916, 0., 0., 0., 0.1916, 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+            [0., 0.1916, 0., 0., 0., 0.1916, 0.],
+            [0., 0., 0., 0., 0., 0., 0.],
+        ]]])
+
+        scores = kornia.feature.corner_harris(inp, 0.04,
+                                              False,
+                                              True,
+                                              False)
+        assert_allclose(scores, expected)
+
     def test_corners_batch(self):
         inp = torch.tensor([[
             [0., 0., 0., 0., 0., 0., 0.],

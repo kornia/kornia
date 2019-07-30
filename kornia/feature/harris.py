@@ -29,7 +29,11 @@ class CornerHarris(nn.Module):
     :math:`k ∈ [ 0.04 , 0.06 ]`
 
     Args:
-        k (torch.Tensor): the Harris detector free parameter.
+        - k (torch.Tensor): the Harris detector free parameter.
+        - do_blur (bool): perform Gaussian smoothing.
+          Set to True, if use alone, False if on scale pyramid
+        - nms (bool): perform hard non maxima supression
+        - normalize (bool): if True, responce map is divided by max value
 
     Return:
         torch.Tensor: the response map per channel.
@@ -59,11 +63,18 @@ class CornerHarris(nn.Module):
                   [0., 0., 0., 0., 0., 0., 0.]]]])
     """
 
-    def __init__(self, k: torch.Tensor) -> None:
+    def __init__(self,
+                 k: torch.Tensor,
+                 do_blur: bool = True,
+                 nms: bool = True,
+                 normalize: bool = True) -> None:
         super(CornerHarris, self).__init__()
         self.k: torch.Tensor = k
         # TODO: add as signature parameter
         self.kernel_size: Tuple[int, int] = (3, 3)
+        self.nms = nms
+        self.normalize = normalize
+        self.do_blur = do_blur
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -74,42 +85,70 @@ class CornerHarris(nn.Module):
                              .format(input.shape))
         # compute the first order gradients with sobel operator
         # TODO: implement support for kernel different than three
-        gradients: torch.Tensor = spatial_gradient(input)
+        grad_mode = 'Sobel' if self.do_blur else 'NoBlur'
+        gradients: torch.Tensor = spatial_gradient(input, grad_mode)
         dx: torch.Tensor = gradients[:, :, 0]
         dy: torch.Tensor = gradients[:, :, 1]
 
         # compute the structure tensor M elements
         def g(x):
             return gaussian_blur2d(x, (3, 3), (1., 1.))
-
         dx2: torch.Tensor = g(dx * dx)
         dy2: torch.Tensor = g(dy * dy)
         dxy: torch.Tensor = g(dx * dy)
-
         det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
         trace_m: torch.Tensor = dx2 + dy2
 
         # compute the response map
-        scores: torch.Tensor = det_m - self.k * trace_m ** 2
+        scores: torch.Tensor = det_m - self.k * (trace_m ** 2)
 
         # threshold
         # TODO: add as signature parameter ?
-        scores = torch.clamp(scores, min=1e-6)
+        scores = torch.clamp(scores, min=0)
 
         # apply non maxima suppresion
-        scores = non_maxima_suppression2d(scores, kernel_size=(3, 3))
+        if self.nms:
+            scores = non_maxima_suppression2d(scores, kernel_size=(3, 3))
 
         # normalize and return
-        scores_max: torch.Tensor = F.adaptive_max_pool2d(scores, output_size=1)
-        return scores / scores_max
+        if self.normalize:
+            scores_max: torch.Tensor = F.adaptive_max_pool2d(scores,
+                                                             output_size=1)
+            scores = scores / scores_max.clamp(1e-6)
+        return scores
+
+    def update_response(self, resp, sigmas):
+        """
+        Scale pyramid blurs the intensity -> responces of the higher levers
+        are smaller. For scale nms, one needs to fix that.
+        """
+        if not torch.is_tensor(resp):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(input)))
+        if not len(resp.shape) == 4:
+            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
+                             .format(input.shape))
+        if not torch.is_tensor(sigmas):
+            raise TypeError("Sigmas type is not a torch.Tensor. Got {}"
+                            .format(type(sigmas)))
+        if not len(sigmas.shape) == 2:
+            raise ValueError("Invalid sigmas shape, we expect BxC. Got: {}"
+                             .format(sigmas.shape))
+        B, CH, H, W = resp.size()
+        new_resp = resp * sigmas.view(B, CH, 1, 1).pow(4)
+        return new_resp
 
 
 # functiona api
 
 
-def corner_harris(input: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
+def corner_harris(input: torch.Tensor,
+                  k: torch.Tensor,
+                  do_blur: bool = True,
+                  nms: bool = True,
+                  normalize: bool = True) -> torch.Tensor:
     r"""Computes the Harris corner detection.
 
     See :class:`~kornia.feature.CornerHarris` for details.
     """
-    return CornerHarris(k)(input)
+    return CornerHarris(k, do_blur, nms, normalize)(input)
