@@ -2,14 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def _get_sobel_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a sobel kernel of 3x3"""
-    return torch.tensor([
-        [-1., 0., 1.],
-        [-2., 0., 2.],
-        [-1., 0., 1.],
-    ])
+from kornia.filters.kernels import get_spatial_gradient_kernel2d
 
 
 class SpatialGradient(nn.Module):
@@ -28,15 +21,10 @@ class SpatialGradient(nn.Module):
         >>> output = kornia.filters.SpatialGradient()(input)  # 1x3x2x4x4
     """
 
-    def __init__(self) -> None:
+    def __init__(self, mode: str = 'sobel', order: int = 1) -> None:
         super(SpatialGradient, self).__init__()
-        self.kernel: torch.Tensor = self.get_sobel_kernel()
-
-    @staticmethod
-    def get_sobel_kernel() -> torch.Tensor:
-        kernel_x: torch.Tensor = _get_sobel_kernel_3x3()
-        kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
-        return torch.stack([kernel_x, kernel_y])
+        self.kernel = get_spatial_gradient_kernel2d(mode, order)
+        return
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -53,8 +41,8 @@ class SpatialGradient(nn.Module):
         # convolve input tensor with sobel kernel
         kernel_flip: torch.Tensor = kernel.flip(-3)
         # Pad with "replicate for spatial dims, but with zeros for channel dim
-        padded_inp = F.pad(F.pad(input, [1, 1, 1, 1], 'replicate')[:, :, None],
-                           [0, 0, 0, 0, 1, 1], 'constant', 0)
+        padded_inp: torch.Tensor = F.pad(F.pad(input, [1, 1, 1, 1], 'replicate')[:, :, None], # noqa
+                                         [0, 0, 0, 0, 1, 1], 'constant', 0)
         return F.conv3d(padded_inp, kernel_flip, padding=0, groups=c)
 
 
@@ -98,13 +86,15 @@ class Sobel(nn.Module):
 # functiona api
 
 
-def spatial_gradient(input: torch.Tensor) -> torch.Tensor:
+def spatial_gradient(input: torch.Tensor,
+                     mode: str = 'sobel',
+                     order: int = 1) -> torch.Tensor:
     r"""Computes the first order image derivative in both x and y using a Sobel
     operator.
 
     See :class:`~kornia.filters.SpatialGradient` for details.
     """
-    return SpatialGradient()(input)
+    return SpatialGradient(mode, order)(input)
 
 
 def sobel(input: torch.Tensor) -> torch.Tensor:

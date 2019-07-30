@@ -3,17 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-
-def _compute_binary_kernel(window_size: Tuple[int, int]) -> torch.Tensor:
-    r"""Creates a binary kernel to extract the patches. If the window size
-    is HxW will create a (H*W)xHxW kernel.
-    """
-    window_range: int = window_size[0] * window_size[1]
-    kernel: torch.Tensor = torch.zeros(window_range, window_range)
-    for i in range(window_range):
-        kernel[i, i] += 1.0
-    return kernel.view(window_range, 1, window_size[0], window_size[1])
+from kornia.filters.kernels import get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -43,7 +33,7 @@ class MedianBlur(nn.Module):
 
     def __init__(self, kernel_size: Tuple[int, int]) -> None:
         super(MedianBlur, self).__init__()
-        self.kernel: torch.Tensor = _compute_binary_kernel(kernel_size)
+        self.kernel: torch.Tensor = get_binary_kernel2d(kernel_size)
         self.padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
 
     def forward(self, input: torch.Tensor):  # type: ignore
