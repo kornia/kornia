@@ -67,7 +67,7 @@ class TestSpatialGradient:
             [0., -1., -1., -1., 0.],
             [0., 0., -1., 0., 0.]
         ]]]])
-        edges = kornia.filters.spatial_gradient(inp, 'NoBlur')
+        edges = kornia.filters.spatial_gradient(inp, 'diff')
         assert_allclose(edges, expected)
 
     def test_gradcheck(self):
