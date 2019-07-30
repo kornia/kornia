@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import *
+from kornia.filters.kernels import get_spatial_gradient_kernel2d
 
 
 class SpatialGradient(nn.Module):
