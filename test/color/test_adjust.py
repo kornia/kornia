@@ -75,7 +75,6 @@ class TestAdjustColor:
 
         assert_allclose(f(data, 2), expected)
 
-        
     def test_adjust_bightness_factor_tensor(self):
         # prepare input data
         data = torch.tensor([[[1., 1.],
@@ -86,7 +85,7 @@ class TestAdjustColor:
 
                              [[.25, .25],
                               [.25, .25]],
-                            
+
                              [[.5, .5],
                               [.5, .5]]])  # 4x2x2
 
@@ -98,7 +97,7 @@ class TestAdjustColor:
 
                                  [[.375, .375],
                                   [.375, .375]],
-                                 
+
                                  [[1., 1.],
                                   [1., 1.]]])  # 4x2x2
 
