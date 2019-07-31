@@ -11,7 +11,7 @@ class AdjustBrightness(nn.Module):
         image (torch.Tensor): Image to be adjusted.
         brightness_factor (torch.Tensor): Brightness adjust factor per element
           in the batch. 0 generates a compleatly black image, 1 does not modify
-          the input image while any other non-negative number modify the 
+          the input image while any other non-negative number modify the
           brightness by this factor.
 
     Returns:
@@ -38,7 +38,7 @@ def adjust_brightness(image: torch.Tensor,
         image (torch.Tensor): Image to be adjusted.
         brightness_factor (torch.Tensor): Brightness adjust factor per element
           in the batch. 0 generates a compleatly black image, 1 does not modify
-          the input image while any other non-negative number modify the 
+          the input image while any other non-negative number modify the
           brightness by this factor.
 
     Returns:
@@ -52,7 +52,6 @@ def adjust_brightness(image: torch.Tensor,
     if len(image.shape) < 3:
         raise ValueError("Input size must have a shape of (*, H, W). Got {}"
                          .format(image.shape))
-
 
     if (brightness_factor < torch.zeros(1)).any():
         raise ValueError("Brightness factor must be non-negative. Got {}"
