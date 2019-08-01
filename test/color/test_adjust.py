@@ -144,3 +144,44 @@ class TestAdjustColor:
 
         f = kornia.color.AdjustBrightness()
         assert_allclose(f(data, torch.Tensor([1, 2])), expected)
+
+    def test_adjust_bightness_factor_tensor_shape(self):
+        # prepare input data
+        data = torch.tensor([[[[1., 1., .5],
+                               [1., 1., .5]],
+
+                              [[.5, .5, .25],
+                               [.5, .5, .25]],
+
+                              [[.25, .25, .25],
+                               [.6, .6, .3]]],
+
+                             [[[0., 0., 1.],
+                               [0., 0., .25]],
+
+                              [[.3, .3, .4],
+                               [.3, .3, .4]],
+
+                              [[.6, .6, 0.],
+                               [.3, .2, .1]]]])  # 2x3x2x3
+
+        expected = torch.tensor([[[[1., 1., .75],
+                                   [1., 1., .75]],
+
+                                  [[.75, .75, .375],
+                                   [.75, .75, .375]],
+
+                                  [[.375, .375, .375],
+                                   [.9, .9, .45]]],
+
+                                 [[[0., 0., 1.],
+                                   [0., 0., .5]],
+
+                                  [[.6, .6, .8],
+                                     [.6, .6, .8]],
+
+                                  [[1., 1., 0.],
+                                     [.6, .4, .2]]]])  # 2x3x2x3
+
+        f = kornia.color.AdjustBrightness()
+        assert_allclose(f(data, torch.Tensor([1.5, 2])), expected)
