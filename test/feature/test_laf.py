@@ -136,6 +136,34 @@ class TestNormalizeLAF:
                          raise_exception=True)
 
 
+class TestLAF2pts:
+    def test_shape(self):
+        inp = torch.rand(5, 3, 2, 3)
+        n_pts = 13
+        assert kornia.feature.LAF2pts(inp, n_pts).shape == (5, 3, n_pts, 2)
+
+    def test_conversion(self):
+        laf = torch.tensor([[1, 0, 1], [0, 1, 1]]).float()
+        laf = laf.view(1, 1, 2, 3)
+        n_pts = 6
+        expected = torch.tensor([[[[1, 1],
+                                   [1, 2],
+                                   [2, 1],
+                                   [1, 0],
+                                   [0, 1],
+                                   [1, 2]]]]).float()
+        pts = kornia.feature.LAF2pts(laf, n_pts)
+        assert_allclose(pts, expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 3, 2, 2, 3
+        laf = torch.rand(batch_size, channels, height, width)
+        laf = utils.tensor_to_gradcheck_var(laf)  # to var
+        assert gradcheck(kornia.feature.LAF2pts,
+                         (laf),
+                         raise_exception=True)
+
+
 class TestDenormalizeLAF:
     def test_shape(self):
         inp = torch.rand(5, 3, 2, 3)

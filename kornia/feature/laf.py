@@ -163,18 +163,19 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
             "Got {}".format(LAF.size())
         )
     B, N, _, _ = LAF.size()
-    pts = torch.cat([torch.sin(torch.linspace(0, 2 * math.pi, n_pts)).unsqueeze(-1),
-                     torch.cos(torch.linspace(0, 2 * math.pi, n_pts)).unsqueeze(-1),
-                     torch.ones(n_pts, 1)], dim=1)
+    pts = torch.cat([torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+                     torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+                     torch.ones(n_pts - 1, 1)], dim=1)
     # Add origin to draw also the orientation
     pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), 
                      pts],
-                    dim=0).unsqueeze(0).expand(B * N, 51, 3)
+                    dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
+    pts = pts.to(LAF.device).to(LAF.dtype)
     aux = torch.tensor([0, 0, 1.]).view(1, 1, 3).expand(B * N, 1, 3)
-    HLAF = torch.cat([LAF.view(-1, 2, 3), aux],dim=1)
+    HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(
-           pts_h.view(B, N, n_pts + 1, 3))
+           pts_h.view(B, N, n_pts, 3))
 
 
 def visualize_LAF(img: torch.Tensor,  # pragma: no cover
@@ -286,7 +287,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
     LAF_renorm = denormalize_LAF(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3),
-                         torch.Size((B * N, ch, PS, PS)))
+                         [B * N, ch, PS, PS])
     grid[:, :, :, 0] = 2.0 * grid[:, :, :, 0].clone() / float(w) - 1.0
     grid[:, :, :, 1] = 2.0 * grid[:, :, :, 1].clone() / float(h) - 1.0
     return grid
