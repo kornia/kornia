@@ -177,7 +177,8 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
            pts_h.view(B, N, n_pts + 1, 3))
 
 
-def visualize_LAF(img: torch.Tensor, LAF: torch.Tensor,
+def visualize_LAF(img: torch.Tensor,  # pragma: no cover
+                  LAF: torch.Tensor,
                   img_idx: int = 0,
                   color: str = 'r'):
     """
