@@ -48,9 +48,9 @@ class GaussianBlur2d(nn.Module):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
-               '(kernel_size=' + str(self.kernel_size) + ', '+\
-               'sigma=' + str(self.sigma) + ', '+\
-               'border_type=' + self.border_type + ')'
+            '(kernel_size=' + str(self.kernel_size) + ', ' +\
+            'sigma=' + str(self.sigma) + ', ' +\
+            'border_type=' + self.border_type + ')'
 
     def forward(self, x: torch.Tensor):  # type: ignore
         return kornia.filter2D(x, self.kernel, self.border_type)
