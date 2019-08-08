@@ -71,7 +71,6 @@ class TestSpatialGradient:
         edges = kornia.filters.spatial_gradient(inp, normalized=True)
         assert_allclose(edges, expected)
 
-
     def test_edges_sep(self):
         inp = torch.tensor([[[
             [0., 0., 0., 0., 0.],
@@ -94,7 +93,8 @@ class TestSpatialGradient:
             [0., -1., -1., -1., 0.],
             [0., 0., -1., 0., 0.]
         ]]]])
-        edges = kornia.filters.spatial_gradient(inp, 'diff', False)
+        edges = kornia.filters.spatial_gradient(inp, 'diff',
+                                                normalized=False)
         assert_allclose(edges, expected)
 
     def test_edges_sep_norm(self):
@@ -119,7 +119,8 @@ class TestSpatialGradient:
             [0., -1., -1., -1., 0.],
             [0., 0., -1., 0., 0.]
         ]]]]) / 2.0
-        edges = kornia.filters.spatial_gradient(inp, 'diff')
+        edges = kornia.filters.spatial_gradient(inp, 'diff',
+                                                normalized=True)
         assert_allclose(edges, expected)
 
     def test_gradcheck(self):
@@ -171,18 +172,19 @@ class TestSobel:
         edges = kornia.filters.sobel(inp, normalized=False)
         assert_allclose(edges, expected)
 
-
     def test_gradcheck_unnorm(self):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, False), raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, False),
+                         raise_exception=True)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, True),
+                         raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):

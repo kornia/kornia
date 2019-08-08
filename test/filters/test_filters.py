@@ -67,14 +67,13 @@ class TestFilter2D:
         ]]]).expand(2, 2, -1, -1)
         expected = torch.tensor([[[
             [0., 0., 0., 0., 0.],
-            [0., 5./9., 5./9., 5./9., 0.],
-            [0., 5./9., 5./9., 5./9., 0.],
-            [0., 5./9., 5./9., 5./9., 0.],
+            [0., 5. / 9., 5. / 9., 5. / 9., 0.],
+            [0., 5. / 9., 5. / 9., 5. / 9., 0.],
+            [0., 5. / 9., 5. / 9., 5. / 9., 0.],
             [0., 0., 0., 0., 0.],
         ]]])
         actual = kornia.filter2D(input, kernel, normalized=True)
         assert_allclose(actual, expected)
-
 
     def test_gradcheck(self):
         kernel = torch.rand(1, 3, 3)

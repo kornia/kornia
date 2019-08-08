@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from kornia.filters.kernels import get_spatial_gradient_kernel2d
 from kornia.filters.kernels import normalize_kernel2d
 
+
 class SpatialGradient(nn.Module):
     r"""Computes the first order image derivative in both x and y using a Sobel
     operator.
@@ -22,7 +23,7 @@ class SpatialGradient(nn.Module):
     """
 
     def __init__(self,
-                 mode:str = 'sobel',
+                 mode: str = 'sobel',
                  order: int = 1,
                  normalized: bool = True) -> None:
         super(SpatialGradient, self).__init__()
@@ -34,11 +35,11 @@ class SpatialGradient(nn.Module):
             self.kernel = normalize_kernel2d(self.kernel)
         return
 
-    def __repr__(self):
-        return self.__class__.__name__ +\
-               'order=' + str(self.order) + ', ' + \
-               'normalized=' + str(self.normalized) + ', ' + \
-               'mode=' + self.mode + ')'
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + '('\
+            'order=' + str(self.order) + ', ' + \
+            'normalized=' + str(self.normalized) + ', ' + \
+            'mode=' + self.mode + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -81,8 +82,8 @@ class Sobel(nn.Module):
         self.normalized: bool = normalized
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-               'normalized=' + str(self.normalized) + ')'
+        return self.__class__.__name__ + '('\
+            'normalized=' + str(self.normalized) + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):

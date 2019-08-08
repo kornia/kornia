@@ -3,6 +3,7 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 
+
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.
     """

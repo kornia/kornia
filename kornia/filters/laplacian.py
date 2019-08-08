@@ -7,6 +7,7 @@ import kornia
 from kornia.filters.kernels import get_laplacian_kernel2d
 from kornia.filters.kernels import normalize_kernel2d
 
+
 class Laplacian(nn.Module):
     r"""Creates an operator that returns a tensor using a Laplacian filter.
 
@@ -47,9 +48,9 @@ class Laplacian(nn.Module):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
-               '(kernel_size=' + str(self.kernel_size) + ', '+\
-               'normalized=' + str(self.normalized) + ', ' + \
-               'border_type=' + self.border_type + ')'
+            '(kernel_size=' + str(self.kernel_size) + ', ' +\
+            'normalized=' + str(self.normalized) + ', ' + \
+            'border_type=' + self.border_type + ')'
 
     def forward(self, input: torch.Tensor):  # type: ignore
         return kornia.filter2D(input, self.kernel, self.border_type)
