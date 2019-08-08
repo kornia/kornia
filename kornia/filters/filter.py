@@ -3,6 +3,7 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from kornia.filters.kernels import normalize_kernel2d
 
 
 def compute_padding(kernel_size: Tuple[int, int]) -> List[int]:
@@ -60,7 +61,6 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     borders_list: List[str] = ['constant', 'reflect', 'replicate', 'circular']
     if border_type not in borders_list:
-        raise ValueError("Invalid border_type, we expect the following: {0}."
         raise ValueError("Invalid border_type, we expect the following: {0}."
                          "Got: {1}".format(borders_list, border_type))
 
