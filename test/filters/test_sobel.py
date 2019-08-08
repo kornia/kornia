@@ -42,7 +42,7 @@ class TestSpatialGradient:
             [0., -1., -2., -1., 0.],
         ]]]])
 
-        edges = kornia.filters.spatial_gradient(inp)
+        edges = kornia.filters.spatial_gradient(inp, normalized=False)
         assert_allclose(edges, expected)
 
     def test_edges_sep(self):
@@ -116,7 +116,7 @@ class TestSobel:
             [0., 1.4142, 2.0, 1.4142, 0.],
         ]]])
 
-        edges = kornia.filters.sobel(inp)
+        edges = kornia.filters.sobel(inp, normalized=False)
         assert_allclose(edges, expected)
 
     def test_gradcheck(self):

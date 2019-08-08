@@ -15,7 +15,8 @@ def compute_padding(kernel_size: Tuple[int, int]) -> List[int]:
 
 
 def filter2D(input: torch.Tensor, kernel: torch.Tensor,
-             border_type: str = 'reflect') -> torch.Tensor:
+             border_type: str = 'reflect',
+             normalized: bool = False) -> torch.Tensor:
     r"""Function that convolves a tensor with a kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -28,9 +29,10 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
           :math:`(B, C, H, W)`.
         kernel (torch.Tensor): the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(B, kH, kW)`.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): If True, kernel will be L1 normalized
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
@@ -59,13 +61,15 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     borders_list: List[str] = ['constant', 'reflect', 'replicate', 'circular']
     if border_type not in borders_list:
         raise ValueError("Invalid border_type, we expect the following: {0}."
+        raise ValueError("Invalid border_type, we expect the following: {0}."
                          "Got: {1}".format(borders_list, border_type))
 
     # prepare kernel
     b, c, h, w = input.shape
     tmp_kernel: torch.Tensor = kernel.to(input.device).to(input.dtype)
     tmp_kernel = tmp_kernel.repeat(c, 1, 1, 1)
-
+    if normalized:
+        tmp_kernel = normalize_kernel2d(tmp_kernel)
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
     padding_shape: List[int] = compute_padding((height, width))
