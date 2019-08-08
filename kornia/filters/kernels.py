@@ -3,6 +3,12 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 
+def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
+    r"""Normalizes both derivative and smoothing kernel.
+    """
+    norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
+    return input / (norm.unsqueeze(-1).unsqueeze(-1))
+
 
 def gaussian(window_size, sigma):
     def gauss_fcn(x):
