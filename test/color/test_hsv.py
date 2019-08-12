@@ -74,6 +74,7 @@ class TestRgbToHsv:
         assert gradcheck(kornia.color.RgbToHsv(), (data,),
                          raise_exception=True)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
@@ -143,6 +144,7 @@ class TestHsvToRgb:
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
         assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
