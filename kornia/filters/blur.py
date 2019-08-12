@@ -24,9 +24,10 @@ class BoxBlur(nn.Module):
 
     Args:
         kernel_size (Tuple[int, int]): the blurring kernel size.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): if True, L1 norm of the kernel is set to 1.
 
     Returns:
         torch.Tensor: the blurred input tensor.

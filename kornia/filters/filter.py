@@ -33,7 +33,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
         border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized (bool): If True, kernel will be L1 normalized
+        normalized (bool): If True, kernel will be L1 normalized.
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
