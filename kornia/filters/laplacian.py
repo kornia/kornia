@@ -16,9 +16,10 @@ class Laplacian(nn.Module):
 
     Arguments:
         kernel_size (int): the size of the kernel.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): if True, L1 norm of the kernel is set to 1.
 
     Returns:
         Tensor: the tensor.

@@ -67,6 +67,9 @@ class Sobel(nn.Module):
     Return:
         torch.Tensor: the sobel edge gradient maginitudes map.
 
+    Args:
+        normalized (bool): if True, L1 norm of the kernel is set to 1.
+
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
@@ -125,4 +128,4 @@ def sobel(input: torch.Tensor, normalized: bool = True) -> torch.Tensor:
 
     See :class:`~kornia.filters.Sobel` for details.
     """
-    return Sobel(normalized=normalized)(input)
+    return Sobel(normalized)(input)
