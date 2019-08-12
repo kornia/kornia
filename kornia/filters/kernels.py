@@ -5,12 +5,10 @@ import torch.nn as nn
 
 
 def gaussian(window_size, sigma):
-    def gauss_fcn(x):
-        return -(x - window_size // 2) ** 2 / float(2 * sigma ** 2)
-
-    gauss = torch.stack(
-        [torch.exp(torch.tensor(gauss_fcn(x))) for x in range(window_size)]
-    )
+    x = torch.arange(window_size).float() - window_size // 2
+    if window_size % 2 == 0:
+        x = x + 0.5
+    gauss = torch.exp((-x.pow(2.0) / float(2 * sigma ** 2)))
     return gauss / gauss.sum()
 
 
@@ -141,12 +139,15 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
     return kernel
 
 
-def get_gaussian_kernel1d(kernel_size: int, sigma: float) -> torch.Tensor:
+def get_gaussian_kernel1d(kernel_size: int,
+                          sigma: float,
+                          force_even: bool = False) -> torch.Tensor:
     r"""Function that returns Gaussian filter coefficients.
 
     Args:
         kernel_size (int): filter size. It should be odd and positive.
         sigma (float): gaussian standard deviation.
+        force_even (bool): overrides requirement for odd kernel size.
 
     Returns:
         Tensor: 1D tensor with gaussian filter coefficients.
@@ -162,7 +163,8 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float) -> torch.Tensor:
         >>> kornia.image.get_gaussian_kernel(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
-    if (not isinstance(kernel_size, int) or (kernel_size % 2 == 0) or (
+    if (not isinstance(kernel_size, int) or (
+            (kernel_size % 2 == 0) and not force_even) or (
             kernel_size <= 0)):
         raise TypeError(
             "kernel_size must be an odd positive integer. "
@@ -174,7 +176,8 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float) -> torch.Tensor:
 
 def get_gaussian_kernel2d(
         kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float]) -> torch.Tensor:
+        sigma: Tuple[float, float],
+        force_even: bool = False) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -182,6 +185,7 @@ def get_gaussian_kernel2d(
          Sizes should be odd and positive.
         sigma (Tuple[int, int]): gaussian standard deviation in the x and y
          direction.
+        force_even (bool): overrides requirement for odd kernel size.
 
     Returns:
         Tensor: 2D tensor with gaussian filter matrix coefficients.
@@ -213,8 +217,8 @@ def get_gaussian_kernel2d(
         )
     ksize_x, ksize_y = kernel_size
     sigma_x, sigma_y = sigma
-    kernel_x: torch.Tensor = get_gaussian_kernel1d(ksize_x, sigma_x)
-    kernel_y: torch.Tensor = get_gaussian_kernel1d(ksize_y, sigma_y)
+    kernel_x: torch.Tensor = get_gaussian_kernel1d(ksize_x, sigma_x, force_even)
+    kernel_y: torch.Tensor = get_gaussian_kernel1d(ksize_y, sigma_y, force_even)
     kernel_2d: torch.Tensor = torch.matmul(
         kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t()
     )
