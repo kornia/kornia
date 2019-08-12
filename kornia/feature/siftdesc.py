@@ -84,8 +84,7 @@ class SIFTDescriptor(nn.Module):
                             stride=(self.bin_stride, self.bin_stride),
                             padding=(self.pad, self.pad),
                             bias=False)
-
-        self.pk.weight.data = nw.reshape(1, 1, nw.size(0), nw.size(1))
+        self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore  # noqa
         return
 
     def get_pooling_kernel(self) -> torch.Tensor:
