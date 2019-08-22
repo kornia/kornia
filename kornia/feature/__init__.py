@@ -10,11 +10,10 @@ from .laf import (extract_patches_from_pyramid,
                   make_upright,
                   get_laf_scale,
                   angle_to_rotation_matrix)
-from .siftdesc import SIFTDescriptor
 __all__ = [
     "non_maxima_suppression2d",
     "corner_harris",
-    "NonMaximaSuppression2d",
+    "NonMaximaSupression2d",
     "CornerHarris",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
@@ -26,5 +25,4 @@ __all__ = [
     "make_upright",
     "get_laf_scale",
     "angle_to_rotation_matrix"
-    "SIFTDescriptor"
 ]

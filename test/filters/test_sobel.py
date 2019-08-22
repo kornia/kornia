@@ -42,33 +42,7 @@ class TestSpatialGradient:
             [0., -1., -2., -1., 0.],
         ]]]])
 
-        edges = kornia.filters.spatial_gradient(inp, normalized=False)
-        assert_allclose(edges, expected)
-
-    def test_edges_norm(self):
-        inp = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]])
-
-        expected = torch.tensor([[[[
-            [0., 1., 0., -1., 0.],
-            [1., 3., 0., -3., -1.],
-            [2., 4., 0., -4., -2.],
-            [1., 3., 0., -3., -1.],
-            [0., 1., 0., -1., 0.],
-        ], [
-            [0., 1., 2., 1., 0.],
-            [1., 3., 4., 3., 1.],
-            [0., 0., 0., 0., 0],
-            [-1., -3., -4., -3., -1],
-            [0., -1., -2., -1., 0.],
-        ]]]]) / 8.0
-
-        edges = kornia.filters.spatial_gradient(inp, normalized=True)
+        edges = kornia.filters.spatial_gradient(inp)
         assert_allclose(edges, expected)
 
     def test_edges_sep(self):
@@ -93,34 +67,7 @@ class TestSpatialGradient:
             [0., -1., -1., -1., 0.],
             [0., 0., -1., 0., 0.]
         ]]]])
-        edges = kornia.filters.spatial_gradient(inp, 'diff',
-                                                normalized=False)
-        assert_allclose(edges, expected)
-
-    def test_edges_sep_norm(self):
-        inp = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 1., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]])
-
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., -1., 0.],
-            [1., 1., 0., -1., -1.],
-            [0., 1., 0., -1., 0.],
-            [0., 0., 0., 0., 0.]
-        ], [
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., -1., -1., -1., 0.],
-            [0., 0., -1., 0., 0.]
-        ]]]]) / 2.0
-        edges = kornia.filters.spatial_gradient(inp, 'diff',
-                                                normalized=True)
+        edges = kornia.filters.spatial_gradient(inp, 'diff')
         assert_allclose(edges, expected)
 
     def test_gradcheck(self):
@@ -169,22 +116,14 @@ class TestSobel:
             [0., 1.4142, 2.0, 1.4142, 0.],
         ]]])
 
-        edges = kornia.filters.sobel(inp, normalized=False)
+        edges = kornia.filters.sobel(inp)
         assert_allclose(edges, expected)
-
-    def test_gradcheck_unnorm(self):
-        batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, False),
-                         raise_exception=True)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, True),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img,), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):

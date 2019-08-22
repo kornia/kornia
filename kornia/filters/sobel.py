@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.kernels import get_spatial_gradient_kernel2d
-from kornia.filters.kernels import normalize_kernel2d
 
 
 class SpatialGradient(nn.Module):
@@ -22,24 +21,10 @@ class SpatialGradient(nn.Module):
         >>> output = kornia.filters.SpatialGradient()(input)  # 1x3x2x4x4
     """
 
-    def __init__(self,
-                 mode: str = 'sobel',
-                 order: int = 1,
-                 normalized: bool = True) -> None:
+    def __init__(self, mode: str = 'sobel', order: int = 1) -> None:
         super(SpatialGradient, self).__init__()
-        self.normalized: bool = normalized
-        self.order: int = order
-        self.mode: str = mode
         self.kernel = get_spatial_gradient_kernel2d(mode, order)
-        if self.normalized:
-            self.kernel = normalize_kernel2d(self.kernel)
         return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'order=' + str(self.order) + ', ' + \
-            'normalized=' + str(self.normalized) + ', ' + \
-            'mode=' + self.mode + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -67,9 +52,6 @@ class Sobel(nn.Module):
     Return:
         torch.Tensor: the sobel edge gradient maginitudes map.
 
-    Args:
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
-
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
@@ -79,14 +61,8 @@ class Sobel(nn.Module):
         >>> output = kornia.filters.Sobel()(input)  # 1x3x4x4
     """
 
-    def __init__(self,
-                 normalized: bool = True) -> None:
+    def __init__(self) -> None:
         super(Sobel, self).__init__()
-        self.normalized: bool = normalized
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'normalized=' + str(self.normalized) + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -96,8 +72,7 @@ class Sobel(nn.Module):
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
         # comput the x/y gradients
-        edges: torch.Tensor = spatial_gradient(input,
-                                               normalized=self.normalized)
+        edges: torch.Tensor = spatial_gradient(input)
 
         # unpack the edges
         gx: torch.Tensor = edges[:, :, 0]
@@ -113,19 +88,18 @@ class Sobel(nn.Module):
 
 def spatial_gradient(input: torch.Tensor,
                      mode: str = 'sobel',
-                     order: int = 1,
-                     normalized: bool = True) -> torch.Tensor:
+                     order: int = 1) -> torch.Tensor:
     r"""Computes the first order image derivative in both x and y using a Sobel
     operator.
 
     See :class:`~kornia.filters.SpatialGradient` for details.
     """
-    return SpatialGradient(mode, order, normalized)(input)
+    return SpatialGradient(mode, order)(input)
 
 
-def sobel(input: torch.Tensor, normalized: bool = True) -> torch.Tensor:
+def sobel(input: torch.Tensor) -> torch.Tensor:
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
     See :class:`~kornia.filters.Sobel` for details.
     """
-    return Sobel(normalized)(input)
+    return Sobel()(input)
