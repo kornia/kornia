@@ -9,8 +9,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
-
+import warnings
+try:
+    import matplotlib.pyplot as plt
+    MATPLOTLIB = True
+except:
+    warnings.warn("no matplotlib found, visualize_LAF not available ")
+    MATPLOTLIB = False
+    
 
 def angle_to_rotation_matrix(angle: torch.Tensor,
                              do_deg2rad: bool = False) -> torch.Tensor:
@@ -178,19 +184,30 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
            pts_h.view(B, N, n_pts, 3))
 
 
-def visualize_LAF(img: torch.Tensor,  # pragma: no cover
+def get_LAF_pts_to_draw(img: torch.Tensor,  # pragma: no cover
                   LAF: torch.Tensor,
-                  img_idx: int = 0,
-                  color: str = 'r'):
+                  img_idx: int = 0):
     """
-    Draws affine regions (LAF)
+    Returns numpy array for drawing LAFs
     """
     pts = LAF2pts(LAF[img_idx:img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
-    plt.figure()
-    plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
-    plt.plot(pts_np[:, :, 0], pts_np[:, :, 1], color)
-    plt.show()
+    return (pts_np[:, :, 0], pts_np[:, :, 1])
+
+
+def visualize_LAF(img: torch.Tensor,  # pragma: no cover
+                  LAF: torch.Tensor,
+                  img_idx: int = 0,
+                  color = 'r'):
+    """
+    Draws affine regions (LAF)
+    """
+    if MATPLOTLIB:
+        x, y = get_LAF_pts_to_draw(img, LAF,  img_idx)
+        plt.figure()
+        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.plot(x, y, color)
+        plt.show()
     return
 
 
