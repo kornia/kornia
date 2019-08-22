@@ -33,6 +33,7 @@ from kornia.contrib import (
 from kornia.feature import (
     non_maxima_suppression2d,
     corner_harris,
+    SIFTDescriptor
 )
 from kornia.filters import (
     get_gaussian_kernel1d,
@@ -62,3 +63,4 @@ from kornia.utils import (
     load_pointcloud_ply,
 )
 from kornia.geometry import *
+from kornia.geometry import pi
