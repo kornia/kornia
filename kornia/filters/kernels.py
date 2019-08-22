@@ -4,6 +4,16 @@ import torch
 import torch.nn as nn
 
 
+def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
+    r"""Normalizes both derivative and smoothing kernel.
+    """
+    if len(input.size()) < 2:
+        raise TypeError("input should be at least 2D tensor. Got {}"
+                        .format(input.size()))
+    norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
+    return input / (norm.unsqueeze(-1).unsqueeze(-1))
+
+
 def gaussian(window_size, sigma):
     x = torch.arange(window_size).float() - window_size // 2
     if window_size % 2 == 0:
