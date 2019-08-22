@@ -57,7 +57,7 @@ class TestSIFTDescriptor:
                               rootsift=False)
         out = sift(patch)
         expected = torch.tensor([[0, 0, 1., 0]])
-        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 1, 41, 41

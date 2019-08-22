@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import spatial_gradient
-from math import pi
+from kornia.geometry import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
@@ -47,6 +47,28 @@ def get_sift_bin_ksize_stride_pad(patch_size: int,
 class SIFTDescriptor(nn.Module):
     """
     Module, which computes SIFT descriptors of given patches
+    Args:
+        patch_size: (int): Input patch size in pixels
+        (41 is default)
+        num_ang_bins: (int): Number of angular bins.
+        (8 is default)
+        num_spatial_bins: (int): Number of spatial bins
+        (4 is default)
+        clipval: (float): default 0.2
+        rootsift: (bool): if True, RootSIFT (Arandjelović et. al, 2012)
+        is computed
+
+    Returns:
+        Tensor: SIFT descriptor of the patches
+
+    Shape:
+        - Input: :math:`(B, 1, num_spatial_bins, num_spatial_bins)`
+        - Output: :math:`(B, num_ang_bins * num_spatial_bins ** 2)`
+
+    Examples::
+        >>> input = torch.rand(23, 1, 32, 32)
+        >>> SIFT = kornia.SIFTDescriptor(32, 8, 4)
+        >>> descs = SIFT(input) # 23x128
     """
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
@@ -60,8 +82,9 @@ class SIFTDescriptor(nn.Module):
                  patch_size: int = 41,
                  num_ang_bins: int = 8,
                  num_spatial_bins: int = 4,
+                 rootsift: bool = True,
                  clipval: float = 0.2,
-                 rootsift: bool = True) -> None:
+                 ) -> None:
         super(SIFTDescriptor, self).__init__()
         self.eps = 1e-10
         self.num_ang_bins = num_ang_bins
@@ -143,8 +166,9 @@ def sift_describe(input: torch.Tensor,
                   patch_size: int = 41,
                   num_ang_bins: int = 8,
                   num_spatial_bins: int = 4,
+                  rootsift: bool = True,
                   clipval: float = 0.2,
-                  rootsift: bool = True) -> torch.Tensor:
+                  ) -> torch.Tensor:
     r"""Computes the sift descriptor.
 
     See :class:`~kornia.feature.SIFTDescriptor` for details.
@@ -153,5 +177,5 @@ def sift_describe(input: torch.Tensor,
     return SIFTDescriptor(patch_size,
                           num_ang_bins,
                           num_spatial_bins,
-                          clipval,
-                          rootsift)(input)
+                          rootsift,
+                          clipval)(input)
