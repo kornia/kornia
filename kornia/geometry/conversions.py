@@ -1,5 +1,3 @@
-from typing import Optional
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -117,7 +115,7 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
 
-    return torch.nn.functional.pad(points, (0, 1), "constant", 1.0)
+    return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
@@ -237,6 +235,7 @@ def rotation_matrix_to_quaternion(
         rotation_matrix: torch.Tensor,
         eps: float = 1e-8) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
+    The quaternion vector has components in (x, y, z, w) format.
 
     Args:
         rotation_matrix (torch.Tensor): the rotation matrix to convert.
@@ -250,7 +249,7 @@ def rotation_matrix_to_quaternion(
         - Output: :math:`(*, 4)`
 
     Example:
-        >>> input = torch.rand(4, 3, 4)  # Nx3x4
+        >>> input = torch.rand(4, 3, 3)  # Nx3x3
         >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
     """
     if not isinstance(rotation_matrix, torch.Tensor):
@@ -284,32 +283,32 @@ def rotation_matrix_to_quaternion(
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_1():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qw.
+        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
-        qy = safe_zero_division(m01 - m10, sq)
-        qz = safe_zero_division(m02 - m20, sq)
+        qy = safe_zero_division(m01 + m10, sq)
+        qz = safe_zero_division(m02 + m20, sq)
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_2():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qw.
+        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
-        qx = safe_zero_division(m01 - m10, sq)
+        qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
-        qz = safe_zero_division(m12 - m21, sq)
+        qz = safe_zero_division(m12 + m21, sq)
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     def cond_3():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qw.
+        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
-        qx = safe_zero_division(m02 - m20, sq)
-        qy = safe_zero_division(m12 - m21, sq)
+        qx = safe_zero_division(m02 + m20, sq)
+        qy = safe_zero_division(m12 + m21, sq)
         qz = 0.25 * sq
         return torch.cat([qx, qy, qz, qw], dim=-1)
 
     where_2 = torch.where(m11 > m22, cond_2(), cond_3())
     where_1 = torch.where(
-        (m00 > m22) & (m00 > m22), cond_1(), where_2)
+        (m00 > m11) & (m00 > m22), cond_1(), where_2)
 
     quaternion: torch.Tensor = torch.where(
         trace > 0., trace_positive_cond(), where_1)
@@ -317,8 +316,9 @@ def rotation_matrix_to_quaternion(
 
 
 def normalize_quaternion(quaternion: torch.Tensor,
-                         eps: Optional[float] = 1e-12) -> torch.Tensor:
+                         eps: float = 1e-12) -> torch.Tensor:
     r"""Normalizes a quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -351,6 +351,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
 
 def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     r"""Converts a quaternion to a rotation matrix.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -408,6 +409,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
+    The quaternion should be in (x, y, z, w) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
@@ -459,6 +461,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 def quaternion_log_to_exp(quaternion: torch.Tensor,
                           eps: float = 1e-8) -> torch.Tensor:
     r"""Applies exponential map to log quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -497,6 +500,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
 def quaternion_exp_to_log(quaternion: torch.Tensor,
                           eps: float = 1e-8) -> torch.Tensor:
     r"""Applies the log map to a quaternion.
+    The quaternion should be in (x, y, z, w) format.
 
     Args:
         quaternion (torch.Tensor): a tensor containing a quaternion to be
@@ -538,6 +542,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     r"""Convert an angle axis to a quaternion.
+    The quaternion vector has components in (x, y, z, w) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 

@@ -23,6 +23,7 @@ from kornia.color import (
     rgb_to_hsv,
     hsv_to_rgb,
     normalize,
+    adjust_brightness,
 )
 from kornia.contrib import (
     spatial_soft_argmax2d,
@@ -32,11 +33,12 @@ from kornia.contrib import (
 from kornia.feature import (
     non_maxima_suppression2d,
     corner_harris,
+    SIFTDescriptor
 )
 from kornia.filters import (
-    get_gaussian_kernel,
+    get_gaussian_kernel1d,
     get_gaussian_kernel2d,
-    get_laplacian_kernel,
+    get_laplacian_kernel1d,
     get_laplacian_kernel2d,
     gaussian_blur2d,
     laplacian,
@@ -61,3 +63,4 @@ from kornia.utils import (
     load_pointcloud_ply,
 )
 from kornia.geometry import *
+from kornia.geometry import pi

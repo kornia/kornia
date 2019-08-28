@@ -6,6 +6,7 @@ from .hsv import HsvToRgb, hsv_to_rgb
 from .ycbcr import RgbToYcbcr, rgb_to_ycbcr
 from .ycbcr import YcbcrToRgb, ycbcr_to_rgb
 from .normalize import Normalize, normalize
+from .adjust import AdjustBrightness, adjust_brightness
 
 __all__ = [
     "rgb_to_grayscale",
@@ -16,6 +17,7 @@ __all__ = [
     "rgb_to_ycbcr",
     "ycbcr_to_rgb",
     "normalize",
+    "adjust_brightness",
     "RgbToGrayscale",
     "BgrToRgb",
     "RgbToBgr",
@@ -24,4 +26,5 @@ __all__ = [
     "RgbToYcbcr",
     "YcbcrToRgb",
     "Normalize",
+    "AdjustBrightness",
 ]

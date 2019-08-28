@@ -59,6 +59,7 @@ class TestNormalize:
         f = kornia.color.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         @torch.jit.script
         def op_script(data: torch.Tensor, mean: torch.Tensor,

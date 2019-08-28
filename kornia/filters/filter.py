@@ -3,19 +3,21 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from kornia.filters.kernels import normalize_kernel2d
 
 
-def compute_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+def compute_padding(kernel_size: Tuple[int, int]) -> List[int]:
     """Computes padding tuple."""
     # 4 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
     assert len(kernel_size) == 2, kernel_size
     computed = [(k - 1) // 2 for k in kernel_size]
-    return computed[1], computed[1], computed[0], computed[0]
+    return [computed[1], computed[1], computed[0], computed[0]]
 
 
 def filter2D(input: torch.Tensor, kernel: torch.Tensor,
-             border_type: str = 'reflect') -> torch.Tensor:
+             border_type: str = 'reflect',
+             normalized: bool = False) -> torch.Tensor:
     r"""Function that convolves a tensor with a kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -28,9 +30,10 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
           :math:`(B, C, H, W)`.
         kernel (torch.Tensor): the kernel to be convolved with the input
           tensor. The kernel shape must be :math:`(B, kH, kW)`.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): If True, kernel will be L1 normalized.
 
     Return:
         torch.Tensor: the convolved tensor of same size and numbers of channels
@@ -65,10 +68,11 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     b, c, h, w = input.shape
     tmp_kernel: torch.Tensor = kernel.to(input.device).to(input.dtype)
     tmp_kernel = tmp_kernel.repeat(c, 1, 1, 1)
-
+    if normalized:
+        tmp_kernel = normalize_kernel2d(tmp_kernel)
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
-    padding_shape: Tuple[int, int, int, int] = compute_padding((height, width))
+    padding_shape: List[int] = compute_padding((height, width))
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
     # convolve the tensor with the kernel
