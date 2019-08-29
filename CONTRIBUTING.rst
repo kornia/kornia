@@ -110,8 +110,16 @@ This section provides general guidance for developing code for the project. The 
 - We give support to static type checker for Python >= 3.6
 
   - Please, read `MyPy cheatsheet <https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3>`_ for Python 3.
-  - Always type  function input and output.
   - It is recommended to use typing inside the function, when it would increase readability.
+  - Always type function input and output, e.g.:
+
+.. code:: python
+
+    def homography_warp(patch_src: torch.Tensor,
+                        dst_homo_src: torch.Tensor,
+                        dsize: Tuple[int, int],
+                        mode: str = 'bilinear',
+                        padding_mode: str = 'zeros') -> torch.Tensor:
 
 - Format your code:
 
