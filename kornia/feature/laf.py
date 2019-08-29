@@ -10,11 +10,11 @@ try:
     import matplotlib.pyplot as plt
     MATPLOTLIB = True
 except:
-    warnings.warn("no matplotlib found, visualize_LAF not available ")
+    warnings.warn("no matplotlib found, visualize_laf not available ")
     MATPLOTLIB = False
 
 
-def get_laf_scale(A: torch.Tensor) -> torch.Tensor:
+def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """
     Returns a scale of the LAFs
     Args:
@@ -32,23 +32,23 @@ def get_laf_scale(A: torch.Tensor) -> torch.Tensor:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
         >>> output = kornia.get_laf_scale(input)  # BxNx1x1
     """
-    n_dims = len(A.size())
+    n_dims = len(LAF.size())
     eps = 1e-10
     if (n_dims != 4):
         raise TypeError(
             "LAF shape should be must be [BxNx2x3]. "
-            "Got {}".format(A.size())
+            "Got {}".format(LAF.size())
         )
-    out = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -\
-          A[:, :, 1:2, 0:1] * A[:, :, 0:1, 1:2] + eps  # noqa: E127
+    out = LAF[..., 0:1, 0:1] * LAF[..., 1:2, 1:2] -\
+          LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps  # noqa: E127
     return out.abs().sqrt()
 
 
-def make_upright(A: torch.Tensor) -> torch.Tensor: # noqa: E128
+def make_upright(LAF: torch.Tensor) -> torch.Tensor: # noqa: E128
     """
     Rectifies the affine matrix, so that it becomes upright
     Args:
-        A: (torch.Tensor): tensor of LAFs.
+        LAF: (torch.Tensor): tensor of LAFs.
 
     Returns:
         torch.Tensor: tensor of same shape.
@@ -60,29 +60,36 @@ def make_upright(A: torch.Tensor) -> torch.Tensor: # noqa: E128
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
         >>> output = kornia.make_upright(input)  #  BxNx2x3
     """
-    n_dims = len(A.size())
+    n_dims = len(LAF.size())
     if (n_dims != 4):
         raise TypeError(
             "LAF shape should be must be [BxNx2x3]. "
-            "Got {}".format(A.size())
+            "Got {}".format(LAF.size())
         )
-    det = get_laf_scale(A)
+    det = get_laf_scale(LAF)
+    # The function is equivalent to doing 2x2 SVD and reseting rotation
+    # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     eps = 1e-10
-    b2a2 = torch.sqrt(A[:, :, 0:1, 1:2]**2 + A[:, :, 0:1, 0:1]**2)
-    A1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
-                        torch.zeros_like(det)], dim=3)  # type: ignore
-    A2_ell = torch.cat([((A[:, :, 1:2, 1:2] * A[:, :, 0:1, 1:2] +
-                          A[:, :, 1:2, 0:1] * A[:, :, 0:1, 0:1]) / (b2a2 * det)),
-                          (det / b2a2).contiguous()], dim=3)  # type: ignore
-    return torch.cat([torch.cat([A1_ell, A2_ell], dim=2),
-                      A[:, :, :, 2:3]], dim=3)
+    b2a2 = torch.sqrt(LAF[..., 0:1, 1:2]**2 + LAF[..., 0:1, 0:1]**2) + eps
+    LAF1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
+                           torch.zeros_like(det)], dim=3)  # type: ignore
+    LAF2_ell = torch.cat([((LAF[..., 1:2, 1:2] * LAF[..., 0:1, 1:2] +
+                            LAF[..., 1:2, 0:1] * LAF[..., 0:1, 0:1]) / (b2a2 * det)),
+                            (det / b2a2).contiguous()], dim=3)  # type: ignore
+    return torch.cat([torch.cat([LAF1_ell,LAF2_ell], dim=2),
+                      LAF[..., :, 2:3]], dim=3)
 
 
-def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
+def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     """
-    Converts ellipse regions to LAF format
+    Converts ellipse regions to LAF format. Ellipse (a, b, c)
+    and upright covariance matrix [a11 a12; 0 a22] are connected
+    by inverse matrix square root:
+    A = invsqrt([a b; b c])
+    See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
+
     Args:
-        A: (torch.Tensor): tensor of ellipses in Oxford format [x y a b c].
+        ells: (torch.Tensor): tensor of ellipses in Oxford format [x y a b c].
 
     Returns:
         LAF: (torch.Tensor) tensor of ellipses in LAF format.
@@ -92,7 +99,7 @@ def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
         - Output:  :math:`(B, N, 2, 3)`
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
-        >>> output = kornia.ell2LAF(input)  #  BxNx2x3
+        >>> output = kornia.ellipse_to_laf(input)  #  BxNx2x3
     """
     n_dims = len(ells.size())
     if (n_dims != 3):
@@ -104,18 +111,19 @@ def ell2LAF(ells: torch.Tensor) -> torch.Tensor:
         raise TypeError(
             "ellipse shape should be must be [BxNx5]. "
             "Got {}".format(ells.size()))
-    ell_shape = torch.cat([torch.cat([ells[:, :, 2:3], ells[:, :, 3:4]], dim=2).unsqueeze(2),
-                           torch.cat([ells[:, :, 3:4], ells[:, :, 4:5]], dim=2).unsqueeze(2)],
+
+    ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
+                           torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)],
                            dim=2).view(-1, 2, 2)
     out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
-    out = torch.cat([out, ells[:, :, :2].view(B, N, 2, 1)], dim=3)
+    out = torch.cat([out, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 
 
-def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
+def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """
     Converts LAFs to boundary points of the regions + center.
-    Used for local features visualization, see visualize_LAF function
+    Used for local features visualization, see visualize_laf function
     Args:
         LAF: (torch.Tensor).
         n_pts: number of points to output
@@ -149,26 +157,54 @@ def LAF2pts(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
            pts_h.view(B, N, n_pts, 3))
 
 
-def get_LAF_pts_to_draw(img: torch.Tensor,  # pragma: no cover
-                  LAF: torch.Tensor,
-                  img_idx: int = 0):
+def get_laf_pts_to_draw(LAF: torch.Tensor,
+                        img_idx: int = 0):
     """
-    Returns numpy array for drawing LAFs
+    Returns numpy array for drawing LAFs (local features).
+    To draw:
+        x, y = kornia.feature.laf.get_laf_pts_to_draw(LAF, img_idx)
+        plt.figure()
+        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.plot(x, y, 'r')
+        plt.show()
+
+    Args:
+        LAF: (torch.Tensor).
+        n_pts: number of boundary points to output
+
+    Returns:
+        pts: (torch.Tensor) tensor of boundary points
+
+    Shape:
+        - Input: :math:`(B, N, 2, 3)`
+        - Output:  :math:`(B, N, n_pts, 2)`
     """
-    pts = LAF2pts(LAF[img_idx:img_idx + 1])[0]
+    pts = laf_to_boundary_points(LAF[img_idx:img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
-    return (pts_np[:, :, 0], pts_np[:, :, 1])
+    return (pts_np[..., 0], pts_np[..., 1])
 
 
-def visualize_LAF(img: torch.Tensor,  # pragma: no cover
+def visualize_laf(img: torch.Tensor,  # pragma: no cover
                   LAF: torch.Tensor,
                   img_idx: int = 0,
                   color = 'r'):
     """
-    Draws affine regions (LAF)
+    Args:
+        img: (torch.Tensor)
+        LAF: (torch.Tensor)
+        img_idx (int): image index in the batch to draw
+        color (string): line color in matplotlib format
+
+    Returns:
+       Nothing, shows matplotlib imshow.
+
+    Shape:
+        - img: :math:`(B, CH, H, W)`
+        - LAF: :math:`(B, N, 2, 3)`
+
     """
     if MATPLOTLIB:
-        x, y = get_LAF_pts_to_draw(img, LAF,  img_idx)
+        x, y = get_laf_pts_to_draw(LAF, img_idx)
         plt.figure()
         plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
         plt.plot(x, y, color)
@@ -178,7 +214,8 @@ def visualize_LAF(img: torch.Tensor,  # pragma: no cover
 
 def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
-    De-normalizes LAFs from scale to image scale
+    De-normalizes LAFs from scale to image scale.
+
     B,N,H,W = images.size()
     MIN_SIZE = min(H,W)
     [a11 a21 x]
@@ -186,6 +223,7 @@ def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     becomes
     [a11*MIN_SIZE a21*MIN_SIZE x*W]
     [a21*MIN_SIZE a22*MIN_SIZE y*H]
+
     Args:
         LAF: (torch.Tensor).
         images: (torch.Tensor) images, LAFs are detected in
@@ -216,7 +254,8 @@ def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 def normalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
-    Normalizes LAFs to [0,1] scale.
+    Normalizes LAFs to [0,1] scale from pixel scale.
+    See below:
     B,N,H,W = images.size()
     MIN_SIZE = min(H,W)
     [a11 a21 x]
@@ -255,7 +294,19 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
                                             LAF: torch.Tensor,
                                             PS: int = 32) -> torch.Tensor:
     """
-    Helper function for affine grid generation
+    Helper function for affine grid generation.
+
+    Args:
+        img: (torch.Tensor) images, LAFs are detected in
+        LAF: (torch.Tensor).
+        PS (int) -- patch size to be extracted
+
+    Returns:
+        grid: (torch.Tensor).
+
+    Shape:
+        - Input: :math:`(B, CH, H, W)`,  :math:`(B, N, 2, 3)`
+        - Output:  :math:`(B, N, PS, PS)`
     """
     n_dims = len(LAF.size())
     if (n_dims != 4):
@@ -264,14 +315,15 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
             "Got {}".format(LAF.size()))
     B, N, _, _ = LAF.size()
     num, ch, h, w = img.size()
-    # norm, then renorm is needed for allowing detection on one resulution
+
+    # norm, then renorm is needed for allowing detection on one resolution
     # and extraction at arbitrary other
     LAF_renorm = denormalize_LAF(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3),
                          [B * N, ch, PS, PS])
-    grid[:, :, :, 0] = 2.0 * grid[:, :, :, 0].clone() / float(w) - 1.0
-    grid[:, :, :, 1] = 2.0 * grid[:, :, :, 1].clone() / float(h) - 1.0
+    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w) - 1.0
+    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h) - 1.0
     return grid
 
 
@@ -287,7 +339,7 @@ def extract_patches_simple(img: torch.Tensor,
         PS: (int) patch size, default = 32
 
     Returns:
-        LAF: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
+        patches: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
     """
     num, ch, h, w = img.size()
     B, N, _, _ = LAF.size()
@@ -316,7 +368,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
         PS: (int) patch size, default = 32
 
     Returns:
-        LAF: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
+        patches: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
     """
     B, N, _, _ = LAF.size()
     num, ch, h, w = img.size()
@@ -337,7 +389,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 cur_img[i:i + 1],
                 LAF[i:i + 1, scale_mask, :, :],
                 PS)
-            out[i, scale_mask, :, :, :] = out[i, scale_mask, :, :,:].clone() * 0\
+            out[i, scale_mask, ..., :] = out[i, scale_mask, ...,:].clone() * 0\
                 + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0),ch, h, w),
                                                         grid,
                                                         padding_mode="border")
