@@ -96,9 +96,34 @@ This section provides general guidance for developing code for the project. The 
 - Add tests:
 
   - Tests are crucial and we expect you to write unit test for each of the functionalities that you implement.
+    It is also a good idea to group the tests for functionalities
+
+  .. code:: python
+
+        class TestMyFunction:
+            def test_smoke(self):
+                # check defaults parameters, i/o shapes
+                pass
+
+            def test_feature_foo(self):
+                # test basic functionality
+                pass
+
+             def test_feature_bar(self):
+                 # test another functionality
+                 pass
+
+             def test_gradcheck(self):
+                 # test the functionality gradients
+                 pass
+
+             def test_jit(self):
+                 #  test the functionality using jit modules
+                 pass
+
   - Tests should cover different devices (CPU and CUDA) and different input batch size. See an example:
 
-.. code:: bash
+  .. code:: python
 
    @pytest.mark.parametrize("device_type", ("cpu", "cuda"))
    @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -124,7 +149,12 @@ This section provides general guidance for developing code for the project. The 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
-  - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3
+  - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3 .
+    For doing so, just run the following from the repository root
+
+  .. code:: bash
+
+    make autopep8
 
 - Changes to PEP8:
 
