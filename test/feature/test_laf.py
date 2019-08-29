@@ -87,7 +87,7 @@ class TestELL2LAF:
     def test_shape(self):
         inp = torch.ones(5, 3, 5)
         inp[:, :, 3] = 0
-        rotmat = kornia.feature.ell2LAF(inp)
+        rotmat = kornia.feature.ellipse_to_laf(inp)
         assert rotmat.shape == (5, 3, 2, 3)
 
     def test_conversion(self):
@@ -95,7 +95,7 @@ class TestELL2LAF:
         inp = inp.view(1, 1, 5)
         expected = torch.tensor([[10, 0, 10.], [0, 10, -20]]).float()
         expected = expected.view(1, 1, 2, 3)
-        laf = kornia.feature.ell2LAF(inp)
+        laf = kornia.feature.ellipse_to_laf(inp)
         assert_allclose(laf, expected)
 
     def test_gradcheck(self):
@@ -105,7 +105,7 @@ class TestELL2LAF:
         img[:, :, 4] += 1.
         # assure it is positive definite
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.ell2LAF,
+        assert gradcheck(kornia.feature.ellipse_to_laf,
                          (img,),
                          raise_exception=True)
 
@@ -141,7 +141,7 @@ class TestLAF2pts:
     def test_shape(self):
         inp = torch.rand(5, 3, 2, 3)
         n_pts = 13
-        assert kornia.feature.LAF2pts(inp, n_pts).shape == (5, 3, n_pts, 2)
+        assert kornia.feature.laf_to_boundary_points(inp, n_pts).shape == (5, 3, n_pts, 2)
 
     def test_conversion(self):
         laf = torch.tensor([[1, 0, 1], [0, 1, 1]]).float()
@@ -153,14 +153,14 @@ class TestLAF2pts:
                                    [1, 0],
                                    [0, 1],
                                    [1, 2]]]]).float()
-        pts = kornia.feature.LAF2pts(laf, n_pts)
+        pts = kornia.feature.laf_to_boundary_points(laf, n_pts)
         assert_allclose(pts, expected)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width)
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.LAF2pts,
+        assert gradcheck(kornia.feature.laf_to_boundary_points,
                          (laf),
                          raise_exception=True)
 

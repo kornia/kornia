@@ -281,8 +281,8 @@ def angle_to_rotation_matrix(angle: torch.Tensor,
         torch.Tensor: tensor of Nx2x2 rotation matrices.
 
     Shape:
-        - Input: :math:`(N)`
-        - Output: :math:`(N, 2, 2)`
+        - Input: :math:`(*)`
+        - Output: :math:`(*, 2, 2)`
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
