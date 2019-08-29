@@ -247,3 +247,21 @@ class TestDivergenceLoss:
     def test_kl_div_loss_2d(self, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input, target).item()
         assert actual == pytest.approx(expected, abs=1e-6)
+
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125),
+         torch.full((1, 1, 2, 4), 0.125),
+         torch.full((1, 1), 0.0)),
+        (torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7), 0.0)),
+        (torch.full((1, 7, 2, 4), 0.125),
+         torch.zeros((1, 7, 2, 4)),
+         torch.full((1, 7), 0.0)),
+        (torch.zeros((1, 7, 2, 4)),
+         torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7), math.inf)),
+    ])
+    def test_kl_div_loss_2d_without_reduction(self, input, target, expected):
+        actual = kornia.losses.kl_div_loss_2d(input, target, reduction='none')
+        assert_allclose(actual, expected)
