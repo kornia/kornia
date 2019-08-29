@@ -296,6 +296,31 @@ class TestDSNT:
         actual_px = dsnt.spatial_softargmax_2d(input, False)
         assert_allclose(actual_px, expected_px)
 
+    def test_end_to_end(self):
+        input = torch.full((1, 2, 7, 7), 1.0, requires_grad=True)
+        target = torch.as_tensor([[[0.0, 0.0], [1.0, 1.0]]])
+        std = torch.tensor([1.0, 1.0])
+
+        hm = dsnt.spatial_softmax_2d(input)
+        assert_allclose(hm.sum(-1).sum(-1), 1.0)
+
+        pred = dsnt.spatial_softargmax_2d(hm)
+        assert_allclose(pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]]))
+
+        loss1 = mse_loss(pred, target, size_average=None, reduce=None,
+                         reduction='none').mean(-1, keepdim=False)
+        expected_loss1 = torch.as_tensor([[0.0, 1.0]])
+        assert_allclose(loss1, expected_loss1)
+
+        target_hm = dsnt.render_gaussian_2d(target, std, input.shape[-2:])
+        loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction='none')
+        expected_loss2 = torch.as_tensor([[0.0087, 0.0818]])
+        assert_allclose(loss2, expected_loss2, rtol=0, atol=1e-3)
+
+        loss = (loss1 + loss2).mean()
+        loss.backward()
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         def op(input: torch.Tensor, target: torch.Tensor,
                temperature: torch.Tensor, normalized_coordinates: bool,
