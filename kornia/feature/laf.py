@@ -1,13 +1,9 @@
 # flake8: noqa E127
 # flake8: noqa E128
-from typing import Tuple
 
 import kornia
-import torch
 import math
-import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import warnings
 try:
@@ -16,37 +12,6 @@ try:
 except:
     warnings.warn("no matplotlib found, visualize_LAF not available ")
     MATPLOTLIB = False
-    
-
-def angle_to_rotation_matrix(angle: torch.Tensor,
-                             do_deg2rad: bool = False) -> torch.Tensor:
-    """
-    Creates a rotation matrix out of angles
-    Args:
-        angle: (torch.Tensor): tensor of angles, any shape.
-        do_deg2rad: (bool): if we should convert to radians first
-
-    Returns:
-        torch.Tensor: tensor of Nx2x2 rotation matrices.
-
-    Shape:
-        - Input: :math:`(N)`
-        - Output: :math:`(N, 2, 2)`
-
-    Example:
-        >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
-    """
-    if do_deg2rad:
-        ang = kornia.deg2rad(angle)
-    else:
-        ang = angle
-    n_dims = len(ang.size())
-    cos_a = torch.cos(ang).unsqueeze(-1).unsqueeze(-1)
-    sin_a = torch.sin(ang).unsqueeze(-1).unsqueeze(-1)
-    A1_ang = torch.cat([ cos_a, sin_a], dim=n_dims + 1)
-    A2_ang = torch.cat([-sin_a, cos_a], dim=n_dims + 1)
-    return torch.cat([A1_ang, A2_ang], dim=n_dims)
 
 
 def get_laf_scale(A: torch.Tensor) -> torch.Tensor:

@@ -1,6 +1,7 @@
 import pytest
 
 import kornia as kornia
+import kornia.geometry.transform.imgwarp
 import kornia.testing as utils  # test utils
 
 import torch
@@ -12,7 +13,7 @@ import math
 class TestAngleToRotationMatrix:
     def test_shape(self):
         inp = torch.ones(1, 3, 4, 4)
-        rotmat = kornia.feature.angle_to_rotation_matrix(inp)
+        rotmat = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix(inp)
         assert rotmat.shape == (1, 3, 4, 4, 2, 2)
 
     def test_angles(self):
@@ -20,14 +21,14 @@ class TestAngleToRotationMatrix:
 
         expected = torch.tensor([[[1.0, 0.], [0., 1.0]],
                                  [[0, 1.0], [-1.0, 0]]])
-        rotmat = kornia.feature.angle_to_rotation_matrix(inp)
+        rotmat = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix(inp)
         assert_allclose(rotmat, expected)
 
     def test_gradcheck(self):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.angle_to_rotation_matrix,
+        assert gradcheck(kornia.geometry.transform.imgwarp.angle_to_rotation_matrix,
                          (img,),
                          raise_exception=True)
 

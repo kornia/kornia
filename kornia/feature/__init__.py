@@ -8,8 +8,8 @@ from .laf import (extract_patches_from_pyramid,
                   LAF2pts,
                   ell2LAF,
                   make_upright,
-                  get_laf_scale,
-                  angle_to_rotation_matrix)
+                  get_laf_scale)
+from kornia.geometry.transform.imgwarp import angle_to_rotation_matrix
 from .siftdesc import SIFTDescriptor
 __all__ = [
     "non_maxima_suppression2d",
