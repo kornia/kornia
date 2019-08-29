@@ -16,7 +16,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
    - Do a quick search first to see whether others reported a similar issue.
    - In case you find an unreported bug, please open a new ticket.
    - Try to provide as much information as possible. Some tips:
-   
+
      - Clear title and description of the issue.
      - Explain how to reproduce the error.
      - Report your packages versions to facilitate the task.
@@ -110,11 +110,30 @@ This section provides general guidance for developing code for the project. The 
 - We give support to static type checker for Python >= 3.6
 
   - Please, read `MyPy cheatsheet <https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3>`_ for Python 3.
+  - Always type  function input and output.
+  - It is recommended to use typing inside the function, when it would increase readability.
 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
   - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3
+
+- Changes to PEP8:
+
+  - Line length is 120 char.
+  - W504 (line break after binary operator) is sometimes acceptable. E.g.
+
+.. code:: python
+
+   determinant = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -
+                 A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
+
+-  Using 3rd party libraries:
+
+  - Everything from standard library (https://docs.python.org/3/library/) and PyTorch (https://pytorch.org/) is OK.
+    It does`t mean, that one should import urllib  just because, but doing it when needed is fine.
+
+
 
 Pull Request
 ============
