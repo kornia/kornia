@@ -1,11 +1,12 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-
 import torch
 from torch.autograd import gradcheck
+from torch.nn.functional import mse_loss
 from torch.testing import assert_allclose
+
+import kornia
+import kornia.contrib.dsnt as dsnt
+import kornia.testing as utils  # test utils
 
 
 class TestMaxBlurPool2d:
@@ -242,3 +243,102 @@ class TestSpatialSoftArgmax2d:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.contrib.spatial_soft_argmax2d,
                          (input), raise_exception=True)
+
+
+class TestDSNT:
+    GAUSSIAN = torch.tensor([
+        [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
+        [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
+        [0.021938, 0.098320, 0.162103, 0.098320, 0.021938],
+        [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
+        [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
+    ])
+
+    def test_render_gaussian_2d(self):
+        expected = self.GAUSSIAN
+        actual = dsnt.render_gaussian_2d(torch.tensor([2.0, 2.0]),
+                                         torch.tensor([1.0, 1.0]),
+                                         (5, 5),
+                                         normalized_coordinates=False)
+        assert_allclose(actual, expected, rtol=0, atol=1e-5)
+
+    def test_render_gaussian_2d_normalized_coordinates(self):
+        expected = self.GAUSSIAN
+        actual = dsnt.render_gaussian_2d(torch.tensor([0.0, 0.0]),
+                                         torch.tensor([0.25, 0.25]),
+                                         (5, 5),
+                                         normalized_coordinates=True)
+        assert_allclose(actual, expected, rtol=0, atol=1e-5)
+
+    @pytest.mark.parametrize('input', [
+        torch.ones(1, 1, 5, 7),
+        torch.randn(2, 3, 16, 16),
+    ])
+    def test_spatial_softmax_2d(self, input):
+        actual = dsnt.spatial_softmax_2d(input)
+        assert actual.lt(0).sum().item() == 0, 'expected no negative values'
+        sums = actual.sum(-1).sum(-1)
+        assert_allclose(sums, torch.ones_like(sums))
+
+    @pytest.mark.parametrize('input,expected_norm,expected_px', [
+        (
+            torch.tensor([[[
+                [0.0, 0.0, 1.0],
+                [0.0, 0.0, 0.0],
+            ]]]),
+            torch.tensor([[[1.0, -1.0]]]),
+            torch.tensor([[[2.0, 0.0]]]),
+        ),
+    ])
+    def test_spatial_softargmax_2d(self, input, expected_norm, expected_px):
+        actual_norm = dsnt.spatial_softargmax_2d(input, True)
+        assert_allclose(actual_norm, expected_norm)
+        actual_px = dsnt.spatial_softargmax_2d(input, False)
+        assert_allclose(actual_px, expected_px)
+
+    def test_end_to_end(self):
+        input = torch.full((1, 2, 7, 7), 1.0, requires_grad=True)
+        target = torch.as_tensor([[[0.0, 0.0], [1.0, 1.0]]])
+        std = torch.tensor([1.0, 1.0])
+
+        hm = dsnt.spatial_softmax_2d(input)
+        assert_allclose(hm.sum(-1).sum(-1), 1.0)
+
+        pred = dsnt.spatial_softargmax_2d(hm)
+        assert_allclose(pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]]))
+
+        loss1 = mse_loss(pred, target, size_average=None, reduce=None,
+                         reduction='none').mean(-1, keepdim=False)
+        expected_loss1 = torch.as_tensor([[0.0, 1.0]])
+        assert_allclose(loss1, expected_loss1)
+
+        target_hm = dsnt.render_gaussian_2d(target, std, input.shape[-2:])
+        loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction='none')
+        expected_loss2 = torch.as_tensor([[0.0087, 0.0818]])
+        assert_allclose(loss2, expected_loss2, rtol=0, atol=1e-3)
+
+        loss = (loss1 + loss2).mean()
+        loss.backward()
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+        def op(input: torch.Tensor, target: torch.Tensor,
+               temperature: torch.Tensor, normalized_coordinates: bool,
+               std: torch.Tensor) -> torch.Tensor:
+            hm = dsnt.spatial_softmax_2d(input, temperature)
+            pred = dsnt.spatial_softargmax_2d(hm, normalized_coordinates)
+            size = (input.shape[-2], input.shape[-1])
+            target_hm = dsnt.render_gaussian_2d(target, std, size,
+                                                normalized_coordinates)
+            loss1 = mse_loss(pred, target, size_average=None, reduce=None,
+                             reduction='mean')
+            loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, 'mean')
+            return loss1 + loss2
+
+        op_script = torch.jit.script(op)
+
+        args = [torch.rand(2, 3, 7, 7), torch.rand(2, 3, 2) * 7,
+                torch.tensor(1.0), False, torch.tensor([1.0, 1.0])]
+        actual = op_script(*args)
+        expected = op(*args)
+        assert_allclose(actual, expected)
