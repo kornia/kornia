@@ -3,6 +3,7 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
+import kornia
 from kornia.geometry.warp.homography_warper import homography_warp
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
@@ -17,6 +18,7 @@ __all__ = [
     "normal_transform_pixel",
     "remap",
     "invert_affine_transform",
+    "angle_to_rotation_matrix"
 ]
 
 
@@ -268,6 +270,29 @@ def get_perspective_transform(src, dst):
     return M.view(-1, 3, 3)  # Bx3x3
 
 
+def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
+    """
+    Creates a rotation matrix out of angles in degrees
+    Args:
+        angle: (torch.Tensor): tensor of angles in degrees, any shape.
+
+    Returns:
+        torch.Tensor: tensor of *x2x2 rotation matrices.
+
+    Shape:
+        - Input: :math:`(*)`
+        - Output: :math:`(*, 2, 2)`
+
+    Example:
+        >>> input = torch.rand(1, 3)  # Nx3
+        >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
+    """
+    ang_rad = kornia.deg2rad(angle)
+    cos_a: torch.Tensor = torch.cos(ang_rad)
+    sin_a: torch.Tensor = torch.sin(ang_rad)
+    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
+
+
 def get_rotation_matrix2d(
         center: torch.Tensor,
         angle: torch.Tensor,
@@ -337,9 +362,9 @@ def get_rotation_matrix2d(
         raise ValueError("Inputs must have same batch size dimension. Got {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    angle_rad: torch.Tensor = deg2rad(angle)
-    alpha: torch.Tensor = torch.cos(angle_rad) * scale
-    beta: torch.Tensor = torch.sin(angle_rad) * scale
+    scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
+    alpha: torch.Tensor = scaled_rotation[:, 0, 0]
+    beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
     # unpack the center to x, y coordinates
     x: torch.Tensor = center[..., 0]
@@ -349,11 +374,8 @@ def get_rotation_matrix2d(
     batch_size: int = center.shape[0]
     M: torch.Tensor = torch.zeros(
         batch_size, 2, 3, device=center.device, dtype=center.dtype)
-    M[..., 0, 0] = alpha
-    M[..., 0, 1] = beta
+    M[..., 0:2, 0:2] = scaled_rotation
     M[..., 0, 2] = (torch.tensor(1.) - alpha) * x - beta * y
-    M[..., 1, 0] = -beta
-    M[..., 1, 1] = alpha
     M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
     return M
 
