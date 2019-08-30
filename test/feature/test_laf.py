@@ -17,11 +17,10 @@ class TestAngleToRotationMatrix:
         assert rotmat.shape == (1, 3, 4, 4, 2, 2)
 
     def test_angles(self):
-        inp = torch.tensor([0, math.pi / 2.0])
-
+        ang_deg = torch.tensor([0, 90.])
         expected = torch.tensor([[[1.0, 0.], [0., 1.0]],
                                  [[0, 1.0], [-1.0, 0]]])
-        rotmat = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix(inp)
+        rotmat = kornia.geometry.transform.imgwarp.angle_to_rotation_matrix(ang_deg)
         assert_allclose(rotmat, expected)
 
     def test_gradcheck(self):
@@ -114,7 +113,7 @@ class TestNormalizeLAF:
     def test_shape(self):
         inp = torch.rand(5, 3, 2, 3)
         img = torch.rand(5, 3, 10, 10)
-        assert inp.shape == kornia.feature.normalize_LAF(inp, img).shape
+        assert inp.shape == kornia.feature.normalize_laf(inp, img).shape
 
     def test_conversion(self):
         w, h = 10, 5
@@ -122,7 +121,7 @@ class TestNormalizeLAF:
         laf = laf.view(1, 1, 2, 3)
         img = torch.rand(1, 3, h, w)
         expected = torch.tensor([[0.2, 0, 0.1], [0, 0.2, 0.2]]).float()
-        lafn = kornia.feature.normalize_LAF(laf, img)
+        lafn = kornia.feature.normalize_laf(laf, img)
         assert_allclose(lafn, expected)
 
     def test_gradcheck(self):
@@ -132,7 +131,7 @@ class TestNormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.normalize_LAF,
+        assert gradcheck(kornia.feature.normalize_laf,
                          (laf, img,),
                          raise_exception=True)
 
@@ -169,7 +168,7 @@ class TestDenormalizeLAF:
     def test_shape(self):
         inp = torch.rand(5, 3, 2, 3)
         img = torch.rand(5, 3, 10, 10)
-        assert inp.shape == kornia.feature.denormalize_LAF(inp, img).shape
+        assert inp.shape == kornia.feature.denormalize_laf(inp, img).shape
 
     def test_conversion(self):
         w, h = 10, 5
@@ -177,7 +176,7 @@ class TestDenormalizeLAF:
         expected = expected.view(1, 1, 2, 3)
         img = torch.rand(1, 3, h, w)
         lafn = torch.tensor([[0.2, 0, 0.1], [0, 0.2, 0.2]]).float()
-        laf = kornia.feature.denormalize_LAF(lafn.view(1, 1, 2, 3), img)
+        laf = kornia.feature.denormalize_laf(lafn.view(1, 1, 2, 3), img)
         assert_allclose(laf, expected)
 
     def test_gradcheck(self):
@@ -187,7 +186,7 @@ class TestDenormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.denormalize_LAF,
+        assert gradcheck(kornia.feature.denormalize_laf,
                          (laf, img,),
                          raise_exception=True)
 

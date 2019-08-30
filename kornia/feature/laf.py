@@ -20,7 +20,6 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     Args:
         LAF: (torch.Tensor): tensor [BxNx2x3] or [BxNx2x2].
 
-
     Returns:
         torch.Tensor: tensor  BxNx1x1 .
 
@@ -40,15 +39,16 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
             "Got {}".format(LAF.size())
         )
     out = LAF[..., 0:1, 0:1] * LAF[..., 1:2, 1:2] -\
-          LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps  # noqa: E127
+          LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps
     return out.abs().sqrt()
 
 
-def make_upright(LAF: torch.Tensor) -> torch.Tensor: # noqa: E128
+def make_upright(LAF: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """
     Rectifies the affine matrix, so that it becomes upright
     Args:
         LAF: (torch.Tensor): tensor of LAFs.
+        eps (float): for safe division, (default 1e-9)
 
     Returns:
         torch.Tensor: tensor of same shape.
@@ -69,7 +69,6 @@ def make_upright(LAF: torch.Tensor) -> torch.Tensor: # noqa: E128
     det = get_laf_scale(LAF)
     # The function is equivalent to doing 2x2 SVD and reseting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
-    eps = 1e-10
     b2a2 = torch.sqrt(LAF[..., 0:1, 1:2]**2 + LAF[..., 0:1, 0:1]**2) + eps
     LAF1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
                            torch.zeros_like(det)], dim=3)  # type: ignore
@@ -184,38 +183,9 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
     return (pts_np[..., 0], pts_np[..., 1])
 
 
-def visualize_laf(img: torch.Tensor,  # pragma: no cover
-                  LAF: torch.Tensor,
-                  img_idx: int = 0,
-                  color = 'r'):
-    """
-    Args:
-        img: (torch.Tensor)
-        LAF: (torch.Tensor)
-        img_idx (int): image index in the batch to draw
-        color (string): line color in matplotlib format
-
-    Returns:
-       Nothing, shows matplotlib imshow.
-
-    Shape:
-        - img: :math:`(B, CH, H, W)`
-        - LAF: :math:`(B, N, 2, 3)`
-
-    """
-    if MATPLOTLIB:
-        x, y = get_laf_pts_to_draw(LAF, img_idx)
-        plt.figure()
-        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
-        plt.plot(x, y, color)
-        plt.show()
-    return
-
-
-def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
+def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     De-normalizes LAFs from scale to image scale.
-
     B,N,H,W = images.size()
     MIN_SIZE = min(H,W)
     [a11 a21 x]
@@ -252,7 +222,7 @@ def denormalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     return coef.expand_as(LAF) * LAF
 
 
-def normalize_LAF(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
+def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     Normalizes LAFs to [0,1] scale from pixel scale.
     See below:
@@ -318,7 +288,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
 
     # norm, then renorm is needed for allowing detection on one resolution
     # and extraction at arbitrary other
-    LAF_renorm = denormalize_LAF(LAF, img)
+    LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3),
                          [B * N, ch, PS, PS])
@@ -372,7 +342,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
     """
     B, N, _, _ = LAF.size()
     num, ch, h, w = img.size()
-    scale = 2.0 * get_laf_scale(denormalize_LAF(LAF, img)) / float(PS)
+    scale = 2.0 * get_laf_scale(denormalize_laf(LAF, img)) / float(PS)
     pyr_idx = (scale.log2() + 0.5).relu().long()
     cur_img = img
     cur_pyr_level = int(0)

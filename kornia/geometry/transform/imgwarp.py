@@ -18,6 +18,7 @@ __all__ = [
     "normal_transform_pixel",
     "remap",
     "invert_affine_transform",
+    "angle_to_rotation_matrix"
 ]
 
 
@@ -269,16 +270,14 @@ def get_perspective_transform(src, dst):
     return M.view(-1, 3, 3)  # Bx3x3
 
 
-def angle_to_rotation_matrix(angle: torch.Tensor,
-                             do_deg2rad: bool = False) -> torch.Tensor:
+def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     """
-    Creates a rotation matrix out of angles
+    Creates a rotation matrix out of angles in degrees
     Args:
-        angle: (torch.Tensor): tensor of angles, any shape.
-        do_deg2rad: (bool): if we should convert to radians first
+        angle: (torch.Tensor): tensor of angles in degrees, any shape.
 
     Returns:
-        torch.Tensor: tensor of Nx2x2 rotation matrices.
+        torch.Tensor: tensor of *x2x2 rotation matrices.
 
     Shape:
         - Input: :math:`(*)`
@@ -288,16 +287,10 @@ def angle_to_rotation_matrix(angle: torch.Tensor,
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
     """
-    if do_deg2rad:
-        ang = kornia.deg2rad(angle)
-    else:
-        ang = angle
-    n_dims = len(ang.size())
-    cos_a = torch.cos(ang).unsqueeze(-1).unsqueeze(-1)
-    sin_a = torch.sin(ang).unsqueeze(-1).unsqueeze(-1)
-    A1_ang = torch.cat([cos_a, sin_a], dim=n_dims + 1)
-    A2_ang = torch.cat([-sin_a, cos_a], dim=n_dims + 1)
-    return torch.cat([A1_ang, A2_ang], dim=n_dims)
+    ang_rad = kornia.deg2rad(angle)
+    cos_a: torch.Tensor = torch.cos(ang_rad)
+    sin_a: torch.Tensor = torch.sin(ang_rad)
+    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
 
 
 def get_rotation_matrix2d(
@@ -369,9 +362,7 @@ def get_rotation_matrix2d(
         raise ValueError("Inputs must have same batch size dimension. Got {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    angle_rad: torch.Tensor = deg2rad(angle)
-
-    scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle_rad) * scale.view(-1, 1, 1)
+    scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
     alpha: torch.Tensor = scaled_rotation[:, 0, 0]
     beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
