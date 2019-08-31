@@ -1,6 +1,7 @@
 language: python
 python:
   - "3.6"
+  - "3.7"
 
 notifications:
   email: false
@@ -8,6 +9,8 @@ notifications:
 before_install:
   - ./setup_travis_env.sh
   - source path.bash.inc
+  - conda-env create kornia-dev-env python=$TRAVIS_PYTHON_VERSION
+  - conda activate kornia-dev-env
 
 install:
   - make install
