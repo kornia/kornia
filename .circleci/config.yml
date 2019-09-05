@@ -1,0 +1,33 @@
+version: 2
+
+common: &common
+  working_directory: ~/kornia-tester
+  steps:
+    - checkout
+    - run:
+        name: run hello-world
+        command: echo "hello world!"
+    - run:
+        name: install dependencies
+        command: |
+          pip install --upgrade pip
+          pip install --user setuptools flake8 pylint
+          flake8 kornia
+
+jobs:
+  "python-3.6":
+    <<: *common
+    docker:
+      - image: circleci/python:3.6.5
+
+  "python-3.7":
+    <<: *common
+    docker:
+      - image: circleci/python:3.7.3
+
+workflows:
+  version: 2
+  test:
+    jobs:
+      - "python-3.6"
+      - "python-3.7"
