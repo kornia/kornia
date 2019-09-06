@@ -259,7 +259,7 @@ class TestConvertFromOpenCVKpts:
                 self.pt = (x, y)
                 self.size = scale
                 self.angle = angle
-        kps = [KP(10, 23, 3.0, 0), KP(5, 8, 1.0, 90)]
+        kps = [KP(10., 23., 3.0, 0.), KP(5., 8., 1.0, 90.)]
         lafs = kornia.feature.create_lafs_from_opencv_kps(kps)
         assert lafs.shape == (1, 2, 2, 3)
 
@@ -269,7 +269,7 @@ class TestConvertFromOpenCVKpts:
                 self.pt = (x, y)
                 self.size = scale
                 self.angle = angle
-        kps = [KP(10, 23, 3.0, 0), KP(5, 8, 1.0, 90)]
+        kps = [KP(10., 23., 3.0, 0.), KP(5., 8., 1.0, 90.)]
         lafs = kornia.feature.create_lafs_from_opencv_kps(kps, 12.0)
         expected = torch.tensor(
             [[[[0, 18., 10.],
