@@ -33,7 +33,8 @@ from kornia.contrib import (
 from kornia.feature import (
     non_maxima_suppression2d,
     corner_harris,
-    SIFTDescriptor
+    SIFTDescriptor,
+    create_lafs_from_opencv_kps
 )
 from kornia.filters import (
     get_gaussian_kernel1d,

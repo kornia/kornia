@@ -250,3 +250,30 @@ class TestExtractPatchesPyr:
         assert gradcheck(kornia.feature.extract_patches_from_pyramid,
                          (img, nlaf, PS,),
                          raise_exception=True)
+
+
+class TestConvertFromOpenCVKpts:
+    def test_shape(self):
+        class KP():
+            def __init__(self, x, y, scale, angle):
+                self.pt = (x, y)
+                self.size = scale
+                self.angle = angle
+        kps = [KP(10, 23, 3.0, 0), KP(5, 8, 1.0, 90)]
+        lafs = kornia.feature.create_lafs_from_opencv_kps(kps)
+        assert lafs.shape == (1, 2, 2, 3)
+
+    def test_conversion(self):
+        class KP():
+            def __init__(self, x, y, scale, angle):
+                self.pt = (x, y)
+                self.size = scale
+                self.angle = angle
+        kps = [KP(10, 23, 3.0, 0), KP(5, 8, 1.0, 90)]
+        lafs = kornia.feature.create_lafs_from_opencv_kps(kps, 12.0)
+        expected = torch.tensor(
+            [[[[0, 18., 10.],
+              [-18., 0.0, 23.]],
+             [[6., 0., 5],
+              [-0., 6.0, 8]]]])
+        assert_allclose(lafs, expected)

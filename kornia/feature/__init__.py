@@ -8,7 +8,8 @@ from .laf import (extract_patches_from_pyramid,
                   laf_to_boundary_points,
                   ellipse_to_laf,
                   make_upright,
-                  get_laf_scale)
+                  get_laf_scale,
+                  create_lafs_from_opencv_kps)
 from .siftdesc import SIFTDescriptor
 __all__ = [
     "non_maxima_suppression2d",
@@ -23,5 +24,6 @@ __all__ = [
     "ellipse_to_laf",
     "make_upright",
     "get_laf_scale",
-    "SIFTDescriptor"
+    "create_lafs_from_opencv_kps",
+    "SIFTDescriptor",
 ]

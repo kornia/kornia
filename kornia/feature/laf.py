@@ -6,6 +6,8 @@ import math
 import torch
 import torch.nn.functional as F
 import warnings
+from typing import List
+
 try:
     import matplotlib.pyplot as plt
     MATPLOTLIB = True
@@ -145,7 +147,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
                      torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
                      torch.ones(n_pts - 1, 1)], dim=1)
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), 
+    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3),
                      pts],
                     dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
@@ -366,3 +368,34 @@ def extract_patches_from_pyramid(img: torch.Tensor,
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
     return out
+
+
+def create_lafs_from_opencv_kps(kps: List,
+                                scale_multiplier: float = 12.0) -> torch.Tensor:
+    """
+    Converts list of OpenCV keypoints to LAF format.
+    One should pay attention to the detector used for obtaining the keypoints.
+    Args:
+        kps: (list) OpenCV keypoints,
+        scale_multiplier: (float) magnification factor to get the proper scale for patch extraction.
+        Depends on detector, e.g. for OpenCV SIFT, one should use 12.0, while for OpenCV ORB 1.0.
+
+    Returns:
+        lafs: (torch.Tensor),  :math:`(1, N, 2, 3)`, where N = len(kps).
+    """
+    if type(kps) is not list:
+        raise TypeError(
+            "kps should be non-empty list of OpenCV keypoints"
+            "Got {}".format(type(kps)))
+    if len(kps)  == 0:
+        raise TypeError(
+            "kps should be non-empty list of OpenCV keypoints"
+            "Got {}".format(type(kps)))
+    xy = torch.cat([torch.tensor([kp.pt]).view(1, 2, 1) for kp in kps], dim=0)
+
+    # We divide by 2.0, because OpenCV uses diameter, and kornia uses radius.
+    scales = torch.tensor([kp.size * scale_multiplier / 2.0 for kp in kps])
+    # kornia uses counterclockwise convention and starts from x axis
+    angles_deg = torch.tensor([(90 - kp.angle) for kp in kps])
+    rotmat = scales.view(-1, 1, 1) * kornia.angle_to_rotation_matrix(angles_deg)
+    return torch.cat([rotmat, xy], dim=2).unsqueeze(0)
