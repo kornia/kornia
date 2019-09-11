@@ -11,5 +11,5 @@ sdk_dir="$(cd -P "$apparent_sdk_dir" > /dev/null && pwd -P )"
 if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
     $sdk_dir/setup_dev_env.sh	      
 fi	
-source $sdk_dir/.dev_env/bin/activate $sdk_dir/.dev_env
+source $sdk_dir/.dev_env/bin/activate $sdk_dir/.dev_env/venv
 export PYTHONPATH=$PYTHONPATH:$sdk_dir

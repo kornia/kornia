@@ -17,6 +17,12 @@ if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
     $sdk_dir/.dev_env/miniconda.sh -b -u -p $sdk_dir/.dev_env
 fi
 
+# create an environment with a specific python version
+PYTHON_VERSION=${PYTHON_VERSION:-"3.7"}
+$sdk_dir/.dev_env/bin/conda create --name venv python=$PYTHON_VERSION
+
+if [ $CI != true ]; then
+# Install CPU-PyTorch
 $sdk_dir/.dev_env/bin/conda install -y \
   pip \
   ipython \
@@ -27,6 +33,12 @@ $sdk_dir/.dev_env/bin/conda install -y \
   torchvision \
   opencv \
   -c pytorch
+else
+# Install CPU-PyTorch
+$sdk_dir/.dev_env/bin/conda install -y \
+  pytorch-nightly-cpu \
+  -c pytorch
+fi
 
 $sdk_dir/.dev_env/bin/conda install -y \
   pytest \
