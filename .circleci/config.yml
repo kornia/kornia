@@ -9,8 +9,7 @@ common: &common
         command: ./setup_dev_env.sh
     - run:
         name: activate enviroment
-        command: |
-          source path.bash.inc
+        command: source path.bash.inc
     - run:
         name: install package
         command: make install
