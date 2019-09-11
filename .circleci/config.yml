@@ -6,7 +6,7 @@ common: &common
     - checkout
     - run:
         name: run setup-dev-env
-        command: ./setup_travis_env.sh
+        command: ./setup_dev_env.sh
     - run:
         name: activate enviroment
         command: |
@@ -37,11 +37,15 @@ jobs:
     <<: *common
     docker:
       - image: circleci/python:3.6.5
+        environment:
+          - PYTHON_VERSION: "3.6"
 
   "python-3.7":
     <<: *common
     docker:
       - image: circleci/python:3.7.3
+        environment:
+          - PYTHON_VERSION: "3.7"
 
 workflows:
   version: 2
