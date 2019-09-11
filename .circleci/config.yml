@@ -5,13 +5,12 @@ common: &common
   steps:
     - checkout
     - run:
-        name: run setup-dev-env
+        name: install dependencies
         command: ./setup_dev_env.sh
     - run:
         name: activate enviroment
         command: |
           source path.bash.inc
-          echo "source .dev_env/bin/activate" >> $BASH_ENV
     - run:
         name: install package
         command: make install
