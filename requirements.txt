@@ -1,0 +1,25 @@
+# core dependencies
+pytorch==1.2.0
+
+# utils
+torchvision==0.4.0
+opencv==4.1.1
+ipython==7.8.0
+jupyter==1.0.0
+matplotlib==3.1.1
+
+# test
+pytest==5.1.2
+pytest-cov==2.7.1
+flake8==3.7.8
+autopep8==1.4.4
+mypy==0.720
+mypy_extensions==0.4.1
+
+# docs
+sphinx==2.1.2
+sphinx_rtd_theme=0.4.3
+sphinxcontrib-bibtex==0.4.2
+nbsphinx==0.4.2
+nbconvert==5.5.0
+notebook==6.0.1
