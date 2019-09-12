@@ -6,36 +6,32 @@ if [ "$apparent_sdk_dir" == "$script_link" ]; then
 fi
 sdk_dir="$( command cd -P "$apparent_sdk_dir" > /dev/null && pwd -P )"
 
-mkdir -p $sdk_dir/.dev_env
+# create root directory to install miniconda
+dev_env_dir=$sdk_dir/.dev_env
+mkdir -p $dev_env_dir
 
-if [ ! -e $sdk_dir/.dev_env/miniconda.sh ]; then
-    curl -o $sdk_dir/.dev_env/miniconda.sh \
+# define miniconda paths
+conda_bin_dir=$dev_env_dir/bin
+conda_bin=$conda_bin_dir/conda
+
+# download and install miniconda
+if [ ! -e $dev_env_dir/miniconda.sh ]; then
+    curl -o $dev_env_dir/miniconda.sh \
 	 -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-    chmod +x $sdk_dir/.dev_env/miniconda.sh
+    chmod +x $dev_env_dir/miniconda.sh
 fi
-if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
-    $sdk_dir/.dev_env/miniconda.sh -b -u -p $sdk_dir/.dev_env
+if [ ! -e $conda_bin ]; then
+    $dev_env_dir/miniconda.sh -b -u -p $dev_env_dir
 fi
 
-$sdk_dir/.dev_env/bin/conda install -y \
-  pip \
-  ipython \
-  jupyter \
-  matplotlib \
-  numpy \
-  pytorch-nightly \
-  torchvision \
-  opencv \
-  -c pytorch
+# define a python version to initialise the conda environment.
+# by default we assume python 3.7.
+python_version=${PYTHON_VERSION:-"3.7"}
 
-$sdk_dir/.dev_env/bin/conda install -y \
-  pytest \
-  pytest-cov \
-  flake8 \
-  autopep8 \
-  mypy \
-  mypy_extensions \
-  --file docs/requirements.txt \
-  -c conda-forge
+# create an environment with the specific python version
+$conda_bin config --append channels conda-forge
+$conda_bin config --append channels pytorch
+$conda_bin update -n base -c defaults conda
+$conda_bin create --name venv --file requirements.txt python=$python_version
 
-$sdk_dir/.dev_env/bin/conda clean -ya
+$conda_bin clean -ya
