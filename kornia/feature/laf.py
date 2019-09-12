@@ -5,13 +5,6 @@ import kornia
 import math
 import torch
 import torch.nn.functional as F
-import warnings
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB = True
-except:
-    warnings.warn("no matplotlib found, visualize_laf not available ")
-    MATPLOTLIB = False
 
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
