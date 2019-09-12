@@ -6,7 +6,7 @@
 
 --------------------------------------------------------------------------------
 
- .. image:: https://circleci.com/gh/arraiyopensource/kornia/tree/master.svg?style=svg
+.. image:: https://circleci.com/gh/arraiyopensource/kornia/tree/master.svg?style=svg
     :target: https://circleci.com/gh/arraiyopensource/kornia/tree/master
 
 .. image:: https://codecov.io/github/arraiyopensource/kornia/branch/master/graph/badge.svg
