@@ -8,7 +8,7 @@ common: &common
         name: install dependencies
         command: ./setup_dev_env.sh
     - run:
-        name: activate enviroment
+        name: activate environment
         command: source path.bash.inc
     - run:
         name: install package
