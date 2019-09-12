@@ -70,6 +70,7 @@ class SIFTDescriptor(nn.Module):
         >>> SIFT = kornia.SIFTDescriptor(32, 8, 4)
         >>> descs = SIFT(input) # 23x128
     """
+
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
             '(' + 'num_ang_bins=' + str(self.num_ang_bins) +\
@@ -149,7 +150,7 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = []
         for i in range(0, self.num_ang_bins):
-            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + # noqa
+            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big +  # noqa
                           (bo1_big == i).to(input.dtype) * wo1_big)
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)

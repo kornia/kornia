@@ -4,6 +4,7 @@ import kornia
 import kornia.testing as utils  # test utils
 from test.common import device_type
 
+import math
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -224,3 +225,43 @@ def test_ssim(batch_shape, device_type, window_size, reduction_type):
     img1 = utils.tensor_to_gradcheck_var(img1)  # to var
     img2 = utils.tensor_to_gradcheck_var(img2, requires_grad=False)  # to var
     assert gradcheck(ssim, (img1, img2), raise_exception=True)
+
+
+class TestDivergenceLoss:
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.346574),
+        (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), 0.346574),
+    ])
+    def test_js_div_loss_2d(self, input, target, expected):
+        actual = kornia.losses.js_div_loss_2d(input, target).item()
+        assert actual == pytest.approx(expected, abs=1e-6)
+
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.0),
+        (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), math.inf),
+    ])
+    def test_kl_div_loss_2d(self, input, target, expected):
+        actual = kornia.losses.kl_div_loss_2d(input, target).item()
+        assert actual == pytest.approx(expected, abs=1e-6)
+
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125),
+         torch.full((1, 1, 2, 4), 0.125),
+         torch.full((1, 1), 0.0)),
+        (torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7), 0.0)),
+        (torch.full((1, 7, 2, 4), 0.125),
+         torch.zeros((1, 7, 2, 4)),
+         torch.full((1, 7), 0.0)),
+        (torch.zeros((1, 7, 2, 4)),
+         torch.full((1, 7, 2, 4), 0.125),
+         torch.full((1, 7), math.inf)),
+    ])
+    def test_kl_div_loss_2d_without_reduction(self, input, target, expected):
+        actual = kornia.losses.kl_div_loss_2d(input, target, reduction='none')
+        assert_allclose(actual, expected)
