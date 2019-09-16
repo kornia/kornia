@@ -264,7 +264,7 @@ def build_pyramid(
 
     for _ in range(max_level - 1):
         img_curr: torch.Tensor = pyramid[-1]
-        img_down: torch.Tensor = pyrdown(img_curr)
+        img_down: torch.Tensor = pyrdown(img_curr, border_type)
         pyramid.append(img_down)
 
     return pyramid
