@@ -32,7 +32,7 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
             "Got {}".format(LAF.size())
         )
     out = LAF[..., 0:1, 0:1] * LAF[..., 1:2, 1:2] -\
-          LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps
+        LAF[..., 1:2, 0:1] * LAF[..., 0:1, 1:2] + eps
     return out.abs().sqrt()
 
 
@@ -64,11 +64,11 @@ def make_upright(LAF: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(LAF[..., 0:1, 1:2]**2 + LAF[..., 0:1, 0:1]**2) + eps
     LAF1_ell = torch.cat([(b2a2 / det).contiguous(),  # type: ignore
-                           torch.zeros_like(det)], dim=3)  # type: ignore
+                          torch.zeros_like(det)], dim=3)  # type: ignore
     LAF2_ell = torch.cat([((LAF[..., 1:2, 1:2] * LAF[..., 0:1, 1:2] +
                             LAF[..., 1:2, 0:1] * LAF[..., 0:1, 0:1]) / (b2a2 * det)),
-                            (det / b2a2).contiguous()], dim=3)  # type: ignore
-    return torch.cat([torch.cat([LAF1_ell,LAF2_ell], dim=2),
+                          (det / b2a2).contiguous()], dim=3)  # type: ignore
+    return torch.cat([torch.cat([LAF1_ell, LAF2_ell], dim=2),
                       LAF[..., :, 2:3]], dim=3)
 
 
@@ -106,7 +106,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
 
     ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
                            torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)],
-                           dim=2).view(-1, 2, 2)
+                          dim=2).view(-1, 2, 2)
     out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
     out = torch.cat([out, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
@@ -138,7 +138,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
                      torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
                      torch.ones(n_pts - 1, 1)], dim=1)
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), 
+    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3),
                      pts],
                     dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
@@ -146,7 +146,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(
-           pts_h.view(B, N, n_pts, 3))
+        pts_h.view(B, N, n_pts, 3))
 
 
 def get_laf_pts_to_draw(LAF: torch.Tensor,
@@ -310,12 +310,12 @@ def extract_patches_simple(img: torch.Tensor,
     # for loop temporarily, to be refactored
     for i in range(B):
         grid = generate_patch_grid_from_normalized_LAF(
-               img[i:i + 1], LAF[i:i + 1], PS)
+            img[i:i + 1], LAF[i:i + 1], PS)
         out.append(F.grid_sample(
-            img[i:i + 1].expand(grid.size(0), ch, h, w), 
+            img[i:i + 1].expand(grid.size(0), ch, h, w),
             grid,
             padding_mode="border")
-            )
+        )
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
@@ -352,10 +352,10 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 cur_img[i:i + 1],
                 LAF[i:i + 1, scale_mask, :, :],
                 PS)
-            out[i, scale_mask, ..., :] = out[i, scale_mask, ...,:].clone() * 0\
-                + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0),ch, h, w),
-                                                        grid,
-                                                        padding_mode="border")
+            out[i, scale_mask, ..., :] = out[i, scale_mask, ..., :].clone() * 0\
+                + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0), ch, h, w),
+                                grid,
+                                padding_mode="border")
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
     return out
