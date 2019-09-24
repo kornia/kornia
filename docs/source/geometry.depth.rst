@@ -1,0 +1,7 @@
+kornia.geometry.depth
+=====================
+
+.. currentmodule:: kornia.geometry.depth
+
+
+.. autofunction:: depth_to_3d

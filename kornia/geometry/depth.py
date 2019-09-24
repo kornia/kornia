@@ -15,8 +15,8 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tenso
         camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
 
     Shape:
-        - Input: `:math:(B, 1, H, W)` and `:math:(B, 3, 3)`
-        - Output: `math:(B, 3, H, W)`
+        - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
+        - Output: :math:`(B, 3, H, W)`
 
     Return:
         torch.Tensor: tensor with a 3d point per pixel of the same resolution as the input.
