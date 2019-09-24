@@ -1,10 +1,12 @@
+from typing import Tuple, List
+
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import kornia
-from kornia.filters import gaussian_blur2d
-from typing import Tuple, List
+
+from kornia.filters import gaussian_blur2d, filter2D
 
 __all__ = [
     "PyrDown",
@@ -12,6 +14,7 @@ __all__ = [
     "ScalePyramid",
     "pyrdown",
     "pyrup",
+    "build_pyramid",
 ]
 
 
@@ -59,8 +62,7 @@ class PyrDown(nn.Module):
             raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                              .format(input.shape))
         # blur image
-        x_blur: torch.Tensor = kornia.filter2D(
-            input, self.kernel, self.border_type)
+        x_blur: torch.Tensor = filter2D(input, self.kernel, self.border_type)
 
         # reject even rows and columns.
         out: torch.Tensor = F.avg_pool2d(x_blur, 2, 2)
@@ -105,8 +107,7 @@ class PyrUp(nn.Module):
                                            mode='bilinear', align_corners=True)
 
         # blurs upsampled tensor
-        x_blur: torch.Tensor = kornia.filter2D(
-            x_up, self.kernel, self.border_type)
+        x_blur: torch.Tensor = filter2D(x_up, self.kernel, self.border_type)
         return x_blur
 
 
@@ -205,7 +206,7 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-# functiona api
+# functional api
 
 
 def pyrdown(
@@ -224,3 +225,46 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect') -> torch.Tensor:
     See :class:`~kornia.transform.PyrUp` for details.
     """
     return PyrUp(border_type)(input)
+
+
+def build_pyramid(
+        input: torch.Tensor,
+        max_level: int,
+        border_type: str = 'reflect') -> List[torch.Tensor]:
+    r"""Constructs the Gaussian pyramid for an image.
+
+    The function constructs a vector of images and builds the Gaussian pyramid
+    by recursively applying pyrDown to the previously built pyramid layers.
+
+    Args:
+        input (torch.Tensor): the tensor to be used to constructuct the pyramid.
+        max_level (int): 0-based index of the last (the smallest) pyramid layer.
+          It must be non-negative.
+        borde_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
+    """
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not len(input.shape) == 4:
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+
+    if not isinstance(max_level, int) or max_level < 0:
+        raise ValueError(f"Invalid max_level, it must be a positive integer. Got: {max_level}")
+
+    # create empty list and append the original image
+    pyramid: List[torch.Tensor] = []
+    pyramid.append(input)
+
+    # iterate and downsample
+
+    for _ in range(max_level - 1):
+        img_curr: torch.Tensor = pyramid[-1]
+        img_down: torch.Tensor = pyrdown(img_curr, border_type)
+        pyramid.append(img_down)
+
+    return pyramid
