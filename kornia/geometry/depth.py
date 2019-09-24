@@ -33,11 +33,11 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tenso
                         f"Got {type(camera_matrix)}.")
 
     if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError(f"Input camera_matrix musth have a shape (B, 3, 3). "
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). "
                          f"Got: {camera_matrix.shape}.")
 
     # create base coordinates grid
-    height, width = depth.shape[-2:]
+    batch_size, _, height, width = depth.shape
     points_2d: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False)  # 1xHxWx2
     points_2d = points_2d.to(depth.device).to(depth.dtype)
@@ -46,7 +46,8 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tenso
     points_depth: torch.Tensor = depth.permute(0, 2, 3, 1)  # 1xHxWx1
 
     # project pixels to camera frame
+    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
     points_3d: torch.Tensor = unproject_points(
-        points_2d, points_depth, camera_matrix, normalize=True)  # BxHxWx3
+        points_2d, points_depth, camera_matrix_tmp, normalize=True)  # BxHxWx3
 
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW

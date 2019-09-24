@@ -114,21 +114,20 @@ def unproject_points(
     # y = (v - cy) * Z / fy
 
     # unpack coordinates
-
-    u_coord: torch.Tensor = point_2d[..., 0:1]
-    v_coord: torch.Tensor = point_2d[..., 1:2]
+    u_coord: torch.Tensor = point_2d[..., 0]
+    v_coord: torch.Tensor = point_2d[..., 1]
 
     # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0:1, 0]
-    fy: torch.Tensor = camera_matrix[..., 1:2, 1]
-    cx: torch.Tensor = camera_matrix[..., 0:1, 2]
-    cy: torch.Tensor = camera_matrix[..., 1:2, 2]
+    fx: torch.Tensor = camera_matrix[..., 0, 0]
+    fy: torch.Tensor = camera_matrix[..., 1, 1]
+    cx: torch.Tensor = camera_matrix[..., 0, 2]
+    cy: torch.Tensor = camera_matrix[..., 1, 2]
 
     # projective
     x_coord: torch.Tensor = (u_coord - cx) / fx
     y_coord: torch.Tensor = (v_coord - cy) / fy
 
-    xyz: torch.Tensor = torch.cat([x_coord, y_coord], dim=-1)
+    xyz: torch.Tensor = torch.stack([x_coord, y_coord], dim=-1)
     xyz = convert_points_to_homogeneous(xyz)
 
     if normalize:
