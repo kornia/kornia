@@ -15,6 +15,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: crop_and_resize
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
+.. autofunction:: build_pyramid
 
 .. autofunction:: affine
 .. autofunction:: rotate
