@@ -43,20 +43,20 @@ def project_points(
 
     # project back using depth dividing in a safe way
     xy_coords: torch.Tensor = convert_points_from_homogeneous(point_3d)
-    x_coord: torch.Tensor = xy_coords[..., 0:1]
-    y_coord: torch.Tensor = xy_coords[..., 1:2]
+    x_coord: torch.Tensor = xy_coords[..., 0]
+    y_coord: torch.Tensor = xy_coords[..., 1]
 
     # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0:1, 0]
-    fy: torch.Tensor = camera_matrix[..., 1:2, 1]
-    cx: torch.Tensor = camera_matrix[..., 0:1, 2]
-    cy: torch.Tensor = camera_matrix[..., 1:2, 2]
+    fx: torch.Tensor = camera_matrix[..., 0, 0]
+    fy: torch.Tensor = camera_matrix[..., 1, 1]
+    cx: torch.Tensor = camera_matrix[..., 0, 2]
+    cy: torch.Tensor = camera_matrix[..., 1, 2]
 
     # apply intrinsics ans return
     u_coord: torch.Tensor = x_coord * fx + cx
     v_coord: torch.Tensor = y_coord * fy + cy
 
-    return torch.cat([u_coord, v_coord], dim=-1)
+    return torch.stack([u_coord, v_coord], dim=-1)
 
 
 def unproject_points(
