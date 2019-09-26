@@ -1,4 +1,4 @@
-:github_url: https://github.com/arraiy/kornia
+:github_url: https://github.com/arraiyopensource/kornia
              
 kornia
 ======
