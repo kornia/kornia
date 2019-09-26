@@ -151,12 +151,8 @@ def warp_frame_depth(
     # transform points from source to destionation
     points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
 
-    # hack to match sizes
-    batch_size: int = image_src.shape[0]
-    points_3d_dst = points_3d_dst.expand(batch_size, -1, -1, -1)
-    src_trans_dst = src_trans_dst[:, None]
-
-    points_3d_src = transform_points(src_trans_dst, points_3d_dst)  # BxHxWx3
+    # apply transformation to the 3d points
+    points_3d_src = transform_points(src_trans_dst[:, None], points_3d_dst)  # BxHxWx3
 
     # project back to pixels
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1xHxW

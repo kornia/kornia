@@ -194,6 +194,46 @@ class TestWarpFrameDepth:
         image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix)
         assert image_dst.shape == (batch_size, num_features, 3, 4)
 
+    def test_translation(self):
+        image_src = torch.tensor([[[
+            [1., 2., 3.],
+            [1., 2., 3.],
+            [1., 2., 3.],
+            [1., 2., 3.],
+        ]]])
+
+        depth_dst = torch.tensor([[[
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+        ]]])
+
+        src_trans_dst = torch.tensor([[
+            [1., 0., 0., 1.],
+            [0., 1., 0., 0.],
+            [0., 0., 1., 0.],
+            [0., 0., 0., 1.],
+        ]])
+
+        h, w = image_src.shape[-2:]
+        camera_matrix = torch.tensor([[
+            [1., 0., w / 2],
+            [0., 1., h / 2],
+            [0., 0., 1.],
+        ]])
+
+        image_dst_expected = torch.tensor([[[
+            [0.9223, 0.0000, 0.0000],
+            [2.8153, 1.5000, 0.0000],
+            [2.8028, 2.6459, 0.0000],
+            [2.8153, 1.5000, 0.0000],
+        ]]])
+
+        image_dst = kornia.warp_frame_depth(
+            image_src, depth_dst, src_trans_dst, camera_matrix)
+        assert_allclose(image_dst, image_dst_expected, 1e-3, 1e-3)
+
     def test_gradcheck(self):
         image_src = torch.rand(1, 3, 3, 4)
         image_src = utils.tensor_to_gradcheck_var(image_src)  # to var
