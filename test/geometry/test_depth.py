@@ -9,7 +9,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestDepthTo3D:
+class TestDepthTo3d:
     def test_smoke(self):
         depth = torch.rand(1, 1, 3, 4)
         camera_matrix = torch.rand(1, 3, 3)
@@ -32,6 +32,62 @@ class TestDepthTo3D:
 
         points3d = kornia.depth_to_3d(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
+
+    def test_unproject(self):
+        depth = 2 * torch.tensor([[[
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+        ]]])
+
+        camera_matrix = torch.tensor([[
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]])
+
+        points3d_expected = torch.tensor([[[
+            [0.0000, 1.4142, 1.7889],
+            [0.0000, 1.1547, 1.6330],
+            [0.0000, 0.8165, 1.3333],
+            [0.0000, 0.6030, 1.0690],
+        ], [
+            [0.0000, 0.0000, 0.0000],
+            [1.4142, 1.1547, 0.8165],
+            [1.7889, 1.6330, 1.3333],
+            [1.8974, 1.8091, 1.6036],
+        ], [
+            [2.0000, 1.4142, 0.8944],
+            [1.4142, 1.1547, 0.8165],
+            [0.8944, 0.8165, 0.6667],
+            [0.6325, 0.6030, 0.5345],
+        ]]])
+
+        points3d = kornia.depth_to_3d(depth, camera_matrix)
+        assert_allclose(points3d, points3d_expected)
+
+    def test_unproject_and_project(self):
+        depth = 2 * torch.tensor([[[
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+        ]]])
+
+        camera_matrix = torch.tensor([[
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]])
+
+        points3d = kornia.depth_to_3d(depth, camera_matrix)
+        points2d = kornia.project_points(
+            points3d.permute(0, 2, 3, 1),
+            camera_matrix[:, None, None]
+        )
+        points2d_expected = kornia.create_meshgrid(4, 3, False)
+        assert_allclose(points2d, points2d_expected)
 
     def test_gradcheck(self):
         # generate input data
