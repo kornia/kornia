@@ -126,6 +126,40 @@ class TestDepthToNormals:
         points3d = kornia.depth_to_normals(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
+    def test_simple(self):
+        depth = 2 * torch.tensor([[[
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+            [1., 1., 1.],
+        ]]])
+
+        camera_matrix = torch.tensor([[
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]])
+
+        normals_expected = torch.tensor([[[
+            [0.3432, 0.4861, 0.7628],
+            [0.2873, 0.4260, 0.6672],
+            [0.2284, 0.3683, 0.5596],
+            [0.1695, 0.2980, 0.4496],
+        ], [
+            [0.3432, 0.2873, 0.2363],
+            [0.4861, 0.4260, 0.3785],
+            [0.8079, 0.7261, 0.6529],
+            [0.8948, 0.8237, 0.7543],
+        ], [
+            [0.8743, 0.8253, 0.6019],
+            [0.8253, 0.7981, 0.6415],
+            [0.5432, 0.5807, 0.5105],
+            [0.4129, 0.4824, 0.4784],
+        ]]])
+
+        normals = kornia.depth_to_normals(depth, camera_matrix)
+        assert_allclose(normals, normals_expected, 1e-3, 1e-3)
+
     def test_gradcheck(self):
         # generate input data
         depth = torch.rand(1, 1, 3, 4)
