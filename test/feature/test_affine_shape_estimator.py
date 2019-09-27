@@ -73,7 +73,9 @@ class TestLAFAffineShapeEstimator:
         batch_size, channels, height, width = 1, 1, 21, 21
         patches = torch.rand(batch_size, channels, height, width).float()
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        laf = torch.ones(batch_size, 4, 2, 3).float()
+        laf = 0.5 * torch.ones(batch_size, 2, 2, 3).float()
+        laf[:, :, 0, 1] = 0
+        laf[:, :, 1, 0] = 0
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(LAFAffineShapeEstimator(8), (laf, patches),
-                         raise_exception=True, rtol=1e-4, atol=1e-4)
+        assert gradcheck(LAFAffineShapeEstimator(12), (laf, patches),
+                         raise_exception=True, rtol=1e-3, atol=1e-3)
