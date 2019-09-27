@@ -279,7 +279,7 @@ class TestExtractPatchesPyr:
         assert patches.shape == (5, 4, 3, PS, PS)
 
     # TODO: check what to do to improve timing
-    @pytest.mark.skip("The test takes too long to finish.")
+    # @pytest.mark.skip("The test takes too long to finish.")
     def test_gradcheck(self):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]]).float()
         nlaf = nlaf.view(1, 1, 2, 3)

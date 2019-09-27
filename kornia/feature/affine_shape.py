@@ -51,6 +51,7 @@ class PatchAffineShapeEstimator(nn.Module):
                 "input shape should be must be [Bx1x{}x{}]. "
                 "Got {}".format(self.patch_size, self.patch_size, patch.size()))
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
+<<<<<<< HEAD
         grads: torch.Tensor = self.gradient(patch) * self.weighting
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
@@ -67,10 +68,20 @@ class PatchAffineShapeEstimator(nn.Module):
         ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask  # type: ignore
         # normalization
         ellipse_shape = ellipse_shape / ellipse_shape.max(dim=2, keepdim=True)[0]
+=======
+        grads: torch.Tensor = self.gradient(patch)
+        # unpack the edges
+        gx: torch.Tensor = grads[:, :, 0]
+        gy: torch.Tensor = grads[:, :, 1]
+        ellipse_shape = torch.cat([gx.pow(2).mean(dim=2).mean(dim=2, keepdim=True),
+                                   (gx * gy).mean(dim=2).mean(dim=2, keepdim=True),
+                                   gy.pow(2).mean(dim=2).mean(dim=2, keepdim=True)], dim=2)
+>>>>>>> resolve
         return ellipse_shape
 
 
 class LAFAffineShapeEstimator(nn.Module):
+<<<<<<< HEAD
     """Module, which extracts patches using input images and local affine frames (LAFs),
     then runs PatchAffineShapeEstimator on patches to estimate LAFs shape.
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
@@ -79,11 +90,16 @@ class LAFAffineShapeEstimator(nn.Module):
             patch_size: int, default = 32"""
     def __init__(self,
                  patch_size: int = 32) -> None:
+=======
+    def __init__(self,
+                 patch_size: int = 32):
+>>>>>>> resolve
         super(LAFAffineShapeEstimator, self).__init__()
         self.patch_size = patch_size
         self.affine_shape_detector = PatchAffineShapeEstimator(self.patch_size)
         return
 
+<<<<<<< HEAD
     def __repr__(self):
         return self.__class__.__name__ + '('\
             'patch_size=' + str(self.patch_size) + ')'
@@ -94,6 +110,9 @@ class LAFAffineShapeEstimator(nn.Module):
                     img: 4d tensor, shape [Bx1xHxW]
                 Returns:
                     laf_out: 4d tensor, shape [BxNx2x3] """
+=======
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
+>>>>>>> resolve
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):
@@ -105,10 +124,17 @@ class LAFAffineShapeEstimator(nn.Module):
             raise ValueError("Batch size of laf and img should be the same. Got {}, {}"
                              .format(img.size(0), laf.size(0)))
         B, N = laf.shape[:2]
+<<<<<<< HEAD
         PS: int = self.patch_size
         patches: torch.Tensor = extract_patches_from_pyramid(img,
                                                              make_upright(laf),
                                                              PS, True).view(-1, 1, PS, PS)
+=======
+        patches: torch.Tensor = extract_patches_from_pyramid(img, laf, PS=self.patch_size).view(-1,
+                                                                                                1,
+                                                                                                self.patch_size,
+                                                                                                self.patch_size)
+>>>>>>> resolve
         ellipse_shape: torch.Tensor = self.affine_shape_detector(patches)
         ellipses = torch.cat([laf.view(-1, 2, 3)[..., 2].unsqueeze(1), ellipse_shape], dim=2).view(B, N, 5)
         scale_orig = get_laf_scale(laf)
