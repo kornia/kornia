@@ -2,10 +2,8 @@ kornia/color/gray.py
 kornia/color/hsv.py
 kornia/color/rgb.py
 kornia/color/normalize.py
-kornia/contrib/spatial_soft_argmax2d.py
 kornia/contrib/extract_patches.py
 kornia/contrib/max_blur_pool.py
-kornia/feature/harris.py
 kornia/feature/nms.py
 kornia/filters/blur.py
 kornia/filters/gaussian.py
