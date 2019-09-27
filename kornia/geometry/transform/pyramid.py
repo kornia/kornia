@@ -174,11 +174,11 @@ class ScalePyramid(nn.Module):
             cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
         else:
             cur_level = x
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device)]
+        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device).to(x.dtype)]
         pixel_dists = [pixel_distance * torch.ones(
                        bs,
                        self.n_levels).to(
-                       x.device)]
+                       x.device).to(x.dtype)]
         pyr = [[cur_level.unsqueeze(1)]]
         oct_idx = 0
         while True:

@@ -35,7 +35,7 @@ class PatchAffineShapeEstimator(nn.Module):
                 "input shape should be must be [Bx1x{}x{}]. "
                 "Got {}".format(self.patch_size, self.patch_size, patch.size()))
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
-        grads: torch.Tensor = self.gradient(patch)
+        grads: torch.Tensor = self.gradient(patch) * self.weighting
         # unpack the edges
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
