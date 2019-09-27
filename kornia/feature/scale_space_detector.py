@@ -108,7 +108,7 @@ class ScaleSpaceDetector(nn.Module):
 
             if responses_flatten.size(1) > num_feats:
                 resp_flat_best, idxs = torch.topk(responses_flatten, k=num_feats, dim=1)
-                max_coords_best = max_coords_flatten[:, idxs.view(-1)]
+                max_coords_best = torch.gather(max_coords_flatten, 1, idxs.unsqueeze(-1).repeat(1, 1, 3))
             else:
                 resp_flat_best = responses_flatten
                 max_coords_best = max_coords_flatten
