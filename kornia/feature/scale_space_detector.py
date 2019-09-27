@@ -65,15 +65,11 @@ class ScaleSpaceDetector(nn.Module):
 
             mr_size: float, default 6.0. Multiplier for local feature scale compared to the detection scale. 6.0 is
             matching OpenCV 12.0 convention for SIFT.
-            scale_pyr_module: nn.Module, which generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid`
-             for details. Default is ScalePyramid(3, 1.6, 10)
+            scale_pyr_module: nn.Module, which generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details. Default is ScalePyramid(3, 1.6, 10)
             resp_module: nn.Module, which calculates 'cornerness' of the pixel. Default is BlobHessian(),
-            nms_module: nn.Module, which outputs per-patch coordinates of the responce maxima.
-            See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
-            ori_module: nn.Module for local feature orientation estimation.
-            See :class:`~kornia.feature.LAFOrienter` for details.  Default is PassLAF, which does nothing
-            aff_module:  nn.Module for local feature affine shape estimation.
-            See :class:`~kornia.feature.LAFAffineShapeEstimator` for details. Default is PassLAF, which does nothing
+            nms_module: nn.Module, which outputs per-patch coordinates of the responce maxima. See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
+            ori_module: nn.Module for local feature orientation estimation. See :class:`~kornia.feature.LAFOrienter` for details.  Default is PassLAF, which does nothing
+            aff_module:  nn.Module for local feature affine shape estimation. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details. Default is PassLAF, which does nothing
             """
     def __init__(self,
                  num_features: int = 500,
