@@ -147,6 +147,14 @@ class ScalePyramid(nn.Module):
         self.sigma_step = 2 ** (1. / float(self.n_levels))
         return
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(n_levels=' + str(self.n_levels) + ', ' +\
+            'init_sigma=' + str(self.init_sigma) + ', ' + \
+            'min_size=' + str(self.min_size) + ', ' + \
+            'border=' + str(self.border) + ', ' + \
+            'sigma_step=' + str(self.sigma_step) + ')'
+
     def get_kernel_size(self, sigma: float):
         ksize = int(2.0 * 3.0 * sigma + 1.0)
         if ksize % 2 == 0:
