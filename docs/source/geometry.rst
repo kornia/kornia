@@ -8,6 +8,7 @@ kornia.geometry
 
    geometry.camera
    geometry.conversions
+   geometry.depth
    geometry.linalg
    geometry.transform
    geometry.warp
