@@ -27,6 +27,12 @@ class PassLAF(nn.Module):
 
 
 class PatchDominantGradientOrientation(nn.Module):
+    """Module, which estimates the dominant gradient orientation of the given patches, in radians.
+    Zero angle points towards right.
+    Args:
+            patch_size: int, default = 32
+            num_angular_bins: int, default is 36
+            eps: float, for safe division, and arctan, default is 1e-8"""
     def __init__(self,
                  patch_size: int = 32,
                  num_angular_bins: int = 36, eps: float = 1e-8):
@@ -35,14 +41,24 @@ class PatchDominantGradientOrientation(nn.Module):
         self.num_ang_bins = num_angular_bins
         self.gradient = SpatialGradient('sobel', 1)
         self.eps = eps
-        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=1, bias=False)
+        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
             self.angular_smooth.weight[:] = torch.tensor([[[0.33, 0.34, 0.33]]])
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
         return
 
+    def __repr__(self):
+        return self.__class__.__name__ + '('\
+            'patch_size=' + str(self.patch_size) + ', ' + \
+            'num_ang_bins=' + str(self.num_ang_bins) + ', ' + \
+            'eps=' + str(self.eps) + ')'
+
     def forward(self, patch: torch.Tensor) -> torch.Tensor:  # type: ignore
+        """Args:
+            patch: 4d tensor, shape [Bx1xHxW]
+        Returns:
+            patch: 4d tensor, shape [Bx1] """
         if not torch.is_tensor(patch):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patch)))
@@ -83,16 +99,31 @@ class PatchDominantGradientOrientation(nn.Module):
 
 
 class LAFOrienter(nn.Module):
+    """Module, which extracts patches using input images and local affine frames (LAFs),
+    then runs PatchDominantGradientOrientation on patches and then rotates the LAFs by the estimated angles
+    Args:
+            patch_size: int, default = 32
+            num_angular_bins: int, default is 36"""
     def __init__(self,
-                 num_angular_bins: int = 36,
-                 patch_size: int = 32):
+                 patch_size: int = 32,
+                 num_angular_bins: int = 36):
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
         return
 
+    def __repr__(self):
+        return self.__class__.__name__ + '('\
+            'patch_size=' + str(self.patch_size) + ', ' + \
+            'num_ang_bins=' + str(self.num_ang_bins) + ')'
+
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
+        """Args:
+            laf: 4d tensor, shape [BxNx2x3]
+            img: 4d tensor, shape [Bx1xHxW]
+        Returns:
+            laf_out: 4d tensor, shape [BxNx2x3] """
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):
