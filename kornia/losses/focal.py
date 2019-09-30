@@ -83,7 +83,7 @@ class FocalLoss(nn.Module):
 
         # compute the actual focal loss
         weight = torch.pow(torch.tensor(1.) - input_soft,
-                           self.gamma.to(input.dtype))
+                           self.gamma.to(input.device))
         focal = -self.alpha * weight * torch.log(input_soft)
         loss_tmp = torch.sum(target_one_hot * focal, dim=1)
 
