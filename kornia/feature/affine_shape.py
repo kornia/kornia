@@ -13,14 +13,12 @@ from kornia.feature import extract_patches_from_pyramid
 
 
 class PatchAffineShapeEstimator(nn.Module):
+    """Module, which estimates the second moment matrix of the patch gradients in order to determine the
+    affine shape of the local feature as in :cite:`baumberg2000`.
+    Args:
+        patch_size: int, default = 19
+        eps: float, for safe division, default is 1e-10"""
     def __init__(self, patch_size: int = 19, eps: float = 1e-10):
-        """Module, which estimates the second moment matrix of the patch gradients in order to determine the
-        affine shape of the local feature as in
-        A. Baumberg (2000). "Reliable feature matching across widely separated views".
-        In Proc.of CVPR. pp. I:1774--1781.
-        Args:
-            patch_size: int, default = 19
-            eps: float, for safe division, default is 1e-10"""
         super(PatchAffineShapeEstimator, self).__init__()
         self.patch_size: int = patch_size
         self.gradient: nn.Module = SpatialGradient('sobel', 1)
@@ -36,7 +34,7 @@ class PatchAffineShapeEstimator(nn.Module):
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:   # type: ignore
         """Args:
-            patch: 4d tensor, shape [Bx1xHxW]
+            patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
             ellipse_shape: 3d tensor, shape [Bx1x5] """
         if not torch.is_tensor(patch):
@@ -72,9 +70,10 @@ class PatchAffineShapeEstimator(nn.Module):
 
 class LAFAffineShapeEstimator(nn.Module):
     """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs PatchAffineShapeEstimator on patches to estimate LAFs shape.
+    then runs :class:`~kornia.feature.PatchAffineShapeEstimator` on patches to estimate LAFs shape.
     Then original LAF shape is replaced with estimated one. The original LAF orientation is not preserved,
-     so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter
+    so it is recommended to first run LAFAffineShapeEstimator and then LAFOrienter.
+
     Args:
             patch_size: int, default = 32"""
     def __init__(self,
@@ -89,11 +88,13 @@ class LAFAffineShapeEstimator(nn.Module):
             'patch_size=' + str(self.patch_size) + ')'
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
-        """Args:
-                    laf: 4d tensor, shape [BxNx2x3]
-                    img: 4d tensor, shape [Bx1xHxW]
-                Returns:
-                    laf_out: 4d tensor, shape [BxNx2x3] """
+        """
+        Args:
+            laf: (torch.Tensor) shape [BxNx2x3]
+            img: (torch.Tensor) shape [Bx1xHxW]
+
+        Returns:
+            laf_out: (torch.Tensor) shape [BxNx2x3]"""
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):
