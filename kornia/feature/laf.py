@@ -211,13 +211,13 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """De-normalizes LAFs from scale to image scale.
-    B,N,H,W = images.size()
-    MIN_SIZE = min(H,W)
-    [a11 a21 x]
-    [a21 a22 y]
-    becomes
-    [a11*MIN_SIZE a21*MIN_SIZE x*W]
-    [a21*MIN_SIZE a22*MIN_SIZE y*H]
+        >>> B,N,H,W = images.size()
+        >>> MIN_SIZE = min(H,W)
+        [a11 a21 x]
+        [a21 a22 y]
+        becomes
+        [a11*MIN_SIZE a21*MIN_SIZE x*W]
+        [a21*MIN_SIZE a22*MIN_SIZE y*H]
 
     Args:
         LAF: (torch.Tensor).
@@ -243,15 +243,14 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """Normalizes LAFs to [0,1] scale from pixel scale.
-    See below:
-    B,N,H,W = images.size()
-    MIN_SIZE = min(H,W)
-    [a11 a21 x]
-    [a21 a22 y]
-    becomes
-    [a11/MIN_SIZE a21/MIN_SIZE x/W]
-    [a21/MIN_SIZE a22/MIN_SIZE y/H]
+    """Normalizes LAFs to [0,1] scale from pixel scale. See below:
+        >>> B,N,H,W = images.size()
+        >>> MIN_SIZE = min(H,W)
+        [a11 a21 x]
+        [a21 a22 y]
+        becomes:
+        [a11/MIN_SIZE a21/MIN_SIZE x/W]
+        [a21/MIN_SIZE a22/MIN_SIZE y/H]
 
     Args:
         LAF: (torch.Tensor).
