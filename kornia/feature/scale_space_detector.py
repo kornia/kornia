@@ -54,23 +54,26 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
 class ScaleSpaceDetector(nn.Module):
     """Module for differentiable local feature detection, as close as possible to classical
      local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
-     It has 5 modules inside: scale pyramid generator, responce ("cornerness") function,
+     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
      soft nms function, affine shape estimator and patch orientation estimator.
      Each of those modules could be replaced with learned custom one, as long, as
      they respect output shape.
 
-        Args:
-            num_features: int, default = 500. Number of features to detect. In order to keep everything batchable,
-            output would always have num_features outputed, even for completely homogeneous images.
-
-            mr_size: float, default 6.0. Multiplier for local feature scale compared to the detection scale. 6.0 is
-            matching OpenCV 12.0 convention for SIFT.
-            scale_pyr_module: nn.Module, which generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details. Default is ScalePyramid(3, 1.6, 10)
-            resp_module: nn.Module, which calculates 'cornerness' of the pixel. Default is BlobHessian(),
-            nms_module: nn.Module, which outputs per-patch coordinates of the responce maxima. See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
-            ori_module: nn.Module for local feature orientation estimation. See :class:`~kornia.feature.LAFOrienter` for details.  Default is PassLAF, which does nothing
-            aff_module:  nn.Module for local feature affine shape estimation. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details. Default is PassLAF, which does nothing
-            """
+    Args:
+        num_features: (int) Number of features to detect. default = 500. In order to keep everything batchable,
+                      output would always have num_features outputed, even for completely homogeneous images.
+        mr_size: (float), default 6.0. Multiplier for local feature scale compared to the detection scale.
+                    6.0 is matching OpenCV 12.0 convention for SIFT.
+        scale_pyr_module: (nn.Module), which generates scale pyramid.
+                         See :class:`~kornia.geometry.ScalePyramid` for details. Default is ScalePyramid(3, 1.6, 10)
+        resp_module: (nn.Module), which calculates 'cornerness' of the pixel. Default is BlobHessian().
+        nms_module: (nn.Module), which outputs per-patch coordinates of the responce maxima.
+                    See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
+        ori_module: (nn.Module) for local feature orientation estimation.  Default is :class:`~kornia.feature.PassLAF`,
+                    which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
+        aff_module:  (nn.Module) for local feature affine shape estimation. Default is :class:`~kornia.feature.PassLAF`,
+                    which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+    """
     def __init__(self,
                  num_features: int = 500,
                  mr_size: float = 6.0,
@@ -153,14 +156,15 @@ class ScaleSpaceDetector(nn.Module):
         return responses, denormalize_laf(lafs, img)
 
     def forward(self, img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
-        """
-        Three stage local feature detection. First the location and scale of interest points are determined by
+        """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
+
         Args:
-            img: 4d tensor, shape [BxCxHxW]
+            img: (torch.Tensor), shape [BxCxHxW]
+
         Returns:
-            lafs: 4d tensor, shape [BxNx2x3]. Detected local affine frames.
-            responses: 3d tensor, shape [BxNx1]. Response function values for corresponding lafs """
+            lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.
+            responses (torch.Tensor): shape [BxNx1]. Response function values for corresponding lafs"""
         responses, lafs = self.detect(img, self.num_features)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)

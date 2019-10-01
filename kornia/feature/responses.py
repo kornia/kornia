@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 import torch
 import torch.nn as nn
@@ -9,11 +9,9 @@ from kornia.filters import spatial_gradient, gaussian_blur2d
 def harris_response(input: torch.Tensor,
                     k: Union[torch.Tensor, float] = 0.04,
                     grads_mode: str = 'sobel',
-                    sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
+                    sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Computes the Harris cornerness function. Function does not do
-    any normalization or nms.
-
-    The response map is computed according the following formulation:
+    any normalization or nms.The response map is computed according the following formulation:
 
     .. math::
         R = max(0, det(M) - k \cdot trace(M)^2)
@@ -34,10 +32,11 @@ def harris_response(input: torch.Tensor,
         input: torch.Tensor: 4d tensor
         k (torch.Tensor): the Harris detector free parameter.
         grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (torch.Tensor or None): coefficients to be multiplied by multichannel response.
-        Should be shape of (B)
-        It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-        See also https://github.com/vlfeat/vlfeat/blob/1b9075fc42fe54b42f0e937f8b9a230d8e2c7701/vl/covdet.c#L874
+        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
+                                         Should be shape of (B)
+                                         It is necessary for performing non-maxima-suppression
+                                         across different scale pyramid levels.\
+                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
 
     Return:
         torch.Tensor: the response map per channel.
@@ -100,10 +99,8 @@ def harris_response(input: torch.Tensor,
 
 def gftt_response(input: torch.Tensor,
                   grads_mode: str = 'sobel',
-                  sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
-    r"""Computes the Shi-Tomasi cornerness function. Function does not do
-    any normalization or nms.
-
+                  sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Computes the Shi-Tomasi cornerness function. Function does not do any normalization or nms.
     The response map is computed according the following formulation:
 
     .. math::
@@ -121,10 +118,11 @@ def gftt_response(input: torch.Tensor,
     Args:
         input (torch.Tensor): 4d tensor
         grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (torch.Tensor or None): coefficients to be multiplied by multichannel response.
-        Should be shape of (B)
-        It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-        See also https://github.com/vlfeat/vlfeat/blob/1b9075fc42fe54b42f0e937f8b9a230d8e2c7701/vl/covdet.c#L874
+        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
+                                         Should be shape of (B)
+                                         It is necessary for performing non-maxima-suppression
+                                         across different scale pyramid levels.\
+                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
 
     Return:
         torch.Tensor: the response map per channel.
@@ -185,40 +183,39 @@ def gftt_response(input: torch.Tensor,
 
 def hessian_response(input: torch.Tensor,
                      grads_mode: str = 'sobel',
-                     sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
-    r"""Computes the absolute of determinant of the Hessian matrix. Function does not do
-     any normalization or nms.
-
-     The response map is computed according the following formulation:
+                     sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Computes the absolute of determinant of the Hessian matrix. Function does not do any normalization or nms.
+    The response map is computed according the following formulation:
 
     .. math::
         R = det(H)
+
     where:
 
     .. math::
         M = \sum_{(x,y) \in W}
         \begin{bmatrix}
             I_{xx} & I_{xy} \\
-            I_{xy} & I_yy \\
+            I_{xy} & I_{yy} \\
         \end{bmatrix}
 
-
-     Args:
+    Args:
         input: torch.Tensor: 4d tensor
         grads_mode (string): can be 'sobel' for standalone use or 'diff' for use on Gaussian pyramid
-        sigmas (torch.Tensor or None): coefficients to be multiplied by multichannel response.
-        Should be shape of (B)
-        It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-        See also https://github.com/vlfeat/vlfeat/blob/1b9075fc42fe54b42f0e937f8b9a230d8e2c7701/vl/covdet.c#L874
+        sigmas (optional, torch.Tensor): coefficients to be multiplied by multichannel response. \n
+                                         Should be shape of (B)
+                                         It is necessary for performing non-maxima-suppression
+                                         across different scale pyramid levels.\
+                                         See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_
 
-     Return:
+    Return:
          torch.Tensor: the response map per channel.
 
-     Shape:
+    Shape:
        - Input: :math:`(B, C, H, W)`
        - Output: :math:`(B, C, H, W)`
 
-     Examples:
+    Examples:
          >>> input = torch.tensor([[[
              [0., 0., 0., 0., 0., 0., 0.],
              [0., 1., 1., 1., 1., 1., 0.],
@@ -237,7 +234,7 @@ def hessian_response(input: torch.Tensor,
            [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
            [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
            [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
-     """
+    """
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
@@ -263,6 +260,9 @@ def hessian_response(input: torch.Tensor,
 
 
 class CornerHarris(nn.Module):
+    r"""nn.Module that calculates Harris corners
+    See :func:`~kornia.feature.harris_response` for details.
+    """
     def __init__(self, k: Union[float, torch.Tensor],
                  grads_mode='sobel') -> None:
         super(CornerHarris, self).__init__()
@@ -279,11 +279,14 @@ class CornerHarris(nn.Module):
             'grads_mode=' + self.grads_mode + ')'
 
     def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
+                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
         return harris_response(input, self.k, self.grads_mode, sigmas)  # type: ignore
 
 
 class CornerGFTT(nn.Module):
+    r"""nn.Module that calculates Shi-Tomasi corners
+    See :func:`~kornia.feature.gfft_response` for details.
+    """
     def __init__(self, grads_mode='sobel') -> None:
         super(CornerGFTT, self).__init__()
         self.grads_mode: str = grads_mode
@@ -294,11 +297,14 @@ class CornerGFTT(nn.Module):
             'grads_mode=' + self.grads_mode + ')'
 
     def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
+                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
         return gftt_response(input, self.grads_mode, sigmas)
 
 
 class BlobHessian(nn.Module):
+    r"""nn.Module that calculates Hessian blobs
+    See :func:`~kornia.feature.hessian_response` for details.
+    """
     def __init__(self, grads_mode='sobel') -> None:
         super(BlobHessian, self).__init__()
         self.grads_mode: str = grads_mode
@@ -309,5 +315,5 @@ class BlobHessian(nn.Module):
             'grads_mode=' + self.grads_mode + ')'
 
     def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Union[torch.Tensor, None] = None) -> torch.Tensor:
+                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
         return hessian_response(input, self.grads_mode, sigmas)

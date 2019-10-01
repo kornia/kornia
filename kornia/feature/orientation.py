@@ -13,8 +13,7 @@ from kornia.geometry import rad2deg
 
 
 class PassLAF(nn.Module):
-    """Dummy module to use instead of local feature orientation or affine shape estimator
-    """
+    """Dummy module to use instead of local feature orientation or affine shape estimator"""
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
         """
         Args:
@@ -29,6 +28,7 @@ class PassLAF(nn.Module):
 class PatchDominantGradientOrientation(nn.Module):
     """Module, which estimates the dominant gradient orientation of the given patches, in radians.
     Zero angle points towards right.
+
     Args:
             patch_size: int, default = 32
             num_angular_bins: int, default is 36
@@ -56,9 +56,9 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:  # type: ignore
         """Args:
-            patch: 4d tensor, shape [Bx1xHxW]
+            patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            patch: 4d tensor, shape [Bx1] """
+            patch: (torch.Tensor) shape [Bx1] """
         if not torch.is_tensor(patch):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patch)))
@@ -100,7 +100,9 @@ class PatchDominantGradientOrientation(nn.Module):
 
 class LAFOrienter(nn.Module):
     """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs PatchDominantGradientOrientation on patches and then rotates the LAFs by the estimated angles
+    then runs :class:`~kornia.feature.PatchDominantGradientOrientation`
+    on patches and then rotates the LAFs by the estimated angles
+
     Args:
             patch_size: int, default = 32
             num_angular_bins: int, default is 36"""
@@ -119,11 +121,13 @@ class LAFOrienter(nn.Module):
             'num_ang_bins=' + str(self.num_ang_bins) + ')'
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
-        """Args:
-            laf: 4d tensor, shape [BxNx2x3]
-            img: 4d tensor, shape [Bx1xHxW]
+        """
+        Args:
+            laf: (torch.Tensor), shape [BxNx2x3]
+            img: (torch.Tensor), shape [Bx1xHxW]
+
         Returns:
-            laf_out: 4d tensor, shape [BxNx2x3] """
+            laf_out: (torch.Tensor), shape [BxNx2x3] """
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):

@@ -6,10 +6,10 @@ import torch.nn.functional as F
 
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
-    """
-        Auxilary function, which verifies that input is a torch.tensor of [BxNx2x3] shape
-        Args:
-            laf
+    """Auxilary function, which verifies that input is a torch.tensor of [BxNx2x3] shape
+
+    Args:
+        laf
     """
     laf_message: str = "Invalid laf shape, we expect BxNx2x3. Got: {}".format(laf.shape)
     if not torch.is_tensor(laf):
@@ -23,8 +23,8 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
 
 
 def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
-    """
-    Returns a scale of the LAFs
+    """Returns a scale of the LAFs
+
     Args:
         LAF: (torch.Tensor): tensor [BxNx2x3] or [BxNx2x2].
 
@@ -80,6 +80,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """
     Rectifies the affine matrix, so that it becomes upright
+
     Args:
         laf: (torch.Tensor): tensor of LAFs.
         eps (float): for safe division, (default 1e-9)
@@ -90,6 +91,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     Shape:
         - Input: :math:`(B, N, 2, 3)`
         - Output:  :math:`(B, N, 2, 3)`
+
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
         >>> output = kornia.make_upright(input)  #  BxNx2x3
@@ -126,6 +128,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     Shape:
         - Input: :math:`(B, N, 5)`
         - Output:  :math:`(B, N, 2, 3)`
+
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
         >>> output = kornia.ellipse_to_laf(input)  #  BxNx2x3
@@ -152,6 +155,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """
     Converts LAFs to boundary points of the regions + center.
     Used for local features visualization, see visualize_laf function
+
     Args:
         LAF: (torch.Tensor).
         n_pts: number of points to output
@@ -179,14 +183,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
 
 def get_laf_pts_to_draw(LAF: torch.Tensor,
                         img_idx: int = 0):
-    """
-    Returns numpy array for drawing LAFs (local features).
-    To draw:
-        x, y = kornia.feature.laf.get_laf_pts_to_draw(LAF, img_idx)
-        plt.figure()
-        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
-        plt.plot(x, y, 'r')
-        plt.show()
+    """Returns numpy array for drawing LAFs (local features).
 
     Args:
         LAF: (torch.Tensor).
@@ -198,6 +195,13 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
     Shape:
         - Input: :math:`(B, N, 2, 3)`
         - Output:  :math:`(B, N, n_pts, 2)`
+
+    Examples:
+        >>> x, y = kornia.feature.laf.get_laf_pts_to_draw(LAF, img_idx)
+        >>> plt.figure()
+        >>> plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        >>> plt.plot(x, y, 'r')
+        >>> plt.show()
     """
     raise_error_if_laf_is_not_valid(LAF)
     pts = laf_to_boundary_points(LAF[img_idx:img_idx + 1])[0]
@@ -206,8 +210,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
 
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """
-    De-normalizes LAFs from scale to image scale.
+    """De-normalizes LAFs from scale to image scale.
     B,N,H,W = images.size()
     MIN_SIZE = min(H,W)
     [a11 a21 x]
@@ -240,8 +243,7 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
-    """
-    Normalizes LAFs to [0,1] scale from pixel scale.
+    """Normalizes LAFs to [0,1] scale from pixel scale.
     See below:
     B,N,H,W = images.size()
     MIN_SIZE = min(H,W)
@@ -250,6 +252,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     becomes
     [a11/MIN_SIZE a21/MIN_SIZE x/W]
     [a21/MIN_SIZE a22/MIN_SIZE y/H]
+
     Args:
         LAF: (torch.Tensor).
         images: (torch.Tensor) images, LAFs are detected in
@@ -276,8 +279,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
                                             LAF: torch.Tensor,
                                             PS: int = 32) -> torch.Tensor:
-    """
-    Helper function for affine grid generation.
+    """Helper function for affine grid generation.
 
     Args:
         img: (torch.Tensor) images, LAFs are detected in
@@ -310,16 +312,17 @@ def extract_patches_simple(img: torch.Tensor,
                            laf: torch.Tensor,
                            PS: int = 32,
                            normalize_lafs_before_extraction: bool = True) -> torch.Tensor:
-    """
-    Extract patches defined by LAFs from image tensor.
+    """Extract patches defined by LAFs from image tensor.
     No smoothing applied, huge aliasing (better use extract_patches_from_pyramid)
+
     Args:
         img: (torch.Tensor) images, LAFs are detected in
         laf: (torch.Tensor).
         PS: (int) patch size, default = 32
-        normalize_lafs_before_extraction (bool) - if True, lafs are normalized to image size, default = True
+        normalize_lafs_before_extraction (bool):  if True, lafs are normalized to image size, default = True
+
     Returns:
-        patches: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
+        patches: (torch.Tensor) :math:`(B, N, CH, PS,PS)`
     """
     raise_error_if_laf_is_not_valid(laf)
     if normalize_lafs_before_extraction:
@@ -340,16 +343,17 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                                  laf: torch.Tensor,
                                  PS: int = 32,
                                  normalize_lafs_before_extraction: bool = True) -> torch.Tensor:
-    """
-    Extract patches defined by LAFs from image tensor.
+    """Extract patches defined by LAFs from image tensor.
     Patches are extracted from appropriate pyramid level
+
     Args:
         laf: (torch.Tensor).
         images: (torch.Tensor) images, LAFs are detected in
         PS: (int) patch size, default = 32
-        normalize_lafs_before_extraction (bool) - if True, lafs are normalized to image size, default = True
+        normalize_lafs_before_extraction (bool):  if True, lafs are normalized to image size, default = True
+
     Returns:
-        patches: (torch.Tensor),  :math:`(B, N, CH, PS,PS)`
+        patches: (torch.Tensor)  :math:`(B, N, CH, PS,PS)`
     """
     raise_error_if_laf_is_not_valid(laf)
     if normalize_lafs_before_extraction:
