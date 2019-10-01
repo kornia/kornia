@@ -3,7 +3,7 @@
 
 # You can set these variables from the command line.
 SPHINXOPTS    =
-SPHINXBUILD   = /home/old-ufo/anaconda3/envs/fastai1/bin/./sphinx-build
+SPHINXBUILD   = sphinx-build
 SPHINXPROJ    = kornia
 SOURCEDIR     = source
 BUILDDIR      = build
