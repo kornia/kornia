@@ -600,16 +600,18 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
 def normalize_pixel_coordinates(
         pixel_coordinates: torch.Tensor,
         height: int,
-        width: int) -> torch.Tensor:
+        width: int,
+        eps: float = 1e-8) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
+        pixel_coordinates (torch.Tensor): the grid with pixel coordinates.
           Shape can be :math:`(*, 2)`.
         width (int): the maximum width in the x-axis.
         height (int): the maximum height in the y-axis.
+        eps (float): safe division by zero. (default 1e-8).
 
     Return:
         torch.Tensor: the normalized pixel coordinates.
@@ -622,7 +624,7 @@ def normalize_pixel_coordinates(
         torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (hw - 1).clamp(1e-8)
+    factor: torch.Tensor = torch.tensor(2.) / (hw - 1).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
@@ -630,17 +632,19 @@ def normalize_pixel_coordinates(
 def denormalize_pixel_coordinates(
         pixel_coordinates: torch.Tensor,
         height: int,
-        width: int) -> torch.Tensor:
+        width: int,
+        eps: float = 1e-8) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
     The input is assumed to be -1 if on extreme left, 1 if on
     extreme right (x = w-1).
 
     Args:
-        pixel_coordinate (torch.Tensor): the normalized grid coordinates.
+        pixel_coordinates (torch.Tensor): the normalized grid coordinates.
           Shape can be :math:`(*, 2)`.
         width (int): the maximum width in the x-axis.
         height (int): the maximum height in the y-axis.
+        eps (float): safe division by zero. (default 1e-8).
 
     Return:
         torch.Tensor: the denormalized pixel coordinates.
@@ -653,7 +657,7 @@ def denormalize_pixel_coordinates(
         torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (hw - 1).clamp(1e-8)
+    factor: torch.Tensor = torch.tensor(2.) / (hw - 1).clamp(eps)
 
     return torch.tensor(1.) / factor * (pixel_coordinates + 1)
 
@@ -662,17 +666,19 @@ def normalize_pixel_coordinates3d(
         pixel_coordinates: torch.Tensor,
         depth: int,
         height: int,
-        width: int) -> torch.Tensor:
+        width: int,
+        eps: float = 1e-8) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
 
     Args:
-        pixel_coordinate (torch.Tensor): the grid with pixel coordinates.
+        pixel_coordinates (torch.Tensor): the grid with pixel coordinates.
           Shape can be :math:`(*, 3)`.
         depth (int): the maximum depth in the z-axis.
         height (int): the maximum height in the y-axis.
         width (int): the maximum width in the x-axis.
+        eps (float): safe division by zero. (default 1e-8).
 
     Return:
         torch.Tensor: the normalized pixel coordinates.
@@ -685,7 +691,7 @@ def normalize_pixel_coordinates3d(
         torch.tensor(depth), torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (dhw - 1).clamp(1e-8)
+    factor: torch.Tensor = torch.tensor(2.) / (dhw - 1).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
@@ -694,18 +700,21 @@ def denormalize_pixel_coordinates3d(
         pixel_coordinates: torch.Tensor,
         depth: int,
         height: int,
-        width: int) -> torch.Tensor:
+        width: int,
+        eps: float = 1e-8) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
     The input is assumed to be -1 if on extreme left, 1 if on
     extreme right (x = w-1).
 
     Args:
-        pixel_coordinate (torch.Tensor): the normalized grid coordinates.
+        pixel_coordinates (torch.Tensor): the normalized grid coordinates.
           Shape can be :math:`(*, 3)`.
         depth (int): the maximum depth in the x-axis.
         height (int): the maximum height in the y-axis.
         width (int): the maximum width in the x-axis.
+        eps (float): safe division by zero. (default 1e-8).
+
 
     Return:
         torch.Tensor: the denormalized pixel coordinates.
@@ -718,6 +727,6 @@ def denormalize_pixel_coordinates3d(
         torch.tensor(depth), torch.tensor(width), torch.tensor(height)
     ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: torch.Tensor = torch.tensor(2.) / (dhw - 1).clamp(1e-8)
+    factor: torch.Tensor = torch.tensor(2.) / (dhw - 1).clamp(eps)
 
     return torch.tensor(1.) / factor * (pixel_coordinates + 1)

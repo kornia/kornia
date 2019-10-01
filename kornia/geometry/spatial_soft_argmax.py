@@ -76,6 +76,9 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int) -> torch.Tensor:
 
 
 class ConvSoftArgmax2d(nn.Module):
+    r"""Module that calculates soft argmax 2d per window
+    See :func:`~kornia.geometry.conv_soft_argmax2d` for details.
+    """
     def __init__(self,
                  kernel_size: Tuple[int, int] = (3, 3),
                  stride: Tuple[int, int] = (1, 1),
@@ -116,6 +119,9 @@ class ConvSoftArgmax2d(nn.Module):
 
 
 class ConvSoftArgmax3d(nn.Module):
+    r"""Module that calculates soft argmax 3d per window
+    See :func:`~kornia.geometry.conv_soft_argmax3d` for details.
+    """
     def __init__(self,
                  kernel_size: Tuple[int, int, int] = (3, 3, 3),
                  stride: Tuple[int, int, int] = (1, 1, 1),
@@ -164,46 +170,41 @@ def conv_soft_argmax2d(input: torch.Tensor,
                        eps: float = 1e-8,
                        output_value: bool = False) -> Union[torch.Tensor,
                                                             Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Function that computes the convolutional spatial Soft-Argmax 2D over the windows
+    r"""Function that computes the convolutional spatial Soft-Argmax 2D over the windows
     of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
-    themselves.
-
-    On each window, the function computed is:
+    themselves. On each window, the function computed is
 
     .. math::
-        ij(X) = \frac{\sum_{(i,j) * exp(x / T)  \in X}} {\sum_{exp(x / T)  \in X}}
-        val(X) = \frac{\sum_{x * exp(x / T)  \in X}} {\sum_{exp(x / T)  \in X}}
+             ij(X) = \frac{\sum{(i,j)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
 
-    - where T is temperature.
+    .. math::
+             val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
+
+    where T is temperature.
 
     Args:
-        kernel_size (Tuple([int,int])): the size of the window
-        stride  (Tuple([int,int])): the stride of the window.
-        padding (Tuple([int,int])): input zero padding
+        kernel_size (Tuple[int,int]): the size of the window
+        stride  (Tuple[int,int]): the stride of the window.
+        padding (Tuple[int,int]): input zero padding
         temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): whether to return the
-          coordinates normalized in the range of [-1, 1]. Otherwise,
-          it will return the coordinates in the range of the input shape.
-          Default is True.
+        normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
+                                       it will return the coordinates in the range of the input shape. Default is True.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value(bool): if True, val is outputed, if False, only ij
-
+        output_value (bool): if True, val is outputed, if False, only ij
 
     Shape:
         - Input: :math:`(N, C, H_{in}, W_{in})`
-        - Output: math:`(N, C, 2, H_{out}, W_{out})`, :math:`(N, C, H_{out}, W_{out})`, where
+        - Output: :math:`(N, C, 2, H_{out}, W_{out})`, :math:`(N, C, H_{out}, W_{out})`, where
 
-          .. math::
-              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
-              (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+         .. math::
+                  H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
+                  (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
-          .. math::
-              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
-              (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+         .. math::
+                  W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
+                  (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
     Examples::
-
         >>> input = torch.randn(20, 16, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1))
     """
@@ -284,54 +285,46 @@ def conv_soft_argmax3d(input: torch.Tensor,
                        eps: float = 1e-8,
                        output_value: bool = True) -> Union[torch.Tensor,
                                                            Tuple[torch.Tensor, torch.Tensor]]:
-    """
-    Function that computes the convolutional spatial Soft-Argmax 3D over the windows
+    r"""Function that computes the convolutional spatial Soft-Argmax 3D over the windows
     of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
     themselves.
-
     On each window, the function computed is:
 
     .. math::
-        ijk(X) = \frac{\sum_{(i,j,k) * exp(x / T)  \in X}} {\sum_{exp(x / T)  \in X}}
+             ijk(X) = \frac{\sum{(i,j,k)} * exp(x / T)  \in X} {\sum{exp(x / T)  \in X}}
 
-        val(X) = \frac{\sum_{x * exp(x / T)  \in X}} {\sum_{exp(x / T)  \in X}}
+    .. math::
+             val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
 
-    - where T is temperature.
-        [:,:, 0, ...] is i == depth (scale)
-        [:,:, 1, ...] is j == x
-        [:,:, 2, ...] is k == y
+    where T is temperature.
 
     Args:
-        kernel_size (Tuple([int,int,int])): the size of the window
-        stride  (Tuple([int,int,int])): the stride of the window.
-        padding (Tuple([int,int,int])): input zero padding
+        kernel_size (Tuple[int,int,int]):  size of the window
+        stride (Tuple[int,int,int]): stride of the window.
+        padding (Tuple[int,int,int]): input zero padding
         temperature (torch.Tensor): factor to apply to input. Default is 1.
-        normalized_coordinates (bool): whether to return the
-          coordinates normalized in the range of [-1, 1]. Otherwise,
-          it will return the coordinates in the range of the input shape.
-          Default is False.
+        normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
+                                       it will return the coordinates in the range of the input shape. Default is False.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value(bool): if True, val is outputed, if False, only ij
-
+        output_value (bool): if True, val is outputed, if False, only ij
 
     Shape:
         - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
-        - Output: math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
+        - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
 
-          .. math::
-              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
-              (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+         .. math::
+             D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
+             (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
-          .. math::
-              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[1] -
-              (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+         .. math::
+             H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[1] -
+             (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
-          .. math::
-              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
-              (\text{kernel\_size}[2] - 1) - 1}{\text{stride}[2]} + 1\right\rfloor
+         .. math::
+             W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
+             (\text{kernel\_size}[2] - 1) - 1}{\text{stride}[2]} + 1\right\rfloor
 
-    Examples::
-
+    Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
     """
@@ -444,11 +437,10 @@ def spatial_soft_argmax2d(
 
 
 class SpatialSoftArgmax2d(nn.Module):
-    r"""Function that computes the Spatial Soft-Argmax 2D of a given heatmap.
+    r"""Module that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
-    See :class:`~kornia.contrib.spatial_soft_argmax2d` for details.
+    See :func:`~kornia.contrib.spatial_soft_argmax2d` for details.
     """
-
     def __init__(self,
                  temperature: torch.Tensor = torch.tensor(1.0),
                  normalized_coordinates: bool = True,

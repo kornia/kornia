@@ -42,7 +42,7 @@ class TestIntegrationSoftArgmax2d:
         criterion = nn.MSELoss()
 
         # spatial soft-argmax2d module
-        soft_argmax2d = kornia.contrib.SpatialSoftArgmax2d(
+        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(
             normalized_coordinates=False)
 
         # NOTE: check where this comes from

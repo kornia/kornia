@@ -1,4 +1,3 @@
-from kornia.geometry import angle_to_rotation_matrix
 from .responses import (CornerHarris,
                         CornerGFTT,
                         BlobHessian,
@@ -20,7 +19,6 @@ from .siftdesc import SIFTDescriptor
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
-
 
 __all__ = [
     "non_maxima_suppression2d",
