@@ -15,6 +15,7 @@ from kornia.feature import extract_patches_from_pyramid
 class PatchAffineShapeEstimator(nn.Module):
     """Module, which estimates the second moment matrix of the patch gradients in order to determine the
     affine shape of the local feature as in :cite:`baumberg2000`.
+
     Args:
         patch_size: int, default = 19
         eps: float, for safe division, default is 1e-10"""
