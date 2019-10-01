@@ -35,3 +35,5 @@ kornia.feature
    :members: forward
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
+
+.. bibliography:: references.bib
