@@ -9,8 +9,8 @@ from kornia.geometry import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
-    """
-    Returns a weighted pooling kernel for SIFT descriptor
+    """Returns a weighted pooling kernel for SIFT descriptor
+
     Args:
         ksize: (int): kernel_size
 
@@ -18,7 +18,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
         torch.Tensor: kernel
 
     Shape:
-        - Output: :math: `(ksize,ksize)`
+        Output: :math: `(ksize,ksize)`
     """
     ks_2: float = float(ksize) / 2.0
     xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore # noqa
@@ -28,9 +28,9 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
 
 def get_sift_bin_ksize_stride_pad(patch_size: int,
                                   num_spatial_bins: int) -> Tuple:
-    """
-    Returns a tuple with SIFT parameters, given the patch size
+    """Returns a tuple with SIFT parameters, given the patch size
     and number of spatial bins.
+
     Args:
         patch_size: (int)
         num_spatial_bins: (int)
@@ -47,23 +47,21 @@ def get_sift_bin_ksize_stride_pad(patch_size: int,
 class SIFTDescriptor(nn.Module):
     """
     Module, which computes SIFT descriptors of given patches
+
     Args:
-        patch_size: (int): Input patch size in pixels
-        (41 is default)
-        num_ang_bins: (int): Number of angular bins.
-        (8 is default)
-        num_spatial_bins: (int): Number of spatial bins
-        (4 is default)
-        clipval: (float): default 0.2
-        rootsift: (bool): if True, RootSIFT (Arandjelović et. al, 2012)
+        patch_size: (int) Input patch size in pixels (41 is default)
+        num_ang_bins: (int) Number of angular bins. (8 is default)
+        num_spatial_bins: (int) Number of spatial bins (4 is default)
+        clipval: (float) default 0.2
+        rootsift: (bool) if True, RootSIFT (Arandjelović et. al, 2012)
         is computed
 
     Returns:
         Tensor: SIFT descriptor of the patches
 
     Shape:
-        - Input: :math:`(B, 1, num_spatial_bins, num_spatial_bins)`
-        - Output: :math:`(B, num_ang_bins * num_spatial_bins ** 2)`
+        - Input: (B, 1, num_spatial_bins, num_spatial_bins)
+        - Output: (B, num_ang_bins * num_spatial_bins ** 2)
 
     Examples::
         >>> input = torch.rand(23, 1, 32, 32)

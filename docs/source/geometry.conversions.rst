@@ -17,4 +17,7 @@ kornia.geometry.conversions
 .. autofunction:: angle_axis_to_rotation_matrix
 .. autofunction:: denormalize_pixel_coordinates
 .. autofunction:: normalize_pixel_coordinates
+.. autofunction:: denormalize_pixel_coordinates3d
+.. autofunction:: normalize_pixel_coordinates3d
 .. autofunction:: normalize_quaternion
+
