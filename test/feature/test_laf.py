@@ -7,7 +7,6 @@ import kornia.testing as utils  # test utils
 import torch
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-import math
 
 
 class TestAngleToRotationMatrix:
@@ -54,6 +53,36 @@ class TestGetLAFScale:
                          raise_exception=True)
 
 
+class TestScaleLAF:
+    def test_shape_float(self):
+        inp = torch.ones(7, 3, 2, 3).float()
+        scale = 23.
+        assert kornia.feature.scale_laf(inp, scale).shape == inp.shape
+
+    def test_shape_tensor(self):
+        inp = torch.ones(7, 3, 2, 3).float()
+        scale = torch.zeros(7, 1, 1, 1).float()
+        assert kornia.feature.scale_laf(inp, scale).shape == inp.shape
+
+    def test_scale(self):
+        inp = torch.tensor([[5., 1, 0.8], [1, 1, -4.]]).float()
+        inp = inp.view(1, 1, 2, 3)
+        scale = torch.tensor([[[[2.]]]]).float()
+        out = kornia.feature.scale_laf(inp, scale)
+        expected = torch.tensor([[[[10., 2, 0.8], [2, 2, -4.]]]]).float()
+        assert_allclose(out, expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 1, 2, 2, 3
+        laf = torch.rand(batch_size, channels, height, width)
+        scale = torch.rand(batch_size)
+        scale = utils.tensor_to_gradcheck_var(scale)  # to var
+        laf = utils.tensor_to_gradcheck_var(laf)  # to var
+        assert gradcheck(kornia.feature.scale_laf,
+                         (laf, scale),
+                         raise_exception=True, atol=1e-4)
+
+
 class TestMakeUpright:
     def test_shape(self):
         inp = torch.ones(5, 3, 2, 3)
@@ -64,6 +93,13 @@ class TestMakeUpright:
         inp = torch.tensor([[1, 0, 0], [0, 1, 0]]).float()
         inp = inp.view(1, 1, 2, 3)
         expected = torch.tensor([[1, 0, 0], [0, 1, 0]]).float()
+        laf = kornia.feature.make_upright(inp)
+        assert_allclose(laf, expected)
+
+    def test_do_nothing_with_scalea(self):
+        inp = torch.tensor([[2, 0, 0], [0, 2, 0]]).float()
+        inp = inp.view(1, 1, 2, 3)
+        expected = torch.tensor([[2, 0, 0], [0, 2, 0]]).float()
         laf = kornia.feature.make_upright(inp)
         assert_allclose(laf, expected)
 
@@ -230,7 +266,7 @@ class TestExtractPatchesSimple:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         nlaf = utils.tensor_to_gradcheck_var(nlaf)  # to var
         assert gradcheck(kornia.feature.extract_patches_simple,
-                         (img, nlaf, PS,),
+                         (img, nlaf, PS, False),
                          raise_exception=True)
 
 
@@ -247,10 +283,10 @@ class TestExtractPatchesPyr:
     def test_gradcheck(self):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]]).float()
         nlaf = nlaf.view(1, 1, 2, 3)
-        img = torch.rand(1, 3, 100, 120)
-        PS = 11
+        img = torch.rand(1, 3, 20, 15)
+        PS = 9
         img = utils.tensor_to_gradcheck_var(img)  # to var
         nlaf = utils.tensor_to_gradcheck_var(nlaf)  # to var
         assert gradcheck(kornia.feature.extract_patches_from_pyramid,
-                         (img, nlaf, PS,),
+                         (img, nlaf, PS, False),
                          raise_exception=True)
