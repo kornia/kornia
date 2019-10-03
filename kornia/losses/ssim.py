@@ -111,7 +111,7 @@ class SSIM(nn.Module):
                              .format(img1.dtype, img2.dtype))
         # prepare kernel
         b, c, h, w = img1.shape
-        tmp_kernel: torch.Tensor = self.window.to(img1.device).to(img1.dtype)
+        tmp_kernel: torch.Tensor = self.window.to(img1.device).type(img1.dtype)
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
 
         # compute local mean per channel
