@@ -8,6 +8,59 @@ import torch
 from torch.nn.functional import mse_loss
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+from kornia.geometry.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
+
+
+class TestCenterKernel2d:
+    def test_smoke(self):
+        kernel = _get_center_kernel2d(3, 4)
+        assert kernel.shape == (2, 2, 3, 4)
+
+    def test_odd(self):
+        kernel = _get_center_kernel2d(3, 3)
+        expected = torch.tensor([
+            [[[0., 0., 0.],
+              [0., 1., 0.],
+              [0., 0., 0.]],
+             [[0., 0., 0.],
+              [0., 0., 0.],
+              [0., 0., 0.]]],
+            [[[0., 0., 0.],
+              [0., 0., 0.],
+              [0., 0., 0.]],
+             [[0., 0., 0.],
+              [0., 1., 0.],
+              [0., 0., 0.]]]])
+        assert_allclose(kernel, expected)
+
+    def test_even(self):
+        kernel = _get_center_kernel2d(2, 2)
+        expected = torch.ones(2, 2, 2, 2) * 0.25
+        expected[0, 1] = 0
+        expected[1, 0] = 0
+        assert_allclose(kernel, expected)
+
+
+class TestCenterKernel3d:
+    def test_smoke(self):
+        kernel = _get_center_kernel3d(6, 3, 4)
+        assert kernel.shape == (3, 3, 6, 3, 4)
+
+    def test_odd(self):
+        kernel = _get_center_kernel3d(3, 5, 7)
+        expected = torch.zeros(3, 3, 3, 5, 7)
+        expected[0, 0, 1, 2, 3] = 1.
+        expected[1, 1, 1, 2, 3] = 1.
+        expected[2, 2, 1, 2, 3] = 1.
+        assert_allclose(kernel, expected)
+
+    def test_even(self):
+        kernel = _get_center_kernel3d(2, 4, 3)
+        expected = torch.zeros(3, 3, 2, 4, 3)
+        expected[0, 0, :, 1:3, 1] = 0.25
+        expected[1, 1, :, 1:3, 1] = 0.25
+        expected[2, 2, :, 1:3, 1] = 0.25
+        assert_allclose(kernel, expected)
 
 
 class TestSpatialSoftArgmax2d:

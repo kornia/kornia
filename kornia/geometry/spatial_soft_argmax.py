@@ -33,8 +33,21 @@ def _get_center_kernel2d(h: int, w: int) -> torch.Tensor:
         conv_kernel (torch.Tensor) [2x2xhxw]
     '''
     center_kernel = torch.zeros(2, 2, h, w)
-    center_kernel[0, 0, h // 2, w // 2] = 1.0
-    center_kernel[1, 1, h // 2, w // 2] = 1.0
+
+    #  If the size is odd, we have one pixel for center, if even - 2
+    if h % 2 != 0:
+        h_i1 = h // 2
+        h_i2 = (h // 2) + 1
+    else:
+        h_i1 = (h // 2) - 1
+        h_i2 = (h // 2) + 1
+    if w % 2 != 0:
+        w_i1 = w // 2
+        w_i2 = (w // 2) + 1
+    else:
+        w_i1 = (w // 2) - 1
+        w_i2 = (w // 2) + 1
+    center_kernel[(0, 1), (0, 1), h_i1: h_i2, w_i1: w_i2] = 1.0 / float(((h_i2 - h_i1) * (w_i2 - w_i1)))
     return center_kernel
 
 
@@ -49,9 +62,27 @@ def _get_center_kernel3d(d: int, h: int, w: int) -> torch.Tensor:
         conv_kernel (torch.Tensor) [3x3xdxhxw]
     '''
     center_kernel = torch.zeros(3, 3, d, h, w)
-    center_kernel[0, 0, d // 2, h // 2, w // 2] = 1.0
-    center_kernel[1, 1, d // 2, h // 2, w // 2] = 1.0
-    center_kernel[2, 2, d // 2, h // 2, w // 2] = 1.0
+    #  If the size is odd, we have one pixel for center, if even - 2
+    if h % 2 != 0:
+        h_i1 = h // 2
+        h_i2 = (h // 2) + 1
+    else:
+        h_i1 = (h // 2) - 1
+        h_i2 = (h // 2) + 1
+    if w % 2 != 0:
+        w_i1 = w // 2
+        w_i2 = (w // 2) + 1
+    else:
+        w_i1 = (w // 2) - 1
+        w_i2 = (w // 2) + 1
+    if d % 2 != 0:
+        d_i1 = d // 2
+        d_i2 = (d // 2) + 1
+    else:
+        d_i1 = (d // 2) - 1
+        d_i2 = (d // 2) + 1
+    center_num = float((h_i2 - h_i1) * (w_i2 - w_i1) * (d_i2 - d_i1))
+    center_kernel[(0, 1, 2), (0, 1, 2), d_i1: d_i2, h_i1: h_i2, w_i1: w_i2] = 1.0 / center_num
     return center_kernel
 
 
