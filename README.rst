@@ -26,7 +26,7 @@ It consists of a set of routines and differentiable modules to solve generic com
 Overview
 ========
 
-Inspired by *OpenCV*, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low level image processing  such as filtering and edge detection that operate directly on tensors.
+Inspired by *OpenCV*, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low-level image processing such as filtering and edge detection that operate directly on tensors.
 
 At a granular level, Kornia is a library that consists of the following components:
 
@@ -108,4 +108,4 @@ If you are using kornia in your research-related documents, it is recommended th
 
 Contributing
 ============
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider to read the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes. The participation in this open source project is subject to `Code of Conduct <https://github.com/arraiyopensource/kornia/blob/master/CODE_OF_CONDUCT.md>`_.
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes. The participation in this open source project is subject to `Code of Conduct <https://github.com/arraiyopensource/kornia/blob/master/CODE_OF_CONDUCT.md>`_.
