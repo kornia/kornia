@@ -26,6 +26,8 @@ from kornia.color import (
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
+    adjust_hue,
+    adjust_saturation,
 )
 from kornia.contrib import (
     extract_tensor_patches,
