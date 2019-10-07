@@ -56,7 +56,7 @@ def adjust_hue(input: torch.Tensor, hue_factor: float) -> torch.Tensor:
     h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    h_out: torch.Tensor = (h * hue_factor) % 1
+    h_out: torch.Tensor = torch.frac(h * hue_factor)
 
     # pack back back the corrected hue
     x_adjusted: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
@@ -165,7 +165,7 @@ class AdjustSaturation(nn.Module):
     The input image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (*, N).
         saturation_factor (float):  How much to adjust the saturation. 0 will give a black
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
@@ -188,7 +188,7 @@ class AdjustHue(nn.Module):
     The input image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (*, N).
         hue_factor (float): How much to shift the hue channel. Should be in [-0.5, 0.5]. 0.5
           and -0.5 give complete reversal of hue channel in HSV space in positive and negative
           direction respectively. 0 means no shift. Therefore, both -0.5 and 0.5 will give an
@@ -212,11 +212,11 @@ class AdjustGamma(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (*, N).
         gamma (float): Non negative real number, same as γ\gammaγ in the equation.
           gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
           dark regions lighter.
-        gain (float optional): The constant multiplier. Default 1.
+        gain (float, optional): The constant multiplier. Default 1.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -237,7 +237,7 @@ class AdjustContrast(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        input (torch.Tensor): Image to be adjusted in the shape of (*, N).
         contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
           in the batch. 0 generates a compleatly black image, 1 does not modify
           the input image while any other non-negative number modify the
@@ -261,7 +261,7 @@ class AdjustBrightness(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        input (torch.Tensor): Image/Input to be adjusted in the shape of (*, N).
         brightness_factor (Union[float, torch.Tensor]): Brightness adjust factor per element
           in the batch. 0 generates a compleatly black image, 1 does not modify
           the input image while any other non-negative number modify the
