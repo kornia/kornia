@@ -9,6 +9,87 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestAdjustGamma:
+    def test_gamma_zero(self):
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = torch.ones_like(data)
+        f = kornia.color.AdjustGamma(0.)
+        assert_allclose(f(data), expected)
+
+    def test_gamma_one(self):
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = data
+        f = kornia.color.AdjustGamma(1.)
+        assert_allclose(f(data), expected)
+
+    def test_gamma_one_gain_two(self):
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = torch.tensor([[[1., 1.],
+                                  [1., 1.]],
+
+                                 [[1., 1.],
+                                  [1., 1.]],
+
+                                 [[.5, .5],
+                                  [.5, .5]]])  # 3x2x2
+
+        f = kornia.color.AdjustGamma(1., 2.)
+        assert_allclose(f(data), expected)
+
+    def test_gamma_two(self):
+        data = torch.tensor([[[1., 1.],
+                              [1., 1.]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = torch.tensor([[[1., 1.],
+                                  [1., 1.]],
+
+                                 [[.25, .25],
+                                  [.25, .25]],
+
+                                 [[.0625, .0625],
+                                  [.0625, .0625]]])  # 3x2x2
+
+        f = kornia.color.AdjustGamma(2.)
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_gamma, (img, 1., 2.),
+                         raise_exception=True)
+
+
 class TestAdjustContrast:
     def test_factor_zero(self):
         # prepare input data
@@ -24,7 +105,6 @@ class TestAdjustContrast:
         expected = data
 
         f = kornia.color.AdjustContrast(0.)
-
         assert_allclose(f(data), expected)
 
     def test_factor_one(self):
@@ -41,7 +121,6 @@ class TestAdjustContrast:
         expected = torch.ones_like(data)
 
         f = kornia.color.AdjustContrast(1.)
-
         assert_allclose(f(data), expected)
 
     def test_factor_tensor(self):
@@ -105,6 +184,13 @@ class TestAdjustContrast:
         factor = torch.tensor([0.25, 0.1])
         f = kornia.color.AdjustContrast(factor)
         assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_contrast, (img, 2.),
+                         raise_exception=True)
 
 
 class TestAdjustBrightness:
@@ -285,3 +371,10 @@ class TestAdjustBrightness:
         factor = torch.tensor([1.5, 2.])
         f = kornia.color.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_brightness, (img, 2.),
+                         raise_exception=True)
