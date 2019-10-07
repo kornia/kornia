@@ -148,6 +148,14 @@ class ScalePyramid(nn.Module):
         self.sigma_step = 2 ** (1. / float(self.n_levels))
         return
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(n_levels=' + str(self.n_levels) + ', ' +\
+            'init_sigma=' + str(self.init_sigma) + ', ' + \
+            'min_size=' + str(self.min_size) + ', ' + \
+            'border=' + str(self.border) + ', ' + \
+            'sigma_step=' + str(self.sigma_step) + ')'
+
     def get_kernel_size(self, sigma: float):
         ksize = int(2.0 * 3.0 * sigma + 1.0)
         if ksize % 2 == 0:
@@ -166,11 +174,11 @@ class ScalePyramid(nn.Module):
             cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
         else:
             cur_level = x
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device)]
+        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device).to(x.dtype)]
         pixel_dists = [pixel_distance * torch.ones(
                        bs,
                        self.n_levels).to(
-                       x.device)]
+                       x.device).to(x.dtype)]
         pyr = [[cur_level.unsqueeze(1)]]
         oct_idx = 0
         while True:
