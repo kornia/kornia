@@ -9,6 +9,38 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestAdjustSaturation:
+    def test_saturation_one(self):
+        data = torch.tensor([[[.5, .5],
+                              [.5, .5]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = data
+        f = kornia.color.AdjustSaturation(1.)
+        assert_allclose(f(data), expected)
+
+
+class TestAdjustHue:
+    def test_hue_one(self):
+        data = torch.tensor([[[.5, .5],
+                              [.5, .5]],
+
+                             [[.5, .5],
+                              [.5, .5]],
+
+                             [[.25, .25],
+                              [.25, .25]]])  # 3x2x2
+
+        expected = data
+        f = kornia.color.AdjustHue(1.)
+        assert_allclose(f(data), expected)
+
+
 class TestAdjustGamma:
     def test_gamma_zero(self):
         data = torch.tensor([[[1., 1.],
@@ -364,10 +396,11 @@ class TestAdjustBrightness:
                                    [0., 0., .5]],
 
                                   [[.6, .6, .8],
-                                     [.6, .6, .8]],
+                                   [.6, .6, .8]],
 
                                   [[1., 1., 0.],
-                                     [.6, .4, .2]]]])  # 2x3x2x3
+                                   [.6, .4, .2]]]])  # 2x3x2x3
+
         factor = torch.tensor([1.5, 2.])
         f = kornia.color.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
