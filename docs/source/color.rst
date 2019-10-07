@@ -12,6 +12,10 @@ The functions in this section perform various color space conversions.
 .. autofunction:: bgr_to_rgb 
 .. autofunction:: normalize
 .. autofunction:: adjust_brightness
+.. autofunction:: adjust_contrast
+.. autofunction:: adjust_saturation
+.. autofunction:: adjust_hue
+.. autofunction:: adjust_gamma
 
 .. autoclass:: RgbToGrayscale      
 .. autoclass:: RgbToHsv
@@ -20,3 +24,7 @@ The functions in this section perform various color space conversions.
 .. autoclass:: BgrToRgb
 .. autoclass:: Normalize
 .. autoclass:: AdjustBrightness
+.. autoclass:: AdjustContrast
+.. autoclass:: AdjustSaturation
+.. autoclass:: AdjustHue
+.. autoclass:: AdjustGamma
