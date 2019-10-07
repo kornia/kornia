@@ -4,6 +4,30 @@ import torch
 import torch.nn as nn
 
 
+def adjust_gamma(input: torch.Tensor, gamma: float, gain: float = 1.) -> torch.Tensor:
+    r"""Perform gamma correction on an image.
+
+    See :class:`~kornia.color.AdjustGamma` for details.
+    """
+
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not isinstance(gamma, float) and gamma > 0.:
+        raise TypeError(f"The gamma should be a positive a float. Got {type(gamma)}")
+
+    if not isinstance(gain, float) and gain >= 1.:
+        raise TypeError(f"The gamma should be a positive a float. Got {type(gain)}")
+
+    # Apply the gamma correction
+    x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
+
+    # Truncate between pixel values
+    out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
+
+    return out
+
+
 def adjust_contrast(input: torch.Tensor,
                     contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
@@ -23,7 +47,7 @@ def adjust_contrast(input: torch.Tensor,
 
     contrast_factor = contrast_factor.to(input.device).to(input.dtype)
 
-    if (contrast_factor < torch.zeros(1)).any():
+    if (contrast_factor < 0).any():
         raise ValueError(f"Contrast factor must be non-negative. Got {contrast_factor}")
 
     for _ in input.shape[1:]:
@@ -57,7 +81,7 @@ def adjust_brightness(input: torch.Tensor,
 
     brightness_factor = brightness_factor.to(input.device).to(input.dtype)
 
-    if (brightness_factor < torch.zeros(1)).any():
+    if (brightness_factor < 0).any():
         raise ValueError(f"Brightness factor must be non-negative. Got {brightness_factor}")
 
     for _ in input.shape[1:]:
@@ -70,6 +94,31 @@ def adjust_brightness(input: torch.Tensor,
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
 
     return out
+
+
+class AdjustGamma(nn.Module):
+    r"""Perform gamma correction on an image.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        image (torch.Tensor): Image to be adjusted in the shape of (*, N).
+        gamma (float): Non negative real number, same as γ\gammaγ in the equation.
+          gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+          dark regions lighter.
+        gain (float optional): The constant multiplier. Default 1.
+
+    Returns:
+        torch.Tensor: Adjusted image.
+    """
+
+    def __init__(self, gamma: float, gain: float = 1.) -> None:
+        super(AdjustGamma, self).__init__()
+        self.gamma: float = gamma
+        self.gain: float = gain
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return adjust_gamma(input, self.gamma, self.gain)
 
 
 class AdjustContrast(nn.Module):
@@ -118,5 +167,3 @@ class AdjustBrightness(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_brightness(input, self.brightness_factor)
-
-
