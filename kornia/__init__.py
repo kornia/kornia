@@ -24,6 +24,7 @@ from kornia.color import (
     hsv_to_rgb,
     normalize,
     adjust_brightness,
+    adjust_contrast,
 )
 from kornia.contrib import (
     extract_tensor_patches,
