@@ -17,7 +17,7 @@ class Normalize(nn.Module):
         std (torch.Tensor or float): Standard deviations for each channel.
     """
 
-    def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+    def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
         super(Normalize, self).__init__()
 
