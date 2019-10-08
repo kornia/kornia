@@ -8,6 +8,11 @@ How to Install
 
 See `Installation <http://docs.kornia.org/install/>`_
 
+How to Contribute
+-----------------
+
+See `How to Contribute <http://docs.kornia.org/contriute/>`_
+
 Kornia relation to Other Computer Vision Projects
 -------------------------------------------------
 
