@@ -9,14 +9,9 @@ Kornia Documentation
 
    about
    installation
+   tutorials/index
    contribute
    faq
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Tutorials
-
-   tutorials
 
 .. toctree::
    :maxdepth: 2

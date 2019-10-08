@@ -1,14 +1,16 @@
 import os
 import sys
 
+import sphinx_gallery
 import sphinx_rtd_theme
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-base_path = os.path.abspath(os.path.join(__file__, "..", "..", "..", "kornia"))
-sys.path.append(base_path)
+current_path = os.path.abspath(os.path.join(__file__, "..", "..", ".."))
+#sys.path.append(os.path.join(root_path, "kornia"))
+#sys.path.append(os.path.join(root_path, "examples"))
 
 # -- General configuration ------------------------------------------------
 
@@ -32,6 +34,7 @@ extensions = [
     'sphinx.ext.githubpages',
     'nbsphinx',
     'sphinxcontrib.bibtex',
+    'sphinx_gallery.gen_gallery',
 ]
 
 napoleon_use_ivar = True
@@ -55,7 +58,6 @@ master_doc = 'index'
 project = u'Kornia'
 author = u'%s developers' % project
 copyright = u'2019, %s' % author
-author = u'Arraiy, Inc.'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -82,7 +84,7 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
-exclude_patterns = ['.ipynb_checkpoints']
+exclude_patterns = ['_build', '.ipynb_checkpoints']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
@@ -157,8 +159,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'kornia.tex', u'Kornia',
-     u'Arraiy', 'manual'),
+    (master_doc, 'kornia.tex', u'Kornia', 'manual'),
 ]
 
 
@@ -190,6 +191,15 @@ intersphinx_mapping = {
     'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     'torch': ('http://pytorch.org/docs/master/', None),
 }
+
+examples_dir = os.path.join(current_path, "examples")
+sphinx_gallery_conf = {
+     'doc_module': 'kornia',
+     'examples_dirs': [examples_dir],   # path to your example scripts
+     'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
+     'filename_pattern': './',
+}
+
 
 # -- A patch that prevents Sphinx from cross-referencing ivar tags -------
 # See http://stackoverflow.com/a/41184353/3343043

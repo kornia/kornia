@@ -2,3 +2,4 @@ build/doctest
 build/doctrees
 build/html/.buildinfo
 build/html/objects.inv
+*source/*
