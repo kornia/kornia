@@ -1,20 +1,28 @@
-About
-=====
-
 Introduction
-------------
+============
 
 Kornia is a differentiable computer vision library for PyTorch.
 
-It consists of a set of routines and differentiable modules to solve generic computer vision problems. At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
-Overview
+It consists of a set of routines and differentiable modules to solve generic computer vision problems.
+At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of 
+the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
 
-Inspired by OpenCV, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low level image processing such as filtering and edge detection that operate directly on tensors.
+Inspired by OpenCV, this library is composed by a subset of packages containing operators that can be inserted
+within neural networks to train models to perform image transformations, epipolar geometry, depth estimation,
+and low level image processing such as filtering and edge detection that operate directly on tensors.
 
-Why Kornia ?
-------------
+**Why Kornia ?**
+    With *Kornia* we fill the gap within the PyTorch ecosystem introducing a computer vision library that implements
+    standard vision algorithms taking advantage of the different properties that modern frameworks for deep learning
+    like PyTorch can provide:
 
-to be filled
+    1. **Differentiability** for commodity avoiding to write derivative functions for complex loss  functions.
+
+    2. **Transparency** to perform parallel or serial computing eitherin CPU or GPU devices using batches in a common API.
+
+    3. **Distributed** for computing large-scale applications.
+
+    4. **Production** ready using the *JIT* compiler.
 
 Hightlighted Features
 ---------------------
