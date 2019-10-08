@@ -53,7 +53,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Kornia'
-copyright = u'2018, Arraiy, Inc.'
+author = u'%s developers' % project
+copyright = u'2019, %s' % author
 author = u'Arraiy, Inc.'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -111,6 +112,7 @@ html_theme_options = {
 }
 
 html_logo = '_static/img/kornia_logo.svg'
+html_favicon = '_static/img/kornia_logo_mini.png'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
