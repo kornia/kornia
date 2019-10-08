@@ -7,7 +7,7 @@ Kornia Documentation
    :maxdepth: 2
    :caption: Get Started
 
-   about
+   introduction
    installation
    tutorials/index
    contribute
