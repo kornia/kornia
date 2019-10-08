@@ -1,7 +1,10 @@
 sphinx
+sphinx-gallery
 sphinx_rtd_theme
 sphinxcontrib-bibtex
 nbsphinx
 numpy
 nbconvert
 notebook
+matplotlib
+opencv-python
