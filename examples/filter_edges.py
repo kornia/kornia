@@ -2,7 +2,8 @@
 Compute filter edges
 ====================
 
-In this tutorial we are going to learn how to compute the first order and second order derivatives of an image using `kornia.filters`.
+In this tutorial we are going to learn how to compute the first order and second
+order derivatives of an image using `kornia.filters`.
 """
 
 from matplotlib import pyplot as plt
