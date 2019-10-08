@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import Union
 
 
 class Normalize(nn.Module):
@@ -27,39 +28,50 @@ class Normalize(nn.Module):
         return normalize(input, self.mean, self.std)
 
     def __repr__(self):
-        repr = '(mean={0}, std={1})'.format(self.mean, self.std)
+        repr = "(mean={0}, std={1})".format(self.mean, self.std)
         return self.__class__.__name__ + repr
 
 
-def normalize(data: torch.Tensor, mean: torch.Tensor,
-              std: torch.Tensor) -> torch.Tensor:
+def normalize(
+    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
+) -> torch.Tensor:
     r"""Normalise the image with channel-wise mean and standard deviation.
 
     See :class:`~kornia.color.Normalize` for details.
 
     Args:
         data (torch.Tensor): The image tensor to be normalised.
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviations for each channel.
+        mean (torch.Tensor or float): Mean for each channel.
+        std (torch.Tensor or float): Standard deviations for each channel.
 
         Returns:
             torch.Tensor: The normalised image tensor.
     """
 
+    if isinstance(mean, float):
+        mean = torch.tensor([mean])  # prevent 0 sized tensors
+
+    if isinstance(std, float):
+        std = torch.tensor([std])  # prevent 0 sized tensors
+
     if not torch.is_tensor(data):
-        raise TypeError('data should be a tensor. Got {}'.format(type(data)))
+        raise TypeError("data should be a tensor. Got {}".format(type(data)))
 
     if not torch.is_tensor(mean):
-        raise TypeError('mean should be a tensor. Got {}'.format(type(mean)))
+        raise TypeError("mean should be a tensor or a float. Got {}".format(type(mean)))
 
     if not torch.is_tensor(std):
-        raise TypeError('std should be a tensor. Got {}'.format(type(std)))
+        raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
 
-    if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-        raise ValueError('mean lenght and number of channels do not match')
+    # Allow broadcast on channel dimension
+    if mean.shape[0] != 1:
+        if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError("mean length and number of channels do not match")
 
-    if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-        raise ValueError('std lenght and number of channels do not match')
+    # Allow broadcast on channel dimension
+    if std.shape[0] != 1:
+        if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
+            raise ValueError("std length and number of channels do not match")
 
     mean = mean[..., :, None, None].to(data.device)
     std = std[..., :, None, None].to(data.device)
