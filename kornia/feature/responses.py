@@ -263,6 +263,7 @@ class CornerHarris(nn.Module):
     r"""nn.Module that calculates Harris corners
     See :func:`~kornia.feature.harris_response` for details.
     """
+
     def __init__(self, k: Union[float, torch.Tensor],
                  grads_mode='sobel') -> None:
         super(CornerHarris, self).__init__()
@@ -287,6 +288,7 @@ class CornerGFTT(nn.Module):
     r"""nn.Module that calculates Shi-Tomasi corners
     See :func:`~kornia.feature.gfft_response` for details.
     """
+
     def __init__(self, grads_mode='sobel') -> None:
         super(CornerGFTT, self).__init__()
         self.grads_mode: str = grads_mode
@@ -305,6 +307,7 @@ class BlobHessian(nn.Module):
     r"""nn.Module that calculates Hessian blobs
     See :func:`~kornia.feature.hessian_response` for details.
     """
+
     def __init__(self, grads_mode='sobel') -> None:
         super(BlobHessian, self).__init__()
         self.grads_mode: str = grads_mode
