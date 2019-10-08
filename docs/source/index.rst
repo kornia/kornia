@@ -1,14 +1,22 @@
 :github_url: https://github.com/arraiyopensource/kornia
              
-kornia
-======
+Kornia Documentation
+====================
 
-Kornia is a differentiable computer vision library for PyTorch.
+.. toctree::
+   :maxdepth: 2
+   :caption: Get Started
 
-It consists of a set of routines and differentiable modules to solve generic computer vision problems. At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
-Overview
+   about
+   installation
+   contribute
+   faq
 
-Inspired by OpenCV, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low level image processing such as filtering and edge detection that operate directly on tensors.
+.. toctree::
+   :maxdepth: 2
+   :caption: Tutorials
+
+   tutorials
 
 .. toctree::
    :maxdepth: 2
@@ -21,14 +29,6 @@ Inspired by OpenCV, this library is composed by a subset of packages containing 
    geometry
    losses
    utils
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Tutorials
-
-   warp_affine
-   warp_perspective
-   gaussian_blur
 
 Indices and tables
 ==================
