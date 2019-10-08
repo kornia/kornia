@@ -13,8 +13,8 @@ class Normalize(nn.Module):
     i.e. ``input[channel] = (input[channel] - mean[channel]) / std[channel]``
 
     Args:
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviation for each channel.
+        mean (torch.Tensor or float): Mean for each channel.
+        std (torch.Tensor or float): Standard deviations for each channel.
     """
 
     def __init__(self, mean: torch.Tensor, std: torch.Tensor) -> None:
