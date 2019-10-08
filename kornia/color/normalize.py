@@ -21,8 +21,8 @@ class Normalize(nn.Module):
 
         super(Normalize, self).__init__()
 
-        self.mean: torch.Tensor = mean
-        self.std: torch.Tensor = std
+        self.mean = mean
+        self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return normalize(input, self.mean, self.std)
