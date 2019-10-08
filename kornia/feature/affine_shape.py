@@ -19,6 +19,7 @@ class PatchAffineShapeEstimator(nn.Module):
     Args:
         patch_size: int, default = 19
         eps: float, for safe division, default is 1e-10"""
+
     def __init__(self, patch_size: int = 19, eps: float = 1e-10):
         super(PatchAffineShapeEstimator, self).__init__()
         self.patch_size: int = patch_size
@@ -77,6 +78,7 @@ class LAFAffineShapeEstimator(nn.Module):
 
     Args:
             patch_size: int, default = 32"""
+
     def __init__(self,
                  patch_size: int = 32) -> None:
         super(LAFAffineShapeEstimator, self).__init__()

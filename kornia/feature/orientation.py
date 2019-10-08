@@ -14,6 +14,7 @@ from kornia.geometry import rad2deg
 
 class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator"""
+
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
         """
         Args:
@@ -33,6 +34,7 @@ class PatchDominantGradientOrientation(nn.Module):
             patch_size: int, default = 32
             num_angular_bins: int, default is 36
             eps: float, for safe division, and arctan, default is 1e-8"""
+
     def __init__(self,
                  patch_size: int = 32,
                  num_angular_bins: int = 36, eps: float = 1e-8):
@@ -106,6 +108,7 @@ class LAFOrienter(nn.Module):
     Args:
             patch_size: int, default = 32
             num_angular_bins: int, default is 36"""
+
     def __init__(self,
                  patch_size: int = 32,
                  num_angular_bins: int = 36):

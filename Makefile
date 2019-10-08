@@ -15,7 +15,7 @@ lint: FORCE
 	python verify.py --check lint
 
 autopep8: FORCE
-	autopep8 --in-place --aggressive --recursive kornia/ test/
+	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
 mypy: FORCE
 	python verify.py --check mypy
