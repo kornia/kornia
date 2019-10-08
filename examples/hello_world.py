@@ -1,6 +1,6 @@
 """
 
-Hello world: Planet Kornia 
+Hello world: Planet Kornia
 ==========================
 
 Welcome to Planet Kornia: a set of tutorial to learn about Computer Vision in PyTorch.
