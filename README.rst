@@ -97,13 +97,14 @@ If you are using kornia in your research-related documents, it is recommended th
 
 .. code:: bash
 
- @misc{Arraiy2018,
-  author    = {E. Riba, M. Fathollahi, W. Chaney, E. Rublee and G. Bradski}
-  title     = {torchgeometry: when PyTorch meets geometry},
-  booktitle = {PyTorch Developer Conference},
-  year      = {2018},
-  url       = {https://drive.google.com/file/d/1xiao1Xj9WzjJ08YY_nYwsthE-wxfyfhG/view?usp=sharing}
- }
+  @misc{eriba2019kornia,
+    author    = {E. Riba, D. Mishkin, D. Ponsa, E. Rublee and G. Bradski}
+    title     = {Kornia: an Open Source Differentiable Computer Vision Library for PyTorch},
+    booktitle = {Winter Conference on Applications of Computer Vision},
+    year      = {2019},
+    url       = {https://arxiv.org/pdf/1910.02190.pdf}
+  }
+	
 
 
 Contributing
