@@ -10,14 +10,14 @@ import kornia
 import cv2
 import numpy as np
 
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 # read the image with OpenCV
 img: np.array = cv2.imread('./data/bennett_aden.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor
-data: torch.tensor = kornia.image_to_tensor(img) # BxCxHxW
+data: torch.tensor = kornia.image_to_tensor(img)  # BxCxHxW
 
 # create transformation (rotation)
 alpha: float = 45.0  # in degrees
@@ -40,8 +40,6 @@ data_warped: torch.tensor = kornia.warp_affine(data.float(), M, dsize=(h, w))
 
 # convert back to numpy
 img_warped: np.array = kornia.tensor_to_image(data_warped.byte()[0])
-
-#get_ipython().run_line_magic('matplotlib', 'inline')
 
 # create the plot
 fig, axs = plt.subplots(1, 2, figsize=(16, 10))

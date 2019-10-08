@@ -13,6 +13,17 @@ How to Contribute
 
 See `How to Contribute <http://docs.kornia.org/contriute/>`_
 
+Kornia relation to Pytorch Geometry/Geometric
+---------------------------------------------
+
+This project started as a small differentiable geometric computer
+vision package called `PyTorch Geometry <https://pypi.org/project/torchgeometry>`_
+released during the PyTorch devcon 2018 (see the presented 
+`poster <https://drive.google.com/file/d/1xiao1Xj9WzjJ08YY_nYwsthE-wxfyfhG/view?usp=sharing>`_).
+The project evolved to a more generic computer vision library and due to the naming
+conflict between `Pytorch Geometric <https://pytorch-geometric.readthedocs.io/en/latest>`_
+we decided to rename the whole package and focus to more generic vision functionalities.
+
 Kornia relation to Other Computer Vision Projects
 -------------------------------------------------
 

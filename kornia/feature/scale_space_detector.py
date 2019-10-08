@@ -74,6 +74,7 @@ class ScaleSpaceDetector(nn.Module):
         aff_module:  (nn.Module) for local feature affine shape estimation. Default is :class:`~kornia.feature.PassLAF`,
                     which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
     """
+
     def __init__(self,
                  num_features: int = 500,
                  mr_size: float = 6.0,

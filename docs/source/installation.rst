@@ -2,7 +2,7 @@ Installation
 ============
 
 To install *Kornia*, you can do it in two different ways: using the provided `PyPi
-<https://pypi.org/project/kornia//>`_ wheels or directly from source.
+<https://pypi.org/project/kornia/>`_ wheels or directly from source.
 
 .. note::
     *Kornia only has as a dependency Pytorch.*
