@@ -11,7 +11,7 @@ Kornia Documentation
    installation
    tutorials/index
    contribute
-   faq
+   faqs
 
 .. toctree::
    :maxdepth: 2
