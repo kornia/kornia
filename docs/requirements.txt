@@ -8,3 +8,4 @@ nbconvert
 notebook
 matplotlib
 opencv-python
+torchvision
