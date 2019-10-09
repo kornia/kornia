@@ -32,7 +32,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     # Reshape for grid shape
     B, N, _ = max_coords.shape
     L: int = sigmas.size(1)
-    scale_coords = max_coords[:, :, 0].view(-1, 1, 1, 1)
+    scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
 
     # Normalize coordinate
     scale_coords_index = (2.0 * scale_coords / sigmas.size(1)) - 1.0
