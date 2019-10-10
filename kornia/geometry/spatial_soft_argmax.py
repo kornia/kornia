@@ -110,6 +110,7 @@ class ConvSoftArgmax2d(nn.Module):
     r"""Module that calculates soft argmax 2d per window
     See :func:`~kornia.geometry.conv_soft_argmax2d` for details.
     """
+
     def __init__(self,
                  kernel_size: Tuple[int, int] = (3, 3),
                  stride: Tuple[int, int] = (1, 1),
@@ -153,6 +154,7 @@ class ConvSoftArgmax3d(nn.Module):
     r"""Module that calculates soft argmax 3d per window
     See :func:`~kornia.geometry.conv_soft_argmax3d` for details.
     """
+
     def __init__(self,
                  kernel_size: Tuple[int, int, int] = (3, 3, 3),
                  stride: Tuple[int, int, int] = (1, 1, 1),
@@ -472,6 +474,7 @@ class SpatialSoftArgmax2d(nn.Module):
 
     See :func:`~kornia.contrib.spatial_soft_argmax2d` for details.
     """
+
     def __init__(self,
                  temperature: torch.Tensor = torch.tensor(1.0),
                  normalized_coordinates: bool = True,

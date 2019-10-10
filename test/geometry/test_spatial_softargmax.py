@@ -397,7 +397,7 @@ class TestConvSoftArgmax3d:
                                              normalized_coordinates=False,
                                              output_value=True)
         expected_val = torch.tensor([[[[[1., 0.],
-                                       [0., 1.]]]]])
+                                        [0., 1.]]]]])
         expected_coord = torch.tensor([[[
                                         [[[0., 0.],
                                           [0., 0.]]],
@@ -422,7 +422,7 @@ class TestConvSoftArgmax3d:
                                              normalized_coordinates=False,
                                              output_value=True)
         expected_val = torch.tensor([[[[[0.1214, 0.],
-                                       [0., 0.1214]]]]])
+                                        [0., 0.1214]]]]])
         expected_coord = torch.tensor([[[
                                         [[[0., 0.],
                                           [0., 0.]]],
@@ -447,7 +447,7 @@ class TestConvSoftArgmax3d:
                                              normalized_coordinates=True,
                                              output_value=True)
         expected_val = torch.tensor([[[[[1., 0.],
-                                       [0., 1.]]]]])
+                                        [0., 1.]]]]])
         expected_coord = torch.tensor([[[
             [[[-1., -1.],
               [-1., -1.]]],
@@ -472,7 +472,7 @@ class TestConvSoftArgmax3d:
                                              normalized_coordinates=True,
                                              output_value=True)
         expected_val = torch.tensor([[[[[0.1214, 0.],
-                                       [0., 0.1214]]]]])
+                                        [0., 0.1214]]]]])
         expected_coord = torch.tensor([[[
             [[[-1., -1.],
               [-1., -1.]]],

@@ -145,7 +145,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
             "Got {}".format(ells.size()))
 
     ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
-                          torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
+                           torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
     out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
     out = torch.cat([out, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
