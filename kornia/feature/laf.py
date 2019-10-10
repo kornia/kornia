@@ -235,10 +235,9 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     w = float(w)
     h = float(h)
     min_size = min(h, w)
-    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype) * min_size
+    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) * min_size
     coef[0, 0, 0, 2] = w
     coef[0, 0, 1, 2] = h
-    coef.to(LAF.device)
     return coef.expand_as(LAF) * LAF
 
 
@@ -268,10 +267,9 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     w = float(w)
     h = float(h)
     min_size = min(h, w)
-    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype) / min_size
+    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) / min_size
     coef[0, 0, 0, 2] = 1.0 / w
     coef[0, 0, 1, 2] = 1.0 / h
-    coef.to(LAF.device)
     return coef.expand_as(LAF) * LAF
 
 
@@ -333,7 +331,7 @@ def extract_patches_simple(img: torch.Tensor,
     out = []
     # for loop temporarily, to be refactored
     for i in range(B):
-        grid = generate_patch_grid_from_normalized_LAF(img[i:i + 1], nlaf[i:i + 1], PS)
+        grid = generate_patch_grid_from_normalized_LAF(img[i:i + 1], nlaf[i:i + 1], PS).to(img.device)
         out.append(F.grid_sample(img[i:i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border"))
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
@@ -365,7 +363,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
     pyr_idx = (scale.log2() + 0.5).relu().long()
     cur_img = img
     cur_pyr_level = int(0)
-    out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype)
+    out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         num, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
@@ -378,8 +376,8 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 cur_img[i:i + 1],
                 nlaf[i:i + 1, scale_mask, :, :],
                 PS)
-            out[i, scale_mask, ..., :] = out[i, scale_mask, ..., :].clone() * 0\
-                + F.grid_sample(cur_img[i:i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border")
+            patches = F.grid_sample(cur_img[i:i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border")
+            out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
     return out
