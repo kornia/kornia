@@ -50,7 +50,6 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(input.shape))
 
-
     # https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
