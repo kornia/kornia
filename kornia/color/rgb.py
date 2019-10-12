@@ -17,6 +17,12 @@ class RgbToBgr(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> bgr = kornia.image.RgbToBgr()
+        >>> output = bgr(input)  # 2x3x4x5
+
     """
 
     def __init__(self) -> None:
@@ -55,6 +61,12 @@ class BgrToRgb(nn.Module):
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = kornia.image.BgrToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
 
     """
 
