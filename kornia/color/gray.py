@@ -20,7 +20,7 @@ class RgbToGrayscale(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.image.RgbToGrayscale()
+        >>> gray = kornia.color.RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
