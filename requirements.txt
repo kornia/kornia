@@ -1,9 +1,9 @@
 # core dependencies
-pytorch==1.2.0
+pytorch==1.0.2
 
 # utils
 torchvision==0.4.0
-opencv==4.1.1
+opencv-python==4.1.1.26
 ipython==7.8.0
 jupyter==1.0.0
 matplotlib==3.1.1
@@ -19,7 +19,7 @@ mypy_extensions==0.4.1
 # docs
 sphinx==2.1.2
 sphinx-gallery==0.4.0
-sphinx_rtd_theme=0.4.3
+sphinx_rtd_theme==0.4.3
 sphinxcontrib-bibtex==0.4.2
 nbsphinx==0.4.2
 nbconvert==5.5.0
