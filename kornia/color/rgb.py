@@ -20,7 +20,7 @@ class RgbToBgr(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> bgr = kornia.image.RgbToBgr()
+        >>> bgr = kornia.color.RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
 
     """
@@ -65,7 +65,7 @@ class BgrToRgb(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.image.BgrToRgb()
+        >>> rgb = kornia.color.BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
     """
