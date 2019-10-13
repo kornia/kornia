@@ -27,12 +27,50 @@ class HlsToRgb(nn.Module):
         return hls_to_rgb(image)
 
 
-#def hls_to_rgb(image):
+def hls_to_rgb(image):
+    r"""Convert an HSV image to RGB
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        input (torch.Tensor): RGB Image to be converted to HSV.
 
 
+    Returns:
+        torch.Tensor: HSV version of the image.
+    """
 
+    if not torch.is_tensor(image):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
 
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                         .format(image.shape))
 
+    h: torch.Tensor = image[..., 0, :, :]*360
+    l: torch.Tensor = image[..., 1, :, :]
+    s: torch.Tensor = image[..., 2, :, :]
+
+    c: torch.Tensor = (1 - torch.abs((2*l)-1)) * s #chroma
+    hi: torch.Tensor = h/60
+    x: torch.Tensor = c * (1 - torch.abs(hi%2 - 1))
+
+    r: torch.Tensor = torch.zeros_like(h)
+    g: torch.Tensor = torch.zeros_like(l)
+    b: torch.Tensor = torch.zeros_like(s)
+
+    r[(hi>=0)&(hi<=1)], g[(hi>=0)&(hi<=1)], b[(hi>=0)&(hi<=1)] = c[(hi>=0)&(hi<=1)], x[(hi>=0)&(hi<=1)], 0
+    r[(hi>=1)&(hi<=2)], g[(hi>=1)&(hi<=2)], b[(hi>=1)&(hi<=2)] = x[(hi>=1)&(hi<=2)], c[(hi>=1)&(hi<=2)], 0
+    r[(hi>=2)&(hi<=3)], g[(hi>=2)&(hi<=3)], b[(hi>=2)&(hi<=3)] = 0, c[(hi>=2)&(hi<=3)], x[(hi>=2)&(hi<=3)]
+    r[(hi>=3)&(hi<=4)], g[(hi>=3)&(hi<=4)], b[(hi>=3)&(hi<=4)] = 0, x[(hi>=3)&(hi<=4)], c[(hi>=3)&(hi<=4)]
+    r[(hi>=4)&(hi<=5)], g[(hi>=4)&(hi<=5)], b[(hi>=4)&(hi<=5)] = x[(hi>=4)&(hi<=5)], 0, c[(hi>=4)&(hi<=5)]
+    r[(hi>=5)&(hi<=6)], g[(hi>=5)&(hi<=6)], b[(hi>=5)&(hi<=6)] = c[(hi>=5)&(hi<=6)], 0, x[(hi>=5)&(hi<=6)]
+
+    m: torch.Tensor = l - c/2
+    r: torch.Tensor , g: torch.Tensor , b: torch.Tensor = (r+m), (g+m), (b+m)
+
+    out = torch.stack([r,g,b],dim=-3)
+    return out
 
 
 class RgbToHls(nn.Module):
@@ -86,13 +124,15 @@ def rgb_to_hls(image):
     maxc: torch.Tensor = image.max(-3)[0]
     minc: torch.Tensor = image.min(-3)[0]
 
+    Imax: torch.Tensor = image.max(-3)[1]
+    Imin: torch.Tensor = image.min(-3)[1]
+
     l: torch.Tensor = (maxc+minc)/2 # luminance
 
     deltac: torch.Tensor = maxc - minc
-    print(deltac.dtype)
-    s: torch.Tensor = torch.zeros((image.shape[0],image.shape[2],image.shape[3]),dtype=torch.float32)
+    s: torch.Tensor = torch.zeros((image.shape[0],image.shape[2],image.shape[3]),dtype=deltac.dtype)
     s[l<0.5]: torch.Tensor = (deltac[l<0.5]) / (maxc[l<0.5] + minc[l<0.5])
-    s[l>=0.5]: torch.Tensor = (deltac[l>=0.5]) / (2 - (maxc[l>=0.5] + minc[l>=0.5]))
+    s[l>=0.5]: torch.Tensor = (deltac[l>=0.5]) / (2 - (maxc[l>=0.5] + minc[l>=0.5])) #Saturation
 
     rc: torch.Tensor = (maxc - r) / deltac
     gc: torch.Tensor = (maxc - g) / deltac
@@ -106,11 +146,6 @@ def rgb_to_hls(image):
     h[maxr]: torch.Tensor = bc[maxr] - gc[maxr]
     h[minc == maxc]: torch.Tensor = 0.0
 
-    h: torch.Tensor = (h / 6.0) % 1.0
+    h: torch.Tensor = (h / 6.0) % 1.0 #Hue
 
     return torch.stack([h, l, s], dim=-3)
-
-#img = cv2.imread("../../../../Coloredhouses.jpg")
-#img_t = kornia.image_to_tensor(img)
-#img_rgb = kornia.bgr_to_rgb(img_t)
-#img_hls = rgb_to_hls(img_rgb.float()/255)
