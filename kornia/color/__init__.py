@@ -4,6 +4,7 @@ from .rgb import RgbToBgr, rgb_to_bgr
 from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
 from .hls import RgbToHls, rgb_to_hls
+from .hls import HlsToRgb, hls_to_rgb
 from .normalize import Normalize, normalize
 from .adjust import (
     AdjustBrightness, AdjustContrast, AdjustGamma, AdjustHue, AdjustSaturation,
@@ -16,9 +17,10 @@ __all__ = [
     "rgb_to_grayscale",
     "bgr_to_rgb",
     "rgb_to_bgr",
-    "rgb_to_hsv"
-    "rgb_to_hls",
+    "rgb_to_hsv",
     "hsv_to_rgb",
+    "rgb_to_hls",
+    "hls_to_rgb",
     "normalize",
     "adjust_brightness",
     "adjust_contrast",
@@ -29,8 +31,9 @@ __all__ = [
     "BgrToRgb",
     "RgbToBgr",
     "RgbToHsv",
-    "RgbToHls",
     "HsvToRgb",
+    "RgbToHls",
+    "HlsToRgb",
     "Normalize",
     "AdjustBrightness",
     "AdjustContrast",
