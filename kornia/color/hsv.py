@@ -7,14 +7,20 @@ class HsvToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     args:
-        image (torch.Tensor): RGB image to be converted to HSV.
+        image (torch.Tensor): HSV image to be converted to RGB.
 
     returns:
-        torch.tensor: HSV version of the image.
+        torch.tensor: RGB version of the image.
 
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = kornia.color.HsvToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
 
     """
 
@@ -30,11 +36,11 @@ def hsv_to_rgb(image):
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): RGB Image to be converted to HSV.
+        input (torch.Tensor): HSV Image to be converted to RGB.
 
 
     Returns:
-        torch.Tensor: HSV version of the image.
+        torch.Tensor: RGB version of the image.
     """
 
     if not torch.is_tensor(image):
@@ -81,6 +87,12 @@ class RgbToHsv(nn.Module):
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> hsv = kornia.color.RgbToHsv()
+        >>> output = hsv(input)  # 2x3x4x5
 
     """
 
