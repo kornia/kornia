@@ -267,5 +267,13 @@ class TestDivergenceLoss:
         assert_allclose(actual, expected)
 
 class TestTotalVariation:
-    pass
-    # TODO
+    # Total variation of constant vectors is 0
+    @pytest.mark.parametrize('input,expected', [
+    (torch.ones(3,4,5), torch.zeros(())),
+    (2*torch.ones(2,3,4,5), torch.zeros(2)),
+    ])
+    def test_tv_on_constant(self, input, expected):
+        actual = kornia.losses.total_variation(input)
+        assert_allclose(actual, expected)
+
+    # TODO add more tests
