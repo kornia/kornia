@@ -265,3 +265,7 @@ class TestDivergenceLoss:
     def test_kl_div_loss_2d_without_reduction(self, input, target, expected):
         actual = kornia.losses.kl_div_loss_2d(input, target, reduction='none')
         assert_allclose(actual, expected)
+
+class TestTotalVariation:
+    pass
+    # TODO
