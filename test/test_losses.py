@@ -268,11 +268,12 @@ class TestDivergenceLoss:
         actual = kornia.losses.kl_div_loss_2d(input, target, reduction='none')
         assert_allclose(actual, expected)
 
+
 class TestTotalVariation:
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize('input,expected', [
-    (torch.ones(3,4,5), torch.zeros(())),
-    (2*torch.ones(2,3,4,5), torch.zeros(2)),
+        (torch.ones(3, 4, 5), torch.zeros(())),
+        (2 * torch.ones(2, 3, 4, 5), torch.zeros(2)),
     ])
     def test_tv_on_constant(self, input, expected):
         actual = kornia.losses.total_variation(input)
@@ -280,8 +281,8 @@ class TestTotalVariation:
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize('input', [
-    torch.rand(3,4,5),
-    torch.rand(1,2,3),
+        torch.rand(3, 4, 5),
+        torch.rand(1, 2, 3),
     ])
     def test_tv_on_3d(self, input):
         actual = kornia.losses.total_variation(input)
@@ -293,21 +294,21 @@ class TestTotalVariation:
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize('input', [
-    torch.rand(2,3,4,5),
-    torch.rand(3,1,2,3),
+        torch.rand(2, 3, 4, 5),
+        torch.rand(3, 1, 2, 3),
     ])
     def test_tv_on_4d(self, input):
         actual = kornia.losses.total_variation(input)
         input_np = input.numpy()
         pixel_dif1 = input_np[:, :, 1:, :] - input_np[:, :, :-1, :]
         pixel_dif2 = input_np[:, :, :, 1:] - input_np[:, :, :, :-1]
-        expected = torch.tensor(np.sum(np.abs(pixel_dif1), axis=(1,2,3)) + np.sum(np.abs(pixel_dif2), axis=(1,2,3)))
+        expected = torch.tensor(np.sum(np.abs(pixel_dif1), axis=(1, 2, 3)) + np.sum(np.abs(pixel_dif2), axis=(1, 2, 3)))
         assert_allclose(actual, expected)
 
     # Expect ValueError to be raised when tensors of rank != 3 or 4 are passed
     @pytest.mark.parametrize('input', [
-    torch.rand(2,3,4,5,3),
-    torch.rand(3,1),
+        torch.rand(2, 3, 4, 5, 3),
+        torch.rand(3, 1),
     ])
     def test_tv_on_invalid_dims(self, input):
         with pytest.raises(ValueError) as ex_info:
@@ -315,8 +316,8 @@ class TestTotalVariation:
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [
-    1,
-    [1,2],
+        1,
+        [1, 2],
     ])
     def test_tv_on_invalid_types(self, input):
         with pytest.raises(TypeError) as ex_info:

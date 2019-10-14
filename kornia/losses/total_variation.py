@@ -14,6 +14,7 @@ class TotalVariation(nn.Module):
         >>> output = tv(torch.ones(2,3,4,4)) # tensor([0., 0.])
         >>> output.backward()
     """
+
     def __init__(self):
         super(TotalVariation, self).__init__()
 
@@ -32,11 +33,11 @@ def total_variation(img: torch.tensor) -> torch.tensor:
     if len(img_shape) == 3:
         pixel_dif1 = img[:, 1:, :] - img[:, :-1, :]
         pixel_dif2 = img[:, :, 1:] - img[:, :, :-1]
-        reduce_axes = [0,1,2]
+        reduce_axes = [0, 1, 2]
     elif len(img_shape) == 4:
         pixel_dif1 = img[:, :, 1:, :] - img[:, :, :-1, :]
         pixel_dif2 = img[:, :, :, 1:] - img[:, :, :, :-1]
-        reduce_axes = [1,2,3]
+        reduce_axes = [1, 2, 3]
     else:
         raise ValueError("Expected input tensor to be of rank 3 or 4, but got " + str(len(img_shape)))
 
