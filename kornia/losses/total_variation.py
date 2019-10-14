@@ -27,7 +27,7 @@ def total_variation(img: torch.tensor) -> torch.tensor:
     See :class:`~kornia.losses.TotalVariation` for details.
     """
     if not torch.is_tensor(img):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(src1)}")
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
     img_shape = img.shape
     if len(img_shape) == 3:
         pixel_dif1 = img[:, 1:, :] - img[:, :-1, :]

@@ -9,6 +9,8 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
+import numpy as np
+
 
 class TestFocalLoss:
     def _test_smoke_none(self):
@@ -276,4 +278,46 @@ class TestTotalVariation:
         actual = kornia.losses.total_variation(input)
         assert_allclose(actual, expected)
 
-    # TODO add more tests
+    # Total variation for 3D tensors
+    @pytest.mark.parametrize('input', [
+    torch.rand(3,4,5),
+    torch.rand(1,2,3),
+    ])
+    def test_tv_on_3d(self, input):
+        actual = kornia.losses.total_variation(input)
+        input_np = input.numpy()
+        pixel_dif1 = input_np[:, 1:, :] - input_np[:, :-1, :]
+        pixel_dif2 = input_np[:, :, 1:] - input_np[:, :, :-1]
+        expected = torch.tensor(np.sum(np.abs(pixel_dif1)) + np.sum(np.abs(pixel_dif2)))
+        assert_allclose(actual, expected)
+
+    # Total variation for 3D tensors
+    @pytest.mark.parametrize('input', [
+    torch.rand(2,3,4,5),
+    torch.rand(3,1,2,3),
+    ])
+    def test_tv_on_4d(self, input):
+        actual = kornia.losses.total_variation(input)
+        input_np = input.numpy()
+        pixel_dif1 = input_np[:, :, 1:, :] - input_np[:, :, :-1, :]
+        pixel_dif2 = input_np[:, :, :, 1:] - input_np[:, :, :, :-1]
+        expected = torch.tensor(np.sum(np.abs(pixel_dif1), axis=(1,2,3)) + np.sum(np.abs(pixel_dif2), axis=(1,2,3)))
+        assert_allclose(actual, expected)
+
+    # Expect ValueError to be raised when tensors of rank != 3 or 4 are passed
+    @pytest.mark.parametrize('input', [
+    torch.rand(2,3,4,5,3),
+    torch.rand(3,1),
+    ])
+    def test_tv_on_invalid_dims(self, input):
+        with pytest.raises(ValueError) as ex_info:
+            kornia.losses.total_variation(input)
+
+    # Expect TypeError to be raised when non-torch tensors are passed
+    @pytest.mark.parametrize('input', [
+    1,
+    [1,2],
+    ])
+    def test_tv_on_invalid_types(self, input):
+        with pytest.raises(TypeError) as ex_info:
+            kornia.losses.total_variation(input)
