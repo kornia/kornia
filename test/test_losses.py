@@ -292,7 +292,7 @@ class TestTotalVariation:
         expected = torch.tensor(np.sum(np.abs(pixel_dif1)) + np.sum(np.abs(pixel_dif2)))
         assert_allclose(actual, expected)
 
-    # Total variation for 3D tensors
+    # Total variation for 4D tensors
     @pytest.mark.parametrize('input', [
         torch.rand(2, 3, 4, 5),
         torch.rand(3, 1, 2, 3),

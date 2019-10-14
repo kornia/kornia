@@ -9,19 +9,17 @@ import torch
 import kornia
 import cv2
 import numpy as np
-from torch.autograd import Variable
 
 import matplotlib.pyplot as plt
 
 # read the image with OpenCV
 img: np.array = cv2.imread('./data/doraemon.png')
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0
-img = img + np.random.normal(loc=0.0, scale=0.1, size=img.shape)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)/255.0
+img = img + np.random.normal(loc=0.0,scale=0.1,size=img.shape)
 img = np.clip(img, 0.0, 1.0)
 
 # convert to torch tensor
 noisy_image: torch.tensor = kornia.image_to_tensor(img).squeeze()  # CxHxW
-noisy_image
 
 
 # define the total variation denoising network
@@ -50,8 +48,8 @@ num_iters = 500
 for i in range(num_iters):
     optimizer.zero_grad()
     loss = tv_denoiser()
-    if i % 25 == 0:
-        print("Loss in iteration ", i, " of ", num_iters, ": ", loss.detach().numpy())
+    if i%25 == 0:
+        print("Loss in iteration ", i, " of ", num_iters, ": ", loss.item())
     loss.backward()
     optimizer.step()
 

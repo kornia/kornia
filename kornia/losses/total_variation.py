@@ -39,6 +39,6 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
         pixel_dif2 = img[:, :, :, 1:] - img[:, :, :, :-1]
         reduce_axes = (1, 2, 3)
     else:
-        raise ValueError("Expected input tensor to be of rank 3 or 4, but got " + str(len(img_shape)))
+        raise ValueError("Expected input tensor to be of ndim 3 or 4, but got " + str(len(img_shape)))
 
     return pixel_dif1.abs().sum(dim=reduce_axes) + pixel_dif2.abs().sum(dim=reduce_axes)
