@@ -305,7 +305,7 @@ class TestTotalVariation:
         expected = torch.tensor(np.sum(np.abs(pixel_dif1), axis=(1, 2, 3)) + np.sum(np.abs(pixel_dif2), axis=(1, 2, 3)))
         assert_allclose(actual, expected)
 
-    # Expect ValueError to be raised when tensors of rank != 3 or 4 are passed
+    # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [
         torch.rand(2, 3, 4, 5, 3),
         torch.rand(3, 1),
