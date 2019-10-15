@@ -30,14 +30,10 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
     if not torch.is_tensor(img):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
     img_shape = img.shape
-    if len(img_shape) == 3:
-        pixel_dif1 = img[:, 1:, :] - img[:, :-1, :]
-        pixel_dif2 = img[:, :, 1:] - img[:, :, :-1]
-        reduce_axes = (0, 1, 2)
-    elif len(img_shape) == 4:
-        pixel_dif1 = img[:, :, 1:, :] - img[:, :, :-1, :]
-        pixel_dif2 = img[:, :, :, 1:] - img[:, :, :, :-1]
-        reduce_axes = (1, 2, 3)
+    if len(img_shape) == 3 or len(img_shape) == 4:
+        pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
+        pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
+        reduce_axes = (0, 1, 2) if len(img_shape) == 3 else (1, 2, 3)
     else:
         raise ValueError("Expected input tensor to be of ndim 3 or 4, but got " + str(len(img_shape)))
 
