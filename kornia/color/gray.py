@@ -8,7 +8,7 @@ class RgbToGrayscale(nn.Module):
     the image data is assumed to be in the range of (0, 1).
 
     args:
-        input (torch.Tensor): image to be converted to grayscale.
+        input (torch.Tensor): RGB image to be converted to grayscale.
 
     returns:
         torch.Tensor: grayscale version of the image.
@@ -20,7 +20,7 @@ class RgbToGrayscale(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.image.RgbToGrayscale()
+        >>> gray = kornia.color.RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
@@ -37,7 +37,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     See :class:`~kornia.color.RgbToGrayscale` for details.
 
     Args:
-        input (torch.Tensor): Image to be converted to grayscale.
+        input (torch.Tensor): RGB image to be converted to grayscale.
 
     Returns:
         torch.Tensor: Grayscale version of the image.
