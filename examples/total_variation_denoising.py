@@ -49,7 +49,7 @@ for i in range(num_iters):
     optimizer.zero_grad()
     loss = tv_denoiser()
     if i%25 == 0:
-        print("Loss in iteration ", i, " of ", num_iters, ": ", loss.item())
+        print("Loss in iteration {} of {}: {:.3f}".format(i, num_iters, loss.item()))
     loss.backward()
     optimizer.step()
 
