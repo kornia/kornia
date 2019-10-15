@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 
 # read the image with OpenCV
 img: np.array = cv2.imread('./data/doraemon.png')
-img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)/255.0
-img = img + np.random.normal(loc=0.0,scale=0.1,size=img.shape)
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0
+img = img + np.random.normal(loc=0.0, scale=0.1, size=img.shape)
 img = np.clip(img, 0.0, 1.0)
 
 # convert to torch tensor
@@ -48,7 +48,7 @@ num_iters = 500
 for i in range(num_iters):
     optimizer.zero_grad()
     loss = tv_denoiser()
-    if i%25 == 0:
+    if i % 25 == 0:
         print("Loss in iteration {} of {}: {:.3f}".format(i, num_iters, loss.item()))
     loss.backward()
     optimizer.step()
