@@ -53,30 +53,20 @@ def hls_to_rgb(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :]*360
+    h: torch.Tensor = image[..., 0, :, :] * 360
     l: torch.Tensor = image[..., 1, :, :]
     s: torch.Tensor = image[..., 2, :, :]
 
-    c: torch.Tensor = (1 - torch.abs((2*l)-1)) * s #chroma
+    kr = (0 + h / 30) % 12
+    kg = (8 + h / 30) % 12
+    kb = (4 + h / 30) % 12
+    a = s * torch.min(l, 1 - l)
 
-    hi: torch.Tensor = (h/60)
-    x: torch.Tensor = c * (1 - torch.abs(hi%2 - 1))
+    fr = l - a * torch.max(torch.min(torch.min(kr - 3, 9 - kr),torch.ones_like(kr)), -1 * torch.ones_like(kr))
+    fg = l - a * torch.max(torch.min(torch.min(kg - 3, 9 - kg),torch.ones_like(kg)), -1 * torch.ones_like(kr))
+    fb = l - a * torch.max(torch.min(torch.min(kb - 3, 9 - kb),torch.ones_like(kb)), -1 * torch.ones_like(kr))
 
-    r: torch.Tensor = torch.zeros_like(l)
-    g: torch.Tensor = torch.zeros_like(l)
-    b: torch.Tensor = torch.zeros_like(l)
-
-    r[(hi>=0)&(hi<=1)], g[(hi>=0)&(hi<=1)], b[(hi>=0)&(hi<=1)] = c[(hi>=0)&(hi<=1)], x[(hi>=0)&(hi<=1)],          0
-    r[(hi>=1)&(hi<=2)], g[(hi>=1)&(hi<=2)], b[(hi>=1)&(hi<=2)] = x[(hi>=1)&(hi<=2)], c[(hi>=1)&(hi<=2)],          0
-    r[(hi>=2)&(hi<=3)], g[(hi>=2)&(hi<=3)], b[(hi>=2)&(hi<=3)] =         0         , c[(hi>=2)&(hi<=3)], x[(hi>=2)&(hi<=3)]
-    r[(hi>=3)&(hi<=4)], g[(hi>=3)&(hi<=4)], b[(hi>=3)&(hi<=4)] =         0         , x[(hi>=3)&(hi<=4)], c[(hi>=3)&(hi<=4)]
-    r[(hi>=4)&(hi<=5)], g[(hi>=4)&(hi<=5)], b[(hi>=4)&(hi<=5)] = x[(hi>=4)&(hi<=5)],          0        , c[(hi>=4)&(hi<=5)]
-    r[(hi>=5)&(hi<=6)], g[(hi>=5)&(hi<=6)], b[(hi>=5)&(hi<=6)] = c[(hi>=5)&(hi<=6)],          0        , x[(hi>=5)&(hi<=6)]
-
-    m: torch.Tensor = l - c/2
-    r , g , b = (r+m), (g+m), (b+m)
-    
-    out: torch.Tensor = torch.stack([r, g, b],dim=-3)
+    out: torch.Tensor = torch.stack([fr, fg, fb],dim=-3)
 
     return out
 
@@ -140,17 +130,17 @@ def rgb_to_hls(image):
     Imax: torch.Tensor = image.max(-3)[1]
     Imin: torch.Tensor = image.min(-3)[1]
 
-    l: torch.Tensor = (maxc+minc)/2 # luminance
+    l: torch.Tensor = (maxc + minc) / 2  # luminance
 
     deltac: torch.Tensor = maxc - minc
     s: torch.Tensor = torch.zeros_like(deltac)
-    s[l<0.5]: torch.Tensor = (deltac[l<0.5]) / (maxc[l<0.5] + minc[l<0.5])
-    s[l>=0.5]: torch.Tensor = (deltac[l>=0.5]) / (2 - (maxc[l>=0.5] + minc[l>=0.5])) #Saturation
+    s[l < 0.5]: torch.Tensor = (deltac[l < 0.5]) / (maxc[l < 0.5] + minc[l < 0.5])
+    s[l >= 0.5]: torch.Tensor = (deltac[l >= 0.5]) / (2 - (maxc[l >= 0.5] + minc[l >= 0.5]))  # Saturation
 
     hi = torch.zeros_like(deltac)
-    hi[Imax==0] = ((g[Imax==0] - b[Imax==0])/deltac[Imax==0]) % 6
-    hi[Imax==1] = ((b[Imax==1] - r[Imax==1])/deltac[Imax==1]) + 2
-    hi[Imax==2] = ((r[Imax==2] - g[Imax==2])/deltac[Imax==2]) + 4
-    h = (60 * hi)/360
+    hi[Imax == 0] = ((g[Imax == 0] - b[Imax == 0]) / deltac[Imax == 0]) % 6
+    hi[Imax == 1] = ((b[Imax == 1] - r[Imax == 1]) / deltac[Imax == 1]) + 2
+    hi[Imax == 2] = ((r[Imax == 2] - g[Imax == 2]) / deltac[Imax == 2]) + 4
+    h = (60 * hi) / 360
 
     return torch.stack([h, l, s], dim=-3)
