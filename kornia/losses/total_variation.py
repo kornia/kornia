@@ -33,7 +33,7 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
     if len(img_shape) == 3 or len(img_shape) == 4:
         pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
         pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
-        reduce_axes = (0, 1, 2) if len(img_shape) == 3 else (1, 2, 3)
+        reduce_axes = (-3, -2, -1)
     else:
         raise ValueError("Expected input tensor to be of ndim 3 or 4, but got " + str(len(img_shape)))
 
