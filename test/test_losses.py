@@ -9,8 +9,6 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
-import numpy as np
-
 
 class TestFocalLoss:
     def _test_smoke_none(self):
