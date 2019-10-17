@@ -18,6 +18,9 @@ class HlsToRgb(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
+    reference:
+        https://en.wikipedia.org/wiki/HSL_and_HSV
+
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
