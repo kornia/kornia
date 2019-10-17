@@ -34,15 +34,15 @@ class HlsToRgb(nn.Module):
 
 
 def hls_to_rgb(image):
-    r"""Convert an HSV image to RGB
+    r"""Convert an HLS image to RGB
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): RGB Image to be converted to HSV.
+        input (torch.Tensor): HLS Image to be converted to RGB.
 
 
     Returns:
-        torch.Tensor: HSV version of the image.
+        torch.Tensor: RGB version of the image.
     """
 
     if not torch.is_tensor(image):
@@ -62,11 +62,13 @@ def hls_to_rgb(image):
     kb = (4 + h / 30) % 12
     a = s * torch.min(l, 1 - l)
 
-    fr = l - a * torch.max(torch.min(torch.min(kr - 3, 9 - kr),torch.ones_like(kr)), -1 * torch.ones_like(kr))
-    fg = l - a * torch.max(torch.min(torch.min(kg - 3, 9 - kg),torch.ones_like(kg)), -1 * torch.ones_like(kr))
-    fb = l - a * torch.max(torch.min(torch.min(kb - 3, 9 - kb),torch.ones_like(kb)), -1 * torch.ones_like(kr))
+    ones_k = torch.ones_like(kr)
 
-    out: torch.Tensor = torch.stack([fr, fg, fb],dim=-3)
+    fr = l - a * torch.max(torch.min(torch.min(kr - 3, 9 - kr), ones_k), -1 * ones_k)
+    fg = l - a * torch.max(torch.min(torch.min(kg - 3, 9 - kg), ones_k), -1 * ones_k)
+    fb = l - a * torch.max(torch.min(torch.min(kb - 3, 9 - kb), ones_k), -1 * ones_k)
+
+    out: torch.Tensor = torch.stack([fr, fg, fb], dim=-3)
 
     return out
 
@@ -127,20 +129,20 @@ def rgb_to_hls(image):
     maxc: torch.Tensor = image.max(-3)[0]
     minc: torch.Tensor = image.min(-3)[0]
 
-    Imax: torch.Tensor = image.max(-3)[1]
-    Imin: torch.Tensor = image.min(-3)[1]
+    imax: torch.Tensor = image.max(-3)[1]
 
     l: torch.Tensor = (maxc + minc) / 2  # luminance
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = torch.zeros_like(deltac)
-    s[l < 0.5]: torch.Tensor = (deltac[l < 0.5]) / (maxc[l < 0.5] + minc[l < 0.5])
-    s[l >= 0.5]: torch.Tensor = (deltac[l >= 0.5]) / (2 - (maxc[l >= 0.5] + minc[l >= 0.5]))  # Saturation
 
-    hi = torch.zeros_like(deltac)
-    hi[Imax == 0] = ((g[Imax == 0] - b[Imax == 0]) / deltac[Imax == 0]) % 6
-    hi[Imax == 1] = ((b[Imax == 1] - r[Imax == 1]) / deltac[Imax == 1]) + 2
-    hi[Imax == 2] = ((r[Imax == 2] - g[Imax == 2]) / deltac[Imax == 2]) + 4
-    h = (60 * hi) / 360
+    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac /(2 - (maxc + minc)))  #  saturation
+
+    hi: torch.Tensor = torch.zeros_like(deltac)
+
+    hi[imax == 0] = (((g - b) / deltac) % 6)[imax == 0]
+    hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
+    hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
+
+    h: torch.Tensor = (60 * hi) / 360  # hue
 
     return torch.stack([h, l, s], dim=-3)
