@@ -144,7 +144,7 @@ class ScaleSpaceDetector(nn.Module):
             current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                                       max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
 
-            # Zero responce lafs, which touch the boundary
+            # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
             resp_flat_best = resp_flat_best * good_mask.to(resp_flat_best.device).to(resp_flat_best.dtype)
 
