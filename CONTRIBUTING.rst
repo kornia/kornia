@@ -5,11 +5,11 @@ Contributing to Kornia
 
 Everyone is welcomed to get involved with the project. There are different ways in how you can put your two cents:
 
+1. Ask/Answer questions using the ``#kornia`` tag in `PyTorch Discuss <https://discuss.pytorch.org>`_
 
-1. Ask/Answer questions in the ``#kornia`` PyTorch Slack channel:
-
-   - We suggest you to join the channel in order to get more involved to the PyTorch ecosystem. Send an email to `slack@pytorch.org <slack@pytorch.org>`_ in order to get access.
    - Please, don't use GitHub issues for Q&A.
+   - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you to join the PyTorch slack. You can apply using this form: `https://bit.ly/ptslack <https://bit.ly/ptslack>`_
+   
 
 2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
 
