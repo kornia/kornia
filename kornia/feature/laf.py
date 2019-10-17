@@ -381,3 +381,22 @@ def extract_patches_from_pyramid(img: torch.Tensor,
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
     return out
+
+
+def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
+    """Checks if the LAF is touching or partly outside the image boundary. Returns the mask
+    of LAFs, which are fully inside the image, i.e. valid.
+
+    Args:
+        laf (torch.Tensor):  :math:`(B, N, 2, 3)`
+        images (torch.Tensor): images, lafs are detected in :math:`(B, CH, H, W)`
+
+    Returns:
+        mask (torch.Tensor):  :math:`(B, N)`
+    """
+    raise_error_if_laf_is_not_valid(laf)
+    n, ch, h, w = images.size()
+    pts: torch.Tensor = laf_to_boundary_points(laf, 12)
+    good_lafs_mask: torch.Tensor = (pts[..., 0] >= 0) * (pts[..., 0] <= w) * (pts[..., 1] >= 0) * (pts[..., 1] <= h)
+    good_lafs_mask = good_lafs_mask.min(dim=2)[0]
+    return good_lafs_mask

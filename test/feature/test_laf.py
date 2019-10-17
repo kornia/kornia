@@ -290,3 +290,18 @@ class TestExtractPatchesPyr:
         assert gradcheck(kornia.feature.extract_patches_from_pyramid,
                          (img, nlaf, PS, False),
                          raise_exception=True)
+
+
+class TestLAFIsTouchingBoundary:
+    def test_shape(self):
+        inp = torch.rand(5, 3, 2, 3)
+        img = torch.rand(5, 3, 10, 10)
+        assert (5, 3) == kornia.feature.laf_is_inside_image(inp, img).shape
+
+    def test_touch(self):
+        w, h = 10, 5
+        img = torch.rand(1, 3, h, w)
+        laf = torch.tensor([[[[10, 0, 3], [0, 10, 3]],
+                             [[1, 0, 5], [0, 1, 2]]]]).float()
+        expected = torch.tensor([[False, True]])
+        assert torch.all(kornia.feature.laf_is_inside_image(laf, img) == expected).item()

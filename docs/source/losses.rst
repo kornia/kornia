@@ -4,6 +4,7 @@ kornia.losses
 .. currentmodule:: kornia.losses
 
 .. autofunction:: dice_loss
+.. autofunction:: total_variation
 .. autofunction:: tversky_loss
 .. autofunction:: focal_loss
 .. autofunction:: ssim
@@ -14,3 +15,4 @@ kornia.losses
 .. autoclass:: FocalLoss
 .. autoclass:: SSIM
 .. autoclass:: InverseDepthSmoothnessLoss
+.. autoclass:: TotalVariation
