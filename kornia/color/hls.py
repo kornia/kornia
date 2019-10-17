@@ -135,7 +135,7 @@ def rgb_to_hls(image):
 
     deltac: torch.Tensor = maxc - minc
 
-    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac /(2 - (maxc + minc)))  #  saturation
+    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac / (2 - (maxc + minc)))  # saturation
 
     hi: torch.Tensor = torch.zeros_like(deltac)
 
