@@ -21,9 +21,9 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     r"""Function that convolves a tensor with a kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
-    indepentdently at each depth channel of the tensor. Before applying the
+    independently at each depth channel of the tensor. Before applying the
     kernel, the function applies padding according to the specified mode so
-    that the output reaims in the same shape.
+    that the output remains in the same shape.
 
     Args:
         input (torch.Tensor): the input tensor with shape of
