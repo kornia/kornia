@@ -1,3 +1,5 @@
+-i https://pypi.python.org/simple
+-f https://download.pytorch.org/whl/torch_stable.html
 sphinx==2.1.2
 sphinx-gallery==0.4.0
 sphinx_rtd_theme==0.4.3
@@ -7,5 +9,5 @@ nbconvert==5.5.0
 notebook==6.0.1
 matplotlib==3.1.1
 opencv-python==4.1.1.26
--f https://download.pytorch.org/whl/torch_stable.html torch==1.3.0+cpu
--f https://download.pytorch.org/whl/torch_stable.html torchvision==0.4.1+cpu
+torch==1.3.0+cpu
+torchvision==0.4.1+cpu
