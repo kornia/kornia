@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from .rgb import bgr_to_rgb
 
 
 class RgbToGrayscale(nn.Module):
@@ -109,6 +110,6 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(input.shape))
 
-    b, g, r = torch.chunk(input, chunks=3, dim=-3)
-    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
+    bgr_rgb = bgr_to_rgb(input)
+    gray = rgb_to_grayscale(bgr_rgb)
     return gray
