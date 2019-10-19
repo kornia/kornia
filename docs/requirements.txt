@@ -7,3 +7,5 @@ nbconvert==5.5.0
 notebook==6.0.1
 matplotlib==3.1.1
 opencv-python==4.1.1.26
+-i https://download.pytorch.org/whl/torch_stable.html torch==1.3.0+cpu
+-i https://download.pytorch.org/whl/torch_stable.html torchvision==0.4.1+cpu
