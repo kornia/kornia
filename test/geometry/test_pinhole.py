@@ -11,19 +11,19 @@ from torch.testing import assert_allclose
 
 class TestPinholeCamera:
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy):
-        intrinsics = torch.eye(4).expand(batch_size, -1, -1)
+        intrinsics = torch.eye(4)
         intrinsics[..., 0, 0] = fx
         intrinsics[..., 1, 1] = fy
         intrinsics[..., 0, 2] = cx
         intrinsics[..., 1, 2] = cy
-        return intrinsics
+        return intrinsics.expand(batch_size, -1, -1)
 
     def _create_extrinsics(self, batch_size, tx, ty, tz):
-        extrinsics = torch.eye(4).expand(batch_size, -1, -1)
+        extrinsics = torch.eye(4)
         extrinsics[..., 0, -1] = tx
         extrinsics[..., 1, -1] = ty
         extrinsics[..., 2, -1] = tz
-        return extrinsics
+        return extrinsics.expand(batch_size, -1, -1)
 
     def test_smoke(self):
         intrinsics = torch.eye(4)[None]
