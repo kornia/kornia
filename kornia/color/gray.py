@@ -111,5 +111,5 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
                          .format(input.shape))
 
     input_rgb = bgr_to_rgb(input)
-    gray: torch.Tensor = rgb_to_grayscale(bgr_rgb)
+    gray: torch.Tensor = rgb_to_grayscale(input_rgb)
     return gray
