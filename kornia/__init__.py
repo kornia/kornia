@@ -22,6 +22,8 @@ from kornia.color import (
     rgb_to_bgr,
     rgb_to_hsv,
     hsv_to_rgb,
+    rgb_to_hls,
+    hls_to_rgb,
     normalize,
     adjust_brightness,
     adjust_contrast,
@@ -56,6 +58,7 @@ from kornia.losses import (
     dice_loss,
     tversky_loss,
     inverse_depth_smoothness_loss,
+    total_variation
 )
 from kornia.utils import (
     one_hot,
