@@ -110,6 +110,6 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(input.shape))
 
-    bgr_rgb = bgr_to_rgb(input)
-    gray = rgb_to_grayscale(bgr_rgb)
+    input_rgb = bgr_to_rgb(input)
+    gray: torch.Tensor = rgb_to_grayscale(bgr_rgb)
     return gray
