@@ -22,6 +22,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: translate
 .. autofunction:: scale
 .. autofunction:: shear
+.. autofunction:: flip 
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -30,3 +31,5 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: PyrDown
 .. autoclass:: PyrUp
 .. autoclass:: ScalePyramid
+.. autoclass:: Flip
+
