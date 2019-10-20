@@ -10,7 +10,7 @@ from kornia.geometry import ConvSoftArgmax3d
 from kornia.feature.orientation import PassLAF
 from kornia.feature.laf import (
     denormalize_laf,
-    normalize_laf)
+    normalize_laf, laf_is_inside_image)
 from kornia.geometry.transform import ScalePyramid
 
 
@@ -32,7 +32,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     # Reshape for grid shape
     B, N, _ = max_coords.shape
     L: int = sigmas.size(1)
-    scale_coords = max_coords[:, :, 0].view(-1, 1, 1, 1)
+    scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
 
     # Normalize coordinate
     scale_coords_index = (2.0 * scale_coords / sigmas.size(1)) - 1.0
@@ -143,6 +143,11 @@ class ScaleSpaceDetector(nn.Module):
             rotmat = angle_to_rotation_matrix(torch.zeros(B, N).to(max_coords_best.device).to(max_coords_best.dtype))
             current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                                       max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
+
+            # Zero response lafs, which touch the boundary
+            good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
+            resp_flat_best = resp_flat_best * good_mask.to(resp_flat_best.device).to(resp_flat_best.dtype)
+
             # Normalize LAFs
             current_lafs = normalize_laf(current_lafs, octave[:, 0])  # We don`t need # of scale levels, only shape
 
