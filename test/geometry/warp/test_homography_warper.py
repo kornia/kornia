@@ -93,11 +93,12 @@ class TestHomographyWarper:
         batch_size, channels, height, width = batch_shape
         patch_src = torch.rand(batch_size, channels, height, width)
         # rotation of 90deg
-        dst_homo_src = utils.create_eye_batch(batch_size, 3)
+        dst_homo_src = torch.eye(3)
         dst_homo_src[..., 0, 0] = 0.0
         dst_homo_src[..., 0, 1] = 1.0
         dst_homo_src[..., 1, 0] = -1.0
         dst_homo_src[..., 1, 1] = 0.0
+        dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
         # instantiate warper and warp from source to destination
         warper = kornia.HomographyWarper(height, width)
