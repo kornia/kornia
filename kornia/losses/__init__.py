@@ -7,3 +7,4 @@ from .depth_smooth import (
 )
 from .divergence import kl_div_loss_2d, js_div_loss_2d
 from .total_variation import TotalVariation, total_variation
+from .psnr import PSNR, psnr
