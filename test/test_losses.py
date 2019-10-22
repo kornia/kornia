@@ -340,3 +340,28 @@ class TestTotalVariation:
     def test_tv_on_invalid_types(self, input):
         with pytest.raises(TypeError) as ex_info:
             kornia.losses.total_variation(input)
+
+
+class TestPSNR:
+    def test_smoke(self):
+        signal = torch.rand(2, 3, 3, 2)
+        approximation = torch.rand(2, 3, 3, 2)
+
+        criterion = kornia.losses.PSNR(1.0)
+        loss = criterion(signal, approximation)
+
+    def test_same_signal(self):
+        signal = torch.rand(2, 3, 3, 2)
+        approximation = signal
+
+        criterion = kornia.losses.PSNR(1.0)
+        loss = criterion(signal, approximation)
+
+        assert pytest.approx(loss.item(), float('inf'))
+
+    @pytest.mark.skip(reason="TODO: implement me")
+    def test_jit(self):
+        pass
+
+    def test_gradcheck(self):
+        pass
