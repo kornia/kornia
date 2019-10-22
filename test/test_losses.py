@@ -350,6 +350,8 @@ class TestPSNR:
         criterion = kornia.losses.PSNR(1.0)
         loss = criterion(signal, approximation)
 
+        assert loss.shape == tuple()
+
     def test_same_signal(self):
         signal = torch.rand(2, 3, 3, 2)
         approximation = signal
@@ -359,9 +361,28 @@ class TestPSNR:
 
         assert pytest.approx(loss.item(), float('inf'))
 
+    def test_type(self):
+        criterion = kornia.losses.PSNR(1.0)
+        with pytest.raises(Exception) as e:
+            criterion(1, 2)
+
+    def test_shape(self):
+        criterion = kornia.losses.PSNR(1.0)
+        with pytest.raises(Exception) as e:
+            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+
+    def test_simple(self):
+        assert pytest.approx(kornia.losses.psnr(torch.ones(1), 1.2 * torch.ones(1), 2).item(), 20.0)
+
     @pytest.mark.skip(reason="TODO: implement me")
     def test_jit(self):
         pass
 
     def test_gradcheck(self):
-        pass
+        signal = torch.rand(2, 3, 3, 2).double()
+        approximation = torch.rand(2, 3, 3, 2).double()
+
+        signal = utils.tensor_to_gradcheck_var(signal)  # to var
+        assert gradcheck(
+            kornia.losses.psnr, (signal, approximation, 1.0), raise_exception=True
+        )
