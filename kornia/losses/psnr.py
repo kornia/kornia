@@ -7,7 +7,7 @@ class PSNR(nn.Module):
     r"""Creates a criterion that calculates the PSNR between 2 images.
 
     Arguments:
-        max_val (float): Maximum value os signal
+        max_val (float): Maximum value of signal
 
     Shape:
         - signal: :math:`(*)`
@@ -22,15 +22,15 @@ class PSNR(nn.Module):
     def __init__(self, max_val):
         self.max_val = max_val
 
-
-    def forward(self, signal: torch.tensor, approximation: torch.tensor):
+    def forward(  # type: ignore
+            self, signal: torch.Tensor, approximation: torch.Tensor) -> torch.Tensor:
         return psnr(signal, approximation, self.max_val)
 
 
-def psnr (signal: torch.tensor, approximation: torch.tensor, max_val):
+def psnr(signal: torch.Tensor, approximation: torch.Tensor, max_val) -> torch.Tensor:
     if not torch.is_tensor(signal) or not torch.is_tensor(approximation):
         raise TypeError(f"Expected 2 torch tensors but got {type(signal)} and {type(approximation)}")
     if signal.shape != approximation.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {signal.shape} and {approximation.shape}")
-    mse_val = mse_loss(signal, approximation, reduction = 'mean')
-    return 10 * torch.log(max_val*max_val/mse_val)/torch.log(10)
+    mse_val = mse_loss(signal, approximation, reduction='mean')
+    return 10 * torch.log(max_val * max_val / mse_val) / torch.log(torch.tensor(10.0))
