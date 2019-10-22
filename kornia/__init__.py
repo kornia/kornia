@@ -18,6 +18,7 @@ from kornia import utils
 
 from kornia.color import (
     rgb_to_grayscale,
+    bgr_to_grayscale,
     bgr_to_rgb,
     rgb_to_bgr,
     rgb_to_hsv,
