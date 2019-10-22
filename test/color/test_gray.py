@@ -54,6 +54,18 @@ class TestBgrToGrayscale:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.bgr_to_grayscale, (img,), raise_exception=True)
 
+    def test_module(self):
+        data = torch.tensor([[[[100., 73.],
+                               [200., 22.]],
+
+                              [[50., 10.],
+                               [148, 14, ]],
+
+                              [[225., 255.],
+                               [48., 8.]]]])
+
+        assert_allclose(kornia.bgr_to_grayscale(data / 255), kornia.color.BgrToGrayscale()(data / 255))
+
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
         batch_size, channels, height, width = 2, 3, 64, 64
