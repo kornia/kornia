@@ -362,11 +362,15 @@ class TestPSNR:
         assert pytest.approx(loss.item(), float('inf'))
 
     def test_type(self):
+        # Expecting an exception
+        # since we pass integers instead of torch tensors
         criterion = kornia.losses.PSNR(1.0)
         with pytest.raises(Exception) as e:
             criterion(1, 2)
 
     def test_shape(self):
+        # Expecting an exception
+        # since we pass tensors of different shapes
         criterion = kornia.losses.PSNR(1.0)
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
