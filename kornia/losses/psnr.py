@@ -19,7 +19,8 @@ class PSNR(nn.Module):
         tensor(20.0000) # 10 * log(4/((1.2-1)**2)) / log(10)
     """
 
-    def __init__(self, max_val):
+    def __init__(self, max_val) -> None:
+        super(PSNR, self).__init__()
         self.max_val = max_val
 
     def forward(  # type: ignore
