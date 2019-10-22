@@ -4,7 +4,7 @@ from .rgb import bgr_to_rgb
 
 
 class RgbToGrayscale(nn.Module):
-    r"""convert image to grayscale version of image.
+    r"""convert RGB image to grayscale version of image.
 
     the image data is assumed to be in the range of (0, 1).
 
@@ -36,7 +36,7 @@ class RgbToGrayscale(nn.Module):
 
 
 def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to grayscale.
+    r"""Convert a RGB image to grayscale.
 
     See :class:`~kornia.color.RgbToGrayscale` for details.
 
@@ -60,7 +60,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
 
 
 class BgrToGrayscale(nn.Module):
-    r"""convert image to grayscale version of image.
+    r"""convert BGR image to grayscale version of image.
 
     the image data is assumed to be in the range of (0, 1).
 
@@ -92,7 +92,7 @@ class BgrToGrayscale(nn.Module):
 
 
 def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
-    r"""Convert an BGR image to grayscale.
+    r"""Convert a BGR image to grayscale.
 
     See :class:`~kornia.color.BgrToGrayscale` for details.
 
