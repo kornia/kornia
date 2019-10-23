@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.nn.functional import mse_loss
 
 
-class PSNR(nn.Module):
+class PSNRLoss(nn.Module):
     r"""Creates a criterion that calculates the PSNR between 2 images.
 
     Arguments:
@@ -23,15 +23,15 @@ class PSNR(nn.Module):
     """
 
     def __init__(self, max_val) -> None:
-        super(PSNR, self).__init__()
+        super(PSNRLoss, self).__init__()
         self.max_val = max_val
 
     def forward(  # type: ignore
             self, signal: torch.Tensor, approximation: torch.Tensor) -> torch.Tensor:
-        return psnr(signal, approximation, self.max_val)
+        return psnr_loss(signal, approximation, self.max_val)
 
 
-def psnr(signal: torch.Tensor, approximation: torch.Tensor, max_val) -> torch.Tensor:
+def psnr_loss(signal: torch.Tensor, approximation: torch.Tensor, max_val) -> torch.Tensor:
     r"""Function that computes PSNR
 
     See :class:`~kornia.losses.PSNR` for details.
@@ -41,4 +41,4 @@ def psnr(signal: torch.Tensor, approximation: torch.Tensor, max_val) -> torch.Te
     if signal.shape != approximation.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {signal.shape} and {approximation.shape}")
     mse_val = mse_loss(signal, approximation, reduction='mean')
-    return 10 * torch.log(max_val * max_val / mse_val) / torch.log(torch.tensor(10.0))
+    return 10 * torch.log10(max_val * max_val / mse_val)
