@@ -342,12 +342,12 @@ class TestTotalVariation:
             kornia.losses.total_variation(input)
 
 
-class TestPSNR:
+class TestPSNRLoss:
     def test_smoke(self):
         signal = torch.rand(2, 3, 3, 2)
         approximation = torch.rand(2, 3, 3, 2)
 
-        criterion = kornia.losses.PSNR(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(signal, approximation)
 
         assert loss.shape == tuple()
@@ -356,7 +356,7 @@ class TestPSNR:
         signal = torch.rand(2, 3, 3, 2)
         approximation = signal
 
-        criterion = kornia.losses.PSNR(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(signal, approximation)
 
         assert pytest.approx(loss.item(), float('inf'))
@@ -364,19 +364,19 @@ class TestPSNR:
     def test_type(self):
         # Expecting an exception
         # since we pass integers instead of torch tensors
-        criterion = kornia.losses.PSNR(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0)
         with pytest.raises(Exception) as e:
             criterion(1, 2)
 
     def test_shape(self):
         # Expecting an exception
         # since we pass tensors of different shapes
-        criterion = kornia.losses.PSNR(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0)
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
     def test_simple(self):
-        assert pytest.approx(kornia.losses.psnr(torch.ones(1), 1.2 * torch.ones(1), 2).item(), 20.0)
+        assert pytest.approx(kornia.losses.psnr_loss(torch.ones(1), 1.2 * torch.ones(1), 2).item(), 20.0)
 
     @pytest.mark.skip(reason="TODO: implement me")
     def test_jit(self):
@@ -388,5 +388,5 @@ class TestPSNR:
 
         signal = utils.tensor_to_gradcheck_var(signal)  # to var
         assert gradcheck(
-            kornia.losses.psnr, (signal, approximation, 1.0), raise_exception=True
+            kornia.losses.psnr_loss, (signal, approximation, 1.0), raise_exception=True
         )
