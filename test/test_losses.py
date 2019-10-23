@@ -359,7 +359,7 @@ class TestPSNRLoss:
         criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(signal, approximation)
 
-        assert pytest.approx(loss.item(), float('inf'))
+        assert_allclose(loss, torch.tensor(float('inf')))
 
     def test_type(self):
         # Expecting an exception
@@ -376,7 +376,7 @@ class TestPSNRLoss:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
     def test_simple(self):
-        assert pytest.approx(kornia.losses.psnr_loss(torch.ones(1), 1.2 * torch.ones(1), 2).item(), 20.0)
+        assert_allclose(kornia.losses.psnr_loss(torch.ones(1), 1.2 * torch.ones(1), 2), torch.tensor(20.0))
 
     @pytest.mark.skip(reason="TODO: implement me")
     def test_jit(self):
