@@ -16,8 +16,10 @@ conda_bin=$conda_bin_dir/conda
 
 # download and install miniconda
 # check the operating system: Mac or Linux
-if [[ uname="Darwin" ]];
+platform=`uname`
+if [[ "$platform" == "Darwin" ]];
 then
+ echo "Bug"
  download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 else
  download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
