@@ -19,17 +19,17 @@ class TestCropAndResize:
             [13., 14., 15., 16.],
         ]])
 
-        height, width = 2, 2
+        height, width = 2, 3
         expected = torch.tensor([[
-            [6., 7.],
-            [10., 11.],
+            [6., 6.5, 7.],
+            [10., 10.5, 11.],
         ]])
 
         boxes = torch.tensor([[
             [1., 1.],
-            [1., 2.],
             [2., 1.],
             [2., 2.],
+            [1., 2.],
         ]])  # 1x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (height, width))
@@ -53,20 +53,20 @@ class TestCropAndResize:
             [6., 7.],
             [10., 11.],
         ]], [[
-            [11., 15.],
-            [12., 16.],
+            [7., 15.],
+            [8., 16.],
         ]]])
 
         boxes = torch.tensor([[
             [1., 1.],
-            [1., 2.],
             [2., 1.],
             [2., 2.],
+            [1., 2.],
         ], [
-            [2., 2.],
-            [2., 3.],
+            [1., 2.],
             [3., 2.],
             [3., 3.],
+            [1., 3.],
         ]])  # 2x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (height, width))
@@ -96,9 +96,9 @@ class TestCropAndResize:
 
         boxes = torch.tensor([[
             [1., 1.],
-            [1., 2.],
             [2., 1.],
             [2., 2.],
+            [1., 2.],
         ]])  # 1x4x2
 
         patches = kornia.crop_and_resize(inp, boxes, (height, width))
@@ -111,9 +111,9 @@ class TestCropAndResize:
 
         boxes = torch.tensor([[
             [1., 1.],
-            [1., 2.],
             [2., 1.],
             [2., 2.],
+            [1., 2.],
         ]])  # 1x4x2
         boxes = utils.tensor_to_gradcheck_var(
             boxes, requires_grad=False)  # to var
@@ -138,9 +138,9 @@ class TestCropAndResize:
         ]])
         boxes = torch.tensor([[
             [1., 1.],
-            [1., 2.],
             [2., 1.],
             [2., 2.],
+            [1., 2.],
         ]])  # 1x4x2
 
         crop_height, crop_width = 4, 2
