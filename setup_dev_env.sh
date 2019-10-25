@@ -19,7 +19,6 @@ conda_bin=$conda_bin_dir/conda
 platform=`uname`
 if [[ "$platform" == "Darwin" ]];
 then
- echo "Bug"
  download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 else
  download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
