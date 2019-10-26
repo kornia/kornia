@@ -22,7 +22,7 @@ class PSNRLoss(nn.Module):
         https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
     """
 
-    def __init__(self, max_val) -> None:
+    def __init__(self, max_val: float) -> None:
         super(PSNRLoss, self).__init__()
         self.max_val = max_val
 
@@ -31,7 +31,7 @@ class PSNRLoss(nn.Module):
         return psnr_loss(input, target, self.max_val)
 
 
-def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val) -> torch.Tensor:
+def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Function that computes PSNR
 
     See :class:`~kornia.losses.PSNR` for details.
