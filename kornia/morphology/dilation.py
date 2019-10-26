@@ -9,8 +9,8 @@ class Dilation(nn.Module):
 
     def forward(self, img: torch.tensor):
         return dilation(img, self.structuring_element)
-        
- 
+
+
 
 def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
     if not torch.is_tensor(img):
@@ -28,7 +28,7 @@ def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
             raise ValueError(f"Expected a single channel image, but got {img_shape[1]} channels")
     if len(structuring_element.shape) != 2:
         raise ValueError(f"Expected structuring element tensor to be of ndim=2, but got {len(structuring_element.shape)}")
-    
+
     # Check if the input image is a binary containing only 0, 1
     unique_vals = torch.unique(img)
     if len(unique_vals) > 2:
@@ -38,11 +38,7 @@ def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
 
     # Convert structuring_element from shape [a, b] to [1, 1, a, b]
     structuring_element = structuring_element.unsqueeze(0).unsqueeze(0)
-    
+
     se_shape = structuring_element.shape
     conv1 = F.conv2d(img, structuring_element, padding = (se_shape[2]//2, se_shape[2]//2))
     return (conv1 > 0).float()
-
-
-
-   
