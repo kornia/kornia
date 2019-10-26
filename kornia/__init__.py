@@ -68,5 +68,8 @@ from kornia.utils import (
     save_pointcloud_ply,
     load_pointcloud_ply,
 )
+from kornia.morphology import (
+    dilation
+)
 from kornia.geometry import *
 from kornia.geometry import pi
