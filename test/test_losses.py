@@ -344,20 +344,20 @@ class TestTotalVariation:
 
 class TestPSNRLoss:
     def test_smoke(self):
-        signal = torch.rand(2, 3, 3, 2)
-        approximation = torch.rand(2, 3, 3, 2)
+        input = torch.rand(2, 3, 3, 2)
+        target = torch.rand(2, 3, 3, 2)
 
         criterion = kornia.losses.PSNRLoss(1.0)
-        loss = criterion(signal, approximation)
+        loss = criterion(input, target)
 
         assert loss.shape == tuple()
 
-    def test_same_signal(self):
-        signal = torch.rand(2, 3, 3, 2)
-        approximation = signal
+    def test_same_input(self):
+        input = torch.rand(2, 3, 3, 2)
+        target = input
 
         criterion = kornia.losses.PSNRLoss(1.0)
-        loss = criterion(signal, approximation)
+        loss = criterion(input, target)
 
         assert_allclose(loss, torch.tensor(float('inf')))
 
@@ -383,10 +383,10 @@ class TestPSNRLoss:
         pass
 
     def test_gradcheck(self):
-        signal = torch.rand(2, 3, 3, 2).double()
-        approximation = torch.rand(2, 3, 3, 2).double()
+        input = torch.rand(2, 3, 3, 2).double()
+        target = torch.rand(2, 3, 3, 2).double()
 
-        signal = utils.tensor_to_gradcheck_var(signal)  # to var
+        input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            kornia.losses.psnr_loss, (signal, approximation, 1.0), raise_exception=True
+            kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True
         )
