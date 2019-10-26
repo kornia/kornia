@@ -43,4 +43,5 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     if input.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {input.shape} and {target.shape}")
     mse_val = mse_loss(input, target, reduction='mean')
+    max_val = torch.tensor(max_val)
     return 10 * torch.log10(max_val * max_val / mse_val)
