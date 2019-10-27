@@ -52,4 +52,13 @@ class TestDilation:
         structuring_elem = (torch.rand(st_shape) > 0.5).float()
         assert_allclose(kornia.morphology.dilation(input, structuring_elem), input)
 
+    def test_doc_example(self):
+        # testing the example provided in the Dilation class documentation
+        dilate = kornia.morphology.Dilation(torch.ones([3,3]))
+        input = torch.zeros([1,6,6])
+        input[:,2:4, 2:4] = 1
+        expected = torch.zeros([1,6,6])
+        expected[:, 1:5, 1:5] = 1
+        assert_allclose(dilate(input), expected)
+
     # TODO add more tests
