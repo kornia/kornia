@@ -14,6 +14,7 @@ class TotalVariation(nn.Module):
         >>> output = tv(torch.ones(2,3,4,4)) # tensor([0., 0.])
         >>> output.backward()
     """
+
     def __init__(self) -> None:
         super(TotalVariation, self).__init__()
 
