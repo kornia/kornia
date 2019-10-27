@@ -3,6 +3,35 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Dilation(nn.Module):
+    r"""Computes the dilated image given a binary image and a binary structuring element
+
+    https://en.wikipedia.org/wiki/Dilation_(morphology)
+
+    Shape:
+        - Input: :math:`(N, C=1, H, W)`.
+        - Target: :math:`(N, C=1, H, W)`
+
+    Examples:
+        >>> st_elem = torch.ones([3,3])
+        >>> dilate = kornia.morphology.Dilation(st_elem)
+        >>> input = torch.zeros([1,6,6])
+        >>> input[:,2:4, 2:4] = 1
+        >>> output = dilate(input)
+        >>> input
+        tensor([[[0., 0., 0., 0., 0., 0.],
+                 [0., 0., 0., 0., 0., 0.],
+                 [0., 0., 1., 1., 0., 0.],
+                 [0., 0., 1., 1., 0., 0.],
+                 [0., 0., 0., 0., 0., 0.],
+                 [0., 0., 0., 0., 0., 0.]]])
+        >>> output
+        tensor([[[[0., 0., 0., 0., 0., 0.],
+                  [0., 1., 1., 1., 1., 0.],
+                  [0., 1., 1., 1., 1., 0.],
+                  [0., 1., 1., 1., 1., 0.],
+                  [0., 1., 1., 1., 1., 0.],
+                  [0., 0., 0., 0., 0., 0.]]]])
+    """
     def __init__(self, structuring_element: torch.Tensor) -> None:
         super(Dilation, self).__init__()
         self.structuring_element = structuring_element
@@ -13,6 +42,10 @@ class Dilation(nn.Module):
 
 
 def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
+    r"""Function that computes dilated image given a structuring element.
+
+    See :class:`~kornia.morphology.Dilation` for details.
+    """
     if not torch.is_tensor(img):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
     if not torch.is_tensor(structuring_element):
