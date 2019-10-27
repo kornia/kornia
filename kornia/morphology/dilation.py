@@ -74,4 +74,7 @@ def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
 
     se_shape = structuring_element.shape
     conv1 = F.conv2d(img, structuring_element, padding = (se_shape[2]//2, se_shape[2]//2))
-    return (conv1 > 0).float()
+    convert_to_binary = (conv1 > 0).float()
+    if len(img_shape) == 3:
+        # If the input ndim was 3, then remove the fake batch dim introduced to do conv
+        return torch.squeeze(convert_to_binary, 0)
