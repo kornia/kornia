@@ -38,7 +38,8 @@ class Dilation(nn.Module):
         super(Dilation, self).__init__()
         self.structuring_element = structuring_element
 
-    def forward(self, img: torch.tensor):
+    def forward(  # type: ignore
+            self, img: torch.Tensor):
         return dilation(img, self.structuring_element)
 
 
