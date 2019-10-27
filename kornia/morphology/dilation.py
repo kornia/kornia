@@ -78,3 +78,5 @@ def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
     if len(img_shape) == 3:
         # If the input ndim was 3, then remove the fake batch dim introduced to do conv
         return torch.squeeze(convert_to_binary, 0)
+    else:
+        return convert_to_binary

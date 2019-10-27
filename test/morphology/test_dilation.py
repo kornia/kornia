@@ -61,4 +61,13 @@ class TestDilation:
         expected[:, 1:5, 1:5] = 1
         assert_allclose(dilate(input), expected)
 
+    def test_doc_example_with_batch(self):
+        # testing the example provided in the Dilation class documentation
+        dilate = kornia.morphology.Dilation(torch.ones([3,3]))
+        input = torch.zeros([2,1,6,6])
+        input[:,:,2:4, 2:4] = 1
+        expected = torch.zeros([2,1,6,6])
+        expected[:,:, 1:5, 1:5] = 1
+        assert_allclose(dilate(input), expected)
+
     # TODO add more tests
