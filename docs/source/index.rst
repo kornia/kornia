@@ -1,5 +1,5 @@
 :github_url: https://github.com/arraiyopensource/kornia
-
+             
 Kornia Documentation
 ====================
 
@@ -23,7 +23,6 @@ Kornia Documentation
    filters
    geometry
    losses
-   morphology
    utils
 
 Indices and tables
