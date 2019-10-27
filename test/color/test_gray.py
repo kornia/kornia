@@ -34,3 +34,42 @@ class TestRgbToGrayscale:
         gray = kornia.color.RgbToGrayscale()
         gray_traced = torch.jit.trace(kornia.color.RgbToGrayscale(), img)
         assert_allclose(gray(img), gray_traced(img))
+
+
+class TestBgrToGrayscale:
+    def test_bgr_to_grayscale(self):
+        channels, height, width = 3, 4, 5
+        img = torch.ones(channels, height, width)
+        assert kornia.bgr_to_grayscale(img).shape == (1, height, width)
+
+    def test_bgr_to_grayscale_batch(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        assert kornia.bgr_to_grayscale(img).shape == \
+            (batch_size, 1, height, width)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.bgr_to_grayscale, (img,), raise_exception=True)
+
+    def test_module(self):
+        data = torch.tensor([[[[100., 73.],
+                               [200., 22.]],
+
+                              [[50., 10.],
+                               [148, 14, ]],
+
+                              [[225., 255.],
+                               [48., 8.]]]])
+
+        assert_allclose(kornia.bgr_to_grayscale(data / 255), kornia.color.BgrToGrayscale()(data / 255))
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        gray = kornia.color.BgrToGrayscale()
+        gray_traced = torch.jit.trace(kornia.color.BgrToGrayscale(), img)
+        assert_allclose(gray(img), gray_traced(img))
