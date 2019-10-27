@@ -1,3 +1,9 @@
+"""
+
+Perform dilation operation on binary images
+===========================================
+
+"""
 import torch
 import kornia
 import cv2
