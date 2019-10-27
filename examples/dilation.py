@@ -17,7 +17,13 @@ img[:,6:8,6] = 1.0
 bin_image: torch.tensor = torch.tensor(img, dtype=torch.float32)
 
 # structuring_element is a torch.tensor of ndims 2 containing only 1's and 0's
-structuring_element = torch.tensor(np.ones([3,3])).float()
+np_structuring_element = np.ones([3,3])
+np_structuring_element[0,0] = 0.0
+structuring_element = torch.tensor(np_structuring_element).float()
+# The structuring element is:
+# 0 1 1
+# 1 1 1
+# 1 1 1
 
 dilated_image = kornia.morphology.dilation(bin_image, structuring_element)
 
@@ -25,19 +31,24 @@ dilated_image = kornia.morphology.dilation(bin_image, structuring_element)
 dilated_image: np.array = kornia.tensor_to_image(dilated_image)
 
 # Create the plot
-fig, axs = plt.subplots(1, 3, figsize=(16, 10))
+fig, axs = plt.subplots(2, 2, figsize=(16, 10))
 axs = axs.ravel()
 
 axs[0].axis('off')
 axs[0].set_title('Original image')
-axs[0].imshow(img.squeeze(), cmap='gray', vmin=0, vmax=1.0)
+axs[0].imshow(img.squeeze()*0.9, cmap='gray', vmin=0, vmax=1.0)
 
 axs[1].axis('off')
-axs[1].set_title('Dilated image')
-axs[1].imshow(dilated_image, cmap='gray', vmin=0, vmax=1.0)
+axs[1].set_title('Structuring element')
+axs[1].imshow(np_structuring_element*0.9, cmap='gray', vmin=0, vmax=1.0)
 
 axs[2].axis('off')
-axs[2].set_title('Superimposed')
-axs[2].imshow(img.squeeze()*0.5 + dilated_image * 0.5, cmap='gray', vmin=0, vmax=1.0)
+axs[2].set_title('Dilated image')
+axs[2].imshow(dilated_image*0.9, cmap='gray', vmin=0, vmax=1.0)
 
+axs[3].axis('off')
+axs[3].set_title('Superimposed')
+axs[3].imshow(0.9*(img.squeeze()*0.5 + dilated_image*0.5), cmap='gray', vmin=0, vmax=1.0)
+
+plt.grid(True)
 plt.show()
