@@ -18,13 +18,13 @@ def add_weighted(src1: torch.Tensor, alpha: float,
         raise TypeError("src2 should be a tensor. Got {}".format(type(src2)))
 
     if not isinstance(alpha, float):
-        raise TypeError("alpha should be a tensor or float. Got {}".format(name, type(alpha)))
+        raise TypeError("alpha should be a tensor or float. Got {}".format(type(alpha)))
 
     if not isinstance(beta, float):
-        raise TypeError("beta should be a tensor or float. Got {}".format(name, type(beta)))
+        raise TypeError("beta should be a tensor or float. Got {}".format(type(beta)))
 
     if not isinstance(gamma, float):
-        raise TypeError("gamma should be a tensor or float. Got {}".format(name, type(gamma)))
+        raise TypeError("gamma should be a tensor or float. Got {}".format(type(gamma)))
 
     return src1 * alpha + src2 * beta + gamma
 
