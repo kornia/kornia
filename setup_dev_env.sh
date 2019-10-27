@@ -15,9 +15,18 @@ conda_bin_dir=$dev_env_dir/bin
 conda_bin=$conda_bin_dir/conda
 
 # download and install miniconda
+# check the operating system: Mac or Linux
+platform=`uname`
+if [[ "$platform" == "Darwin" ]];
+then
+ download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+else
+ download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+fi
+
 if [ ! -e $dev_env_dir/miniconda.sh ]; then
     curl -o $dev_env_dir/miniconda.sh \
-	 -O  https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+       	 -O  "$download_link"
     chmod +x $dev_env_dir/miniconda.sh
 fi
 if [ ! -e $conda_bin ]; then
