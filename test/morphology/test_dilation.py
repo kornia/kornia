@@ -69,5 +69,3 @@ class TestDilation:
         expected = torch.zeros([2,1,6,6])
         expected[:,:, 1:5, 1:5] = 1
         assert_allclose(dilate(input), expected)
-
-    # TODO add more tests

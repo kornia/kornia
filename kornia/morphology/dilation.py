@@ -66,7 +66,7 @@ def dilation(img: torch.Tensor, structuring_element: torch.Tensor):
     unique_vals = torch.unique(img)
     if len(unique_vals) > 2:
         raise ValueError(f"Expected only 2 unique values in the tensor, since it should be binary, but got {len(torch.unique(img))}")
-    if not ((unique_vals == 0) + (unique_vals == 1)).all():
+    if not ((unique_vals == 0.0) + (unique_vals == 1.0)).all():
         raise ValueError("Expected image to contain only 1's and 0's since it should be a binary image")
 
     # Convert structuring_element from shape [a, b] to [1, 1, a, b]
