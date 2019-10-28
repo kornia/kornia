@@ -7,13 +7,14 @@ class TotalVariation(nn.Module):
     [1] https://en.wikipedia.org/wiki/Total_variation
     Shape:
         - Input: :math:`(N, C, H, W)` or :math:`(C, H, W)` where C = number of classes.
-        - Target: :math:`(N,)` or :math:`()`
+        - Output: :math:`(N,)` or :math:`()`
     Examples:
         >>> kornia.losses.total_variation(torch.ones(3,4,4)) # tensor(0.)
         >>> tv = kornia.losses.TotalVariation()
         >>> output = tv(torch.ones(2,3,4,4)) # tensor([0., 0.])
         >>> output.backward()
     """
+
     def __init__(self) -> None:
         super(TotalVariation, self).__init__()
 
