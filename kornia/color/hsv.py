@@ -131,7 +131,7 @@ def rgb_to_hsv(image):
     v: torch.Tensor = maxc  # brightness
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / v  # saturation
+    s: torch.Tensor = deltac / (v + 1e-7)  # saturation (avoid division by zero)
 
     # avoid division by zero
     deltac: torch.Tensor = torch.where(
