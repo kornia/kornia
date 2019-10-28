@@ -33,6 +33,8 @@ class AddWeighted(nn.Module):
     r"""Calculates the weighted sum of two Tensors.
 
     The function calculates the weighted sum of two Tensors as follows:
+
+    .. math::
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
