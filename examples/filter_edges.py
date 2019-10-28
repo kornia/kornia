@@ -15,8 +15,8 @@ import kornia
 import torchvision
 
 #############################
-# We use OpenCV to load an image to memory represented in a numpy.array
-img_bgr: np.array = cv2.imread('./data/doraemon.png', cv2.IMREAD_COLOR)
+# We use OpenCV to load an image to memory represented in a numpy.ndarray
+img_bgr: np.ndarray = cv2.imread('./data/doraemon.png', cv2.IMREAD_COLOR)
 
 #############################
 # Convert the numpy array to torch
@@ -31,7 +31,7 @@ x_gray = kornia.rgb_to_grayscale(x_rgb.float() / 255.)
 
 def imshow(input: torch.Tensor):
     out: torch.Tensor = torchvision.utils.make_grid(input, nrow=2, padding=1)
-    out_np: np.array = kornia.tensor_to_image(out)
+    out_np: np.ndarray = kornia.tensor_to_image(out)
     plt.imshow(out_np)
     plt.axis('off')
 
