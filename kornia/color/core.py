@@ -1,5 +1,3 @@
-from typing import Union, Tuple
-
 import torch
 import torch.nn as nn
 
