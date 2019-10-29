@@ -19,7 +19,9 @@ The functions in this section perform various color space conversions.
 .. autofunction:: adjust_saturation
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_gamma
+.. autofunction:: add_weighted
 
+.. autoclass:: AddWeighted
 .. autoclass:: RgbToGrayscale
 .. autoclass:: BgrToGrayscale
 .. autoclass:: RgbToHsv
