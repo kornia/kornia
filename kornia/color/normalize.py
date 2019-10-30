@@ -64,17 +64,19 @@ def normalize(
         raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
 
     # Allow broadcast on channel dimension
-    if mean.shape[0] != 1:
+    if mean.shape and mean.shape[0] != 1:
         if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
             raise ValueError("mean length and number of channels do not match")
 
     # Allow broadcast on channel dimension
-    if std.shape[0] != 1:
+    if std.shape and std.shape[0] != 1:
         if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
             raise ValueError("std length and number of channels do not match")
 
-    mean = mean[..., :, None, None].to(data.device)
-    std = std[..., :, None, None].to(data.device)
+    if mean.shape:
+        mean = mean[..., :, None, None].to(data.device)
+    if std.shape:
+        std = std[..., :, None, None].to(data.device)
 
     out: torch.Tensor = (data - mean) / std
 
