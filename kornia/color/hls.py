@@ -148,4 +148,6 @@ def rgb_to_hls(image):
 
     h: torch.Tensor = (60 * hi) / 360  # hue
 
-    return torch.stack([h, l, s], dim=-3)
+    image = torch.stack([h, l, s], dim=-3)
+    image[torch.isnan(image)] = 0
+    return image
