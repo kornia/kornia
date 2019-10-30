@@ -20,9 +20,9 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
         tensor (torch.Tensor): the reference tensor of shape BxCxHxW.
         boxes (torch.Tensor): a tensor containing the coordinates of the
           bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following order: top-left,
-          top-right, bottom-left and bottom-right. The coordinates order must
-          be in y, x respectively.
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right and bottom-left. The
+          coordinates must be in the x, y order.
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
 
@@ -62,18 +62,18 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
     dst_h: torch.Tensor = torch.tensor(size[0])
     dst_w: torch.Tensor = torch.tensor(size[1])
 
-    # [y, x] origin
-    # top-left, top-right, bottom-left, bottom-right
+    # [x, y] origin
+    # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = boxes.to(
         tensor.device).to(tensor.dtype)
 
-    # [y, x] destination
-    # top-left, top-right, bottom-left, bottom-right
+    # [x, y] destination
+    # top-left, top-right, bottom-right, bottom-left
     points_dst: torch.Tensor = torch.tensor([[
         [0, 0],
-        [0, dst_w - 1],
-        [dst_h - 1, 0],
-        [dst_h - 1, dst_w - 1],
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
     ]]).repeat(points_src.shape[0], 1, 1).to(
         tensor.device).to(tensor.dtype)
 
