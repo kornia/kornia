@@ -6,6 +6,7 @@ kornia.color
 The functions in this section perform various color space conversions.
 
 .. autofunction:: rgb_to_grayscale
+.. autofunction:: bgr_to_grayscale
 .. autofunction:: rgb_to_hsv
 .. autofunction:: hsv_to_rgb
 .. autofunction:: rgb_to_hls
@@ -18,8 +19,11 @@ The functions in this section perform various color space conversions.
 .. autofunction:: adjust_saturation
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_gamma
+.. autofunction:: add_weighted
 
+.. autoclass:: AddWeighted
 .. autoclass:: RgbToGrayscale
+.. autoclass:: BgrToGrayscale
 .. autoclass:: RgbToHsv
 .. autoclass:: HsvToRgb
 .. autoclass:: RgbToHls

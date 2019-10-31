@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # read the image with OpenCV
-img: np.array = cv2.imread('./data/doraemon.png')
+img: np.ndarray = cv2.imread('./data/doraemon.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) / 255.0
 img = img + np.random.normal(loc=0.0, scale=0.1, size=img.shape)
 img = np.clip(img, 0.0, 1.0)
@@ -54,7 +54,7 @@ for i in range(num_iters):
     optimizer.step()
 
 # convert back to numpy
-img_clean: np.array = kornia.tensor_to_image(tv_denoiser.get_clean_image())
+img_clean: np.ndarray = kornia.tensor_to_image(tv_denoiser.get_clean_image())
 
 # Create the plot
 fig, axs = plt.subplots(1, 2, figsize=(16, 10))

@@ -99,3 +99,14 @@ class TestNormalize:
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.Normalize(mean, std), (data,), raise_exception=True)
+
+    def test_single_value(self):
+        # prepare input data
+        mean = torch.tensor(2)
+        std = torch.tensor(3)
+        data = torch.ones(2, 3, 256, 313).float()
+
+        # expected output
+        expected = (data - mean) / std
+
+        assert_allclose(kornia.normalize(data, mean, std), expected)
