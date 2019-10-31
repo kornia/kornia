@@ -100,8 +100,8 @@ class TestHflip:
                               [0., 1., 1.]])  # 3 x 3
 
         expected = torch.tensor([[0., 0., 0.],
-                                [0., 0., 0.],
-                                [1., 1., 0.]])  # 3 x 3
+                                 [0., 0., 0.],
+                                 [1., 1., 0.]])  # 3 x 3
 
         assert (f(input) == expected).all()
 
