@@ -104,9 +104,7 @@ class TestRandomHorizontalFlip:
 
     def test_gradcheck(self):
 
-        input = torch.tensor([[0., 0., 0.],
-                              [0., 0., 0.],
-                              [0., 1., 1.]]).double()  # 3 x 3
+        input = torch.rand((3, 3)).double()  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
