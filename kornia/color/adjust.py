@@ -116,8 +116,8 @@ def adjust_contrast(input: torch.Tensor,
     for _ in input.shape[1:]:
         contrast_factor = torch.unsqueeze(contrast_factor, dim=-1)
 
-    # Apply brightness factor to each channel
-    x_adjust: torch.Tensor = input + contrast_factor
+    # Apply contrast factor to each channel
+    x_adjust: torch.Tensor = input * contrast_factor
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -144,14 +144,11 @@ def adjust_brightness(input: torch.Tensor,
 
     brightness_factor = brightness_factor.to(input.device).to(input.dtype)
 
-    if (brightness_factor < 0).any():
-        raise ValueError(f"Brightness factor must be non-negative. Got {brightness_factor}")
-
     for _ in input.shape[1:]:
         brightness_factor = torch.unsqueeze(brightness_factor, dim=-1)
 
     # Apply brightness factor to each channel
-    x_adjust: torch.Tensor = input * brightness_factor
+    x_adjust: torch.Tensor = input + brightness_factor
 
     # Truncate between pixel values
     out: torch.Tensor = torch.clamp(x_adjust, 0.0, 1.0)
@@ -263,9 +260,8 @@ class AdjustBrightness(nn.Module):
     Args:
         input (torch.Tensor): Image/Input to be adjusted in the shape of (\*, N).
         brightness_factor (Union[float, torch.Tensor]): Brightness adjust factor per element
-          in the batch. 0 generates a compleatly black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+          in the batch. 0 does not modify the input image while any other number modify the
+          brightness.
 
     Returns:
         torch.Tensor: Adjusted image.
