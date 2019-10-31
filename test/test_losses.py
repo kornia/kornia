@@ -340,3 +340,53 @@ class TestTotalVariation:
     def test_tv_on_invalid_types(self, input):
         with pytest.raises(TypeError) as ex_info:
             kornia.losses.total_variation(input)
+
+
+class TestPSNRLoss:
+    def test_smoke(self):
+        input = torch.rand(2, 3, 3, 2)
+        target = torch.rand(2, 3, 3, 2)
+
+        criterion = kornia.losses.PSNRLoss(1.0)
+        loss = criterion(input, target)
+
+        assert loss.shape == tuple()
+
+    def test_same_input(self):
+        input = torch.rand(2, 3, 3, 2)
+        target = input
+
+        criterion = kornia.losses.PSNRLoss(1.0)
+        loss = criterion(input, target)
+
+        assert_allclose(loss, torch.tensor(float('inf')))
+
+    def test_type(self):
+        # Expecting an exception
+        # since we pass integers instead of torch tensors
+        criterion = kornia.losses.PSNRLoss(1.0)
+        with pytest.raises(Exception) as e:
+            criterion(1, 2)
+
+    def test_shape(self):
+        # Expecting an exception
+        # since we pass tensors of different shapes
+        criterion = kornia.losses.PSNRLoss(1.0)
+        with pytest.raises(Exception) as e:
+            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+
+    def test_simple(self):
+        assert_allclose(kornia.losses.psnr_loss(torch.ones(1), 1.2 * torch.ones(1), 2), torch.tensor(20.0))
+
+    @pytest.mark.skip(reason="TODO: implement me")
+    def test_jit(self):
+        pass
+
+    def test_gradcheck(self):
+        input = torch.rand(2, 3, 3, 2).double()
+        target = torch.rand(2, 3, 3, 2).double()
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(
+            kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True
+        )
