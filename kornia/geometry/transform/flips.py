@@ -97,7 +97,6 @@ class Rot180(nn.Module):
 
 
 def rot180(input: torch.Tensor) -> torch.Tensor:
-
     r"""Rotate a tensor image or a batch of tensor images
     180 degrees. Input must be a tensor of shape (C, H, W)
     or a batch of tensors :math:`(*, C, H, W)`.
