@@ -2,7 +2,7 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -10,13 +10,12 @@ from torch.testing import assert_allclose
 
 
 @pytest.mark.parametrize("batch_shape", [(1, 1, 7, 32), (2, 3, 16, 31)])
-def test_warp_perspective_rotation(batch_shape, device_type):
+def test_warp_perspective_rotation(batch_shape, device):
     # generate input data
     batch_size, channels, height, width = batch_shape
     alpha = 0.5 * kornia.pi * torch.ones(batch_size)  # 90 deg rotation
 
     # create data patch
-    device = torch.device(device_type)
     patch = torch.rand(batch_shape).to(device)
 
     # create transformation (rotation)
@@ -54,10 +53,8 @@ def test_warp_perspective_rotation(batch_shape, device_type):
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_get_perspective_transform(batch_size, device_type):
+def test_get_perspective_transform(batch_size, device):
     # generate input data
-    device = torch.device(device_type)
-
     h_max, w_max = 64, 32  # height, width
     h = torch.ceil(h_max * torch.rand(batch_size)).to(device)
     w = torch.ceil(w_max * torch.rand(batch_size)).to(device)
@@ -88,9 +85,8 @@ def test_get_perspective_transform(batch_size, device_type):
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_rotation_matrix2d(batch_size, device_type):
+def test_rotation_matrix2d(batch_size, device):
     # generate input data
-    device = torch.device(device_type)
     center_base = torch.zeros(batch_size, 2).to(device)
     angle_base = torch.ones(batch_size).to(device)
     scale_base = torch.ones(batch_size).to(device)
@@ -143,11 +139,10 @@ def test_rotation_matrix2d(batch_size, device_type):
 class TestWarpPerspective:
     @pytest.mark.parametrize("batch_size", [1, 5])
     @pytest.mark.parametrize("channels", [1, 5])
-    def test_crop(self, device_type, batch_size, channels):
+    def test_crop(self, device, batch_size, channels):
         # generate input data
         src_h, src_w = 3, 3
         dst_h, dst_w = 3, 3
-        device = torch.device(device_type)
 
         # [x, y] origin
         # top-left, top-right, bottom-right, bottom-left
@@ -191,10 +186,9 @@ class TestWarpPerspective:
                                                (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
 
-    def test_crop_center_resize(self, device_type):
+    def test_crop_center_resize(self, device):
         # generate input data
         dst_h, dst_w = 4, 4
-        device = torch.device(device_type)
 
         # [x, y] origin
         # top-left, top-right, bottom-right, bottom-left

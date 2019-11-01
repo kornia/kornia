@@ -2,7 +2,6 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
 
 import math
 import torch
@@ -187,9 +186,9 @@ class TestDepthSmoothnessLoss:
         )
 
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_run_all(self, batch_shape, device_type):
-        self.image = torch.rand(batch_shape).to(torch.device(device_type))
-        self.depth = torch.rand(batch_shape).to(torch.device(device_type))
+    def test_run_all(self, batch_shape):
+        self.image = torch.rand(batch_shape)
+        self.depth = torch.rand(batch_shape)
 
         self._test_smoke()
         self._test_gradcheck()
@@ -198,11 +197,10 @@ class TestDepthSmoothnessLoss:
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("reduction_type", ["none", "mean", "sum"])
 @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-def test_ssim(batch_shape, device_type, window_size, reduction_type):
+def test_ssim(batch_shape, window_size, reduction_type):
     # input data
-    device = torch.device(device_type)
-    img1 = torch.rand(batch_shape).to(device)
-    img2 = torch.rand(batch_shape).to(device)
+    img1 = torch.rand(batch_shape)
+    img2 = torch.rand(batch_shape)
 
     ssim = kornia.losses.SSIM(window_size, reduction_type)
     ssim_loss_val = ssim(img1, img2)
