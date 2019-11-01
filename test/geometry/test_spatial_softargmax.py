@@ -2,7 +2,6 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
 
 import torch
 from torch.nn.functional import mse_loss
