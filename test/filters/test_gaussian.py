@@ -2,7 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -28,11 +28,11 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
 
 class TestGaussianBlur:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_gaussian_blur(self, batch_shape, device_type):
+    def test_gaussian_blur(self, batch_shape, device):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
 
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+        input = torch.rand(batch_shape).to(device)
         gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
         assert gauss(input).shape == batch_shape
 
@@ -95,10 +95,10 @@ def test_get_laplacian_kernel2d(window_size):
 
 class TestLaplacian:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_laplacian(self, batch_shape, device_type):
+    def test_laplacian(self, batch_shape, device):
         kernel_size = 5
 
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+        input = torch.rand(batch_shape).to(device)
         laplace = kornia.filters.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape
 
