@@ -127,7 +127,7 @@ class TestHflip:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
-            return kornia.Hflip(data)
+            return kornia.hflip(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -206,7 +206,7 @@ class TestRot180:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
-            return kornia.Rot180(data)
+            return kornia.rot180(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
