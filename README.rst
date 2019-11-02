@@ -68,6 +68,7 @@ Installation
 **From source with symbolic links:**
 
 .. code:: bash
+
     python setup.py install develop
 
 **From source using pip:**
