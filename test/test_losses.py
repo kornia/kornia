@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from test.common import device
 
 import math
 import torch
@@ -10,21 +11,21 @@ from torch.testing import assert_allclose
 
 
 class TestFocalLoss:
-    def _test_smoke_none(self):
+    def test_smoke_none(self, device):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         assert kornia.losses.focal_loss(
             logits, labels, alpha=0.5, gamma=2.0, reduction="none"
         ).shape == (2, 3, 2)
 
-    def _test_smoke_sum(self):
+    def test_smoke_sum(self, device):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         assert (
             kornia.losses.focal_loss(
@@ -32,11 +33,11 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    def _test_smoke_mean(self):
+    def test_smoke_mean(self, device):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         assert (
             kornia.losses.focal_loss(
@@ -45,15 +46,15 @@ class TestFocalLoss:
         )
 
     # TODO: implement me
-    def _test_jit(self):
+    def test_jit(self, device):
         pass
 
-    def _test_gradcheck(self):
+    def test_gradcheck(self, device):
         num_classes = 3
         alpha, gamma = 0.5, 2.0  # for focal loss
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
         assert gradcheck(
@@ -62,15 +63,9 @@ class TestFocalLoss:
             raise_exception=True,
         )
 
-    def test_run_all(self):
-        self._test_smoke_none()
-        self._test_smoke_sum()
-        self._test_smoke_mean()
-        self._test_gradcheck()
-
 
 class TestTverskyLoss:
-    def _test_smoke(self):
+    def test_smoke(self):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2)
         labels = torch.rand(2, 3, 2) * num_classes
@@ -79,7 +74,7 @@ class TestTverskyLoss:
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
 
-    def _test_all_zeros(self):
+    def test_all_zeros(self):
         num_classes = 3
         logits = torch.zeros(2, num_classes, 1, 2)
         logits[:, 0] = 10.0
@@ -92,10 +87,10 @@ class TestTverskyLoss:
         assert pytest.approx(loss.item(), 0.0)
 
     # TODO: implement me
-    def _test_jit(self):
+    def test_jit(self):
         pass
 
-    def _test_gradcheck(self):
+    def test_gradcheck(self):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
         logits = torch.rand(2, num_classes, 3, 2)
@@ -109,14 +104,9 @@ class TestTverskyLoss:
             raise_exception=True,
         )
 
-    def test_run_all(self):
-        self._test_smoke()
-        self._test_all_zeros()
-        self._test_gradcheck()
-
 
 class TestDiceLoss:
-    def _test_smoke(self):
+    def test_smoke(self):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2)
         labels = torch.rand(2, 3, 2) * num_classes
@@ -125,7 +115,7 @@ class TestDiceLoss:
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
 
-    def _test_all_zeros(self):
+    def test_all_zeros(self):
         num_classes = 3
         logits = torch.zeros(2, num_classes, 1, 2)
         logits[:, 0] = 10.0
@@ -138,10 +128,10 @@ class TestDiceLoss:
         assert pytest.approx(loss.item(), 0.0)
 
     # TODO: implement me
-    def _test_jit(self):
+    def test_jit(self):
         pass
 
-    def _test_gradcheck(self):
+    def test_gradcheck(self):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2)
         labels = torch.rand(2, 3, 2) * num_classes
@@ -151,11 +141,6 @@ class TestDiceLoss:
         assert gradcheck(
             kornia.losses.dice_loss, (logits, labels), raise_exception=True
         )
-
-    def test_run_all(self):
-        self._test_smoke()
-        self._test_all_zeros()
-        self._test_gradcheck()
 
 
 class TestDepthSmoothnessLoss:
