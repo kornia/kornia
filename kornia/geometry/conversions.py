@@ -21,6 +21,7 @@ __all__ = [
     "denormalize_pixel_coordinates",
     "normalize_pixel_coordinates",
     "normalize_quaternion",
+    "normal_transform_pixel",
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
 ]
