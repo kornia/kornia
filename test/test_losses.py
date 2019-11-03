@@ -106,36 +106,36 @@ class TestTverskyLoss:
 
 
 class TestDiceLoss:
-    def test_smoke(self):
+    def test_smoke(self, device):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
 
-    def test_all_zeros(self):
+    def test_all_zeros(self, device):
         num_classes = 3
-        logits = torch.zeros(2, num_classes, 1, 2)
+        logits = torch.zeros(2, num_classes, 1, 2).to(device)
         logits[:, 0] = 10.0
         logits[:, 1] = 1.0
         logits[:, 2] = 1.0
-        labels = torch.zeros(2, 1, 2, dtype=torch.int64)
+        labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
 
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 
     # TODO: implement me
-    def test_jit(self):
+    def test_jit(self, device):
         pass
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2)
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.long()
+        labels = labels.to(device).long()
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
         assert gradcheck(
