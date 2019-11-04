@@ -1,3 +1,3 @@
-from .augmentations import RandomHorizontalFlip, random_hflip
+from kornia.augmentation.augmentations import *
 
 __all__ = ["random_hflip", "RandomHorizontalFlip"]
