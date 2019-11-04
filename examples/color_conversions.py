@@ -70,7 +70,7 @@ imshow(xb_hsv[:, 2:3])
 # Convert RGB to YUV
 # NOTE: image comes in torch.uint8, and kornia assumes floating point type
 yuv = kornia.rgb_to_yuv(xb_rgb.float() / 255.)
-y_channel = torchvision.utils.make_grid(yuv, nrow=2)[0,:,:]
-plt.imshow(y_channel, cmap='gray', vmin=0, vmax=1) # Displaying only y channel
+y_channel = torchvision.utils.make_grid(yuv, nrow=2)[0, :, :]
+plt.imshow(y_channel, cmap='gray', vmin=0, vmax=1)  # Displaying only y channel
 plt.axis('off')
 plt.show()

@@ -35,6 +35,7 @@ class RgbToYuv(nn.Module):
             self, input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
+
 def rgb_to_yuv(input: torch.Tensor):
     r"""Convert an RGB image to YUV
     The image data is assumed to be in the range of (0, 1).
@@ -47,12 +48,10 @@ def rgb_to_yuv(input: torch.Tensor):
 
     See :class:`~kornia.color.RgbToYuv` for details."""
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
-    y = 0.299*r + 0.587*g + 0.114*b
-    u = -0.147*r - 0.289*g + 0.436*b
-    v = 0.615*r - 0.515*g - 0.100*b
-    return torch.cat((y,u,v), -3)
-
-
+    y = 0.299 * r + 0.587 * g + 0.114 * b
+    u = -0.147 * r - 0.289 * g + 0.436 * b
+    v = 0.615 * r - 0.515 * g - 0.100 * b
+    return torch.cat((y, u, v), -3)
 
 
 class YuvToRgb(nn.Module):
@@ -83,6 +82,7 @@ class YuvToRgb(nn.Module):
             self, input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)
 
+
 def yuv_to_rgb(input: torch.Tensor):
     r"""Convert an YUV image to RGB
     The image data is assumed to be in the range of (0, 1).
@@ -95,7 +95,7 @@ def yuv_to_rgb(input: torch.Tensor):
 
     See :class:`~kornia.color.YuvToRgb` for details."""
     y, u, v = torch.chunk(input, chunks=3, dim=-3)
-    r = y + 1.14*v # coefficient for g is 0
-    g = y + -0.396*u - 0.581*v
-    b = y + 2.029*u # coefficient for b is 0
-    return torch.cat((r,g,b), -3)
+    r = y + 1.14 * v  # coefficient for g is 0
+    g = y + -0.396 * u - 0.581 * v
+    b = y + 2.029 * u  # coefficient for b is 0
+    return torch.cat((r, g, b), -3)

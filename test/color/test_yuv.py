@@ -11,7 +11,7 @@ from torch.testing import assert_allclose
 
 class TestRgbYuvConversion:
     # Parameterize for CHW and NCHW shapes
-    @pytest.mark.parametrize('shape', ((3,4,5), (2,3,4,5)))
+    @pytest.mark.parametrize('shape', ((3, 4, 5), (2, 3, 4, 5)))
     # RGB to YUV and YUV to RGB should be inverse operations
     def test_inverse_operations(self, shape):
         input = torch.rand(*shape)
