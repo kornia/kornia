@@ -25,7 +25,7 @@ class RgbToYuv(nn.Module):
         >>> output = yuv(input)  # 2x3x4x5
 
     Reference::
-        [1] https://en.wikipedia.org/wiki/YUV#Y%E2%80%B2UV444_to_RGB888_conversion
+        [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
     def __init__(self) -> None:
@@ -48,8 +48,8 @@ def rgb_to_yuv(input: torch.Tensor):
     See :class:`~kornia.color.RgbToYuv` for details."""
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
     y = 0.299*r + 0.587*g + 0.114*b
-    u = -0.14713*r -0.28886*g + 0.436*b
-    v = 0.615*r -0.51499*g - 0.10001*b
+    u = -0.147*r - 0.289*g + 0.436*b
+    v = 0.615*r - 0.515*g - 0.100*b
     return torch.cat((y,u,v), -3)
 
 
