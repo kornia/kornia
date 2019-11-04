@@ -18,5 +18,5 @@ class TestRgbYuvConversion:
         yuv_to_rgb_converter = kornia.color.YuvToRgb()
         rgb_to_yuv_converter = kornia.color.RgbToYuv()
 
-        assert_allclose(input, yuv_to_rgb_converter(rgb_to_yuv_converter(input)))
-        assert_allclose(input, rgb_to_yuv_converter(yuv_to_rgb_converter(input)))
+        assert_allclose(input, yuv_to_rgb_converter(rgb_to_yuv_converter(input)), rtol=0.005, atol=0.005)
+        assert_allclose(input, rgb_to_yuv_converter(yuv_to_rgb_converter(input)), rtol=0.005, atol=0.005)
