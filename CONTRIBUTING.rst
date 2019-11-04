@@ -146,6 +146,15 @@ This section provides general guidance for developing code for the project. The 
                         mode: str = 'bilinear',
                         padding_mode: str = 'zeros') -> torch.Tensor:
 
+- We suggest to use new Python 3's f-Strings improved string formatting syntax:
+
+  Guidelines: https://realpython.com/python-f-strings/
+
+.. code:: python
+
+    python_version: int = 3
+    print(f"This is an example to use Python {python_version}'s f-Strings")
+
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
