@@ -73,7 +73,6 @@ from kornia.utils import (
 )
 from kornia.augmentation import (
     random_hflip,
-    RandomHorizontalFlip,
 )
 
 from kornia.geometry import *
