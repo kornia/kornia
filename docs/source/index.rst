@@ -17,6 +17,7 @@ Kornia Documentation
    :maxdepth: 2
    :caption: Package Reference
 
+   augmentation
    color
    contrib
    feature
