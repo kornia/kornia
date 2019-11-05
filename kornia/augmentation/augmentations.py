@@ -1,11 +1,13 @@
-from typing import Tuple, Union
+from typing import Tuple, List, Union
+import random
 import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip
-
+from kornia.color.adjust import adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+FloatUnionType = Union[float, Tuple[float, float], List[float]]
 
 
 class RandomHorizontalFlip(nn.Module):
@@ -30,6 +32,35 @@ class RandomHorizontalFlip(nn.Module):
 
     def forward(self, input: torch.Tensor) -> UnionType:  # type: ignore
         return random_hflip(input, self.p, self.return_transformation)
+
+
+class ColorJitter(nn.Module):
+
+    r"""Change the brightness, contrast, saturation and  hue randomly given tensor image or a batch of tensor images.
+
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+
+    Args:
+        brightness (float or tuple): Default value is 0
+        contrast (float or tuple): Default value is 0
+        saturation (float or tuple): Default value is 0
+        hue (float or tuple): Default value is 0
+    """
+
+    def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
+                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> None:
+        super(ColorJitter, self).__init__()
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
+
+    def __repr__(self) -> str:
+        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue})"
+        return self.__class__.__name__ + repr
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return color_jitter(input, self.brightness, self.contrast, self.saturation, self.hue)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transformation: bool = False) -> UnionType:
@@ -82,3 +113,94 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transformation: boo
         return flipped, trans_mat
 
     return flipped
+
+
+def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
+                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> torch.Tensor:
+    r"""Change the brightness, contrast, saturation and  hue randomly given tensor image or a batch of tensor images.
+
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+
+    Args:
+        brightness (float or tuple): Default value is 0
+        contrast (float or tuple): Default value is 0
+        saturation (float or tuple): Default value is 0
+        hue (float or tuple): Default value is 0
+
+    Returns:
+        torch.Tensor: The transformed image
+    """
+
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if isinstance(brightness, float):
+        if brightness < 0:
+            raise ValueError(f"If brightness is a single number number, it must be non negative. Got {brightness}")
+        brightness_bound = [0 - brightness, 0 + brightness]
+    elif isinstance(brightness, (tuple, list)) and len(brightness) == 2:
+        brightness_bound = list(brightness)
+    else:
+        raise TypeError(
+            f"The brightness should be a float number or a tuple with length 2 whose valuese move between [-Inf, Inf].")
+
+    if isinstance(contrast, float):
+        if contrast < 0:
+            raise ValueError(f"If contrast is a single number number, it must be non negative. Got {contrast}")
+        contrast_bound = [1 - contrast, 1 + contrast]
+        contrast_bound[0] = max(contrast_bound[0], 0.)
+    elif isinstance(contrast, (tuple, list)) and len(contrast) == 2:
+        if not 0 <= contrast[0] <= contrast[1] <= float('inf'):
+            raise ValueError("Contrast values should be between [0, Inf]")
+        contrast_bound = list(contrast)
+    else:
+        raise TypeError(f"The contrast should be a float number or a tuple with length 2.")
+
+    if isinstance(saturation, float):
+        if saturation < 0:
+            raise ValueError(f"If saturation is a single number, it must be non negative. Got {saturation}")
+        saturation_bound = [1 - saturation, 1 + saturation]
+        saturation_bound[0] = max(saturation_bound[0], 0.)
+    elif isinstance(saturation, (tuple, list)) and len(saturation) == 2:
+        if not 0 <= saturation[0] <= saturation[1] <= float('inf'):
+            raise ValueError("Saturation values should be between [0, Inf]")
+        saturation_bound = list(saturation)
+    else:
+        raise TypeError(f"The saturation should be a float number or a tuple with length 2.")
+
+    if isinstance(hue, float):
+        if not 0 <= hue <= 0.5:
+            raise ValueError(f"If hue is a single number, it must belong to [0, 0.5]. Got {hue}")
+        hue_bound = [0 - hue, 0 + hue]
+
+    elif isinstance(hue, (tuple, list)) and len(hue) == 2:
+        if not -0.5 <= hue[0] <= hue[1] <= 0.5:
+            raise ValueError("Hue values should be between [-0.5, 0.5]")
+        hue_bound = list(hue)
+    else:
+        raise TypeError(f"The hue should be a float number or a tuple with length 2.")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    transforms = []
+
+    brightness_factor = random.uniform(brightness_bound[0], brightness_bound[1])
+    transforms.append(lambda img: adjust_brightness(img, brightness_factor))
+
+    contrast_factor = random.uniform(contrast_bound[0], contrast_bound[1])
+    transforms.append(lambda img: adjust_contrast(img, contrast_factor))
+
+    saturation_factor = random.uniform(saturation_bound[0], saturation_bound[1])
+    transforms.append(lambda img: adjust_saturation(img, saturation_factor))
+
+    hue_factor = random.uniform(hue_bound[0], hue_bound[1])
+    transforms.append(lambda img: adjust_hue(img, hue_factor))
+
+    random.shuffle(transforms)
+
+    jittered = input
+    for t in transforms:
+        jittered = t(jittered)
+
+    return jittered
