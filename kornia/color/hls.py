@@ -105,7 +105,7 @@ class RgbToHls(nn.Module):
         return rgb_to_hls(image)
 
 
-def rgb_to_hls(image):
+def rgb_to_hls(image, eps=1.19209e-07):
     r"""Convert an RGB image to HLS
     The image data is assumed to be in the range of (0, 1).
 
@@ -136,9 +136,10 @@ def rgb_to_hls(image):
 
     l: torch.Tensor = (maxc + minc) / 2  # luminance
 
-    deltac: torch.Tensor = maxc - minc
+    deltac: torch.Tensor = maxc - minc + eps
+    sumc = maxc + minc
 
-    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac / (2 - (maxc + minc)))  # saturation
+    s: torch.Tensor = torch.where(l < 0.5, deltac / sumc, deltac / (2 - sumc))  # saturation
 
     hi: torch.Tensor = torch.zeros_like(deltac)
 
@@ -148,6 +149,9 @@ def rgb_to_hls(image):
 
     h: torch.Tensor = (60 * hi) / 360  # hue
 
-    image = torch.stack([h, l, s], dim=-3)
-    image[torch.isnan(image)] = 0
-    return image
+    cond = deltac > eps
+    zeros = torch.zeros_like(h)
+    h = torch.where(cond, h, zeros)
+    s = torch.where(cond, s, zeros)
+
+    return torch.stack([h, l, s], dim=-3)
