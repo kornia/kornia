@@ -1,5 +1,4 @@
 from typing import Tuple, List, Union
-import random
 import torch
 import torch.nn as nn
 
@@ -183,24 +182,27 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
+    input = input.unsqueeze(0)
+    input = input.view((-1, (*input.shape[-3:])))
+    
     transforms = []
 
-    brightness_factor = random.uniform(brightness_bound[0], brightness_bound[1])
+    brightness_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(brightness_bound[0], brightness_bound[1])
     transforms.append(lambda img: adjust_brightness(img, brightness_factor))
 
-    contrast_factor = random.uniform(contrast_bound[0], contrast_bound[1])
+    contrast_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(contrast_bound[0], contrast_bound[1])
     transforms.append(lambda img: adjust_contrast(img, contrast_factor))
 
-    saturation_factor = random.uniform(saturation_bound[0], saturation_bound[1])
+    saturation_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(saturation_bound[0], saturation_bound[1])
     transforms.append(lambda img: adjust_saturation(img, saturation_factor))
 
-    hue_factor = random.uniform(hue_bound[0], hue_bound[1])
+    hue_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(hue_bound[0], hue_bound[1])
     transforms.append(lambda img: adjust_hue(img, hue_factor))
 
-    random.shuffle(transforms)
-
     jittered = input
-    for t in transforms:
+
+    for idx in torch.randperm(4):
+        t = transforms[idx]
         jittered = t(jittered)
 
     return jittered
