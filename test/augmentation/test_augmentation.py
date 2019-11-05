@@ -32,7 +32,7 @@ class TestRandomHorizontalFlip:
 
         expected_transform = torch.tensor([[-1., 0., 3.],
                                            [0., 1., 0.],
-                                           [0., 0., 0.]])  # 3 x 3
+                                           [0., 0., 1.]])  # 3 x 3
 
         identity = torch.tensor([[1., 0., 0.],
                                  [0., 1., 0.],
@@ -60,7 +60,7 @@ class TestRandomHorizontalFlip:
 
         expected_transform = torch.tensor([[[-1., 0., 3.],
                                             [0., 1., 0.],
-                                            [0., 0., 0.]]])  # 1 x 3 x 3
+                                            [0., 0., 1.]]])  # 1 x 3 x 3
 
         identity = torch.tensor([[[1., 0., 0.],
                                   [0., 1., 0.],
