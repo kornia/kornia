@@ -75,7 +75,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transformation: boo
         w: int = input.shape[-2]
         flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
                                                [0, 1, 0],
-                                               [0, 0, 0]])
+                                               [0, 0, 1]])
 
         trans_mat[to_flip] = flip_mat.to(device).to(dtype)
 
