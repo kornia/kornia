@@ -24,6 +24,29 @@ class TestAdjustSaturation:
         f = kornia.color.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
 
+    def test_saturation_one_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = data
+        f = kornia.color.AdjustSaturation(torch.ones(2))
+        assert_allclose(f(data), expected)
+
 
 class TestAdjustHue:
     def test_hue_one(self):
@@ -37,8 +60,54 @@ class TestAdjustHue:
                               [.25, .25]]])  # 3x2x2
 
         expected = data
-        f = kornia.color.AdjustHue(1.)
+        f = kornia.color.AdjustHue(0.)
         assert_allclose(f(data), expected)
+
+    def test_hue_one_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = data
+        f = kornia.color.AdjustHue(torch.tensor([0, 0]))
+        assert_allclose(f(data), expected)
+
+    def test_hue_flip_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        f = kornia.color.AdjustHue(torch.tensor([-.5, .5]))
+        result = f(data)
+        assert_allclose(result, result.flip(0))
 
 
 class TestAdjustGamma:
@@ -112,6 +181,46 @@ class TestAdjustGamma:
                                   [.0625, .0625]]])  # 3x2x2
 
         f = kornia.color.AdjustGamma(2.)
+        assert_allclose(f(data), expected)
+
+    def test_gamma_two_batch(self):
+        data = torch.tensor([[[[1., 1.],
+                               [1., 1.]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[1., 1.],
+                               [1., 1.]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = torch.tensor([[[[1., 1.],
+                                   [1., 1.]],
+
+                                  [[.25, .25],
+                                   [.25, .25]],
+
+                                  [[.0625, .0625],
+                                   [.0625, .0625]]],
+
+                                 [[[1., 1.],
+                                   [1., 1.]],
+
+                                  [[.25, .25],
+                                   [.25, .25]],
+
+                                  [[.0625, .0625],
+                                   [.0625, .0625]]]])  # 2x3x2x2
+
+        f = kornia.color.AdjustGamma(torch.tensor([2., 2.]), gain=torch.ones(2))
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self):
