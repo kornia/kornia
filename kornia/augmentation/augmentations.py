@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip
-from kornia.color.adjust import adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue
+from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[float, Tuple[float, float], List[float]]
@@ -130,77 +130,52 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
         torch.Tensor: The transformed image
     """
 
+    def _input_check(factor: FloatUnionType, name: str, center: float = 0.,
+                     bounds: Tuple[float, float] = (0, float('inf'))):
+        if isinstance(factor, float):
+            if factor < 0:
+                raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
+            factor_bound = [center - factor, center + factor]
+            factor_bound[0] = max(factor_bound[0], bounds[0])
+            factor_bound[1] = min(factor_bound[1], bounds[1])
+        elif isinstance(factor, (tuple, list)) and len(factor) == 2:
+            if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
+                raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
+            factor_bound = list(factor)
+        else:
+            raise TypeError(
+                f"The {name} should be a float number or a tuple with length 2 whose values move between [-Inf, Inf].")
+        return factor_bound
+
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if isinstance(brightness, float):
-        if brightness < 0:
-            raise ValueError(f"If brightness is a single number number, it must be non negative. Got {brightness}")
-        brightness_bound = [0 - brightness, 0 + brightness]
-    elif isinstance(brightness, (tuple, list)) and len(brightness) == 2:
-        if not brightness[0] <= brightness[1]:
-            raise ValueError(f"Brightness[0] should be smaller than brightness[1] got {brightness}")
-        brightness_bound = list(brightness)
-    else:
-        raise TypeError(
-            f"The brightness should be a float number or a tuple with length 2 whose valuese move between [-Inf, Inf].")
-
-    if isinstance(contrast, float):
-        if contrast < 0:
-            raise ValueError(f"If contrast is a single number number, it must be non negative. Got {contrast}")
-        contrast_bound = [1 - contrast, 1 + contrast]
-        contrast_bound[0] = max(contrast_bound[0], 0.)
-    elif isinstance(contrast, (tuple, list)) and len(contrast) == 2:
-        if not 0 <= contrast[0] <= contrast[1]:
-            raise ValueError("Contrast values should be between [0, Inf]")
-        contrast_bound = list(contrast)
-    else:
-        raise TypeError(f"The contrast should be a float number or a tuple with length 2.")
-
-    if isinstance(saturation, float):
-        if saturation < 0:
-            raise ValueError(f"If saturation is a single number, it must be non negative. Got {saturation}")
-        saturation_bound = [1 - saturation, 1 + saturation]
-        saturation_bound[0] = max(saturation_bound[0], 0.)
-    elif isinstance(saturation, (tuple, list)) and len(saturation) == 2:
-        if not 0 <= saturation[0] <= saturation[1] <= float('inf'):
-            raise ValueError("Saturation values should be between [0, Inf]")
-        saturation_bound = list(saturation)
-    else:
-        raise TypeError(f"The saturation should be a float number or a tuple with length 2.")
-
-    if isinstance(hue, float):
-        if not 0 <= hue <= 0.5:
-            raise ValueError(f"If hue is a single number, it must belong to [0, 0.5]. Got {hue}")
-        hue_bound = [0 - hue, 0 + hue]
-
-    elif isinstance(hue, (tuple, list)) and len(hue) == 2:
-        if not -0.5 <= hue[0] <= hue[1] <= 0.5:
-            raise ValueError("Hue values should be between [-0.5, 0.5]")
-        hue_bound = list(hue)
-    else:
-        raise TypeError(f"The hue should be a float number or a tuple with length 2.")
+    brightness_bound = _input_check(brightness, 'brightness', bounds=(float('-inf'), float('inf')))
+    contrast_bound = _input_check(contrast, 'contrast', center=1.)
+    saturation_bound = _input_check(saturation, 'saturation', center=1.)
+    hue_bound = _input_check(hue, 'hue', bounds=(-.5, .5))
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
-    
-    transforms = []
 
-    brightness_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(brightness_bound[0], brightness_bound[1])
-    contrast_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(contrast_bound[0], contrast_bound[1])
+    brightness_factor: torch.Tensor = torch.empty(
+        input.shape[0], device=device).uniform_(
+        brightness_bound[0], brightness_bound[1])
+    contrast_factor: torch.Tensor = torch.empty(
+        input.shape[0], device=device).uniform_(
+        contrast_bound[0], contrast_bound[1])
     hue_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(hue_bound[0], hue_bound[1])
-    saturation_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(saturation_bound[0], saturation_bound[1])
+    saturation_factor: torch.Tensor = torch.empty(
+        input.shape[0], device=device).uniform_(
+        saturation_bound[0], saturation_bound[1])
 
-    transforms.append(lambda img: adjust_brightness(img, brightness_factor))
-    transforms.append(lambda img: adjust_contrast(img, contrast_factor))
-    transforms.append(lambda img: adjust_saturation(img, saturation_factor))
-    transforms.append(lambda img: adjust_hue(img, hue_factor))
-
-   # nn.Sequential(  AdjustBrigtness(brightness_factor),
-   #                 AdjustContrast(contrast_factor),
+    transforms = nn.ModuleList([AdjustBrightness(brightness_factor),
+                                AdjustContrast(contrast_factor),
+                                AdjustSaturation(saturation_factor),
+                                AdjustHue(hue_factor)])
 
     jittered = input
 
