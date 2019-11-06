@@ -17,7 +17,7 @@ class Vflip(nn.Module):
             [0., 0., 0.],
             [0., 0., 0.],
             [0., 1., 1.]]]])
-        >>> vflip = kornia.flip(input, -2)
+        >>> kornia.vflip(input)
         tensor([[[0, 1, 1],
                  [0, 0, 0],
                  [0, 0, 0]]])
@@ -49,7 +49,7 @@ class Hflip(nn.Module):
             [0., 0., 0.],
             [0., 0., 0.],
             [0., 1., 1.]]]])
-        >>> hflip = kornia.flip(input, -1)
+        >>> kornia.hflip(input)
         tensor([[[0, 0, 0],
                  [0, 0, 0],
                  [1, 1, 0]]])
@@ -79,7 +79,7 @@ class Rot180(nn.Module):
                 [0., 0., 0.],
                 [0., 0., 0.],
                 [0., 1., 1.]]]])
-            >>> rot180 = kornia.rot180(input)
+            >>> kornia.rot180(input)
             tensor([[[1, 1, 0],
                     [0, 0, 0],
                     [0, 0, 0]]])
