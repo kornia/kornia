@@ -78,7 +78,6 @@ class TestRandomHorizontalFlip:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
 
-
     def test_sequential(self):
 
         f = nn.Sequential(
@@ -104,7 +103,6 @@ class TestRandomHorizontalFlip:
         assert(f(input)[1] == expected_transform_1).all()
         assert(f1(input)[0] == input).all()
         assert(f1(input)[1] == expected_transform).all()
-
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
