@@ -60,7 +60,6 @@ class RandomHorizontalFlip(nn.Module):
             # Transform image but pass along the previous transformation
             return random_hflip(input[0], self.p, self.return_transform), input[1]
 
-
         return random_hflip(input, self.p, self.return_transform)
 
 
