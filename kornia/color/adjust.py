@@ -61,9 +61,6 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
         raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
                         f" [-0.5, 0.5]. Got {type(hue_factor)}")
 
-    if isinstance(hue_factor, torch.Tensor):
-        hue_factor = torch.tensor([hue_factor])
-
     if isinstance(hue_factor, float):
         hue_factor = torch.tensor([hue_factor])
 
