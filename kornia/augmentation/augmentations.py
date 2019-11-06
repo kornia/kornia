@@ -138,6 +138,8 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
             raise ValueError(f"If brightness is a single number number, it must be non negative. Got {brightness}")
         brightness_bound = [0 - brightness, 0 + brightness]
     elif isinstance(brightness, (tuple, list)) and len(brightness) == 2:
+        if not brightness[0] <= brightness[1]:
+            raise ValueError(f"Brightness[0] should be smaller than brightness[1] got {brightness}")
         brightness_bound = list(brightness)
     else:
         raise TypeError(
@@ -149,7 +151,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
         contrast_bound = [1 - contrast, 1 + contrast]
         contrast_bound[0] = max(contrast_bound[0], 0.)
     elif isinstance(contrast, (tuple, list)) and len(contrast) == 2:
-        if not 0 <= contrast[0] <= contrast[1] <= float('inf'):
+        if not 0 <= contrast[0] <= contrast[1]:
             raise ValueError("Contrast values should be between [0, Inf]")
         contrast_bound = list(contrast)
     else:
@@ -188,16 +190,17 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
     transforms = []
 
     brightness_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(brightness_bound[0], brightness_bound[1])
-    transforms.append(lambda img: adjust_brightness(img, brightness_factor))
-
     contrast_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(contrast_bound[0], contrast_bound[1])
-    transforms.append(lambda img: adjust_contrast(img, contrast_factor))
-
-    saturation_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(saturation_bound[0], saturation_bound[1])
-    transforms.append(lambda img: adjust_saturation(img, saturation_factor))
-
     hue_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(hue_bound[0], hue_bound[1])
+    saturation_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(saturation_bound[0], saturation_bound[1])
+
+    transforms.append(lambda img: adjust_brightness(img, brightness_factor))
+    transforms.append(lambda img: adjust_contrast(img, contrast_factor))
+    transforms.append(lambda img: adjust_saturation(img, saturation_factor))
     transforms.append(lambda img: adjust_hue(img, hue_factor))
+
+   # nn.Sequential(  AdjustBrigtness(brightness_factor),
+   #                 AdjustContrast(contrast_factor),
 
     jittered = input
 
