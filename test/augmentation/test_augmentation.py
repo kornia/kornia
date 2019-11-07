@@ -1,10 +1,12 @@
-import kornia
-import torch
 import pytest
+import torch
+import torch.nn as nn
 
-import kornia.testing as utils  # test utils
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+
+import kornia
+import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip
 
 
@@ -12,13 +14,13 @@ class TestRandomHorizontalFlip:
 
     def smoke_test(self):
         f = RandomHorizontalFlip(0.5)
-        repr = "RandomHorizontalFlip(p=0.5)"
+        repr = "RandomHorizontalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
 
     def test_random_hflip(self):
 
-        f = RandomHorizontalFlip(p=1.0, return_transformation=True)
-        f1 = RandomHorizontalFlip(p=0., return_transformation=True)
+        f = RandomHorizontalFlip(p=1.0, return_transform=True)
+        f1 = RandomHorizontalFlip(p=0., return_transform=True)
         f2 = RandomHorizontalFlip(p=1.)
         f3 = RandomHorizontalFlip(p=0.)
 
@@ -47,8 +49,8 @@ class TestRandomHorizontalFlip:
 
     def test_batch_random_hflip(self):
 
-        f = RandomHorizontalFlip(p=1.0, return_transformation=True)
-        f1 = RandomHorizontalFlip(p=0.0, return_transformation=True)
+        f = RandomHorizontalFlip(p=1.0, return_transform=True)
+        f1 = RandomHorizontalFlip(p=0.0, return_transform=True)
 
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
@@ -75,6 +77,32 @@ class TestRandomHorizontalFlip:
         assert (f(input)[1] == expected_transform).all()
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
+
+    def test_sequential(self):
+
+        f = nn.Sequential(
+            RandomHorizontalFlip(1.0, return_transform=True),
+            RandomHorizontalFlip(1.0, return_transform=True),
+        )
+        f1 = nn.Sequential(
+            RandomHorizontalFlip(1.0, return_transform=True),
+            RandomHorizontalFlip(1.0),
+        )
+
+        input = torch.tensor([[[[0., 0., 0.],
+                                [0., 0., 0.],
+                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+
+        expected_transform = torch.tensor([[[-1., 0., 3.],
+                                            [0., 1., 0.],
+                                            [0., 0., 1.]]])  # 1 x 3 x 3
+
+        expected_transform_1 = expected_transform @ expected_transform
+
+        assert(f(input)[0] == input).all()
+        assert(f(input)[1] == expected_transform_1).all()
+        assert(f1(input)[0] == input).all()
+        assert(f1(input)[1] == expected_transform).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
