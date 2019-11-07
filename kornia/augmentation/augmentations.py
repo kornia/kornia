@@ -47,19 +47,25 @@ class ColorJitter(nn.Module):
     """
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
-                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> None:
+                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0., return_transform: bool = False) -> None:
         super(ColorJitter, self).__init__()
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
+        self.return_transform = return_transform
 
     def __repr__(self) -> str:
-        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue})"
+        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}), return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return color_jitter(input, self.brightness, self.contrast, self.saturation, self.hue)
+    def forward(self, input: torch.Tensor) -> UnionType:  # type: ignore
+
+        if isinstance(input, tuple):
+
+            return color_jitter(input[0], self.brightness, self.contrast, self.saturation, self.hue), input[1]
+
+        return color_jitter(input, self.brightness, self.contrast, self.saturation, self.hue, self.return_transform)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transformation: bool = False) -> UnionType:
@@ -115,23 +121,17 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transformation: boo
 
 
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
-                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> torch.Tensor:
-    r"""Change the brightness, contrast, saturation and  hue randomly given tensor image or a batch of tensor images.
+                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
+    r"""Random color jiter of an image or batch of images.
 
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
-
-    Args:
-        brightness (float or tuple): Default value is 0
-        contrast (float or tuple): Default value is 0
-        saturation (float or tuple): Default value is 0
-        hue (float or tuple): Default value is 0
-
-    Returns:
-        torch.Tensor: The transformed image
+    See :class:`~kornia.augmentation.ColorJitter` for details.
     """
 
     def _input_check(factor: FloatUnionType, name: str, center: float = 0.,
                      bounds: Tuple[float, float] = (0, float('inf'))):
+        r"""Check inputs and compute the corresponding factor bounds
+        """
+
         if isinstance(factor, float):
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
@@ -150,6 +150,9 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
+    if not isinstance(return_transform, bool):
+        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
+
     brightness_bound = _input_check(brightness, 'brightness', bounds=(float('-inf'), float('inf')))
     contrast_bound = _input_check(contrast, 'contrast', center=1.)
     saturation_bound = _input_check(saturation, 'saturation', center=1.)
@@ -164,10 +167,15 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
     brightness_factor: torch.Tensor = torch.empty(
         input.shape[0], device=device).uniform_(
         brightness_bound[0], brightness_bound[1])
+
     contrast_factor: torch.Tensor = torch.empty(
         input.shape[0], device=device).uniform_(
         contrast_bound[0], contrast_bound[1])
-    hue_factor: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(hue_bound[0], hue_bound[1])
+
+    hue_factor: torch.Tensor = torch.empty(
+        input.shape[0], device=device).uniform_(
+        hue_bound[0], hue_bound[1])
+
     saturation_factor: torch.Tensor = torch.empty(
         input.shape[0], device=device).uniform_(
         saturation_bound[0], saturation_bound[1])
@@ -179,8 +187,14 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
 
     jittered = input
 
-    for idx in torch.randperm(4):
+    for idx in torch.randperm(4).tolist():
         t = transforms[idx]
         jittered = t(jittered)
+
+    if return_transform:
+
+        identity: torch.Tensor = torch.eye(3, device=device, dtype=dtype).expand(input.shape[0], -1, -1)
+
+        return jittered, identity
 
     return jittered
