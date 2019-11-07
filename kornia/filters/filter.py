@@ -29,7 +29,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
         input (torch.Tensor): the input tensor with shape of
           :math:`(B, C, H, W)`.
         kernel (torch.Tensor): the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(B, kH, kW)`.
+          tensor. The kernel shape must be :math:`(1, kH, kW)`.
         border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -56,7 +56,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
                          .format(input.shape))
 
     if not len(kernel.shape) == 3:
-        raise ValueError("Invalid kernel shape, we expect BxHxW. Got: {}"
+        raise ValueError("Invalid kernel shape, we expect HxW. Got: {}"
                          .format(kernel.shape))
 
     borders_list: List[str] = ['constant', 'reflect', 'replicate', 'circular']
