@@ -59,11 +59,13 @@ class ColorJitter(nn.Module):
         repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}), return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: torch.Tensor) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
 
         if isinstance(input, tuple):
 
-            return color_jitter(input[0], self.brightness, self.contrast, self.saturation, self.hue), input[1]
+            jittered: torch.Tensor = color_jitter(input[0], self.brightness, self.contrast, self.saturation, self.hue) # type: ignore
+
+            return jittered, input[1]
 
         return color_jitter(input, self.brightness, self.contrast, self.saturation, self.hue, self.return_transform)
 
