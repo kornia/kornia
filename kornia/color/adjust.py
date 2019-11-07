@@ -61,9 +61,6 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
         raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
                         f" [-0.5, 0.5]. Got {type(hue_factor)}")
 
-    if isinstance(hue_factor, torch.Tensor):
-        hue_factor = torch.tensor([hue_factor])
-
     if isinstance(hue_factor, float):
         hue_factor = torch.tensor([hue_factor])
 
@@ -217,9 +214,9 @@ class AdjustSaturation(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, saturation_factor: float) -> None:
+    def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustSaturation, self).__init__()
-        self.saturation_factor: float = saturation_factor
+        self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_saturation(input, self.saturation_factor)
@@ -241,9 +238,9 @@ class AdjustHue(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, hue_factor: float) -> None:
+    def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustHue, self).__init__()
-        self.hue_factor: float = hue_factor
+        self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_hue(input, self.hue_factor)
@@ -265,10 +262,10 @@ class AdjustGamma(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, gamma: float, gain: float = 1.) -> None:
+    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
         super(AdjustGamma, self).__init__()
-        self.gamma: float = gamma
-        self.gain: float = gain
+        self.gamma: Union[float, torch.Tensor] = gamma
+        self.gain: Union[float, torch.Tensor] = gain
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_gamma(input, self.gamma, self.gain)
