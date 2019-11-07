@@ -56,7 +56,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
                          .format(input.shape))
 
     if not len(kernel.shape) == 3:
-        raise ValueError("Invalid kernel shape, we expect HxW. Got: {}"
+        raise ValueError("Invalid kernel shape, we expect 1xHxW. Got: {}"
                          .format(kernel.shape))
 
     borders_list: List[str] = ['constant', 'reflect', 'replicate', 'circular']
