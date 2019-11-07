@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, cast
 import torch
 import torch.nn as nn
 
@@ -49,18 +49,28 @@ class RandomHorizontalFlip(nn.Module):
         repr = f"(p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
 
         if isinstance(input, tuple):
 
+            inp: torch.Tensor = input[0]
+            prev_trans: torch.Tensor = input[1]
+
             if self.return_transform:
-                img, trans_mat = random_hflip(input[0], self.p, self.return_transform)
-                return img, input[1] @ trans_mat
+
+                out = random_hflip(inp, p=self.p, return_transform=True)
+                img: torch.Tensor = out[0]
+                trans_mat: torch.Tensor = out[1]
+
+                return img, prev_trans @ trans_mat
+
+            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
+            img = cast(torch.Tensor, random_hflip(inp, p=self.p, return_transform=False))
 
             # Transform image but pass along the previous transformation
-            return random_hflip(input[0], self.p, self.return_transform), input[1]
+            return img, prev_trans
 
-        return random_hflip(input, self.p, self.return_transform)
+        return random_hflip(input, p=self.p, return_transform=self.return_transform)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
