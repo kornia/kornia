@@ -1,12 +1,13 @@
 from typing import Tuple, List, Union, cast
 import torch
 import torch.nn as nn
+from torch.distributions import Uniform
 
 from kornia.geometry.transform.flips import hflip
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-FloatUnionType = Union[float, Tuple[float, float], List[float]]
+FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
 
 class RandomHorizontalFlip(nn.Module):
@@ -91,21 +92,21 @@ class ColorJitter(nn.Module):
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
                  saturation: FloatUnionType = 0., hue: FloatUnionType = 0., return_transform: bool = False) -> None:
         super(ColorJitter, self).__init__()
-        self.brightness = brightness
-        self.contrast = contrast
-        self.saturation = saturation
-        self.hue = hue
-        self.return_transform = return_transform
+        self.brightness: FloatUnionType = brightness
+        self.contrast: FloatUnionType = contrast
+        self.saturation: FloatUnionType = saturation
+        self.hue: FloatUnionType = hue
+        self.return_transform: bool = return_transform
 
     def __repr__(self) -> str:
-        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}), return_transform={self.return_transform})"
+        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
     def forward(self, input: UnionType) -> UnionType:  # type: ignore
 
         if isinstance(input, tuple):
 
-            jittered: torch.Tensor = cast(torch.Tensor, color_jitter(input[0], self.brightness, self.contrast, self.saturation, self.hue, return_transform=False)) 
+            jittered: torch.Tensor = cast(torch.Tensor, color_jitter(input[0], brightness=self.brightness, contrast=self.contrast, saturation=self.saturation, hue=self.hue, return_transform=False)) 
 
             return jittered, input[1]
 
@@ -141,17 +142,18 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
+
     probs: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(0, 1)
 
     to_flip: torch.Tensor = probs < p
     flipped: torch.Tensor = input.clone()
 
-    trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).expand(input.shape[0], -1, -1)
-
     flipped[to_flip] = hflip(input[to_flip])
     flipped.squeeze_()
 
     if return_transform:
+
+        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).expand(input.shape[0], -1, -1)
 
         w: int = input.shape[-2]
         flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
@@ -177,20 +179,20 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
-        if isinstance(factor, float):
+        if isinstance(factor, float) or (isinstance(factor, torch.Tensor) and factor.size() == 0):
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
             factor_bound = [center - factor, center + factor]
-            factor_bound[0] = max(factor_bound[0], bounds[0])
-            factor_bound[1] = min(factor_bound[1], bounds[1])
-        elif isinstance(factor, (tuple, list)) and len(factor) == 2:
+            factor_bound[0] = torch.max(torch.tensor([factor_bound[0], bounds[0]]))
+            factor_bound[1] = torch.min(torch.tensor([factor_bound[1], bounds[1]]))
+        elif isinstance(factor, (tuple, list, torch.Tensor)) and len(factor) == 2:
             if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
                 raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
             factor_bound = list(factor)
         else:
             raise TypeError(
                 f"The {name} should be a float number or a tuple with length 2 whose values move between [-Inf, Inf].")
-        return factor_bound
+        return torch.Tensor(factor_bound)
 
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
@@ -209,21 +211,17 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
 
-    brightness_factor: torch.Tensor = torch.empty(
-        input.shape[0], device=device).uniform_(
-        brightness_bound[0], brightness_bound[1])
+    brightness_distribution = Uniform(brightness_bound[0], brightness_bound[1])
+    brightness_factor = brightness_distribution.rsample([input.shape[0]])
 
-    contrast_factor: torch.Tensor = torch.empty(
-        input.shape[0], device=device).uniform_(
-        contrast_bound[0], contrast_bound[1])
+    contrast_distribution = Uniform(contrast_bound[0], contrast_bound[1])
+    contrast_factor = contrast_distribution.rsample([input.shape[0]])
 
-    hue_factor: torch.Tensor = torch.empty(
-        input.shape[0], device=device).uniform_(
-        hue_bound[0], hue_bound[1])
+    hue_distribution = Uniform(hue_bound[0], hue_bound[1])
+    hue_factor = hue_distribution.rsample([input.shape[0]])
 
-    saturation_factor: torch.Tensor = torch.empty(
-        input.shape[0], device=device).uniform_(
-        saturation_bound[0], saturation_bound[1])
+    saturation_distribution = Uniform(saturation_bound[0], saturation_bound[1])
+    saturation_factor = saturation_distribution.rsample([input.shape[0]])
 
     transforms = nn.ModuleList([AdjustBrightness(brightness_factor),
                                 AdjustContrast(contrast_factor),
