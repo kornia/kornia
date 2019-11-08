@@ -289,7 +289,7 @@ class AdjustContrast(nn.Module):
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustContrast, self).__init__()
-        self.contrast_factor = contrast_factor
+        self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_contrast(input, self.contrast_factor)
@@ -312,7 +312,7 @@ class AdjustBrightness(nn.Module):
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustBrightness, self).__init__()
-        self.brightness_factor = brightness_factor
+        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_brightness(input, self.brightness_factor)
