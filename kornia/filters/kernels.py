@@ -3,6 +3,8 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 
+from ..geometry import transform as transf
+
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.
@@ -300,3 +302,25 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     kernel[mid, mid] = 1 - kernel_size ** 2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
+
+
+def get_motion_kernel2d(
+        kernel_size: Tuple[int, int], angle: float, direction: float = 0
+) -> torch.Tensor:
+    if kernel_size[0] != kernel_size[1]:
+        raise ValueError("Kernel must be squared: height and width different")
+    if kernel_size[0] % 2 == 0 or kernel_size[0] < 3:
+        raise ValueError("Kernel width and height must be odd and >= than 3")
+
+    def clip(value, min_value, max_value):
+        return max(min_value, min(value, max_value))
+    # direction from [-1, 1] to [0, 1] range
+    direction = (clip(direction, -1., 1.) + 1.) / 2.
+    kernel = torch.zeros(kernel_size, dtype=torch.float)
+    kernel[kernel_size[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_size[0])
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    # rotate (counterclockwise) kernel by given angle
+    kernel = transf.rotate(kernel, torch.tensor(angle))
+    kernel = kernel[0][0]
+    kernel /= kernel.sum()
+    return kernel
