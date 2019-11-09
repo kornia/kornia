@@ -33,6 +33,7 @@ class MotionBlur(nn.Module):
         >>> motion_blur = kornia.filters.MotionBlur((3, 3), 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7
     """
+
     def __init__(
             self, kernel_size: Tuple[int, int], angle: float,
             direction: float, border_type: str = 'constant'
@@ -49,7 +50,7 @@ class MotionBlur(nn.Module):
         return f'{self.__class__.__name__} (kernel_size={self.kernel_size}, ' \
                f'angle={self.angle}, direction={self.direction})'
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor):  # type: ignore
         return filter2D(x, self.kernel, self.border_type)
 
 
