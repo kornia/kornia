@@ -179,7 +179,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
-        if isinstance(factor, float) or (isinstance(factor, torch.Tensor) and factor.size() == 0):
+        if isinstance(factor, float) or (isinstance(factor, torch.Tensor) and factor.size() == torch.Size([])):
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
             factor_bound = [center - factor, center + factor]
