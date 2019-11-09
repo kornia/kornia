@@ -106,7 +106,15 @@ class ColorJitter(nn.Module):
 
         if isinstance(input, tuple):
 
-            jittered: torch.Tensor = cast(torch.Tensor, color_jitter(input[0], brightness=self.brightness, contrast=self.contrast, saturation=self.saturation, hue=self.hue, return_transform=False)) 
+            jittered: torch.Tensor = cast(
+                torch.Tensor,
+                color_jitter(
+                    input[0],
+                    brightness=self.brightness,
+                    contrast=self.contrast,
+                    saturation=self.saturation,
+                    hue=self.hue,
+                    return_transform=False))
 
             return jittered, input[1]
 
