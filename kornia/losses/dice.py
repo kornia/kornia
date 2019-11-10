@@ -46,7 +46,7 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
     cardinality = torch.sum(input_soft + target_one_hot, dims)
 
     dice_score = 2. * intersection / (cardinality + eps)
-    return torch.mean(1. - dice_score)
+    return torch.mean(-dice_score + 1.)
 
 
 class DiceLoss(nn.Module):
@@ -92,4 +92,4 @@ class DiceLoss(nn.Module):
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
-        return dice_loss(input, target)
+        return dice_loss(input, target, self.eps)
