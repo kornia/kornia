@@ -16,7 +16,7 @@ class GaussianBlur2d(nn.Module):
     Arguments:
         kernel_size (Tuple[int, int]): the size of the kernel.
         sigma (Tuple[float, float]): the standard deviation of the kernel.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
