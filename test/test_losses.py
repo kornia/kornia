@@ -273,9 +273,9 @@ class TestTotalVariation:
         (torch.ones(3, 4, 5), torch.zeros(())),
         (2 * torch.ones(2, 3, 4, 5), torch.zeros(2)),
     ])
-    def test_tv_on_constant(self, input, expected):
-        actual = kornia.losses.total_variation(input)
-        assert_allclose(actual, expected)
+    def test_tv_on_constant(self, device, input, expected):
+        actual = kornia.losses.total_variation(input.to(device))
+        assert_allclose(actual, expected.to(device))
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize('input,expected', [
@@ -296,8 +296,8 @@ class TestTotalVariation:
         (torch.tensor([[[0.09094203, 0.32630223, 0.8066123],
                         [0.10921168, 0.09534764, 0.48588026]]]), torch.tensor(1.6900232)),
     ])
-    def test_tv_on_3d(self, input, expected):
-        assert_allclose(kornia.losses.total_variation(input), expected)
+    def test_tv_on_3d(self, device, input, expected):
+        assert_allclose(kornia.losses.total_variation(input.to(device)), expected.to(device))
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize('input,expected', [
@@ -320,17 +320,17 @@ class TestTotalVariation:
                        [[[0.5078, 0.5703, 0.9110],
                          [0.4765, 0.8401, 0.2754]]]]), torch.tensor([1.9565653, 2.5786452, 2.2681699])),
     ])
-    def test_tv_on_4d(self, input, expected):
-        assert_allclose(kornia.losses.total_variation(input), expected)
+    def test_tv_on_4d(self, device, input, expected):
+        assert_allclose(kornia.losses.total_variation(input.to(device)), expected.to(device))
 
     # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [
         torch.rand(2, 3, 4, 5, 3),
         torch.rand(3, 1),
     ])
-    def test_tv_on_invalid_dims(self, input):
+    def test_tv_on_invalid_dims(self, device, input):
         with pytest.raises(ValueError) as ex_info:
-            kornia.losses.total_variation(input)
+            kornia.losses.total_variation(input.to(device))
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [
