@@ -11,7 +11,7 @@ from kornia.utils import one_hot
 
 
 def tversky_loss(input: torch.Tensor, target: torch.Tensor,
-        alpha: float, beta: float, eps: float = 1e-8) -> torch.Tensor:
+                 alpha: float, beta: float, eps: float = 1e-8) -> torch.Tensor:
     r"""Function that computes Tversky loss.
 
     See :class:`~kornia.losses.TverskyLoss` for details.
@@ -44,13 +44,13 @@ def tversky_loss(input: torch.Tensor, target: torch.Tensor,
     # compute the actual dice score
     dims = (1, 2, 3)
     intersection = torch.sum(input_soft * target_one_hot, dims)
-    fps = torch.sum(input_soft * (1. - target_one_hot), dims)
-    fns = torch.sum((1. - input_soft) * target_one_hot, dims)
+    fps = torch.sum(input_soft * (-target_one_hot + 1.), dims)
+    fns = torch.sum((-input_soft + 1.) * target_one_hot, dims)
 
     numerator = intersection
     denominator = intersection + alpha * fps + beta * fns
     tversky_loss = numerator / (denominator + eps)
-    return torch.mean(1. - tversky_loss)
+    return torch.mean(-tversky_loss + 1.)
 
 
 class TverskyLoss(nn.Module):
