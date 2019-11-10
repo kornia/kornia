@@ -343,23 +343,23 @@ class TestTotalVariation:
 
 
 class TestPSNRLoss:
-    def test_smoke(self):
-        input = torch.rand(2, 3, 3, 2)
-        target = torch.rand(2, 3, 3, 2)
+    def test_smoke(self, device):
+        input = torch.rand(2, 3, 3, 2).to(device)
+        target = torch.rand(2, 3, 3, 2).to(device)
 
         criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(input, target)
 
         assert loss.shape == tuple()
 
-    def test_same_input(self):
-        input = torch.rand(2, 3, 3, 2)
-        target = input
+    def test_same_input(self, device):
+        input = torch.rand(2, 3, 3, 2).to(device)
+        target = input.clone()
 
         criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(input, target)
 
-        assert_allclose(loss, torch.tensor(float('inf')))
+        assert_allclose(loss, torch.tensor(float('inf')).to(device))
 
     def test_type(self):
         # Expecting an exception
@@ -375,18 +375,24 @@ class TestPSNRLoss:
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
-    def test_simple(self):
-        assert_allclose(kornia.losses.psnr_loss(torch.ones(1), 1.2 * torch.ones(1), 2), torch.tensor(20.0))
+    def test_simple(self, device):
+        assert_allclose(
+            kornia.losses.psnr_loss(
+                torch.ones(1).to(device),
+                1.2 * torch.ones(1).to(device),
+                2),
+            torch.tensor(20.0).to(device))
 
     @pytest.mark.skip(reason="TODO: implement me")
     def test_jit(self):
         pass
 
-    def test_gradcheck(self):
-        input = torch.rand(2, 3, 3, 2).double()
-        target = torch.rand(2, 3, 3, 2).double()
+    def test_gradcheck(self, device):
+        input = torch.rand(2, 3, 3, 2).to(device)
+        target = torch.rand(2, 3, 3, 2).to(device)
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
+        target = utils.tensor_to_gradcheck_var(target)  # to var
         assert gradcheck(
             kornia.losses.psnr_loss, (input, target, 1.0), raise_exception=True
         )
