@@ -22,6 +22,8 @@ def _js_div_2d(p, q):
     m = 0.5 * (p + q)
     return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
 
+# TODO: add this to the main module
+
 
 def _reduce_loss(losses, reduction):
     if reduction == 'none':
