@@ -47,7 +47,7 @@ def focal_loss(
         device=input.device, dtype=input.dtype)
 
     # compute the actual focal loss
-    weight = torch.pow(1. - input_soft, gamma)
+    weight = torch.pow(-input_soft + 1., gamma)
 
     focal = -alpha * weight * torch.log(input_soft)
     loss_tmp = torch.sum(target_one_hot * focal, dim=1)
