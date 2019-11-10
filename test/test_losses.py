@@ -144,24 +144,25 @@ class TestDiceLoss:
 
 
 class TestDepthSmoothnessLoss:
-    def _test_smoke(self):
-        image = self.image.clone()
-        depth = self.depth.clone()
+    @pytest.mark.parametrize("data_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
+    def test_smoke(self, device, data_shape):
+        image = torch.rand(data_shape).to(device)
+        depth = torch.rand(data_shape).to(device)
 
         criterion = kornia.losses.InverseDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
     # TODO: implement me
-    def _test_1(self):
+    def test_1(self, device):
         pass
 
     # TODO: implement me
-    def _test_jit(self):
+    def test_jit(self, device):
         pass
 
-    def _test_gradcheck(self):
-        image = self.image.clone()
-        depth = self.depth.clone()
+    def test_gradcheck(self, device):
+        image = torch.rand(1, 1, 10, 16).to(device)
+        depth = torch.rand(1, 1, 10, 16).to(device)
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
         assert gradcheck(
@@ -169,14 +170,6 @@ class TestDepthSmoothnessLoss:
             (depth, image),
             raise_exception=True,
         )
-
-    @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_run_all(self, batch_shape):
-        self.image = torch.rand(batch_shape)
-        self.depth = torch.rand(batch_shape)
-
-        self._test_smoke()
-        self._test_gradcheck()
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
