@@ -5,7 +5,7 @@ kornia.losses
 
 .. autofunction:: dice_loss
 .. autofunction:: total_variation
-.. autofunction:: psnr
+.. autofunction:: psnr_loss
 .. autofunction:: tversky_loss
 .. autofunction:: focal_loss
 .. autofunction:: ssim
@@ -17,4 +17,4 @@ kornia.losses
 .. autoclass:: SSIM
 .. autoclass:: InverseDepthSmoothnessLoss
 .. autoclass:: TotalVariation
-.. autoclass:: PSNR
+.. autoclass:: PSNRLoss

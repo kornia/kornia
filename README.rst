@@ -1,16 +1,16 @@
 .. raw:: html
 
   <p align="center">
-    <img width="50%" src="https://github.com/arraiyopensource/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
+    <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
   </p>
 
 --------------------------------------------------------------------------------
 
-.. image:: https://circleci.com/gh/arraiyopensource/kornia/tree/master.svg?style=svg
-    :target: https://circleci.com/gh/arraiyopensource/kornia/tree/master
+.. image:: https://circleci.com/gh/kornia/kornia/tree/master.svg?style=svg
+    :target: https://circleci.com/gh/kornia/kornia/tree/master
 
-.. image:: https://codecov.io/github/arraiyopensource/kornia/branch/master/graph/badge.svg
-    :target: https://codecov.io/github/arraiyopensource/kornia
+.. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
+    :target: https://codecov.io/github/kornia/kornia
 
 .. image:: https://badge.fury.io/py/kornia.svg
     :target: https://badge.fury.io/py/kornia
@@ -64,6 +64,12 @@ Installation
 .. code:: bash
 
     python setup.py install
+
+**From source with symbolic links:**
+
+.. code:: bash
+
+    python setup.py install develop
 
 **From source using pip:**
 

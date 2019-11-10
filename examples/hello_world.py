@@ -17,8 +17,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 #############################
-# We use OpenCV to load an image to memory represented in a numpy.array
-img_bgr: np.array = cv2.imread('./data/arturito.jpeg')  # HxWxC
+# We use OpenCV to load an image to memory represented in a numpy.ndarray
+img_bgr: np.ndarray = cv2.imread('./data/arturito.jpeg')  # HxWxC
 
 #############################
 # The image is convert to a 4D torch tensor
@@ -30,7 +30,7 @@ x_rgb: torch.tensor = kornia.bgr_to_rgb(x_bgr)  # 1xCxHxW
 
 #############################
 # Convert back to numpy to visualize
-img_rgb: np.array = kornia.tensor_to_image(x_rgb.byte())  # HxWxC
+img_rgb: np.ndarray = kornia.tensor_to_image(x_rgb.byte())  # HxWxC
 
 #############################
 # We use Matplotlib to visualize de results
