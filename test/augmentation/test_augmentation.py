@@ -147,7 +147,7 @@ class TestRandomHorizontalFlip:
 class TestColorJitter:
 
     def smoke_test(self):
-        f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2,1.2], hue=0.1)
+        f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
         repr = "ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1, return_transform=False)"
         assert str(f) == repr
 
@@ -156,7 +156,7 @@ class TestColorJitter:
         f = ColorJitter()
         f1 = ColorJitter(return_transform=True)
 
-        input = torch.rand(3,5,5) # 3 x 5 x 5
+        input = torch.rand(3, 5, 5)  # 3 x 5 x 5
 
         expected = input
 
@@ -170,10 +170,10 @@ class TestColorJitter:
         f = ColorJitter()
         f1 = ColorJitter(return_transform=True)
 
-        input = torch.rand(2,3,5,5) # 2 x 3 x 5 x 5
+        input = torch.rand(2, 3, 5, 5)  # 2 x 3 x 5 x 5
         expected = input
 
-        expected_transform = torch.eye(3).unsqueeze(0).expand((2,3,3))  # 2 x 3 x 3
+        expected_transform = torch.eye(3).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
@@ -213,12 +213,11 @@ class TestColorJitter:
                                    [0.7660, 0.6660, 0.5660],
                                    [0.8660, 0.9660, 1.0000]]]])  # 1 x 1 x 3 x 3
 
-
         assert_allclose(f(input), expected)
 
     def test_random_brightness_tuple(self):
         torch.manual_seed(42)
-        f = ColorJitter(brightness=(-0.2,0.2))
+        f = ColorJitter(brightness=(-0.2, 0.2))
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -414,7 +413,7 @@ class TestColorJitter:
 
     def test_random_saturation_tuple(self):
         torch.manual_seed(42)
-        f = ColorJitter(saturation=(0.8,1.2))
+        f = ColorJitter(saturation=(0.8, 1.2))
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -502,7 +501,7 @@ class TestColorJitter:
 
     def test_random_hue_list(self):
         torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.2,0.2])
+        f = ColorJitter(hue=[-0.2, 0.2])
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -546,7 +545,7 @@ class TestColorJitter:
 
     def test_random_hue_tensor(self):
         torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.2,0.2]))
+        f = ColorJitter(hue=torch.tensor([-0.2, 0.2]))
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],

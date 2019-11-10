@@ -99,7 +99,8 @@ class ColorJitter(nn.Module):
         self.return_transform: bool = return_transform
 
     def __repr__(self) -> str:
-        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}, return_transform={self.return_transform})"
+        repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation},\
+            hue={self.hue}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
     def forward(self, input: UnionType) -> UnionType:  # type: ignore
@@ -175,8 +176,9 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     return flipped
 
 
-def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
-                 saturation: FloatUnionType = 0., hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
+def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
+                 contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
+                 hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
     r"""Random color jiter of an image or batch of images.
 
     See :class:`~kornia.augmentation.ColorJitter` for details.
@@ -187,20 +189,42 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0., contrast:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
-        if isinstance(factor, float) or (isinstance(factor, torch.Tensor) and factor.size() == torch.Size([])):
+        if isinstance(factor, float):
+
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
-            factor_bound = [center - factor, center + factor]
-            factor_bound[0] = torch.max(torch.tensor([factor_bound[0], bounds[0]]))
-            factor_bound[1] = torch.min(torch.tensor([factor_bound[1], bounds[1]]))
-        elif isinstance(factor, (tuple, list, torch.Tensor)) and len(factor) == 2:
+
+            factor_bound = torch.tensor([center - factor, center + factor])
+            factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
+
+        elif (isinstance(factor, torch.Tensor) and factor.dim() == 0):
+
+            if factor < 0:
+                raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
+
+            factor_bound = torch.tensor([torch.tensor(center) - factor, torch.tensor(center) + factor])
+            factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
+
+        elif isinstance(factor, (tuple, list)) and len(factor) == 2:
+
             if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
                 raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
-            factor_bound = list(factor)
+
+            factor_bound = torch.tensor(factor)
+
+        elif isinstance(factor, torch.Tensor) and factor.shape[0] == 2 and factor.dim() == 1:
+
+            if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
+                raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
+
+            factor_bound = factor
+
         else:
+
             raise TypeError(
-                f"The {name} should be a float number or a tuple with length 2 whose values move between [-Inf, Inf].")
-        return torch.Tensor(factor_bound)
+                f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
+
+        return factor_bound
 
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
