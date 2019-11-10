@@ -164,7 +164,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(f1(input)[1], expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(f1(input)[1], expected_transform)
 
     def test_color_jitter_batch(self):
         f = ColorJitter()
@@ -177,7 +177,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(f1(input)[1], expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(f1(input)[1], expected_transform)
 
     def test_random_brightness(self):
         torch.manual_seed(42)
@@ -586,6 +586,36 @@ class TestColorJitter:
                                    [0.8000, 0.2305, 0.3063]]]])
 
         assert_allclose(f(input), expected)
+
+    def test_sequential(self):
+
+        f = nn.Sequential(
+            ColorJitter(return_transform=True),
+            ColorJitter(return_transform=True),
+        )
+
+        input = torch.rand(3, 5, 5)  # 3 x 5 x 5
+
+        expected = input
+
+        expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
+
+        assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(input)[1], expected_transform)
+
+    def test_color_jitter_batch(self):
+        f = nn.Sequential(
+            ColorJitter(return_transform=True),
+            ColorJitter(return_transform=True),
+        )
+
+        input = torch.rand(2, 3, 5, 5)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(input)[1], expected_transform)
 
     def test_gradcheck(self):
 
