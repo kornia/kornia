@@ -12,9 +12,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-import torchvision
-from matplotlib import pyplot as plt
-import cv2
 
 # from: https://gist.github.com/edgarriba/a781de516c508826f79568d08598efdb
 
@@ -35,17 +32,9 @@ class DummyDataset(Dataset):
         sample = self.data_index[idx]
 
         # load data, NOTE: modify by cv2.imread(...)
-        image = cv2.imread('./data/simba.png')
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB).transpose(2, 0, 1)
-        return image
-
-
-def imshow(input: torch.Tensor):
-    out: torch.Tensor = torchvision.utils.make_grid(input, nrow=2, padding=5)
-    out_np: np.ndarray = kornia.tensor_to_image(out)
-    plt.imshow(out_np)
-    plt.axis('off')
-    plt.show()
+        image = torch.rand(3, 240, 320)
+        label = torch.rand(1, 240, 320)
+        return dict(images=image, labels=label)
 
 ################################
 # 2. Define the data augmentation operations
@@ -53,8 +42,11 @@ def imshow(input: torch.Tensor):
 
 import kornia
 
-transform = kornia.augmentation.augmentations.ColorJitter(brightness=0.5, contrast=0.5, hue=0.05, saturation=.5)
-print(transform)
+transform = nn.Sequential(
+    kornia.color.AdjustBrightness(0.5),
+    kornia.color.AdjustGamma(gamma=2.),
+    kornia.color.AdjustContrast(0.7),
+)
 
 ################################
 # 3. Run the dataset and perform the data augmentation
@@ -68,13 +60,12 @@ dataset = DummyDataset()
 dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
 # get samples and perform the data augmentation
-for i_batch, images in enumerate(dataloader):
-    images = images.to(device) / 255.0
+for i_batch, sample_batched in enumerate(dataloader):
+    images = sample_batched['images'].to(device)
+    labels = sample_batched['labels'].to(device)
 
     # perform the transforms
-    images_out = transform(images)
+    images = transform(images)
+    labels = transform(labels)
 
     print(f"Iteration: {i_batch} Image shape: {images.shape}")
-    for j in range(images.shape[0]):
-        imshow(images[j])
-        imshow(images_out[j])
