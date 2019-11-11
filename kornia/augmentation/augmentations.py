@@ -185,7 +185,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     """
 
     def _input_check(factor: FloatUnionType, name: str, center: float = 0.,
-                     bounds: Tuple[float, float] = (0, float('inf'))):
+                     bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
@@ -232,13 +232,18 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
 
-    brightness_bound = _input_check(brightness, 'brightness', bounds=(float('-inf'), float('inf')))
-    contrast_bound = _input_check(contrast, 'contrast', center=1.)
-    saturation_bound = _input_check(saturation, 'saturation', center=1.)
-    hue_bound = _input_check(hue, 'hue', bounds=(-.5, .5))
-
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
+
+    brightness_bound: torch.Tensor = _input_check(brightness, 'brightness', bounds=(float('-inf'), float('inf')))
+    contrast_bound: torch.Tensor = _input_check(contrast, 'contrast', center=1.)
+    saturation_bound: torch.Tensor = _input_check(saturation, 'saturation', center=1.)
+    hue_bound: torch.Tensor = _input_check(hue, 'hue', bounds=(-.5, .5))
+
+    brightness_bound = brightness_bound.to(device).to(dtype)
+    contrast_bound = contrast_bound.to(device).to(dtype)
+    saturation_bound = saturation_bound.to(device).to(dtype)
+    hue_bound = hue_bound.to(device).to(dtype)
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
