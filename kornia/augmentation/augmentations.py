@@ -78,7 +78,7 @@ class RandomHorizontalFlip(nn.Module):
 
 class ColorJitter(nn.Module):
 
-    r"""Change the brightness, contrast, saturation and  hue randomly given tensor image or a batch of tensor images.
+    r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
