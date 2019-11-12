@@ -74,6 +74,7 @@ from kornia.utils import (
 )
 from kornia.augmentation import (
     random_hflip,
+    color_jitter,
 )
 
 from kornia.geometry import *
