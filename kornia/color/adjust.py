@@ -6,7 +6,7 @@ import torch.nn as nn
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 
 
-def adjust_saturation(input: torch.Tensor, saturation_factor: float) -> torch.Tensor:
+def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
     See :class:`~kornia.color.AdjustSaturation` for details.
@@ -15,8 +15,20 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: float) -> torch.Te
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(saturation_factor, float):
-        raise TypeError(f"The saturation_factor should be a float number.")
+    if not isinstance(saturation_factor, (float, torch.Tensor,)):
+        raise TypeError(f"The saturation_factor should be a float number or torch.Tensor."
+                        f"Got {type(saturation_factor)}")
+
+    if isinstance(saturation_factor, float):
+        saturation_factor = torch.tensor([saturation_factor])
+
+    saturation_factor = saturation_factor.to(input.device).to(input.dtype)
+
+    if (saturation_factor < 0).any():
+        raise ValueError(f"Saturation factor must be non-negative. Got {saturation_factor}")
+
+    for _ in input.shape[1:]:
+        saturation_factor = torch.unsqueeze(saturation_factor, dim=-1)
 
     # convert the rgb image to hsv
     x_hsv: torch.Tensor = rgb_to_hsv(input)
@@ -36,7 +48,7 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: float) -> torch.Te
     return out
 
 
-def adjust_hue(input: torch.Tensor, hue_factor: float) -> torch.Tensor:
+def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
 
     See :class:`~kornia.color.AdjustHue` for details.
@@ -45,9 +57,20 @@ def adjust_hue(input: torch.Tensor, hue_factor: float) -> torch.Tensor:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(hue_factor, float) and -0.5 < hue_factor < 0.5:
-        raise TypeError(f"The hue_factor should be a float number in the range between"
+    if not isinstance(hue_factor, (float, torch.Tensor)):
+        raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
                         f" [-0.5, 0.5]. Got {type(hue_factor)}")
+
+    if isinstance(hue_factor, float):
+        hue_factor = torch.tensor([hue_factor])
+
+    hue_factor = hue_factor.to(input.device).to(input.dtype)
+
+    if ((hue_factor < -0.5) | (hue_factor > 0.5)).any():
+        raise ValueError(f"Hue-factor must be in the range [-0.5, 0.5]. Got {hue_factor}")
+
+    for _ in input.shape[1:]:
+        hue_factor = torch.unsqueeze(hue_factor, dim=-1)
 
     # convert the rgb image to hsv
     x_hsv: torch.Tensor = rgb_to_hsv(input)
@@ -56,7 +79,7 @@ def adjust_hue(input: torch.Tensor, hue_factor: float) -> torch.Tensor:
     h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    h_out: torch.Tensor = torch.frac(h * hue_factor)
+    h_out: torch.Tensor = torch.frac(h + hue_factor)
 
     # pack back back the corrected hue
     x_adjusted: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
@@ -67,7 +90,8 @@ def adjust_hue(input: torch.Tensor, hue_factor: float) -> torch.Tensor:
     return out
 
 
-def adjust_gamma(input: torch.Tensor, gamma: float, gain: float = 1.) -> torch.Tensor:
+def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
+                 gain: Union[float, torch.Tensor] = 1.) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
     See :class:`~kornia.color.AdjustGamma` for details.
@@ -76,11 +100,30 @@ def adjust_gamma(input: torch.Tensor, gamma: float, gain: float = 1.) -> torch.T
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(gamma, float) and gamma > 0.:
-        raise TypeError(f"The gamma should be a positive a float. Got {type(gamma)}")
+    if not isinstance(gamma, (float, torch.Tensor)):
+        raise TypeError(f"The gamma should be a positive float or torch.Tensor. Got {type(gamma)}")
 
-    if not isinstance(gain, float) and gain >= 1.:
-        raise TypeError(f"The gamma should be a positive a float. Got {type(gain)}")
+    if not isinstance(gain, (float, torch.Tensor)):
+        raise TypeError(f"The gain should be a positive float or torch.Tensor. Got {type(gain)}")
+
+    if isinstance(gamma, float):
+        gamma = torch.tensor([gamma])
+
+    if isinstance(gain, float):
+        gain = torch.tensor([gain])
+
+    gamma = gamma.to(input.device).to(input.dtype)
+    gain = gain.to(input.device).to(input.dtype)
+
+    if (gamma < 0.0).any():
+        raise ValueError(f"Gamma must be non-negative. Got {gamma}")
+
+    if (gain < 0.0).any():
+        raise ValueError(f"Gain must be non-negative. Got {gain}")
+
+    for _ in input.shape[1:]:
+        gamma = torch.unsqueeze(gamma, dim=-1)
+        gain = torch.unsqueeze(gain, dim=-1)
 
     # Apply the gamma correction
     x_adjust: torch.Tensor = gain * torch.pow(input, gamma)
@@ -171,9 +214,9 @@ class AdjustSaturation(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, saturation_factor: float) -> None:
+    def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustSaturation, self).__init__()
-        self.saturation_factor: float = saturation_factor
+        self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_saturation(input, self.saturation_factor)
@@ -195,9 +238,9 @@ class AdjustHue(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, hue_factor: float) -> None:
+    def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustHue, self).__init__()
-        self.hue_factor: float = hue_factor
+        self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_hue(input, self.hue_factor)
@@ -219,10 +262,10 @@ class AdjustGamma(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, gamma: float, gain: float = 1.) -> None:
+    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
         super(AdjustGamma, self).__init__()
-        self.gamma: float = gamma
-        self.gain: float = gain
+        self.gamma: Union[float, torch.Tensor] = gamma
+        self.gain: Union[float, torch.Tensor] = gain
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_gamma(input, self.gamma, self.gain)
@@ -246,7 +289,7 @@ class AdjustContrast(nn.Module):
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustContrast, self).__init__()
-        self.contrast_factor = contrast_factor
+        self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_contrast(input, self.contrast_factor)
@@ -269,7 +312,7 @@ class AdjustBrightness(nn.Module):
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustBrightness, self).__init__()
-        self.brightness_factor = brightness_factor
+        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_brightness(input, self.brightness_factor)
