@@ -4,6 +4,8 @@ import kornia
 import kornia.testing as utils  # test utils
 from test.common import device_type
 
+import cv2
+
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -13,26 +15,27 @@ class TestRgbToHsv:
 
     def test_rgb_to_hsv(self):
 
-        data = torch.tensor([[[21., 22.],
-                              [22., 22.]],
+        data = torch.rand(3,5,5)
 
-                             [[13., 14.],
-                              [14., 14.]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0)
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
 
-                             [[8., 8.],
-                              [8., 8.]]])
+        h_expected = expected[:,:,0]/360.
+        s_expected = expected[:,:,1]
+        v_expected = expected[:,:,2]
 
-        expected = torch.tensor([[[0.0641, 0.0714],
-                                  [0.0714, 0.0714]],
-
-                                 [[0.6190, 0.6364],
-                                  [0.6364, 0.6364]],
-
-                                 [[21.0000 / 255, 22.0000 / 255],
-                                  [22.0000 / 255, 22.0000 / 255]]])
-
+        # Kornia
         f = kornia.color.RgbToHsv()
-        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
+        result = f(data)
+
+        h = result[0,:,:]
+        s = result[1,:,:]
+        v = result[2,:,:]
+
+        assert_allclose(h, h_expected)
+        assert_allclose(s, s_expected)
+        assert_allclose(v, v_expected)
 
     def test_batch_rgb_to_hsv(self):
 
