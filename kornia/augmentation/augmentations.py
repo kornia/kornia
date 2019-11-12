@@ -184,8 +184,10 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     See :class:`~kornia.augmentation.ColorJitter` for details.
     """
 
-    def _input_check(factor: FloatUnionType, name: str, center: float = 0.,
-                     bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
+    def _check_and_bound(factor: FloatUnionType, name: str, center: float = 0.,
+                         bounds: Tuple[float, float] = (0, float('inf')),
+                         device: torch.device = torch.device('cpu'),
+                         dtype: torch.dtype = torch.float32) -> torch.Tensor:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
@@ -224,7 +226,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
             raise TypeError(
                 f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
 
-        return factor_bound
+        return factor_bound.to(device).to(dtype)
 
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
@@ -235,15 +237,12 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
-    brightness_bound: torch.Tensor = _input_check(brightness, 'brightness', bounds=(float('-inf'), float('inf')))
-    contrast_bound: torch.Tensor = _input_check(contrast, 'contrast', center=1.)
-    saturation_bound: torch.Tensor = _input_check(saturation, 'saturation', center=1.)
-    hue_bound: torch.Tensor = _input_check(hue, 'hue', bounds=(-.5, .5))
-
-    brightness_bound = brightness_bound.to(device).to(dtype)
-    contrast_bound = contrast_bound.to(device).to(dtype)
-    saturation_bound = saturation_bound.to(device).to(dtype)
-    hue_bound = hue_bound.to(device).to(dtype)
+    brightness_bound: torch.Tensor = _check_and_bound(
+        brightness, 'brightness', bounds=(
+            float('-inf'), float('inf')), device=device, dtype=dtype)
+    contrast_bound: torch.Tensor = _check_and_bound(contrast, 'contrast', center=1., device=device, dtype=dtype)
+    saturation_bound: torch.Tensor = _check_and_bound(saturation, 'saturation', center=1., device=device, dtype=dtype)
+    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-.5, .5), device=device, dtype=dtype)
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
