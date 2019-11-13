@@ -48,6 +48,12 @@ class TestAdjustSaturation:
         f = kornia.color.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_saturation, (img, 2.),
+                         raise_exception=True)
 
 class TestAdjustHue:
     def test_hue_one(self):
@@ -110,6 +116,12 @@ class TestAdjustHue:
         result = f(data)
         assert_allclose(result, result.flip(0))
 
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_hue, (img, 2.),
+                         raise_exception=True)
 
 class TestAdjustGamma:
     def test_gamma_zero(self):
