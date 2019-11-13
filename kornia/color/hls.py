@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import cv2
 import kornia
+from kornia.geometry import pi
 
 
 class HlsToRgb(nn.Module):
@@ -146,6 +147,6 @@ def rgb_to_hls(image):
     hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
     hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
 
-    h: torch.Tensor = (60 * hi) / 360  # hue
+    h: torch.Tensor = 2.*pi*(60. * hi) / 360.  # hue [0, 2*pi]
 
     return torch.stack([h, l, s], dim=-3)
