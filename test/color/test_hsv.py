@@ -18,23 +18,23 @@ class TestRgbToHsv:
 
     def test_rgb_to_hsv(self):
 
-        data = torch.rand(3,5,5)
+        data = torch.rand(3, 5, 5)
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
         expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
 
-        h_expected = 2*math.pi*expected[:,:,0]/360.
-        s_expected = expected[:,:,1]
-        v_expected = expected[:,:,2]
+        h_expected = 2 * math.pi * expected[:, :, 0] / 360.
+        s_expected = expected[:, :, 1]
+        v_expected = expected[:, :, 2]
 
         # Kornia
         f = kornia.color.RgbToHsv()
         result = f(data)
 
-        h = result[0,:,:]
-        s = result[1,:,:]
-        v = result[2,:,:]
+        h = result[0, :, :]
+        s = result[1, :, :]
+        v = result[2, :, :]
 
         assert_allclose(h, h_expected)
         assert_allclose(s, s_expected)
@@ -42,21 +42,21 @@ class TestRgbToHsv:
 
     def test_batch_rgb_to_hls(self):
 
-        data = torch.rand(3,5,5)
+        data = torch.rand(3, 5, 5)
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
         expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
 
-        expected[:,:,0] = 2*math.pi*expected[:,:,0]/360.
-        expected = expected.transpose(2,0,1)
+        expected[:, :, 0] = 2 * math.pi * expected[:, :, 0] / 360.
+        expected = expected.transpose(2, 0, 1)
 
         # Kornia
         f = kornia.color.RgbToHsv()
 
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
 
-        expected = np.expand_dims(expected,0)
+        expected = np.expand_dims(expected, 0)
         expected = expected.repeat(2, 0)  # 2x3x2x2
 
         assert_allclose(f(data), expected)
@@ -99,46 +99,27 @@ class TestRgbToHsv:
 
 class TestHsvToRgb:
 
-    def test_hsv_to_rgb_dipet(self):
-        np.random.seed(0)
-        image = np.random.random([1000, 1000, 3]).astype(np.float32)
-        k_img_in = image.copy()
-        image[..., 0] *= 360
-
-        cv_img = cv2.cvtColor(image, cv2.COLOR_HSV2RGB)
-
-        k_img_in = torch.from_numpy(k_img_in.transpose([2, 0, 1]))
-        k_img_in[0] = 2*math.pi*k_img_in[0]
-
-        f = kornia.color.HsvToRgb()
-        k_img = f(k_img_in)
-        k_img = k_img.numpy().transpose([1, 2, 0])
-
-        print(np.abs(cv_img - k_img).max())  # 0.9972929
-        assert_allclose(k_img, cv_img)
-
-
     def test_hsv_to_rgb(self):
 
-        data = torch.rand(3,5,5)
+        data = torch.rand(3, 5, 5)
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
-        data_cv[:,:,0] = 360*data_cv[:,:,0]
+        data_cv[:, :, 0] = 360 * data_cv[:, :, 0]
         expected = cv2.cvtColor(data_cv, cv2.COLOR_HSV2RGB)
 
-        r_expected = expected[:,:,0]
-        g_expected = expected[:,:,1]
-        b_expected = expected[:,:,2]
+        r_expected = expected[:, :, 0]
+        g_expected = expected[:, :, 1]
+        b_expected = expected[:, :, 2]
 
         # Kornia
         f = kornia.color.HsvToRgb()
-        data[0] = 2*pi*data[0]
+        data[0] = 2 * pi * data[0]
         result = f(data)
 
-        r = result[0,:,:]
-        g = result[1,:,:]
-        b = result[2,:,:]
+        r = result[0, :, :]
+        g = result[1, :, :]
+        b = result[2, :, :]
 
         assert_allclose(r, r_expected)
         assert_allclose(g, g_expected)
@@ -146,24 +127,30 @@ class TestHsvToRgb:
 
     def test_batch_hsv_to_rgb(self):
 
-        data = torch.rand(3,5,5)
+        data = torch.rand(3, 5, 5)
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
-        data_cv[:,:,0] = 360*data_cv[:,:,0]
+        data_cv[:, :, 0] = 360 * data_cv[:, :, 0]
         expected = cv2.cvtColor(data_cv, cv2.COLOR_HSV2RGB)
 
-        expected = expected.transpose(2,0,1)
+        expected = expected.transpose(2, 0, 1)
 
         # Kornia
         f = kornia.color.HsvToRgb()
 
-        data[0] = 2*pi*data[0]
+        data[0] = 2 * pi * data[0]
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
 
-        expected = np.expand_dims(expected,0)
+        expected = np.expand_dims(expected, 0)
         expected = expected.repeat(2, 0)  # 2x3x2x2
 
+        assert_allclose(f(data), expected)
+
+        data[:, 0] += 2*pi
+        assert_allclose(f(data), expected)
+
+        data[:, 0] -= 4*pi
         assert_allclose(f(data), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
