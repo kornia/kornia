@@ -63,14 +63,7 @@ class TestRgbToHsv:
 
     def test_gradcheck(self):
 
-        data = torch.tensor([[[[21., 22.],
-                               [22., 22.]],
-
-                              [[13., 14.],
-                               [14., 14.]],
-
-                              [[8., 8.],
-                               [8., 8.]]]])  # 3x2x2
+        data = torch.rand(3,5,5) # 3x2x2
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
@@ -147,11 +140,21 @@ class TestHsvToRgb:
 
         assert_allclose(f(data), expected)
 
-        data[:, 0] += 2*pi
+        data[:, 0] += 2 * pi
         assert_allclose(f(data), expected)
 
-        data[:, 0] -= 4*pi
+        data[:, 0] -= 4 * pi
         assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+
+        data = torch.rand(3,5,5) # 3x2x2
+        data[0] = 2 * pi * data[0]
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(kornia.color.HsvToRgb(), (data,),
+                         raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
