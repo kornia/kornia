@@ -5,6 +5,7 @@ from torch.distributions import Uniform
 
 from kornia.geometry.transform.flips import hflip
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
+from kornia.geometry import pi
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
@@ -242,7 +243,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
             float('-inf'), float('inf')), device=device, dtype=dtype)
     contrast_bound: torch.Tensor = _check_and_bound(contrast, 'contrast', center=1., device=device, dtype=dtype)
     saturation_bound: torch.Tensor = _check_and_bound(saturation, 'saturation', center=1., device=device, dtype=dtype)
-    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-.5, .5), device=device, dtype=dtype)
+    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-pi.item(), pi.item()), device=device, dtype=dtype)
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
