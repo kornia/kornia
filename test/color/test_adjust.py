@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.geometry import pi
 from test.common import device_type
 
 import torch
@@ -105,7 +106,7 @@ class TestAdjustHue:
                               [[.25, .25],
                                [.25, .25]]]])  # 2x3x2x2
 
-        f = kornia.color.AdjustHue(torch.tensor([-.5, .5]))
+        f = kornia.color.AdjustHue(torch.tensor([-pi, pi]))
         result = f(data)
         assert_allclose(result, result.flip(0))
 
