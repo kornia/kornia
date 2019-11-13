@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.geometry import pi
 from test.common import device_type
 
 import cv2
@@ -96,53 +97,71 @@ class TestRgbToHls:
 
 class TestHlsToRgb:
 
-    def test_hls_to_rgb(self):
+    def test_hls_to_rgb_dipet(self):
+        np.random.seed(0)
+        image = np.random.random([1000, 1000, 3]).astype(np.float32)
+        k_img_in = image.copy()
+        image[..., 0] *= 360
 
-        expected = torch.tensor([[[21., 22.],
-                                  [22., 22.]],
+        cv_img = cv2.cvtColor(image, cv2.COLOR_HLS2RGB)
 
-                                 [[13., 14.],
-                                  [14., 14.]],
-
-                                 [[8., 8.],
-                                  [8., 8.]]])
-
-        data = torch.tensor([[[0.0641, 0.07138],
-                              [0.07138, 0.07138]],
-
-                             [[0.0569, 0.0588],
-                              [0.0588, 0.0588]],
-
-                             [[0.4483, 0.4667],
-                              [0.4667, 0.4667]]])
+        k_img_in = torch.from_numpy(k_img_in.transpose([2, 0, 1]))
+        k_img_in[0] = 2*math.pi*k_img_in[0]
 
         f = kornia.color.HlsToRgb()
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-7)
+        k_img = f(k_img_in)
+        k_img = k_img.numpy().transpose([1, 2, 0])
+
+        print(np.abs(cv_img - k_img).max())  # 0.9972929
+        assert_allclose(k_img, cv_img)
+
+    def test_hls_to_rgb(self):
+
+        data = torch.rand(3,5,5)
+
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        data_cv[:,:,0] = 360*data_cv[:,:,0]
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_HLS2RGB)
+
+        r_expected = expected[:,:,0]
+        g_expected = expected[:,:,1]
+        b_expected = expected[:,:,2]
+
+        # Kornia
+        f = kornia.color.HlsToRgb()
+        data[0] = 2*pi*data[0]
+        result = f(data)
+
+        r = result[0,:,:]
+        g = result[1,:,:]
+        b = result[2,:,:]
+
+        assert_allclose(r, r_expected)
+        assert_allclose(g, g_expected)
+        assert_allclose(b, b_expected)
 
     def test_batch_hls_to_rgb(self):
 
-        expected = torch.tensor([[[21., 22.],
-                                  [22., 22.]],
+        data = torch.rand(3,5,5)
 
-                                 [[13., 14.],
-                                  [14., 14.]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        data_cv[:,:,0] = 360*data_cv[:,:,0]
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_HLS2RGB)
 
-                                 [[8., 8.],
-                                  [8., 8.]]])  # 3x2x2
+        expected = expected.transpose(2,0,1)
 
-        data = torch.tensor([[[0.0641, 0.07138],
-                              [0.07138, 0.07138]],
-
-                             [[0.0569, 0.0588],
-                              [0.0588, 0.0588]],
-
-                             [[0.4483, 0.4667],
-                              [0.4667, 0.4667]]])  # 3x2x2
-
+        # Kornia
         f = kornia.color.HlsToRgb()
+
+        data[0] = 2*pi*data[0]
         data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
-        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-7)
+
+        expected = np.expand_dims(expected,0)
+        expected = expected.repeat(2, 0)  # 2x3x2x2
+
+        assert_allclose(f(data), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):

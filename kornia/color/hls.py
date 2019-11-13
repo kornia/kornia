@@ -57,7 +57,7 @@ def hls_to_rgb(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] * 360
+    h: torch.Tensor = image[..., 0, :, :] * 360 / (2*pi)
     l: torch.Tensor = image[..., 1, :, :]
     s: torch.Tensor = image[..., 2, :, :]
 
