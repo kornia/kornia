@@ -42,7 +42,7 @@ class TestRgbToHsv:
 
     def test_batch_rgb_to_hls(self):
 
-        data = torch.rand(3, 5, 5)
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
@@ -54,16 +54,16 @@ class TestRgbToHsv:
         # Kornia
         f = kornia.color.RgbToHsv()
 
-        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
+        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
 
         expected = np.expand_dims(expected, 0)
-        expected = expected.repeat(2, 0)  # 2x3x2x2
+        expected = expected.repeat(2, 0)  # 2x3x5x5
 
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self):
 
-        data = torch.rand(3,5,5) # 3x2x2
+        data = torch.rand(3, 5, 5)  # 3x2x2
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
@@ -94,7 +94,7 @@ class TestHsvToRgb:
 
     def test_hsv_to_rgb(self):
 
-        data = torch.rand(3, 5, 5)
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
@@ -120,7 +120,7 @@ class TestHsvToRgb:
 
     def test_batch_hsv_to_rgb(self):
 
-        data = torch.rand(3, 5, 5)
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
         # OpenCV
         data_cv = data.numpy().transpose(1, 2, 0).copy()
@@ -133,10 +133,10 @@ class TestHsvToRgb:
         f = kornia.color.HsvToRgb()
 
         data[0] = 2 * pi * data[0]
-        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
+        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
 
         expected = np.expand_dims(expected, 0)
-        expected = expected.repeat(2, 0)  # 2x3x2x2
+        expected = expected.repeat(2, 0)  # 2x3x5x5
 
         assert_allclose(f(data), expected)
 
@@ -148,7 +148,7 @@ class TestHsvToRgb:
 
     def test_gradcheck(self):
 
-        data = torch.rand(3,5,5) # 3x2x2
+        data = torch.rand(3, 5, 5)  # 3x5x5
         data[0] = 2 * pi * data[0]
 
         data = utils.tensor_to_gradcheck_var(data)  # to var

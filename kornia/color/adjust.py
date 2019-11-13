@@ -80,7 +80,7 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    divisor: float = 2*pi.item()
+    divisor: float = 2 * pi.item()
     h_out: torch.Tensor = torch.fmod(h + hue_factor, divisor)
 
     # pack back back the corrected hue
