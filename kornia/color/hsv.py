@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from kornia.geometry import pi
 
 
 class HsvToRgb(nn.Module):
@@ -151,4 +152,5 @@ def rgb_to_hsv(image):
 
     h: torch.Tensor = (h / 6.0) % 1.0
 
+    h: torch.Tensor = 2*pi*h
     return torch.stack([h, s, v], dim=-3)
