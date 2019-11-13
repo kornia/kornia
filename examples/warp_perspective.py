@@ -17,7 +17,7 @@ img: np.ndarray = cv2.imread('./data/bruce.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor
-data: torch.tensor = kornia.image_to_tensor(img)  # BxCxHxW
+data: torch.tensor = kornia.image_to_tensor(img, keepdim=False)  # BxCxHxW
 
 # the source points are the region to crop corners
 points_src = torch.tensor([[
