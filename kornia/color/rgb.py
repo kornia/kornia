@@ -2,6 +2,59 @@ import torch
 import torch.nn as nn
 
 
+
+class RgbToRgba(nn.Module):
+    r"""Convert image from RGB to RGBA.
+
+    Add an alpha channel to existing image of special value named aval
+
+    args:
+		image (torch.Tensor): A Three Channeled Image Tensor 
+
+		aval (int): An integer between 0 to 255
+
+		    returns:
+		        torch.Tensor: RGBA version of the image.
+
+		    shape:
+		        - image: :math:`(*, 3, H, W)`
+		        - output: :math:`(*, 4, H, W)`
+
+		    Examples::
+
+		        >>> input = torch.rand(2, 3, 4, 5)
+		        >>> rgba = kornia.color.RgbToRgba(aval)
+		        >>> output = rgba(input)  # 2x4x4x5
+
+    """
+    def __init__(self) -> None:
+    	super(RgbToRgba,self).__init__()
+
+    def forward(self,image: torch.Tensor,aval:int) -> torch.Tensor:
+
+    	if not torch.is_tensor(image):
+
+	        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+	            type(image)))
+
+	    if len(image.shape) < 3 or image.shape[-3] != 3:
+	        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+	                         .format(image.shape))
+
+	    # add one channel 
+	    r,g,b= torch.chunk(image,image.shape[-3],dim=-3)
+	    a = torch.Tensor(r.shape)
+	    a[-1,0,:,:] = aval/255
+	    out: torch.Tensor =torch.cat([r,g,b,a],dim=-3)
+	    return out
+
+
+
+
+
+
+
+
 class RgbToBgr(nn.Module):
     r"""Convert image from RGB to BGR.
 
@@ -43,6 +96,8 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: BGR version of the image.
     """
+
+
 
     return bgr_to_rgb(image)
 
