@@ -31,22 +31,25 @@ class RgbToRgba(nn.Module):
     	super(RgbToRgba,self).__init__()
 
     def forward(self,image: torch.Tensor,aval:int) -> torch.Tensor:
+    	return rgb_to_rgba(image,aval)
 
-    	if not torch.is_tensor(image):
+def rgb_to_rgba(image:torch.Tensor,aval:int):
+	if not torch.is_tensor(image):
 
-	        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-	            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
 
-	    if len(image.shape) < 3 or image.shape[-3] != 3:
-	        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
-	                         .format(image.shape))
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
 
-	    # add one channel 
-	    r,g,b= torch.chunk(image,image.shape[-3],dim=-3)
-	    a = torch.Tensor(r.shape)
-	    a[-1,0,:,:] = aval/255
-	    out: torch.Tensor =torch.cat([r,g,b,a],dim=-3)
-	    return out
+    # add one channel 
+    r,g,b= torch.chunk(image,image.shape[-3],dim=-3)
+    a = torch.Tensor(r.shape)
+    a[-1,0,:,:] = aval/255
+    out: torch.Tensor =torch.cat([r,g,b,a],dim=-3)
+    return out    	
+
 
 
 
