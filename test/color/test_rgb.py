@@ -1,29 +1,19 @@
 import pytest
-
 import kornia
 import kornia.testing as utils  # test utils
 from test.common import device_type
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-
 class TestRgbToRgba:
-  def test_rgb_to_rgba(self):
 
+    def test_rgb_to_rgba(self):
 
-    # prepare input data
-      data = torch.tensor([[[1., 1.],
-                            [1., 1.]],
-
-                           [[2., 2.],
-                            [2., 2.]],
-
-                           [[3., 3.],
-                            [3., 3.]]])  # 3x2x2
-      aval = 0.4
+        data = torch.tensor([[[1., 1.],
+                            [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]])  # 3x2x2
+        aval = 0.4
 
       expected = torch.tensor([[[1.0000e+00, 1.0000e+00],
          [1.0000e+00, 1.0000e+00]],

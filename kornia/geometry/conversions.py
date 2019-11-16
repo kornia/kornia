@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 __all__ = [
     # functional api
     "pi",
@@ -21,7 +20,6 @@ __all__ = [
     "denormalize_pixel_coordinates",
     "normalize_pixel_coordinates",
     "normalize_quaternion",
-    "normal_transform_pixel",
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
 ]
