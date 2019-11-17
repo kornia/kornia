@@ -16,6 +16,7 @@ The functions in this section perform various color space conversions.
 .. autofunction:: rgb_to_yuv
 .. autofunction:: yuv_to_rgb
 .. autofunction:: normalize
+.. autofunction:: denormalize
 .. autofunction:: adjust_brightness
 .. autofunction:: adjust_contrast
 .. autofunction:: adjust_saturation
@@ -35,6 +36,7 @@ The functions in this section perform various color space conversions.
 .. autoclass:: RgbToYuv
 .. autoclass:: YuvToRgb
 .. autoclass:: Normalize
+.. autoclass:: Denormalize
 .. autoclass:: AdjustBrightness
 .. autoclass:: AdjustContrast
 .. autoclass:: AdjustSaturation
