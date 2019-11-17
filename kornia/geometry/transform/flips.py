@@ -17,7 +17,7 @@ class Vflip(nn.Module):
             [0., 0., 0.],
             [0., 0., 0.],
             [0., 1., 1.]]]])
-        >>> vflip = kornia.flip(input, -2)
+        >>> kornia.vflip(input)
         tensor([[[0, 1, 1],
                  [0, 0, 0],
                  [0, 0, 0]]])
@@ -49,7 +49,7 @@ class Hflip(nn.Module):
             [0., 0., 0.],
             [0., 0., 0.],
             [0., 1., 1.]]]])
-        >>> hflip = kornia.flip(input, -1)
+        >>> kornia.hflip(input)
         tensor([[[0, 0, 0],
                  [0, 0, 0],
                  [1, 1, 0]]])
@@ -79,7 +79,7 @@ class Rot180(nn.Module):
                 [0., 0., 0.],
                 [0., 0., 0.],
                 [0., 1., 1.]]]])
-            >>> rot180 = kornia.rot180(input)
+            >>> kornia.rot180(input)
             tensor([[[1, 1, 0],
                     [0, 0, 0],
                     [0, 0, 0]]])
@@ -97,7 +97,6 @@ class Rot180(nn.Module):
 
 
 def rot180(input: torch.Tensor) -> torch.Tensor:
-
     r"""Rotate a tensor image or a batch of tensor images
     180 degrees. Input must be a tensor of shape (C, H, W)
     or a batch of tensors :math:`(*, C, H, W)`.

@@ -13,6 +13,7 @@ from kornia import filters
 from kornia import geometry
 from kornia import losses
 from kornia import utils
+from kornia import augmentation
 
 # Exposes package functional to top level
 
@@ -26,6 +27,7 @@ from kornia.color import (
     rgb_to_hls,
     hls_to_rgb,
     normalize,
+    denormalize,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -70,5 +72,10 @@ from kornia.utils import (
     save_pointcloud_ply,
     load_pointcloud_ply,
 )
+from kornia.augmentation import (
+    random_hflip,
+    color_jitter,
+)
+
 from kornia.geometry import *
 from kornia.geometry import pi
