@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.augmentation import RandomHorizontalFlip, ColorJitter
+from kornia.augmentation import RandomHorizontalFlip, ColorJitter, RandomRectangleErasing
 
 
 class TestRandomHorizontalFlip:
@@ -624,3 +624,43 @@ class TestColorJitter:
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
         assert gradcheck(kornia.color_jitter, (input, ), raise_exception=True)
+
+
+class TestRectangleRandomErasing:
+    @pytest.mark.parametrize("erase_area", [(.001, .001), (1., 1.)])
+    @pytest.mark.parametrize("aspect_ratio", [(.1, .1), (10., 10.)])
+    @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+    def test_random_rectangle_erasing(
+            self, batch_shape, erase_area, aspect_ratio, device_type):
+        input = torch.rand(batch_shape).to(torch.device(device_type))
+        rand_rec = RandomRectangleErasing(erase_area, aspect_ratio)
+        assert rand_rec(input).shape == batch_shape
+
+    def test_gradcheck(self):
+        # test parameters
+        batch_shape = (2, 3, 11, 7)
+        erase_area = (.2, .4)
+        aspect_ratio = (.3, .5)
+
+        # evaluate function gradient
+        input = torch.rand(batch_shape, dtype=torch.double)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(
+            kornia.augmentation.random_rectangle_erase,
+            (input, erase_area, aspect_ratio),
+            raise_exception=True,
+        )
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(img):
+            return kornia.augmentation.random_rectangle_erase(img, (.2, .4), (.3, .5))
+
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        expected = RandomRectangleErasing(
+            (.2, .4), (.3, .5)
+        )(img)
+        actual = op_script(img)
+        assert_allclose(actual, expected)
