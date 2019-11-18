@@ -20,7 +20,7 @@ img_bgr: np.ndarray = cv2.imread('./data/simba.png', cv2.IMREAD_COLOR)
 
 #############################
 # Convert the numpy array to torch
-x_bgr: torch.Tensor = kornia.image_to_tensor(img_bgr)
+x_bgr: torch.Tensor = kornia.image_to_tensor(img_bgr, keepdim=False)
 
 #############################
 # Using `kornia` we easily perform color transformation in batch mode.
