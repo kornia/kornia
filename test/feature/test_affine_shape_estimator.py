@@ -15,10 +15,10 @@ class TestPatchAffineShapeEstimator:
         assert ang.shape == torch.Size([1, 1, 3])
 
     def test_shape_batch(self):
-        inp = torch.rand(10, 1, 32, 32)
+        inp = torch.rand(2, 1, 32, 32)
         ori = PatchAffineShapeEstimator(32)
         ang = ori(inp)
-        assert ang.shape == torch.Size([10, 1, 3])
+        assert ang.shape == torch.Size([2, 1, 3])
 
     def test_print(self):
         sift = PatchAffineShapeEstimator(32)
@@ -70,10 +70,10 @@ class TestLAFAffineShapeEstimator:
         assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self):
-        batch_size, channels, height, width = 1, 1, 100, 100
+        batch_size, channels, height, width = 1, 1, 40, 40
         patches = torch.rand(batch_size, channels, height, width)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        laf = torch.tensor([[[[20., 0., 56.], [0., 20., 56.]]]])
+        laf = torch.tensor([[[[5., 0., 26.], [0., 5., 26.]]]])
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
         assert gradcheck(LAFAffineShapeEstimator(11), (laf, patches),
                          raise_exception=True, rtol=1e-3, atol=1e-3)
