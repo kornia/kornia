@@ -61,6 +61,23 @@ class TestRgbToHsv:
 
         assert_allclose(f(data), expected)
 
+    def test_nan_rgb_to_hsv(self):
+
+        data = torch.zeros(1, 5, 5)  # 3x5x5
+        data = data.repeat(3, 1, 1)  # 2x3x5x5
+
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
+        expected[:, :, 0] = 2 * math.pi * expected[:, :, 0] / 360.
+
+        expected = expected.transpose(2, 0, 1)
+
+        # Kornia
+        f = kornia.color.RgbToHsv()
+
+        assert_allclose(f(data), expected)
+
     def test_gradcheck(self):
 
         data = torch.rand(3, 5, 5)  # 3x2x2
@@ -174,18 +191,3 @@ class TestHsvToRgb:
             actual = op_script(data)
             expected = kornia.hsv_to_rgb(data)
             assert_allclose(actual, expected)
-
-    def test_nan(self):
-        np.random.seed(0)
-
-        img = (np.random.randint(0, 256, [1000, 1000, 3], np.uint8) / 255.0).astype(np.float32)
-
-        cv_img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-
-        k_img = torch.from_numpy(np.transpose(img, [2, 0, 1]))
-
-        k_img = kornia.rgb_to_hsv(k_img.float())
-        k_img[0] = k_img[0] * 360 / (2 * pi)
-        k_img = np.transpose(k_img.numpy(), [1, 2, 0])
-
-        assert_allclose(cv_img, k_img)
