@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
+from kornia.geometry import pi
 
 
 def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -59,15 +60,15 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
 
     if not isinstance(hue_factor, (float, torch.Tensor)):
         raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
-                        f" [-0.5, 0.5]. Got {type(hue_factor)}")
+                        f" [-PI, PI]. Got {type(hue_factor)}")
 
     if isinstance(hue_factor, float):
         hue_factor = torch.tensor([hue_factor])
 
     hue_factor = hue_factor.to(input.device).to(input.dtype)
 
-    if ((hue_factor < -0.5) | (hue_factor > 0.5)).any():
-        raise ValueError(f"Hue-factor must be in the range [-0.5, 0.5]. Got {hue_factor}")
+    if ((hue_factor < -pi) | (hue_factor > pi)).any():
+        raise ValueError(f"Hue-factor must be in the range [-PI, PI]. Got {hue_factor}")
 
     for _ in input.shape[1:]:
         hue_factor = torch.unsqueeze(hue_factor, dim=-1)
@@ -79,7 +80,8 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    h_out: torch.Tensor = torch.frac(h + hue_factor)
+    divisor: float = 2 * pi.item()
+    h_out: torch.Tensor = torch.fmod(h + hue_factor, divisor)
 
     # pack back back the corrected hue
     x_adjusted: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
@@ -214,9 +216,9 @@ class AdjustSaturation(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, saturation_factor: float) -> None:
+    def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustSaturation, self).__init__()
-        self.saturation_factor: float = saturation_factor
+        self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_saturation(input, self.saturation_factor)
@@ -229,18 +231,18 @@ class AdjustHue(nn.Module):
 
     Args:
         input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
-        hue_factor (float): How much to shift the hue channel. Should be in [-0.5, 0.5]. 0.5
-          and -0.5 give complete reversal of hue channel in HSV space in positive and negative
-          direction respectively. 0 means no shift. Therefore, both -0.5 and 0.5 will give an
+        hue_factor (float): How much to shift the hue channel. Should be in [-PI, PI]. PI
+          and -PI give complete reversal of hue channel in HSV space in positive and negative
+          direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
           image with complementary colors while 0 gives the original image.
 
     Returns:
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, hue_factor: float) -> None:
+    def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustHue, self).__init__()
-        self.hue_factor: float = hue_factor
+        self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_hue(input, self.hue_factor)
@@ -262,10 +264,10 @@ class AdjustGamma(nn.Module):
         torch.Tensor: Adjusted image.
     """
 
-    def __init__(self, gamma: float, gain: float = 1.) -> None:
+    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
         super(AdjustGamma, self).__init__()
-        self.gamma: float = gamma
-        self.gain: float = gain
+        self.gamma: Union[float, torch.Tensor] = gamma
+        self.gain: Union[float, torch.Tensor] = gain
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_gamma(input, self.gamma, self.gain)
@@ -289,7 +291,7 @@ class AdjustContrast(nn.Module):
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustContrast, self).__init__()
-        self.contrast_factor = contrast_factor
+        self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_contrast(input, self.contrast_factor)
@@ -312,7 +314,7 @@ class AdjustBrightness(nn.Module):
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustBrightness, self).__init__()
-        self.brightness_factor = brightness_factor
+        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_brightness(input, self.brightness_factor)

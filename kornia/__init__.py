@@ -27,6 +27,7 @@ from kornia.color import (
     rgb_to_hls,
     hls_to_rgb,
     normalize,
+    denormalize,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -73,6 +74,7 @@ from kornia.utils import (
 )
 from kornia.augmentation import (
     random_hflip,
+    color_jitter,
 )
 
 from kornia.geometry import *
