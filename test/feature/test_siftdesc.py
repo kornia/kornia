@@ -32,16 +32,16 @@ class TestSIFTDescriptor:
         assert out.shape == (1, 128)
 
     def test_batch_shape(self):
-        inp = torch.ones(13, 1, 41, 41)
-        sift = SIFTDescriptor(41)
+        inp = torch.ones(2, 1, 15, 15)
+        sift = SIFTDescriptor(15)
         out = sift(inp)
-        assert out.shape == (13, 128)
+        assert out.shape == (2, 128)
 
     def test_batch_shape_non_std(self):
-        inp = torch.ones(13, 1, 41, 41)
-        sift = SIFTDescriptor(41, 5, 3)
+        inp = torch.ones(3, 1, 19, 19)
+        sift = SIFTDescriptor(19, 5, 3)
         out = sift(inp)
-        assert out.shape == (13, (3 ** 2) * 5)
+        assert out.shape == (3, (3 ** 2) * 5)
 
     def test_print(self):
         sift = SIFTDescriptor(41)
@@ -60,8 +60,8 @@ class TestSIFTDescriptor:
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self):
-        batch_size, channels, height, width = 1, 1, 41, 41
+        batch_size, channels, height, width = 1, 1, 13, 13
         patches = torch.rand(batch_size, channels, height, width)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(sift_describe, (patches, 41),
+        assert gradcheck(sift_describe, (patches, 13),
                          raise_exception=True)
