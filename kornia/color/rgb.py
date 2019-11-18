@@ -3,14 +3,13 @@ import torch.nn as nn
 
 
 class RgbToRgba(nn.Module):
-
     r"""Convert image from RGB to RGBA.
 
-    Add an alpha channel to existing image of special value named aval
+    Add an alpha channel to existing image of special value named alpha_val
 
     args:
     image (torch.Tensor): A Three Channeled Image Tensor
-    aval (int): An integer between 0 to 255
+    alpha_val (int): An integer between 0 to 255
     returns:
             torch.Tensor: RGBA version of the image.
 
@@ -21,7 +20,7 @@ class RgbToRgba(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgba = kornia.color.RgbToRgba(aval)
+        >>> rgba = kornia.color.RgbToRgba(alpha_val)
         >>> output = rgba(input)  # 2x4x4x5
 
    """
@@ -29,12 +28,11 @@ class RgbToRgba(nn.Module):
 
         super(RgbToRgba, self).__init__()
 
-    def forward(self, image: torch.Tensor, aval: int) -> torch.Tensor:
-        return rgb_to_rgba(image, aval)
+    def forward(self, image: torch.Tensor, alpha_val: float) -> torch.Tensor:
+        return rgb_to_rgba(image, alpha_val)
 
 
-def rgb_to_rgba(image: torch.Tensor, aval: int):
-
+def rgb_to_rgba(image: torch.Tensor, alpha_val: float):
     if not torch.is_tensor(image):
 
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
@@ -45,8 +43,7 @@ def rgb_to_rgba(image: torch.Tensor, aval: int):
 
     # add one channel
     r, g, b = torch.chunk(image, image.shape[-3], dim=-3)
-    a = torch.Tensor(r.shape)
-    a[-1, 0, -1] = aval / 255
+    a: torch.Tensor = torch.full_like(r, fill_value=float(alpha_val) / 255)
     out: torch.Tensor = torch.cat([r, g, b, a], dim=-3)
     return out
 
