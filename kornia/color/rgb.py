@@ -28,7 +28,7 @@ class RgbToRgba(nn.Module):
 
         super(RgbToRgba, self).__init__()
 
-    def forward(self, image: torch.Tensor, alpha_val: float) -> torch.Tensor:
+    def forward(self, image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type: ignore
         return rgb_to_rgba(image, alpha_val)
 
 
