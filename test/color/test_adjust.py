@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.geometry import pi
 from test.common import device_type
 
 import torch
@@ -46,6 +47,13 @@ class TestAdjustSaturation:
         expected = data
         f = kornia.color.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_saturation, (img, 2.),
+                         raise_exception=True)
 
 
 class TestAdjustHue:
@@ -105,9 +113,16 @@ class TestAdjustHue:
                               [[.25, .25],
                                [.25, .25]]]])  # 2x3x2x2
 
-        f = kornia.color.AdjustHue(torch.tensor([-.5, .5]))
+        f = kornia.color.AdjustHue(torch.tensor([-pi, pi]))
         result = f(data)
         assert_allclose(result, result.flip(0))
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_hue, (img, 2.),
+                         raise_exception=True)
 
 
 class TestAdjustGamma:
