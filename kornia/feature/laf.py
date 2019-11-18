@@ -478,3 +478,36 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor) -> torch.Tensor
     good_lafs_mask: torch.Tensor = (pts[..., 0] >= 0) * (pts[..., 0] <= w) * (pts[..., 1] >= 0) * (pts[..., 1] <= h)
     good_lafs_mask = good_lafs_mask.min(dim=2)[0]
     return good_lafs_mask
+
+
+def laf_to_three_points(laf: torch.Tensor):
+    """Converts local affine frame(LAF) to alternative representation: coordinates of
+    LAF center, LAF-x unit vector, LAF-y unit vector.
+
+    Args:
+        laf (torch.Tensor):  :math:`(B, N, 2, 3)`
+
+    Returns:
+        threepts (torch.Tensor):  :math:`(B, N, 2, 3)`
+    """
+    raise_error_if_laf_is_not_valid(laf)
+    three_pts: torch.Tensor = torch.stack([laf[..., 2] + laf[..., 0],
+                                           laf[..., 2] + laf[..., 1],
+                                           laf[..., 2]], dim=-1)
+    return three_pts
+
+
+def laf_from_three_points(threepts: torch.Tensor):
+    """Converts three points to local affine frame.
+    Order is (0,0), (0, 1), (1, 0).
+
+    Args:
+        threepts (torch.Tensor):  :math:`(B, N, 2, 3)`
+
+    Returns:
+        laf (torch.Tensor):  :math:`(B, N, 2, 3)`
+    """
+    laf: torch.Tensor = torch.stack([threepts[..., 0] - threepts[..., 2],
+                                     threepts[..., 1] - threepts[..., 2],
+                                     threepts[..., 2]], dim=-1)
+    return laf
