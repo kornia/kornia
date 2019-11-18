@@ -1,8 +1,7 @@
 from typing import Optional
 
 import torch
-import torch.nn as nn
-
+import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import convert_points_from_homogeneous
 
@@ -12,6 +11,7 @@ __all__ = [
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
+    "perspective_transform_lafs",
 ]
 
 
@@ -211,6 +211,48 @@ def transform_points(trans_01: torch.Tensor,
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
     return points_0
+
+
+def perspective_transform_lafs(trans_01: torch.Tensor,
+                               lafs_1: torch.Tensor) -> torch.Tensor:
+    r"""Function that applies perspective transformations to a set of local affine frames (LAFs).
+
+    Args:
+        trans_01 (torch.Tensor): tensor for perspective transformations of shape
+          :math:`(B, 3, 3)`.
+        lafs_1 (torch.Tensor): tensor of lafs of shape :math:`(B, N, 2, 3)`.
+    Returns:
+        torch.Tensor: tensor of N-dimensional points.
+
+    Shape:
+        - Output: :math:`(B, N, 2, 3)`
+
+    Examples:
+
+        >>> lafs_1 = torch.rand(2, 4, 2, 3)  # BxNx2x3
+        >>> trans_01 = torch.eye(3).view(1, 3, 3)  # Bx3x3
+        >>> lafs_0 = kornia.perspective_transform_lafs(trans_01, lafs_1)  # BxNx2x3
+    """
+    kornia.feature.laf.raise_error_if_laf_is_not_valid(lafs_1)
+    if not torch.is_tensor(trans_01):
+        raise TypeError("Input type is not a torch.Tensor")
+    if not trans_01.device == lafs_1.device:
+        raise TypeError("Tensor must be in the same device")
+    if not trans_01.shape[0] == lafs_1.shape[0]:
+        raise ValueError("Input batch size must be the same for both tensors")
+    if (not (trans_01.shape[-1] == 3)) or (not (trans_01.shape[-2] == 3)):
+        raise ValueError("Tranformation should be homography")
+    bs, n, _, _ = lafs_1.size()
+    # First, we convert LAF to points
+    threepts_1 = kornia.feature.laf.laf_to_three_points(lafs_1)
+    points_1 = threepts_1.permute(0, 1, 3, 2).reshape(bs, n * 3, 2)
+
+    # First, transform the points
+    points_0 = transform_points(trans_01, points_1)
+    # Back to LAF format
+    threepts_0 = points_0.view(bs, n, 3, 2).permute(0, 1, 3, 2)
+    return kornia.feature.laf.laf_from_three_points(threepts_0)
+
 
 # TODO:
 # - project_points: from opencv
