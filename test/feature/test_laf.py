@@ -447,4 +447,3 @@ class TestGetLAFFrom3pts:
         assert gradcheck(kornia.feature.laf_from_three_points,
                          (inp,),
                          raise_exception=True)
-
