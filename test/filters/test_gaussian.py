@@ -36,14 +36,14 @@ class TestGaussianBlur:
         gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
         assert gauss(input).shape == batch_shape
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         kernel_size = (5, 3)
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape)
+        input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
             kornia.gaussian_blur2d,
@@ -59,7 +59,7 @@ class TestGaussianBlur:
             return kornia.gaussian_blur2d(img, (5, 5), (1.2, 1.2), "replicate")
 
         batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width)
+        img = torch.ones(batch_size, channels, height, width).to(device)
         expected = kornia.filters.GaussianBlur2d(
             (5, 5), (1.2, 1.2), "replicate"
         )(img)
@@ -102,13 +102,13 @@ class TestLaplacian:
         laplace = kornia.filters.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         kernel_size = 9
 
         # evaluate function gradient
-        input = torch.rand(batch_shape)
+        input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(
             kornia.laplacian, (input, kernel_size), raise_exception=True)
