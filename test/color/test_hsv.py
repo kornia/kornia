@@ -3,6 +3,11 @@ import pytest
 import kornia
 import kornia.testing as utils  # test utils
 from test.common import device_type
+from kornia.geometry import pi
+
+import cv2
+import numpy as np
+import math
 
 import torch
 from torch.autograd import gradcheck
@@ -13,61 +18,52 @@ class TestRgbToHsv:
 
     def test_rgb_to_hsv(self):
 
-        data = torch.tensor([[[21., 22.],
-                              [22., 22.]],
+        data = torch.rand(3, 5, 5)
 
-                             [[13., 14.],
-                              [14., 14.]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
 
-                             [[8., 8.],
-                              [8., 8.]]])
+        h_expected = 2 * math.pi * expected[:, :, 0] / 360.
+        s_expected = expected[:, :, 1]
+        v_expected = expected[:, :, 2]
 
-        expected = torch.tensor([[[0.0641, 0.0714],
-                                  [0.0714, 0.0714]],
-
-                                 [[0.6190, 0.6364],
-                                  [0.6364, 0.6364]],
-
-                                 [[21.0000 / 255, 22.0000 / 255],
-                                  [22.0000 / 255, 22.0000 / 255]]])
-
+        # Kornia
         f = kornia.color.RgbToHsv()
-        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
+        result = f(data)
 
-    def test_batch_rgb_to_hsv(self):
+        h = result[0, :, :]
+        s = result[1, :, :]
+        v = result[2, :, :]
 
-        data = torch.tensor([[[21., 22.],
-                              [22., 22.]],
+        assert_allclose(h, h_expected)
+        assert_allclose(s, s_expected)
+        assert_allclose(v, v_expected)
 
-                             [[13., 14.],
-                              [14., 14.]],
+    def test_batch_rgb_to_hls(self):
 
-                             [[8., 8.],
-                              [8., 8.]]])  # 3x2x2
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
-        expected = torch.tensor([[[0.0641, 0.0714],
-                                  [0.0714, 0.0714]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_RGB2HSV)
 
-                                 [[0.6190, 0.6364],
-                                  [0.6364, 0.6364]],
+        expected[:, :, 0] = 2 * math.pi * expected[:, :, 0] / 360.
+        expected = expected.transpose(2, 0, 1)
 
-                                 [[21.0000 / 255, 22.0000 / 255],
-                                  [22.0000 / 255, 22.0000 / 255]]])  # 3x2x2
+        # Kornia
         f = kornia.color.RgbToHsv()
-        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
-        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data / 255), expected, atol=1e-4, rtol=1e-5)
+
+        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
+
+        expected = np.expand_dims(expected, 0)
+        expected = expected.repeat(2, 0)  # 2x3x5x5
+
+        assert_allclose(f(data), expected)
 
     def test_gradcheck(self):
 
-        data = torch.tensor([[[[21., 22.],
-                               [22., 22.]],
-
-                              [[13., 14.],
-                               [14., 14.]],
-
-                              [[8., 8.],
-                               [8., 8.]]]])  # 3x2x2
+        data = torch.rand(3, 5, 5)  # 3x2x2
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
@@ -98,51 +94,67 @@ class TestHsvToRgb:
 
     def test_hsv_to_rgb(self):
 
-        expected = torch.tensor([[[21., 22.],
-                                  [22., 22.]],
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
-                                 [[13., 14.],
-                                  [14., 14.]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        data_cv[:, :, 0] = 360 * data_cv[:, :, 0]
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_HSV2RGB)
 
-                                 [[8., 8.],
-                                  [8., 8.]]])
+        r_expected = expected[:, :, 0]
+        g_expected = expected[:, :, 1]
+        b_expected = expected[:, :, 2]
 
-        data = torch.tensor([[[0.0641, 0.0714],
-                              [0.0714, 0.0714]],
-
-                             [[0.6190, 0.6364],
-                              [0.6364, 0.6364]],
-
-                             [[21.0000 / 255, 22.0000 / 255],
-                              [22.0000 / 255, 22.0000 / 255]]])
-
+        # Kornia
         f = kornia.color.HsvToRgb()
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
+        data[0] = 2 * pi * data[0]
+        result = f(data)
+
+        r = result[0, :, :]
+        g = result[1, :, :]
+        b = result[2, :, :]
+
+        assert_allclose(r, r_expected)
+        assert_allclose(g, g_expected)
+        assert_allclose(b, b_expected)
 
     def test_batch_hsv_to_rgb(self):
 
-        expected = torch.tensor([[[21., 22.],
-                                  [22., 22.]],
+        data = torch.rand(3, 5, 5)  # 3x5x5
 
-                                 [[13., 14.],
-                                  [14., 14.]],
+        # OpenCV
+        data_cv = data.numpy().transpose(1, 2, 0).copy()
+        data_cv[:, :, 0] = 360 * data_cv[:, :, 0]
+        expected = cv2.cvtColor(data_cv, cv2.COLOR_HSV2RGB)
 
-                                 [[8., 8.],
-                                  [8., 8.]]])  # 3x2x2
+        expected = expected.transpose(2, 0, 1)
 
-        data = torch.tensor([[[0.0641, 0.0714],
-                              [0.0714, 0.0714]],
-
-                             [[0.6190, 0.6364],
-                              [0.6364, 0.6364]],
-
-                             [[21.0000 / 255, 22.0000 / 255],
-                              [22.0000 / 255, 22.0000 / 255]]])  # 3x2x2
-
+        # Kornia
         f = kornia.color.HsvToRgb()
-        data = data.repeat(2, 1, 1, 1)  # 2x3x2x2
-        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
-        assert_allclose(f(data), expected / 255, atol=1e-3, rtol=1e-3)
+
+        data[0] = 2 * pi * data[0]
+        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
+
+        expected = np.expand_dims(expected, 0)
+        expected = expected.repeat(2, 0)  # 2x3x5x5
+
+        assert_allclose(f(data), expected)
+
+        data[:, 0] += 2 * pi
+        assert_allclose(f(data), expected)
+
+        data[:, 0] -= 4 * pi
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+
+        data = torch.rand(3, 5, 5)  # 3x5x5
+        data[0] = 2 * pi * data[0]
+
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+
+        assert gradcheck(kornia.color.HsvToRgb(), (data,),
+                         raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
