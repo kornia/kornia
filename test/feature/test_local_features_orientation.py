@@ -34,7 +34,7 @@ class TestPassLAF:
         assert_allclose(out, laf)
 
     def test_gradcheck(self):
-        batch_size, channels, height, width = 1, 1, 41, 41
+        batch_size, channels, height, width = 1, 1, 21, 21
         patches = torch.rand(batch_size, channels, height, width)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         laf = torch.rand(batch_size, 4, 2, 3)
