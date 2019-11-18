@@ -62,7 +62,7 @@ class TestGetLAFCenter:
     def test_center(self):
         inp = torch.tensor([[5., 1, 2], [1, 1, 3]]).float()
         inp = inp.view(1, 1, 2, 3)
-        expected = torch.tensor([[[[2], [3]]]]).float()
+        expected = torch.tensor([[[2, 3]]]).float()
         xy = kornia.feature.get_laf_center(inp)
         assert_allclose(xy, expected)
 
@@ -84,7 +84,7 @@ class TestGetLAFOri:
     def test_ori(self):
         inp = torch.tensor([[1, 1, 2], [1, 1, 3]]).float()
         inp = inp.view(1, 1, 2, 3)
-        expected = torch.tensor([[[[45.]]]]).float()
+        expected = torch.tensor([[[45.]]]).float()
         angle = kornia.feature.get_laf_orientation(inp)
         assert_allclose(angle, expected)
 
