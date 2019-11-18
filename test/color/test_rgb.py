@@ -50,7 +50,7 @@ class TestRgbToRgba:
         data = torch.Tensor([[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]])  # 3x2x2
         aval = 0.4
 
-        data = utils.Tensor_to_gradcheck_var(data)  # to var
+        data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.RgbToRgba(), (data, aval), raise_exception=True)
 
@@ -110,7 +110,7 @@ class TestBgrToRgb:
                              [[2., 2.], [2., 2.]],
                              [[3., 3.], [3., 3.]]])  # 3x2x2
 
-        data = utils.Tensor_to_gradcheck_var(data)  # to var
+        data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.BgrToRgb(), (data,), raise_exception=True)
 
@@ -166,7 +166,7 @@ class TestRgbToBgr:
                              [[3., 3.],
                               [3., 3.]]])  # 3x2x2
 
-        data = utils.Tensor_to_gradcheck_var(data)  # to var
+        data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.RgbToBgr(), (data,),
                          raise_exception=True)
