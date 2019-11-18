@@ -43,6 +43,7 @@ def imshow(input: torch.Tensor):
     out_np: np.ndarray = kornia.tensor_to_image(out)
     plt.imshow(out_np)
     plt.axis('off')
+    plt.show()
 
 #############################
 # Create a batch of images
@@ -64,3 +65,12 @@ imshow(xb_gray)
 # Convert RGB to HSV
 xb_hsv = kornia.rgb_to_hsv(xb_rgb.float() / 255.)
 imshow(xb_hsv[:, 2:3])
+
+#############################
+# Convert RGB to YUV
+# NOTE: image comes in torch.uint8, and kornia assumes floating point type
+yuv = kornia.rgb_to_yuv(xb_rgb.float() / 255.)
+y_channel = torchvision.utils.make_grid(yuv, nrow=2)[0, :, :]
+plt.imshow(y_channel, cmap='gray', vmin=0, vmax=1)  # Displaying only y channel
+plt.axis('off')
+plt.show()
