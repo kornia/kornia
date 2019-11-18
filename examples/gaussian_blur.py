@@ -17,7 +17,7 @@ img: np.ndarray = cv2.imread('./data/lena.jpg')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor
-data: torch.tensor = kornia.image_to_tensor(img)  # BxCxHxW
+data: torch.tensor = kornia.image_to_tensor(img, keepdim=False)  # BxCxHxW
 
 # create the operator
 gauss = kornia.filters.GaussianBlur2d((11, 11), (10.5, 10.5))
