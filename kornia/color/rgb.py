@@ -34,7 +34,6 @@ class RgbToRgba(nn.Module):
 
 def rgb_to_rgba(image: torch.Tensor, alpha_val: float):
     if not torch.is_tensor(image):
-
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
