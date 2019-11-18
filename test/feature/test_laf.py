@@ -388,3 +388,63 @@ class TestGetCreateLAF:
         assert gradcheck(kornia.feature.laf_from_center_scale_ori,
                          (xy, scale, ori,),
                          raise_exception=True)
+
+
+class TestGetLAF3pts:
+    def test_shape(self):
+        inp = torch.ones(1, 3, 2, 3)
+        out = kornia.feature.laf_to_three_points(inp)
+        assert out.shape == inp.shape
+
+    def test_batch_shape(self):
+        inp = torch.ones(5, 3, 2, 3)
+        out = kornia.feature.laf_to_three_points(inp)
+        assert out.shape == inp.shape
+
+    def test_conversion(self):
+        inp = torch.tensor([[1, 0, 2], [0, 1, 3]]).float().view(1, 1, 2, 3)
+        expected = torch.tensor([[3, 2, 2], [3, 4, 3]]).float().view(1, 1, 2, 3)
+        threepts = kornia.feature.laf_to_three_points(inp)
+        assert_allclose(threepts, expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 3, 2, 2, 3
+        inp = torch.rand(batch_size, channels, height, width)
+        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        assert gradcheck(kornia.feature.laf_to_three_points,
+                         (inp,),
+                         raise_exception=True)
+
+
+class TestGetLAFFrom3pts:
+    def test_shape(self):
+        inp = torch.ones(1, 3, 2, 3)
+        out = kornia.feature.laf_from_three_points(inp)
+        assert out.shape == inp.shape
+
+    def test_batch_shape(self):
+        inp = torch.ones(5, 3, 2, 3)
+        out = kornia.feature.laf_from_three_points(inp)
+        assert out.shape == inp.shape
+
+    def test_conversion(self):
+        expected = torch.tensor([[1, 0, 2], [0, 1, 3]]).float().view(1, 1, 2, 3)
+        inp = torch.tensor([[3, 2, 2], [3, 4, 3]]).float().view(1, 1, 2, 3)
+        threepts = kornia.feature.laf_from_three_points(inp)
+        assert_allclose(threepts, expected)
+
+    def test_cross_consistency(self):
+        batch_size, channels, height, width = 3, 2, 2, 3
+        inp = torch.rand(batch_size, channels, height, width)
+        inp_2 = kornia.feature.laf_from_three_points(inp)
+        inp_2 = kornia.feature.laf_to_three_points(inp_2)
+        assert_allclose(inp_2, inp)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 3, 2, 2, 3
+        inp = torch.rand(batch_size, channels, height, width)
+        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        assert gradcheck(kornia.feature.laf_from_three_points,
+                         (inp,),
+                         raise_exception=True)
+
