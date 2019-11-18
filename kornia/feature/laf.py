@@ -45,6 +45,84 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     return out.abs().sqrt()
 
 
+def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
+    """Returns a center (keypoint) of the LAFs
+
+    Args:
+        LAF: (torch.Tensor): tensor [BxNx2x3].
+
+    Returns:
+        torch.Tensor: tensor  BxNx2 .
+
+    Shape:
+        - Input: :math: `(B, N, 2, 3)`
+        - Output: :math: `(B, N, 2)`
+
+    Example:
+        >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
+        >>> output = kornia.get_laf_center(input)  # BxNx2
+    """
+    raise_error_if_laf_is_not_valid(LAF)
+    out: torch.Tensor = LAF[..., 2]
+    return out
+
+
+def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
+    """Returns orientation of the LAFs, in degrees.
+
+    Args:
+        LAF: (torch.Tensor): tensor [BxNx2x3].
+
+    Returns:
+        torch.Tensor: tensor  BxNx1 .
+
+    Shape:
+        - Input: :math: `(B, N, 2, 3)`
+        - Output: :math: `(B, N, 1)`
+
+    Example:
+        >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
+        >>> output = kornia.get_laf_orientation(input)  # BxNx1
+    """
+    raise_error_if_laf_is_not_valid(LAF)
+    angle_rad: torch.Tensor = torch.atan2(LAF[..., 0, 1], LAF[..., 0, 0])
+    return kornia.rad2deg(angle_rad).unsqueeze(-1)
+
+
+def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.Tensor) -> torch.Tensor:
+    """Returns orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints
+
+    Args:
+        xy: (torch.Tensor): tensor [BxNx2].
+        scale: (torch.Tensor): tensor [BxNx1x1].
+        ori: (torch.Tensor): tensor [BxNx1].
+
+    Returns:
+        torch.Tensor: tensor  BxNx2x3 .
+    """
+    names = ['xy', 'scale', 'ori']
+    for var_name, var, req_shape in zip(names,
+                                        [xy, scale, ori],
+                                        [("B", "N", 2), ("B", "N", 1, 1), ("B", "N", 1)]):
+        if not torch.is_tensor(var):
+            raise TypeError("{} type is not a torch.Tensor. Got {}"
+                            .format(var_name, type(var)))
+        if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
+            raise TypeError(
+                "{} shape should be must be [{}]. "
+                "Got {}".format(var_name, str(req_shape), var.size()))
+        for i, dim in enumerate(req_shape):  # type: ignore # because it wants typing for dim
+            if dim is not int:
+                continue
+            if var.size(i) != dim:
+                "{} shape should be must be [{}]. "
+                "Got {}".format(var_name, str(req_shape), var.size())
+    unscaled_laf: torch.Tensor = torch.cat([kornia.angle_to_rotation_matrix(ori.squeeze(-1)),
+                                            xy.unsqueeze(-1)], dim=-1)
+    laf: torch.Tensor = scale_laf(unscaled_laf, scale)
+    return laf
+
+
 def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
     """
     Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
