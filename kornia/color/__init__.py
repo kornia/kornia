@@ -6,6 +6,8 @@ from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
 from .hls import RgbToHls, rgb_to_hls
 from .hls import HlsToRgb, hls_to_rgb
+from .ycbcr import RgbToYcbcr, rgb_to_ycbcr
+from .ycbcr import YcbcrToRgb, ycbcr_to_rgb
 from .normalize import Normalize, normalize, Denormalize, denormalize
 from .core import add_weighted, AddWeighted
 from .adjust import (
@@ -24,6 +26,8 @@ __all__ = [
     "hsv_to_rgb",
     "rgb_to_hls",
     "hls_to_rgb",
+    "rgb_to_ycbcr",
+    "ycbcr_to_rgb",
     "normalize",
     "denormalize",
     "adjust_brightness",
@@ -41,6 +45,8 @@ __all__ = [
     "HsvToRgb",
     "RgbToHls",
     "HlsToRgb",
+    "RgbToYcbcr",
+    "YcbcrToRgb",
     "Normalize",
     "Denormalize",
     "AdjustBrightness",

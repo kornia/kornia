@@ -26,6 +26,8 @@ from kornia.color import (
     hsv_to_rgb,
     rgb_to_hls,
     hls_to_rgb,
+    rgb_to_ycbcr,
+    ycbcr_to_rgb,
     normalize,
     denormalize,
     adjust_brightness,
