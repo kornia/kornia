@@ -29,7 +29,7 @@ class YcbcrToRgb(nn.Module):
     def __init__(self) -> None:
         super(YcbcrToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return ycbcr_to_rgb(image)
 
 
@@ -92,7 +92,7 @@ class RgbToYcbcr(nn.Module):
     def __init__(self) -> None:
         super(RgbToYcbcr, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rgb_to_ycbcr(image)
 
 
