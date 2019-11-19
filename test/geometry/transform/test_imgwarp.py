@@ -13,7 +13,7 @@ from torch.testing import assert_allclose
 def test_warp_perspective_rotation(batch_shape, device):
     # generate input data
     batch_size, channels, height, width = batch_shape
-    alpha = 0.5 * kornia.pi * torch.ones(batch_size)  # 90 deg rotation
+    alpha = 0.5 * kornia.pi * torch.ones(batch_size).to(device)  # 90 deg rotation
 
     # create data patch
     patch = torch.rand(batch_shape).to(device)
@@ -98,10 +98,10 @@ def test_rotation_matrix2d(batch_size, device):
     M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
-        pytest.approx(M[i, 0, 0].item(), 0.0)
-        pytest.approx(M[i, 0, 1].item(), 1.0)
-        pytest.approx(M[i, 1, 0].item(), -1.0)
-        pytest.approx(M[i, 1, 1].item(), 0.0)
+        assert_allclose(M[i, 0, 0].item(), 0.0)
+        assert_allclose(M[i, 0, 1].item(), 1.0)
+        assert_allclose(M[i, 1, 0].item(), -1.0)
+        assert_allclose(M[i, 1, 1].item(), 0.0)
 
     # 90 deg rotation + 2x scale
     center = center_base
@@ -110,10 +110,10 @@ def test_rotation_matrix2d(batch_size, device):
     M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
-        pytest.approx(M[i, 0, 0].item(), 0.0)
-        pytest.approx(M[i, 0, 1].item(), 2.0)
-        pytest.approx(M[i, 1, 0].item(), -2.0)
-        pytest.approx(M[i, 1, 1].item(), 0.0)
+        assert_allclose(M[i, 0, 0].item(), 0.0)
+        assert_allclose(M[i, 0, 1].item(), 2.0)
+        assert_allclose(M[i, 1, 0].item(), -2.0)
+        assert_allclose(M[i, 1, 1].item(), 0.0)
 
     # 45 deg rotation
     center = center_base
@@ -122,10 +122,10 @@ def test_rotation_matrix2d(batch_size, device):
     M = kornia.get_rotation_matrix2d(center, angle, scale)
 
     for i in range(batch_size):
-        pytest.approx(M[i, 0, 0].item(), 0.7071)
-        pytest.approx(M[i, 0, 1].item(), 0.7071)
-        pytest.approx(M[i, 1, 0].item(), -0.7071)
-        pytest.approx(M[i, 1, 1].item(), 0.7071)
+        assert_allclose(M[i, 0, 0].item(), 0.7071)
+        assert_allclose(M[i, 0, 1].item(), 0.7071)
+        assert_allclose(M[i, 1, 0].item(), -0.7071)
+        assert_allclose(M[i, 1, 1].item(), 0.7071)
 
     # evaluate function gradient
     center = utils.tensor_to_gradcheck_var(center)  # to var
@@ -151,7 +151,7 @@ class TestWarpPerspective:
             [0, src_w - 1],
             [src_h - 1, src_w - 1],
             [src_h - 1, 0],
-        ]])
+        ]]).to(device)
 
         # [x, y] destination
         # top-left, top-right, bottom-right, bottom-left
@@ -160,7 +160,7 @@ class TestWarpPerspective:
             [0, dst_w - 1],
             [dst_h - 1, dst_w - 1],
             [dst_h - 1, 0],
-        ]])
+        ]]).to(device)
 
         # compute transformation between points
         dst_trans_src = kornia.get_perspective_transform(points_src,
@@ -173,13 +173,13 @@ class TestWarpPerspective:
             [5, 6, 7, 8],
             [9, 10, 11, 12],
             [13, 14, 15, 16],
-        ]]]).expand(batch_size, channels, -1, -1)
+        ]]]).expand(batch_size, channels, -1, -1).to(device)
 
         expected = torch.FloatTensor([[[
             [1, 2, 3],
             [5, 6, 7],
             [9, 10, 11],
-        ]]])
+        ]]]).to(device)
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
@@ -197,7 +197,7 @@ class TestWarpPerspective:
             [1, 2],
             [2, 2],
             [2, 1],
-        ]])
+        ]]).to(device)
 
         # [x, y] destination
         # top-left, top-right, bottom-right, bottom-left
@@ -206,7 +206,7 @@ class TestWarpPerspective:
             [0, dst_w - 1],
             [dst_h - 1, dst_w - 1],
             [dst_h - 1, 0],
-        ]])
+        ]]).to(device)
 
         # compute transformation between points
         dst_trans_src = kornia.get_perspective_transform(points_src, points_dst)
@@ -217,14 +217,14 @@ class TestWarpPerspective:
             [5, 6, 7, 8],
             [9, 10, 11, 12],
             [13, 14, 15, 16],
-        ]]])
+        ]]]).to(device)
 
         expected = torch.FloatTensor([[[
             [6.000, 6.333, 6.666, 7.000],
             [7.333, 7.666, 8.000, 8.333],
             [8.666, 9.000, 9.333, 9.666],
             [10.000, 10.333, 10.666, 11.000],
-        ]]])
+        ]]]).to(device)
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
@@ -233,28 +233,28 @@ class TestWarpPerspective:
 
 
 class TestWarpAffine:
-    def test_smoke(self):
+    def test_smoke(self, device):
         batch_size, channels, height, width = 1, 2, 3, 4
-        aff_ab = torch.eye(2, 3)[None]  # 1x2x3
-        img_b = torch.rand(batch_size, channels, height, width)
+        aff_ab = torch.eye(2, 3)[None].to(device)  # 1x2x3
+        img_b = torch.rand(batch_size, channels, height, width).to(device)
         img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
         assert img_b.shape == img_a.shape
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_translation(self, batch_size):
+    def test_translation(self, device, batch_size):
         offset = 1.
         channels, height, width = 1, 3, 4
-        aff_ab = torch.eye(2, 3).repeat(batch_size, 1, 1)  # Bx2x3
+        aff_ab = torch.eye(2, 3).repeat(batch_size, 1, 1).to(device)  # Bx2x3
         aff_ab[..., -1] += offset
         img_b = torch.arange(float(height * width)).view(
-            1, channels, height, width).repeat(batch_size, 1, 1, 1)
+            1, channels, height, width).repeat(batch_size, 1, 1, 1).to(device)
         img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
         assert_allclose(img_b[..., :2, :3], img_a[..., 1:, 1:])
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 3, 4
-        aff_ab = torch.eye(2, 3)[None]  # 1x2x3
-        img_b = torch.rand(batch_size, channels, height, width)
+        aff_ab = torch.eye(2, 3)[None].to(device)  # 1x2x3
+        img_b = torch.rand(batch_size, channels, height, width).to(device)
         aff_ab = utils.tensor_to_gradcheck_var(
             aff_ab, requires_grad=False)  # to var
         img_b = utils.tensor_to_gradcheck_var(img_b)  # to var
@@ -268,41 +268,41 @@ class TestWarpAffine:
 
 
 class TestRemap:
-    def test_smoke(self):
+    def test_smoke(self, device):
         height, width = 3, 4
-        input = torch.ones(1, 1, height, width)
+        input = torch.ones(1, 1, height, width).to(device)
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         input_warped = kornia.remap(input, grid[..., 0], grid[..., 1])
         assert_allclose(input, input_warped)
 
-    def test_shift(self):
+    def test_shift(self, device):
         height, width = 3, 4
         inp = torch.tensor([[[
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
-        ]]])
+        ]]]).to(device)
         expected = torch.tensor([[[
             [1., 1., 1., 0.],
             [1., 1., 1., 0.],
             [0., 0., 0., 0.],
-        ]]])
+        ]]]).to(device)
 
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply shift in both x/y direction
 
         input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
-    def test_shift_batch(self):
+    def test_shift_batch(self, device):
         height, width = 3, 4
         inp = torch.tensor([[[
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
-        ]]]).repeat(2, 1, 1, 1)
+        ]]]).repeat(2, 1, 1, 1).to(device)
 
         expected = torch.tensor([[[
             [1., 1., 1., 0.],
@@ -312,11 +312,11 @@ class TestRemap:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
             [0., 0., 0., 0.],
-        ]]])
+        ]]]).to(device)
 
         # generate a batch of grids
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid = grid.repeat(2, 1, 1, 1)
         grid[0, ..., 0] += 1.  # apply shift in the x direction
         grid[1, ..., 1] += 1.  # apply shift in the y direction
@@ -324,33 +324,33 @@ class TestRemap:
         input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
-    def test_shift_batch_broadcast(self):
+    def test_shift_batch_broadcast(self, device):
         height, width = 3, 4
         inp = torch.tensor([[[
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
-        ]]]).repeat(2, 1, 1, 1)
+        ]]]).repeat(2, 1, 1, 1).to(device)
         expected = torch.tensor([[[
             [1., 1., 1., 0.],
             [1., 1., 1., 0.],
             [0., 0., 0., 0.],
-        ]]])
+        ]]]).to(device)
 
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply shift in both x/y direction
 
         input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
         assert_allclose(input_warped, expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 3, 4
-        img = torch.rand(batch_size, channels, height, width)
+        img = torch.rand(batch_size, channels, height, width).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
 
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid = utils.tensor_to_gradcheck_var(
             grid, requires_grad=False)  # to var
 
@@ -358,15 +358,15 @@ class TestRemap:
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(input, map1, map2):
             return kornia.remap(input, map1, map2)
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.ones(batch_size, channels, height, width)
+        img = torch.ones(batch_size, channels, height, width).to(device)
 
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply some shift
 
         input = (img, grid[..., 0], grid[..., 1],)
@@ -375,24 +375,24 @@ class TestRemap:
         assert_allclose(actual, expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_trace(self):
+    def test_jit_trace(self, device):
         @torch.jit.script
         def op_script(input, map1, map2):
             return kornia.remap(input, map1, map2)
         # 1. Trace op
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.ones(batch_size, channels, height, width)
+        img = torch.ones(batch_size, channels, height, width).to(device)
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply some shift
         input_tuple = (img, grid[..., 0], grid[..., 1])
         op_traced = torch.jit.trace(op_script, input_tuple)
 
         # 2. Generate different input
         batch_size, channels, height, width = 2, 2, 2, 5
-        img = torch.ones(batch_size, channels, height, width)
+        img = torch.ones(batch_size, channels, height, width).to(device)
         grid = kornia.utils.create_meshgrid(
-            height, width, normalized_coordinates=False)
+            height, width, normalized_coordinates=False).to(device)
         grid += 2.  # apply some shift
 
         # 3. Apply to different input
@@ -403,59 +403,59 @@ class TestRemap:
 
 
 class TestInvertAffineTransform:
-    def test_smoke(self):
-        matrix = torch.eye(2, 3)
+    def test_smoke(self, device):
+        matrix = torch.eye(2, 3).to(device)
         matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix, matrix_inv)
 
-    def test_rot90(self):
-        angle = torch.tensor([90.])
-        scale = torch.tensor([1.])
-        center = torch.tensor([[0., 0.]])
+    def test_rot90(self, device):
+        angle = torch.tensor([90.]).to(device)
+        scale = torch.tensor([1.]).to(device)
+        center = torch.tensor([[0., 0.]]).to(device)
         expected = torch.tensor([[
             [0., -1., 0.],
             [1., 0., 0.],
-        ]])
+        ]]).to(device)
         matrix = kornia.get_rotation_matrix2d(center, angle, scale)
         matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix_inv, expected)
 
-    def test_rot90_batch(self):
-        angle = torch.tensor([90.])
-        scale = torch.tensor([1.])
-        center = torch.tensor([[0., 0.]])
+    def test_rot90_batch(self, device):
+        angle = torch.tensor([90.]).to(device)
+        scale = torch.tensor([1.]).to(device)
+        center = torch.tensor([[0., 0.]]).to(device)
         expected = torch.tensor([[
             [0., -1., 0.],
             [1., 0., 0.],
-        ]])
+        ]]).to(device)
         matrix = kornia.get_rotation_matrix2d(
             center, angle, scale).repeat(2, 1, 1)
         matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix_inv, expected)
 
-    def test_gradcheck(self):
-        matrix = torch.eye(2, 3)
+    def test_gradcheck(self, device):
+        matrix = torch.eye(2, 3).to(device)
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
         assert gradcheck(kornia.invert_affine_transform, (matrix,),
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(input):
             return kornia.invert_affine_transform(input)
-        matrix = torch.eye(2, 3)
+        matrix = torch.eye(2, 3).to(device)
         op_traced = torch.jit.trace(op_script, matrix)
         actual = op_traced(matrix)
         expected = kornia.invert_affine_transform(matrix)
         assert_allclose(actual, expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_trace(self):
+    def test_jit_trace(self, device):
         @torch.jit.script
         def op_script(input):
             return kornia.invert_affine_transform(input)
-        matrix = torch.eye(2, 3)
+        matrix = torch.eye(2, 3).to(device)
         matrix_2 = torch.eye(2, 3).repeat(2, 1, 1)
         op_traced = torch.jit.trace(op_script, matrix)
         actual = op_traced(matrix_2)
