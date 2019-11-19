@@ -2,6 +2,7 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -13,11 +14,11 @@ class TestHomographyWarper:
     num_tests = 10
     threshold = 0.05
 
-    def test_identity(self):
+    def test_identity(self, device):
         # create input data
         height, width = 2, 5
-        patch_src = torch.rand(1, 1, height, width)
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        patch_src = torch.rand(1, 1, height, width).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
 
         # instantiate warper
         warper = kornia.HomographyWarper(height, width)
@@ -50,11 +51,11 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7), ])
-    def test_identity_resize(self, batch_shape):
+    def test_identity_resize(self, device, batch_shape):
         # create input data
         batch_size, channels, height, width = batch_shape
-        patch_src = torch.rand(batch_size, channels, height, width)
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3)
+        patch_src = torch.rand(batch_size, channels, height, width).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3).to(device)
 
         # instantiate warper warp from source to destination
         warper = kornia.HomographyWarper(height // 2, width // 2)
@@ -72,12 +73,12 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("shape", [
         (4, 5), (2, 6), (4, 3), (5, 7), ])
-    def test_translation(self, shape):
+    def test_translation(self, device, shape):
         # create input data
         offset = 2.  # in pixel
         height, width = shape
-        patch_src = torch.rand(1, 1, height, width)
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        patch_src = torch.rand(1, 1, height, width).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
         dst_homo_src[..., 0, 2] = offset / (width - 1)  # apply offset in x
 
         # instantiate warper and from source to destination
@@ -87,12 +88,12 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3), ])
-    def test_rotation(self, batch_shape):
+    def test_rotation(self, device, batch_shape):
         # create input data
         batch_size, channels, height, width = batch_shape
-        patch_src = torch.rand(batch_size, channels, height, width)
+        patch_src = torch.rand(batch_size, channels, height, width).to(device)
         # rotation of 90deg
-        dst_homo_src = torch.eye(3)
+        dst_homo_src = torch.eye(3).to(device)
         dst_homo_src[..., 0, 0] = 0.0
         dst_homo_src[..., 0, 1] = 1.0
         dst_homo_src[..., 1, 0] = -1.0
@@ -114,7 +115,7 @@ class TestHomographyWarper:
             patch_src[..., -1, -1], patch_dst[..., -1, 0])
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
-    def test_homography_warper(self, batch_size):
+    def test_homography_warper(self, device, batch_size):
         # generate input data
         height, width = 128, 64
         eye_size = 3  # identity 3x3
@@ -122,10 +123,10 @@ class TestHomographyWarper:
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
         patch_src = torch.from_numpy(board).view(
-            1, 1, height, width).expand(batch_size, 1, height, width)
+            1, 1, height, width).expand(batch_size, 1, height, width).to(device)
 
         # create base homography
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
 
         # instantiate warper
         warper = kornia.HomographyWarper(height, width)
@@ -156,17 +157,17 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16), ])
-    def test_gradcheck(self, batch_shape):
+    def test_gradcheck(self, device, batch_shape):
         # generate input data
         eye_size = 3  # identity 3x3
 
         # create checkerboard
-        patch_src = torch.rand(batch_shape)
+        patch_src = torch.rand(batch_shape).to(device)
         patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
 
         # create base homography
         batch_size, _, height, width = patch_src.shape
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
         dst_homo_src = utils.tensor_to_gradcheck_var(
             dst_homo_src, requires_grad=False)  # to var
 
