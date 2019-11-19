@@ -25,11 +25,12 @@ class RgbToRgba(nn.Module):
         >>> output = rgba(input)  # 2x4x4x5
     """
 
-    def __init__(self) -> None:
+    def __init__(self, alpha_val: float) -> None:
         super(RgbToRgba, self).__init__()
+        self.alpha_val: float = alpha_val
 
     def forward(self, image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type: ignore
-        return rgb_to_rgba(image, alpha_val)
+        return rgb_to_rgba(image, self.alpha_val)
 
 
 def rgb_to_rgba(image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type: ignore
