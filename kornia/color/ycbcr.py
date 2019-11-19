@@ -93,7 +93,7 @@ class RgbToYcbcr(nn.Module):
         super(RgbToYcbcr, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-       return rgb_to_ycbcr(image)
+        return rgb_to_ycbcr(image)
 
 
 def rgb_to_ycbcr(image):
