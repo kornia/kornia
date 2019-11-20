@@ -18,7 +18,7 @@ class TestRgbToRgba:
                                  [[0.4, 0.4],
                                   [0.4, 0.4]]])  # 4x2x2
 
-        f = kornia.color.RgbToRgba()
+        f = kornia.color.RgbToRgba(aval)
         assert_allclose(f(data, aval), expected)
 
     def test_batch_rgb_to_rgba(self):
@@ -40,7 +40,7 @@ class TestRgbToRgba:
                                   [[3.0000e+00, 3.0000e+00], [3.0000e+00, 3.0000e+00]],
                                   [[45., 45.], [45., 45.]]]])  # 2x4x2x2
 
-        f = kornia.color.RgbToRgba()
+        f = kornia.color.RgbToRgba(aval)
         out = f(data, aval)
         assert_allclose(out, expected)
 
@@ -51,7 +51,7 @@ class TestRgbToRgba:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(kornia.color.RgbToRgba(), (data, aval), raise_exception=True)
+        assert gradcheck(kornia.color.RgbToRgba(aval), (data, aval), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
