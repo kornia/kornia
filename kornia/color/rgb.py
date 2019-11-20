@@ -25,16 +25,15 @@ class RgbToRgba(nn.Module):
         >>> output = rgba(input)  # 2x4x4x5
     """
 
-    def __init__(self, alpha_val: float) -> None:
+    def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
         super(RgbToRgba, self).__init__()
-        self.alpha_val: float = alpha_val
+        self.alpha_val: Union[float, torch.Tensor] = alpha_val
 
-    def forward(self, image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:  # type: ignore
         return rgb_to_rgba(image, self.alpha_val)
 
 
-def rgb_to_rgba(image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type: ignore
-    # TODO: alpha_val could be a torch.Tensor . Make this a topic for a future PR.
+def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     if not torch.is_tensor(image):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
     if len(image.shape) < 3 or image.shape[-3] != 3:
@@ -42,7 +41,11 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: float) -> torch.Tensor:  # type:
                          .format(image.shape))
     # add one channel
     r, g, b = torch.chunk(image, image.shape[-3], dim=-3)
-    a: torch.Tensor = torch.full_like(r, fill_value=float(alpha_val))
+    if isinstance(alpha_val, (float)):
+        a: torch.Tensor = torch.full_like(r, fill_value=float(alpha_val))
+    else:
+        if isinstance(alpha_val, (float, torch.Tensor)):
+            a: torch.Tensor = alpha_val
     out: torch.Tensor = torch.cat([r, g, b, a], dim=-3)
     return out
 
@@ -77,7 +80,7 @@ class RgbToBgr(nn.Module):
         return rgb_to_bgr(image)
 
 
-def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:  # type: ignore
+def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to BGR.
 
     See :class:`~kornia.color.RgbToBgr` for details.
@@ -122,7 +125,7 @@ class BgrToRgb(nn.Module):
         return bgr_to_rgb(image)
 
 
-def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:  # type: ignore
+def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to RGB.
 
     See :class:`~kornia.color.BgrToRgb` for details.
