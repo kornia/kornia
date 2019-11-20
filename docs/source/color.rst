@@ -13,7 +13,10 @@ The functions in this section perform various color space conversions.
 .. autofunction:: hls_to_rgb
 .. autofunction:: rgb_to_bgr
 .. autofunction:: bgr_to_rgb
+.. autofunction:: rgb_to_yuv
+.. autofunction:: yuv_to_rgb
 .. autofunction:: normalize
+.. autofunction:: denormalize
 .. autofunction:: adjust_brightness
 .. autofunction:: adjust_contrast
 .. autofunction:: adjust_saturation
@@ -30,7 +33,10 @@ The functions in this section perform various color space conversions.
 .. autoclass:: HlsToRgb
 .. autoclass:: RgbToBgr
 .. autoclass:: BgrToRgb
+.. autoclass:: RgbToYuv
+.. autoclass:: YuvToRgb
 .. autoclass:: Normalize
+.. autoclass:: Denormalize
 .. autoclass:: AdjustBrightness
 .. autoclass:: AdjustContrast
 .. autoclass:: AdjustSaturation
