@@ -44,8 +44,8 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
     r, g, b = torch.chunk(image, image.shape[-3], dim=-3)
     if isinstance(alpha_val, float):
         a: torch.Tensor = torch.full_like(r, fill_value=float(alpha_val))
-    elif isinstance(alpha_val, torch.Tensor):
-        a = alpha_val
+    else:
+        a: torch.Tensor = alpha_val
     out: torch.Tensor = torch.cat([r, g, b, a], dim=-3)
     return out
 
