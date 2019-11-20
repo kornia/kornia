@@ -33,12 +33,12 @@ class YcbcrToRgb(nn.Module):
         return ycbcr_to_rgb(image)
 
 
-def ycbcr_to_rgb(image):
+def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an YCbCr image to RGB
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): YCbCr Image to be converted to RGB.
+        image (torch.Tensor): YCbCr Image to be converted to RGB.
 
 
     Returns:
@@ -53,20 +53,22 @@ def ycbcr_to_rgb(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    y = image[..., 0, :, :]
-    cb = image[..., 1, :, :]
-    cr = image[..., 2, :, :]
+    y: torch.Tensor = image[..., 0, :, :]
+    cb: torch.Tensor = image[..., 1, :, :]
+    cr: torch.Tensor = image[..., 2, :, :]
 
-    delta = .5
+    delta: float = .5
+    cb_shifted: torch.Tensor = cb - delta
+    cr_shifted: torch.Tensor = cr - delta
 
-    r: torch.Tensor = y + 1.403 * (cr - delta)
-    g: torch.Tensor = y - .714 * (cr - delta) - .344 * (cb - delta)
-    b: torch.Tensor = y + 1.773 * (cb - delta)
+    r: torch.Tensor = y + 1.403 * cr_shifted
+    g: torch.Tensor = y - .714 * cr_shifted - .344 * cb_shifted
+    b: torch.Tensor = y + 1.773 * cb_shifted
     return torch.stack((r, g, b), -3)
 
 
 class RgbToYcbcr(nn.Module):
-    r"""Convert image from RGB to YCnCr
+    r"""Convert image from RGB to YCbCr
     The image data is assumed to be in the range of (0, 1).
 
     args:
@@ -96,11 +98,11 @@ class RgbToYcbcr(nn.Module):
         return rgb_to_ycbcr(image)
 
 
-def rgb_to_ycbcr(image):
+def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YCbCr.
 
     Args:
-        input (torch.Tensor): RGB Image to be converted to YCbCr.
+        image (torch.Tensor): RGB Image to be converted to YCbCr.
 
     Returns:
         torch.Tensor: YCbCr version of the image.
