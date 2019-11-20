@@ -225,18 +225,16 @@ class TestRelativeTransformation:
 
 class TestTransformLAFs:
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     def test_transform_points(
-            self, batch_size, num_points, device_type):
+            self, batch_size, num_points, device):
         # generate input data
         eye_size = 3
-        lafs_src = torch.rand(batch_size, num_points, 2, 3)
-        lafs_src = lafs_src.to(torch.device(device_type))
+        lafs_src = torch.rand(batch_size, num_points, 2, 3).to(device)
 
         dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.to(torch.device(device_type))
+        dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
         lafs_dst = kornia.perspective_transform_lafs(dst_homo_src, lafs_src)
@@ -248,12 +246,12 @@ class TestTransformLAFs:
         # projected should be equal as initial
         assert_allclose(lafs_src, lafs_dst_to_src)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = 3
-        points_src = torch.rand(batch_size, num_points, 2, 3)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        points_src = torch.rand(batch_size, num_points, 2, 3).to(device)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device)
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
