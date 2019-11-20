@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.geometry import pi
 from test.common import device
 
 import torch
@@ -26,6 +27,36 @@ class TestAdjustSaturation:
         f = kornia.color.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
 
+    def test_saturation_one_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = data
+        f = kornia.color.AdjustSaturation(torch.ones(2))
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_saturation, (img, 2.),
+                         raise_exception=True)
+
 
 class TestAdjustHue:
     def test_hue_one(self, device):
@@ -41,8 +72,61 @@ class TestAdjustHue:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustHue(1.)
+        f = kornia.color.AdjustHue(0.)
         assert_allclose(f(data), expected)
+
+    def test_hue_one_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = data
+        f = kornia.color.AdjustHue(torch.tensor([0, 0]))
+        assert_allclose(f(data), expected)
+
+    def test_hue_flip_batch(self):
+        data = torch.tensor([[[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[.5, .5],
+                               [.5, .5]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        f = kornia.color.AdjustHue(torch.tensor([-pi, pi]))
+        result = f(data)
+        assert_allclose(result, result.flip(0))
+
+    def test_gradcheck(self):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.adjust_hue, (img, 2.),
+                         raise_exception=True)
 
 
 class TestAdjustGamma:
@@ -128,7 +212,47 @@ class TestAdjustGamma:
         f = kornia.color.AdjustGamma(2.)
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device):
+    def test_gamma_two_batch(self):
+        data = torch.tensor([[[[1., 1.],
+                               [1., 1.]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]],
+
+                             [[[1., 1.],
+                               [1., 1.]],
+
+                              [[.5, .5],
+                               [.5, .5]],
+
+                              [[.25, .25],
+                               [.25, .25]]]])  # 2x3x2x2
+
+        expected = torch.tensor([[[[1., 1.],
+                                   [1., 1.]],
+
+                                  [[.25, .25],
+                                   [.25, .25]],
+
+                                  [[.0625, .0625],
+                                   [.0625, .0625]]],
+
+                                 [[[1., 1.],
+                                   [1., 1.]],
+
+                                  [[.25, .25],
+                                   [.25, .25]],
+
+                                  [[.0625, .0625],
+                                   [.0625, .0625]]]])  # 2x3x2x2
+
+        f = kornia.color.AdjustGamma(torch.tensor([2., 2.]), gain=torch.ones(2))
+        assert_allclose(f(data), expected)
+
+    def test_gradcheck(self):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
