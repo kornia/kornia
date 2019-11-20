@@ -1,11 +1,14 @@
 import logging
 import pytest
+from test.common import device
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import kornia as kornia
+from torch.testing import assert_allclose
+
+import kornia
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +29,12 @@ class TestIntegrationSoftArgmax2d:
         noise = std_val * torch.rand_like(base_target)
         return base_target + noise
 
-    def test_regression_2d(self):
+    def test_regression_2d(self, device):
         # create the parameters to estimate: the heatmap
-        params = nn.Parameter(torch.rand(1, 1, self.height, self.width))
+        params = nn.Parameter(torch.rand(1, 1, self.height, self.width).to(device))
 
         # generate base sample
-        target = torch.zeros(1, 1, 2)
+        target = torch.zeros(1, 1, 2).to(device)
         target[..., 0] = self.width / 2
         target[..., 1] = self.height / 2
 
@@ -50,7 +53,7 @@ class TestIntegrationSoftArgmax2d:
 
         for iter_id in range(self.num_iterations):
             x = params
-            sample = self.generate_sample(target)
+            sample = self.generate_sample(target).to(device)
             pred = soft_argmax2d(temperature * x)
             loss = criterion(pred, sample)
             logger.debug("Loss: {0:.3f} Pred: {1}".format(loss.item(), pred))
@@ -59,5 +62,5 @@ class TestIntegrationSoftArgmax2d:
             loss.backward()
             optimizer.step()
 
-        assert pytest.approx(pred[..., 0].item(), target[..., 0].item())
-        assert pytest.approx(pred[..., 1].item(), target[..., 1].item())
+        assert_allclose(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
+        assert_allclose(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
