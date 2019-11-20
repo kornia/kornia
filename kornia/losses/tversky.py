@@ -10,6 +10,49 @@ from kornia.utils import one_hot
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 
+def tversky_loss(input: torch.Tensor, target: torch.Tensor,
+                 alpha: float, beta: float, eps: float = 1e-8) -> torch.Tensor:
+    r"""Function that computes Tversky loss.
+
+    See :class:`~kornia.losses.TverskyLoss` for details.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+
+    if not len(input.shape) == 4:
+        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
+                         .format(input.shape))
+
+    if not input.shape[-2:] == target.shape[-2:]:
+        raise ValueError("input and target shapes must be the same. Got: {}"
+                         .format(input.shape, input.shape))
+
+    if not input.device == target.device:
+        raise ValueError(
+            "input and target must be in the same device. Got: {}" .format(
+                input.device, target.device))
+
+    # compute softmax over the classes axis
+    input_soft: torch.Tensor = F.softmax(input, dim=1)
+
+    # create the labels one hot tensor
+    target_one_hot: torch.Tensor = one_hot(
+        target, num_classes=input.shape[1],
+        device=input.device, dtype=input.dtype)
+
+    # compute the actual dice score
+    dims = (1, 2, 3)
+    intersection = torch.sum(input_soft * target_one_hot, dims)
+    fps = torch.sum(input_soft * (-target_one_hot + 1.), dims)
+    fns = torch.sum((-input_soft + 1.) * target_one_hot, dims)
+
+    numerator = intersection
+    denominator = intersection + alpha * fps + beta * fns
+    tversky_loss = numerator / (denominator + eps)
+    return torch.mean(-tversky_loss + 1.)
+
+
 class TverskyLoss(nn.Module):
     r"""Criterion that computes Tversky Coeficient loss.
 
@@ -48,60 +91,14 @@ class TverskyLoss(nn.Module):
         [1]: https://arxiv.org/abs/1706.05721
     """
 
-    def __init__(self, alpha: float, beta: float) -> None:
+    def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
         super(TverskyLoss, self).__init__()
         self.alpha: float = alpha
         self.beta: float = beta
-        self.eps: float = 1e-6
+        self.eps: float = eps
 
     def forward(  # type: ignore
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
-                             .format(input.shape))
-        if not input.shape[-2:] == target.shape[-2:]:
-            raise ValueError("input and target shapes must be the same. Got: {}"
-                             .format(input.shape, input.shape))
-        if not input.device == target.device:
-            raise ValueError(
-                "input and target must be in the same device. Got: {}" .format(
-                    input.device, target.device))
-        # compute softmax over the classes axis
-        input_soft = F.softmax(input, dim=1)
-
-        # create the labels one hot tensor
-        target_one_hot = one_hot(target, num_classes=input.shape[1],
-                                 device=input.device, dtype=input.dtype)
-
-        # compute the actual dice score
-        dims = (1, 2, 3)
-        intersection = torch.sum(input_soft * target_one_hot, dims)
-        fps = torch.sum(input_soft * (torch.tensor(1.) - target_one_hot), dims)
-        fns = torch.sum((torch.tensor(1.) - input_soft) * target_one_hot, dims)
-
-        numerator = intersection
-        denominator = intersection + self.alpha * fps + self.beta * fns
-        tversky_loss = numerator / (denominator + self.eps)
-        return torch.mean(torch.tensor(1.) - tversky_loss)
-
-
-######################
-# functional interface
-######################
-
-
-def tversky_loss(
-        input: torch.Tensor,
-        target: torch.Tensor,
-        alpha: float,
-        beta: float) -> torch.Tensor:
-    r"""Function that computes Tversky loss.
-
-    See :class:`~kornia.losses.TverskyLoss` for details.
-    """
-    return TverskyLoss(alpha, beta)(input, target)
+        return tversky_loss(input, target, self.alpha, self.beta, self.eps)
