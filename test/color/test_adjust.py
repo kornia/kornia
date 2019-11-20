@@ -252,7 +252,7 @@ class TestAdjustGamma:
         f = kornia.color.AdjustGamma(torch.tensor([2., 2.]), gain=torch.ones(2))
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
