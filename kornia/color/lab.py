@@ -49,7 +49,7 @@ def srgb_to_xyz(input: torch.Tensor) -> torch.Tensor:
         [0.412453, 0.212671, 0.019334], # R
         [0.357580, 0.715160, 0.119193], # G
         [0.180423, 0.072169, 0.950227], # B
-        ]).type(srgb_pixels.data.type()).detach()
+        ]).type(srgb_pixels.data.type())
     
     linear_mask = (srgb_pixels <= 0.04045).type(srgb_pixels.data.type())
     exponential_mask = (srgb_pixels > 0.04045).type(srgb_pixels.data.type()) 
@@ -69,7 +69,7 @@ def xyz_to_cielab(input: torch.Tensor) -> torch.Tensor:
         [  0.0,  500.0,    0.0], # fx
         [116.0, -500.0,  200.0], # fy
         [  0.0,    0.0, -200.0], # fz
-    ]).type(xyz_pixels.data.type()).detach()
+    ]).type(xyz_pixels.data.type())
     
     # normalize for D65 white point 
     xyz_normalized_pixels = torch.mul(xyz_pixels, torch.tensor([1/0.950456, 1.0, 1/1.088754]).type(xyz_pixels.data.type()))
@@ -112,7 +112,7 @@ def rgb_to_lab(input: torch.Tensor) -> torch.Tensor:
     # Reshape to input size 
     # [b, h, w, c] -> [b, c, h, w]
     lab_pixels = lab_pixels.reshape(permuted_input.size()).permute(0, 3, 1, 2)
-    return lab_pixels.type(torch.FloatTensor)
+    return lab_pixels.float() #.type(torch.FloatTensor)
 
 
 
@@ -149,7 +149,7 @@ def cielab_to_xyz(input: torch.Tensor) -> torch.Tensor:
         [1/116.0, 1/116.0,  1/116.0], # l
         [1/500.0,     0.0,      0.0], # a
         [    0.0,     0.0, -1/200.0], # b
-    ]).type(lab_pixels.data.type()).detach() 
+    ]).type(lab_pixels.data.type()) 
     
     fxfyfz_pixels = torch.matmul(lab_pixels + torch.tensor([16.0, 0.0, 0.0]).type(lab_pixels.data.type()), lab_to_fxfyfz)
     
@@ -174,7 +174,7 @@ def xyz_to_srgb(input: torch.Tensor) -> torch.Tensor:
         [ 3.2404542, -0.9692660,  0.0556434], # x
         [-1.5371385,  1.8760108, -0.2040259], # y
         [-0.4985314,  0.0415560,  1.0572252], # z
-    ]).type(xyz_pixels.data.type()).detach()
+    ]).type(xyz_pixels.data.type())
     
     rgb_pixels = torch.matmul(xyz_pixels, xyz_to_rgb) 
     
@@ -214,4 +214,4 @@ def lab_to_rgb(input: torch.Tensor) -> torch.Tensor:
     # [b, h, w, c] -> [b, c, h, w]
     rgb_pixels = srgb_pixels.reshape(permuted_input.size()).permute(0, 3, 1, 2)
         
-    return rgb_pixels.type(torch.FloatTensor)
+    return rgb_pixels.float() #.type(torch.FloatTensor)
