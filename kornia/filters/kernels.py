@@ -3,6 +3,8 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 
+from kornia.geometry.transform.affwarp import rotate
+
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.
@@ -300,3 +302,52 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     kernel[mid, mid] = 1 - kernel_size ** 2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
+
+
+def get_motion_kernel2d(ksize: int, angle: float, direction: float = 0.) -> torch.Tensor:
+    r"""Function that returns motion blur filter.
+
+    Args:
+        ksize (int): motion kernel width and height. It should be odd and positive.
+        angle (float): angle of the motion blur in degrees (anti-clockwise rotation).
+        direction (float): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+
+    Returns:
+        torch.Tensor: the motion blur kernel.
+
+    Shape:
+        - Output: :math:`(ksize, ksize)`
+
+    Examples::
+        >>> kornia.filters.get_motion_kernel2d(5, 0., 0.)
+        tensor([[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.2000, 0.2000, 0.2000, 0.2000, 0.2000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]])
+        >>> kornia.filters.get_motion_kernel2d(3, 215., -0.5)
+            tensor([[0.0000, 0.0412, 0.0732],
+                    [0.1920, 0.3194, 0.0804],
+                    [0.2195, 0.0743, 0.0000]])
+    """
+    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize < 3:
+        raise TypeError("ksize must be an odd integer >= than 3")
+    if not isinstance(angle, float):
+        raise TypeError("angle must be a float")
+    if not isinstance(direction, float):
+        raise TypeError("direction must be a float")
+
+    kernel_size = (ksize, ksize)
+    # direction from [-1, 1] to [0, 1] range
+    direction = (torch.clamp(torch.tensor(direction), -1., 1.).item() + 1.) / 2.
+    kernel = torch.zeros(kernel_size, dtype=torch.float)
+    kernel[kernel_size[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_size[0])
+    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    # rotate (counterclockwise) kernel by given angle
+    kernel = rotate(kernel, torch.tensor(angle))
+    kernel = kernel[0][0]
+    kernel /= kernel.sum()
+    return kernel

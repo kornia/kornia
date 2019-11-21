@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import spatial_gradient
-from kornia.geometry import pi
+from kornia.geometry.conversions import pi
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:

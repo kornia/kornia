@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from kornia.geometry import pi
 
 
 class HsvToRgb(nn.Module):
@@ -31,7 +32,7 @@ class HsvToRgb(nn.Module):
         return hsv_to_rgb(image)
 
 
-def hsv_to_rgb(image):
+def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an HSV image to RGB
     The image data is assumed to be in the range of (0, 1).
 
@@ -51,24 +52,24 @@ def hsv_to_rgb(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :]
+    h: torch.Tensor = image[..., 0, :, :] / (2 * pi)
     s: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
 
-    hi: torch.Tensor = torch.floor(h * 6)
-    f: torch.Tensor = h * 6 - hi
-    p: torch.Tensor = v * (1 - s)
-    q: torch.Tensor = v * (1 - f * s)
-    t: torch.Tensor = v * (1 - (1 - f) * s)
+    hi: torch.Tensor = torch.floor(h * 6) % 6
+    f: torch.Tensor = ((h * 6) % 6) - hi
+    p: torch.Tensor = v * (torch.tensor(1.) - s)
+    q: torch.Tensor = v * (torch.tensor(1.) - f * s)
+    t: torch.Tensor = v * (torch.tensor(1.) - (torch.tensor(1.) - f) * s)
 
-    out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3) % 6
+    out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3)
 
-    out[out == 0]: torch.Tensor = torch.stack((v, t, p), dim=-3)[out == 0]
-    out[out == 1]: torch.Tensor = torch.stack((q, v, p), dim=-3)[out == 1]
-    out[out == 2]: torch.Tensor = torch.stack((p, v, t), dim=-3)[out == 2]
-    out[out == 3]: torch.Tensor = torch.stack((p, q, v), dim=-3)[out == 3]
-    out[out == 4]: torch.Tensor = torch.stack((t, p, v), dim=-3)[out == 4]
-    out[out == 5]: torch.Tensor = torch.stack((v, p, q), dim=-3)[out == 5]
+    out[out == 0] = torch.stack((v, t, p), dim=-3)[out == 0]
+    out[out == 1] = torch.stack((q, v, p), dim=-3)[out == 1]
+    out[out == 2] = torch.stack((p, v, t), dim=-3)[out == 2]
+    out[out == 3] = torch.stack((p, q, v), dim=-3)[out == 3]
+    out[out == 4] = torch.stack((t, p, v), dim=-3)[out == 4]
+    out[out == 5] = torch.stack((v, p, q), dim=-3)[out == 5]
 
     return out
 
@@ -103,7 +104,7 @@ class RgbToHsv(nn.Module):
         return rgb_to_hsv(image)
 
 
-def rgb_to_hsv(image):
+def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to HSV.
 
     Args:
@@ -131,10 +132,12 @@ def rgb_to_hsv(image):
     v: torch.Tensor = maxc  # brightness
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / v  # saturation
+    s: torch.Tensor = deltac / v
+
+    s[torch.isnan(s)] = 0.
 
     # avoid division by zero
-    deltac: torch.Tensor = torch.where(
+    deltac = torch.where(
         deltac == 0, torch.ones_like(deltac), deltac)
 
     rc: torch.Tensor = (maxc - r) / deltac
@@ -145,10 +148,11 @@ def rgb_to_hsv(image):
     maxr: torch.Tensor = r == maxc
 
     h: torch.Tensor = 4.0 + gc - rc
-    h[maxg]: torch.Tensor = 2.0 + rc[maxg] - bc[maxg]
-    h[maxr]: torch.Tensor = bc[maxr] - gc[maxr]
-    h[minc == maxc]: torch.Tensor = 0.0
+    h[maxg] = 2.0 + rc[maxg] - bc[maxg]
+    h[maxr] = bc[maxr] - gc[maxr]
+    h[minc == maxc] = 0.0
 
-    h: torch.Tensor = (h / 6.0) % 1.0
+    h = (h / 6.0) % 1.0
 
+    h = 2 * pi * h
     return torch.stack([h, s, v], dim=-3)

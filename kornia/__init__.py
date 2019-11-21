@@ -13,6 +13,7 @@ from kornia import filters
 from kornia import geometry
 from kornia import losses
 from kornia import utils
+from kornia import augmentation
 
 # Exposes package functional to top level
 
@@ -24,8 +25,11 @@ from kornia.color import (
     rgb_to_hsv,
     hsv_to_rgb,
     rgb_to_hls,
+    rgb_to_yuv,
+    yuv_to_rgb,
     hls_to_rgb,
     normalize,
+    denormalize,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -46,12 +50,14 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
+    get_motion_kernel2d,
     gaussian_blur2d,
     laplacian,
     sobel,
     spatial_gradient,
     box_blur,
     median_blur,
+    motion_blur,
     filter2D,
 )
 from kornia.losses import (
@@ -59,7 +65,10 @@ from kornia.losses import (
     dice_loss,
     tversky_loss,
     inverse_depth_smoothness_loss,
-    total_variation
+    total_variation,
+    psnr_loss,
+    kl_div_loss_2d,
+    js_div_loss_2d,
 )
 from kornia.utils import (
     one_hot,
@@ -69,5 +78,10 @@ from kornia.utils import (
     save_pointcloud_ply,
     load_pointcloud_ply,
 )
+from kornia.augmentation import (
+    random_hflip,
+    color_jitter,
+)
+
 from kornia.geometry import *
 from kornia.geometry import pi

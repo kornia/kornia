@@ -13,11 +13,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # read the image with OpenCV
-img: np.array = cv2.imread('./data/bruce.png')
+img: np.ndarray = cv2.imread('./data/bruce.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor
-data: torch.tensor = kornia.image_to_tensor(img)  # BxCxHxW
+data: torch.tensor = kornia.image_to_tensor(img, keepdim=False)  # BxCxHxW
 
 # the source points are the region to crop corners
 points_src = torch.tensor([[
@@ -37,7 +37,7 @@ M: torch.tensor = kornia.get_perspective_transform(points_src, points_dst)
 data_warp: torch.tensor = kornia.warp_perspective(data.float(), M, dsize=(h, w))
 
 # convert back to numpy
-img_warp: np.array = kornia.tensor_to_image(data_warp.byte())
+img_warp: np.ndarray = kornia.tensor_to_image(data_warp.byte())
 
 # draw points into original image
 for i in range(4):

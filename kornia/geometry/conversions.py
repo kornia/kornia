@@ -127,7 +127,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
         angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
 
     Returns:
-        torch.Tensor: tensor of 4x4 rotation matrices.
+        torch.Tensor: tensor of 3x3 rotation matrices.
 
     Shape:
         - Input: :math:`(N, 3)`

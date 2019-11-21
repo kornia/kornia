@@ -15,12 +15,12 @@ import kornia
 import torchvision
 
 #############################
-# We use OpenCV to load an image to memory represented in a numpy.array
-img_bgr: np.array = cv2.imread('./data/simba.png', cv2.IMREAD_COLOR)
+# We use OpenCV to load an image to memory represented in a numpy.ndarray
+img_bgr: np.ndarray = cv2.imread('./data/simba.png', cv2.IMREAD_COLOR)
 
 #############################
 # Convert the numpy array to torch
-x_bgr: torch.Tensor = kornia.image_to_tensor(img_bgr)
+x_bgr: torch.Tensor = kornia.image_to_tensor(img_bgr, keepdim=False)
 
 #############################
 # Using `kornia` we easily perform color transformation in batch mode.
@@ -40,9 +40,10 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
 
 def imshow(input: torch.Tensor):
     out: torch.Tensor = torchvision.utils.make_grid(input, nrow=2, padding=5)
-    out_np: np.array = kornia.tensor_to_image(out)
+    out_np: np.ndarray = kornia.tensor_to_image(out)
     plt.imshow(out_np)
     plt.axis('off')
+    plt.show()
 
 #############################
 # Create a batch of images
@@ -64,3 +65,12 @@ imshow(xb_gray)
 # Convert RGB to HSV
 xb_hsv = kornia.rgb_to_hsv(xb_rgb.float() / 255.)
 imshow(xb_hsv[:, 2:3])
+
+#############################
+# Convert RGB to YUV
+# NOTE: image comes in torch.uint8, and kornia assumes floating point type
+yuv = kornia.rgb_to_yuv(xb_rgb.float() / 255.)
+y_channel = torchvision.utils.make_grid(yuv, nrow=2)[0, :, :]
+plt.imshow(y_channel, cmap='gray', vmin=0, vmax=1)  # Displaying only y channel
+plt.axis('off')
+plt.show()
