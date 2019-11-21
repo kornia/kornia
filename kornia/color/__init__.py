@@ -2,6 +2,8 @@ from .gray import rgb_to_grayscale, RgbToGrayscale
 from .gray import bgr_to_grayscale, BgrToGrayscale
 from .rgb import BgrToRgb, bgr_to_rgb
 from .rgb import RgbToBgr, rgb_to_bgr
+from .lab import RgbToLab, rgb_to_lab
+from .lab import LabToRgb, lab_to_rgb
 from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
 from .hls import RgbToHls, rgb_to_hls
@@ -17,6 +19,8 @@ from .adjust import (
 )
 
 __all__ = [
+    "rgb_to_lab",
+    "lab_to_rgb",
     "rgb_to_grayscale",
     "bgr_to_grayscale",
     "bgr_to_rgb",
@@ -37,6 +41,8 @@ __all__ = [
     "add_weighted",
     "AddWeighted",
     "RgbToGrayscale",
+    "RgbToLab",
+    "LabToRgb",
     "BgrToGrayscale",
     "BgrToRgb",
     "RgbToBgr",

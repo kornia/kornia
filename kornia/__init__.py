@@ -19,6 +19,8 @@ from kornia import augmentation
 
 from kornia.color import (
     rgb_to_grayscale,
+    rgb_to_lab,
+    lab_to_rgb,
     bgr_to_grayscale,
     bgr_to_rgb,
     rgb_to_bgr,

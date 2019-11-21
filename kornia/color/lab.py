@@ -1,0 +1,217 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from typing import Tuple
+
+"""
+# Adapted from https://github.com/xahidbuffon/rgb-lab-conv/blob/master/rgb_lab_formulation.py and based on:
+https://github.com/affinelayer/pix2pix-tensorflow/blob/master/pix2pix.py
+https://github.com/torch/image/blob/9f65c30167b2048ecbe8b7befdc6b2d6d12baee9/generic/image.c
+https://github.com/cameronfabbri/Colorizing-Images-Using-Adversarial-Networks
+"""
+
+import sys 
+sprintf = lambda format, *values : format % values
+printf  = lambda format, *values : sys.stdout.write(format % values)
+
+class RgbToLab(nn.Module):
+    r"""Convert image from RGB to LAB
+    The image data is assumed to be in the range of (0, 1).
+    args:
+        image (torch.Tensor): RGB image to be converted to LAB.
+    returns:
+        torch.tensor: LAB version of the image.
+    shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+    Examples::
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> lab = kornia.color.RgbToLab()
+        >>> output = lab(input)  # 2x3x4x5
+    Reference::
+        [1] 
+    """
+
+    def __init__(self) -> None:
+        super(RgbToLab, self).__init__()
+
+    def forward(  # type: ignore
+            self, input: torch.Tensor) -> torch.Tensor:
+        return rgb_to_lab(input)
+
+    
+def srgb_to_xyz(input: torch.Tensor) -> torch.Tensor:
+    srgb_pixels = input
+    
+    # Constant tensor used for conversion
+    rgb_to_xyz = torch.tensor([
+                #    X        Y          Z
+        [0.412453, 0.212671, 0.019334], # R
+        [0.357580, 0.715160, 0.119193], # G
+        [0.180423, 0.072169, 0.950227], # B
+        ]).type(srgb_pixels.data.type()).detach()
+    
+    linear_mask = (srgb_pixels <= 0.04045).type(srgb_pixels.data.type())
+    exponential_mask = (srgb_pixels > 0.04045).type(srgb_pixels.data.type()) 
+    
+    rgb_pixels = (srgb_pixels / 12.92 * linear_mask) + (((srgb_pixels + 0.055) / 1.055) ** 2.4) * exponential_mask
+    xyz_pixels = torch.matmul(rgb_pixels, rgb_to_xyz)
+    
+    return xyz_pixels
+
+# https://en.wikipedia.org/wiki/Lab_color_space#CIELAB-CIEXYZ_conversions
+def xyz_to_cielab(input: torch.Tensor) -> torch.Tensor: 
+    xyz_pixels = input 
+    
+    # Constant tensor used for conversion
+    fxfyfz_to_lab = torch.tensor([ 
+        #  l       a       b
+        [  0.0,  500.0,    0.0], # fx
+        [116.0, -500.0,  200.0], # fy
+        [  0.0,    0.0, -200.0], # fz
+    ]).type(xyz_pixels.data.type()).detach()
+    
+    # normalize for D65 white point 
+    xyz_normalized_pixels = torch.mul(xyz_pixels, torch.tensor([1/0.950456, 1.0, 1/1.088754]).type(xyz_pixels.data.type()))
+
+    epsilon = 6/29
+    linear_mask = (xyz_normalized_pixels <= (epsilon**3)).type(xyz_pixels.data.type())
+    exponential_mask = (xyz_normalized_pixels > (epsilon**3)).type(xyz_pixels.data.type())    
+    fxfyfz_pixels = (xyz_normalized_pixels / (3 * epsilon**2) + 4/29) * linear_mask + (xyz_normalized_pixels ** (1/3)) * exponential_mask
+
+    lab_pixels = torch.matmul(fxfyfz_pixels, fxfyfz_to_lab) + torch.tensor([-16.0, 0.0, 0.0]).type(xyz_pixels.data.type())
+    
+    return lab_pixels
+
+
+# based on https://github.com/torch/image/blob/9f65c30167b2048ecbe8b7befdc6b2d6d12baee9/generic/image.c
+def rgb_to_lab(input: torch.Tensor) -> torch.Tensor:
+    r"""Convert an RGB image to LAB
+    The image data is assumed to be in the range of (0, 1).
+    Args:
+        input (torch.Tensor): RGB Image to be converted to LAB.
+    Returns:
+        torch.Tensor: LAB version of the image.
+    See :class:`~kornia.color.RgbToLab` for details."""
+    if not torch.is_tensor(input):
+        raise TypeError("Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not(len(input.shape) == 3 or len(input.shape) == 4):
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W) or (3, H, W). Got {input.shape}")
+
+    if input.shape[-3] != 3:
+        raise ValueError(f"Expected input to have 3 channels, got {input.shape[-3]}")
+    
+    # [b, c, h, w] -> [b, h, w, c]    
+    permuted_input = input.permute(0, 2, 3, 1)
+    srgb_pixels = permuted_input.reshape(-1, 3)
+#     printf("srgb size: %s\n", srgb_pixels.size())
+    xyz_pixels = srgb_to_xyz(srgb_pixels)
+    lab_pixels = xyz_to_cielab(xyz_pixels)
+    
+    # Reshape to input size 
+    # [b, h, w, c] -> [b, c, h, w]
+    lab_pixels = lab_pixels.reshape(permuted_input.size()).permute(0, 3, 1, 2)
+    return lab_pixels.type(torch.FloatTensor)
+
+
+
+class LabToRgb(nn.Module):
+    r"""Convert image from LAB to RGB
+    The image data is assumed to be in the range of (0, 1).
+    args:
+        image (torch.Tensor): LAB image to be converted to RGB.
+    returns:
+        torch.tensor: RGB version of the image.
+    shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+    Examples::
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = kornia.color.LabToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+
+    def __init__(self) -> None:
+        super(LabToRgb, self).__init__()
+
+    def forward(  # type: ignore
+            self, input: torch.Tensor) -> torch.Tensor:
+        return lab_to_rgb(input)
+
+# https://en.wikipedia.org/wiki/Lab_color_space#CIELAB-CIEXYZ_conversions
+def cielab_to_xyz(input: torch.Tensor) -> torch.Tensor: 
+    lab_pixels = input 
+    
+    # Constant tensor used for conversion
+    lab_to_fxfyfz = torch.tensor([
+        #   fx      fy        fz
+        [1/116.0, 1/116.0,  1/116.0], # l
+        [1/500.0,     0.0,      0.0], # a
+        [    0.0,     0.0, -1/200.0], # b
+    ]).type(lab_pixels.data.type()).detach() 
+    
+    fxfyfz_pixels = torch.matmul(lab_pixels + torch.tensor([16.0, 0.0, 0.0]).type(lab_pixels.data.type()), lab_to_fxfyfz)
+    
+    # convert to xyz
+    epsilon = 6/29
+    linear_mask = (fxfyfz_pixels <= epsilon).type(lab_pixels.data.type())
+    exponential_mask = (fxfyfz_pixels > epsilon).type(lab_pixels.data.type())
+    xyz_pixels = (3 * epsilon**2 * (fxfyfz_pixels - 4/29)) * linear_mask + (fxfyfz_pixels ** 3) * exponential_mask
+    
+    # denormalize for D65 white point
+    xyz_pixels = torch.mul(xyz_pixels, torch.tensor([0.950456, 1.0, 1.088754]).type(lab_pixels.data.type()))
+    
+    return xyz_pixels
+
+
+def xyz_to_srgb(input: torch.Tensor) -> torch.Tensor: 
+    xyz_pixels = input 
+    
+    # Constant tensor used for conversion
+    xyz_to_rgb = torch.tensor([
+        #     r           g          b
+        [ 3.2404542, -0.9692660,  0.0556434], # x
+        [-1.5371385,  1.8760108, -0.2040259], # y
+        [-0.4985314,  0.0415560,  1.0572252], # z
+    ]).type(xyz_pixels.data.type()).detach()
+    
+    rgb_pixels = torch.matmul(xyz_pixels, xyz_to_rgb) 
+    
+    # avoid a slightly negative number messing up the conversion
+    rgb_pixels = torch.clamp(rgb_pixels, 0.0, 1.0)
+    
+    linear_mask = (rgb_pixels <= 0.0031308).type(xyz_pixels.data.type())
+    exponential_mask = (rgb_pixels > 0.0031308).type(xyz_pixels.data.type())
+    srgb_pixels = (rgb_pixels * 12.92 * linear_mask) + ((rgb_pixels ** (1/2.4) * 1.055) - 0.055) * exponential_mask
+    
+    return srgb_pixels
+
+def lab_to_rgb(input: torch.Tensor) -> torch.Tensor:
+    r"""Convert an LAB image to RGB
+    The image data is assumed to be in the range of (0, 1).
+    Args:
+        input (torch.Tensor): LAB Image to be converted to RGB.
+    Returns:
+        torch.Tensor: RGB version of the image.
+    See :class:`~kornia.color.LabToRgb` for details."""
+    if not torch.is_tensor(input):
+        raise TypeError("Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not(len(input.shape) == 3 or len(input.shape) == 4):
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W) or (3, H, W). Got {input.shape}")
+
+    if input.shape[-3] != 3:
+        raise ValueError(f"Expected input to have 3 channels, got {input.shape[-3]}")
+        
+    # [b, c, h, w] -> [b, h, w, c]    
+    permuted_input = input.permute(0, 2, 3, 1)
+    lab_pixels = permuted_input.reshape(-1, 3)
+    xyz_pixels = cielab_to_xyz(lab_pixels)
+    srgb_pixels = xyz_to_srgb(xyz_pixels)
+    
+    # Reshape to input size 
+    # [b, h, w, c] -> [b, c, h, w]
+    rgb_pixels = srgb_pixels.reshape(permuted_input.size()).permute(0, 3, 1, 2)
+        
+    return rgb_pixels.type(torch.FloatTensor)
