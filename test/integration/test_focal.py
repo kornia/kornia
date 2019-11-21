@@ -5,7 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import kornia as kornia
+from test.common import device
+
+import kornia
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ class TestIntegrationFocalLoss:
 
     def generate_sample(self, base_target, std_val=0.1):
         target = base_target.float() / base_target.max()
-        noise = std_val * torch.rand(1, 1, 6, 5)
+        noise = std_val * torch.rand(1, 1, 6, 5).to(base_target.device)
         return target + noise
 
     @staticmethod
@@ -31,17 +33,17 @@ class TestIntegrationFocalLoss:
         if isinstance(m, nn.Conv2d):
             torch.nn.init.xavier_uniform_(m.weight)
 
-    def test_conv2d_relu(self):
+    def test_conv2d_relu(self, device):
 
         # we generate base sample
-        target = torch.LongTensor(1, 6, 5).fill_(0)
+        target = torch.LongTensor(1, 6, 5).fill_(0).to(device)
         for i in range(1, self.num_classes):
             target[..., i:-i, i:-i] = i
 
         m = nn.Sequential(
             nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1),
             nn.ReLU(True),
-        )
+        ).to(device)
         m.apply(self.init_weights)
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)
@@ -52,16 +54,16 @@ class TestIntegrationFocalLoss:
         # criterion = nn.CrossEntropyLoss()
 
         for iter_id in range(self.num_iterations):
-            sample = self.generate_sample(target)
+            sample = self.generate_sample(target).to(device)
             output = m(sample)
-            loss = criterion(output, target)
+            loss = criterion(output, target.to(device))
             logger.debug("Loss: {}".format(loss.item()))
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-        sample = self.generate_sample(target)
+        sample = self.generate_sample(target).to(device)
         output_argmax = torch.argmax(m(sample), dim=1)
         logger.debug("Output argmax: \n{}".format(output_argmax))
 

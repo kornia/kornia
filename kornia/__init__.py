@@ -66,7 +66,9 @@ from kornia.losses import (
     tversky_loss,
     inverse_depth_smoothness_loss,
     total_variation,
-    psnr_loss
+    psnr_loss,
+    kl_div_loss_2d,
+    js_div_loss_2d,
 )
 from kornia.utils import (
     one_hot,

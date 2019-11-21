@@ -2,7 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -11,7 +11,7 @@ from torch.testing import assert_allclose
 
 class TestBgrToRgb:
 
-    def test_bgr_to_rgb(self):
+    def test_bgr_to_rgb(self, device):
 
         # prepare input data
         data = torch.tensor([[[1., 1.],
@@ -32,10 +32,14 @@ class TestBgrToRgb:
                                  [[1., 1.],
                                   [1., 1.]]])  # 3x2x2
 
+        # move data to the device
+        data = data.to(device)
+        expected = expected.to(device)
+
         f = kornia.color.BgrToRgb()
         assert_allclose(f(data), expected)
 
-    def test_batch_bgr_to_rgb(self):
+    def test_batch_bgr_to_rgb(self, device):
 
         # prepare input data
         data = torch.tensor([[[[1., 1.],
@@ -74,11 +78,15 @@ class TestBgrToRgb:
                                   [[1., 1.],
                                    [1., 1.]]]])  # 2x3x2x2
 
+        # move data to the device
+        data = data.to(device)
+        expected = expected.to(device)
+
         f = kornia.color.BgrToRgb()
         out = f(data)
         assert_allclose(out, expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
         # prepare input data
         data = torch.tensor([[[1., 1.],
@@ -90,13 +98,14 @@ class TestBgrToRgb:
                              [[3., 3.],
                               [3., 3.]]])  # 3x2x2
 
+        data = data.to(device)
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.BgrToRgb(), (data,),
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
             return kornia.bgr_to_rgb(data)
@@ -110,6 +119,8 @@ class TestBgrToRgb:
                                  [[3., 3.],
                                   [3., 3.]]])  # 3x2x2
 
+            data = data.to(device)
+
             actual = op_script(data)
             expected = kornia.bgr_to_rgb(data)
             assert_allclose(actual, expected)
@@ -117,7 +128,7 @@ class TestBgrToRgb:
 
 class TestRgbToBgr:
 
-    def test_rgb_to_bgr(self):
+    def test_rgb_to_bgr(self, device):
 
         # prepare input data
         data = torch.tensor([[[1., 1.],
@@ -138,10 +149,14 @@ class TestRgbToBgr:
                                  [[1., 1.],
                                   [1., 1.]]])  # 3x2x2
 
+        # move data to the device
+        data = data.to(device)
+        expected = expected.to(device)
+
         f = kornia.color.RgbToBgr()
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
         # prepare input data
         data = torch.tensor([[[1., 1.],
@@ -153,6 +168,7 @@ class TestRgbToBgr:
                              [[3., 3.],
                               [3., 3.]]])  # 3x2x2
 
+        data = data.to(device)
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.RgbToBgr(), (data,),
@@ -173,11 +189,13 @@ class TestRgbToBgr:
                                  [[3., 3.],
                                   [3., 3.]]])  # 3x2x2
 
+            data = data.to(device)
+
             actual = op_script(data)
             expected = kornia.rgb_to_bgr(data)
             assert_allclose(actual, expected)
 
-    def test_batch_rgb_to_bgr(self):
+    def test_batch_rgb_to_bgr(self, device):
 
         # prepare input data
         data = torch.tensor([[[[1., 1.],
@@ -215,6 +233,10 @@ class TestRgbToBgr:
 
                                   [[1., 1.],
                                    [1., 1.]]]])  # 2x3x2x2
+
+        # move data to the device
+        data = data.to(device)
+        expected = expected.to(device)
 
         f = kornia.color.RgbToBgr()
         out = f(data)
