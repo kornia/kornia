@@ -2,7 +2,7 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -25,24 +25,24 @@ class TestPinholeCamera:
         extrinsics[..., 2, -1] = tz
         return extrinsics.expand(batch_size, -1, -1)
 
-    def test_smoke(self):
-        intrinsics = torch.eye(4)[None]
-        extrinsics = torch.eye(4)[None]
-        height = torch.ones(1)
-        width = torch.ones(1)
+    def test_smoke(self, device):
+        intrinsics = torch.eye(4)[None].to(device)
+        extrinsics = torch.eye(4)[None].to(device)
+        height = torch.ones(1).to(device)
+        width = torch.ones(1).to(device)
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         assert isinstance(pinhole, kornia.PinholeCamera)
 
-    def test_pinhole_camera_attributes(self):
+    def test_pinhole_camera_attributes(self, device):
         batch_size = 1
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         tx, ty, tz = 1, 2, 3
 
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy).to(device)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz).to(device)
+        height = torch.ones(batch_size).to(device) * height
+        width = torch.ones(batch_size).to(device) * width
 
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
@@ -61,16 +61,16 @@ class TestPinholeCamera:
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
-    def test_pinhole_camera_translation_setters(self):
+    def test_pinhole_camera_translation_setters(self, device):
         batch_size = 1
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         tx, ty, tz = 1, 2, 3
 
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy).to(device)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz).to(device)
+        height = torch.ones(batch_size).to(device) * height
+        width = torch.ones(batch_size).to(device) * width
 
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
@@ -96,16 +96,16 @@ class TestPinholeCamera:
         assert pinhole.ty.item() == 0.
         assert pinhole.tz.item() == 0.
 
-    def test_pinhole_camera_attributes_batch2(self):
+    def test_pinhole_camera_attributes_batch2(self, device):
         batch_size = 2
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         tx, ty, tz = 1, 2, 3
 
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy).to(device)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz).to(device)
+        height = torch.ones(batch_size).to(device) * height
+        width = torch.ones(batch_size).to(device) * width
 
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
 
@@ -124,18 +124,18 @@ class TestPinholeCamera:
         assert pinhole.rotation_matrix.shape == (batch_size, 3, 3)
         assert pinhole.translation_vector.shape == (batch_size, 3, 1)
 
-    def test_pinhole_camera_scale(self):
+    def test_pinhole_camera_scale(self, device):
         batch_size = 2
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         tx, ty, tz = 1, 2, 3
         scale_val = 2.0
 
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
-        scale_factor = torch.ones(batch_size) * scale_val
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy).to(device)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz).to(device)
+        height = torch.ones(batch_size).to(device) * height
+        width = torch.ones(batch_size).to(device) * width
+        scale_factor = torch.ones(batch_size).to(device) * scale_val
 
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.scale(scale_factor)
@@ -159,18 +159,18 @@ class TestPinholeCamera:
             pinhole_scale.width,
             pinhole.width * scale_val)
 
-    def test_pinhole_camera_scale_inplace(self):
+    def test_pinhole_camera_scale_inplace(self, device):
         batch_size = 2
         height, width = 4, 6
         fx, fy, cx, cy = 1, 2, width / 2, height / 2
         tx, ty, tz = 1, 2, 3
         scale_val = 2.0
 
-        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy)
-        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz)
-        height = torch.ones(batch_size) * height
-        width = torch.ones(batch_size) * width
-        scale_factor = torch.ones(batch_size) * scale_val
+        intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy).to(device)
+        extrinsics = self._create_extrinsics(batch_size, tx, ty, tz).to(device)
+        height = torch.ones(batch_size).to(device) * height
+        width = torch.ones(batch_size).to(device) * width
+        scale_factor = torch.ones(batch_size).to(device) * scale_val
 
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.clone()
