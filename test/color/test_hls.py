@@ -3,7 +3,7 @@ import pytest
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry import pi
-from test.common import device_type
+from test.common import device
 
 import math
 
@@ -14,7 +14,7 @@ from torch.testing import assert_allclose
 
 class TestRgbToHls:
 
-    def test_rgb_to_hls(self):
+    def test_rgb_to_hls(self, device):
 
         data = torch.tensor([[[0.4237059, 0.1935902, 0.8585021, 0.3790484, 0.1389151],
                               [0.5933651, 0.0474544, 0.2801555, 0.1691061, 0.9221829],
@@ -33,6 +33,7 @@ class TestRgbToHls:
                               [0.9660432, 0.5287710, 0.6654660, 0.3797526, 0.4981400],
                               [0.7422802, 0.9926301, 0.5334370, 0.7852844, 0.4397180],
                               [0.2281681, 0.2560037, 0.5134379, 0.5800887, 0.8685090]]])
+        data = data.to(device)
 
         # OpenCV
         h_expected = torch.tensor([[4.5945477, 4.268469, 0.9738468, 2.2731707, 3.269344],
@@ -40,18 +41,21 @@ class TestRgbToHls:
                                    [4.003296, 5.4079432, 4.566101, 5.869351, 1.8194631],
                                    [3.2098956, 4.271444, 0.29820946, 4.7041655, 0.7340856],
                                    [0.78329855, 2.2872903, 5.3016634, 5.634379, 3.382815]])
+        h_expected = h_expected.to(device)
+
         l_expected = torch.tensor([[0.48054275, 0.51843, 0.44070444, 0.5224365, 0.33946657],
                                    [0.2985475, 0.18669781, 0.45586777, 0.5633283, 0.5373864],
                                    [0.6006086, 0.41335985, 0.5978296, 0.45972168, 0.6845894],
                                    [0.38564888, 0.80442977, 0.6957935, 0.48032972, 0.6066474],
                                    [0.5889454, 0.53727096, 0.2848544, 0.5161035, 0.7544351]])
+        l_expected = l_expected.to(device)
         s_expected = torch.tensor([[0.5255313, 0.79561585, 0.9480225, 0.30024928, 0.59078425],
                                    [0.98750657, 0.7458223, 0.3854456, 0.90278864, 0.8317882],
                                    [0.9149786, 0.4157338, 0.16817844, 0.82978433, 0.5911325],
                                    [0.9247565, 0.9623155, 0.53370523, 0.63488615, 0.4243758],
                                    [0.8776869, 0.96239233, 0.91754496, 0.55295944, 0.46453667]])
+        s_expected = s_expected.to(device)
 
-        # Kornia
         f = kornia.color.RgbToHls()
         result = f(data)
 
@@ -63,7 +67,7 @@ class TestRgbToHls:
         assert_allclose(l, l_expected)
         assert_allclose(s, s_expected)
 
-    def test_batch_rgb_to_hls(self):
+    def test_batch_rgb_to_hls(self, device):
 
         data = torch.tensor([[[0.4237059, 0.1935902, 0.8585021, 0.3790484, 0.1389151],
                               [0.5933651, 0.0474544, 0.2801555, 0.1691061, 0.9221829],
@@ -82,6 +86,7 @@ class TestRgbToHls:
                               [0.9660432, 0.5287710, 0.6654660, 0.3797526, 0.4981400],
                               [0.7422802, 0.9926301, 0.5334370, 0.7852844, 0.4397180],
                               [0.2281681, 0.2560037, 0.5134379, 0.5800887, 0.8685090]]])
+        data = data.to(device)
 
         # OpenCV
         expected = torch.tensor([[[4.5945477, 4.268469, 0.9738468, 2.2731707, 3.269344],
@@ -101,43 +106,45 @@ class TestRgbToHls:
                                   [0.9149786, 0.4157338, 0.16817844, 0.82978433, 0.5911325],
                                   [0.9247565, 0.9623155, 0.53370523, 0.63488615, 0.4243758],
                                   [0.8776869, 0.96239233, 0.91754496, 0.55295944, 0.46453667]]])
+        expected = expected.to(device)
 
         # Kornia
         f = kornia.color.RgbToHls()
 
         data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
-
         expected = expected.repeat(2, 1, 1, 1)  # 2x3x5x5
+
         assert_allclose(f(data), expected)
 
-    def test_nan_rgb_to_hls(self):
+    def test_nan_rgb_to_hls(self, device):
 
-        data = torch.ones(1, 5, 5)  # 3x5x5
-        data = data.repeat(3, 1, 1)  # 2x3x5x5
+        data = torch.ones(1, 5, 5).to(device)  # 3x5x5
+        data = data.repeat(2, 3, 1, 1)  # 2x3x5x5
 
         # OpenCV
-        expected = torch.cat([torch.zeros(1, 5, 5), torch.ones(1, 5, 5), torch.zeros(1, 5, 5)], dim=0)
+        expected = torch.cat([torch.zeros(1, 5, 5), torch.ones(1, 5, 5), torch.zeros(1, 5, 5)], dim=0).to(device)
+        expected = expected.repeat(2, 1, 1, 1)  # 2x3x5x5
 
         # Kornia
         f = kornia.color.RgbToHls()
 
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        data = torch.rand(3, 5, 5)  # 3x5x5
-
+        data = torch.rand(3, 5, 5).to(device)  # 3x5x5
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
         assert gradcheck(kornia.color.RgbToHls(), (data,),
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
-        def op_script(data: torch.tensor) -> torch.Tensor:
+        def op_script(data: torch.Tensor) -> torch.Tensor:
 
             return kornia.rgb_to_hls(data)
+
             data = torch.tensor([[[[21., 22.],
                                    [22., 22.]],
 
@@ -147,6 +154,7 @@ class TestRgbToHls:
                                   [[8., 8.],
                                    [8., 8.]]]])  # 3x2x2
 
+            data = data.to(device)
             actual = op_script(data)
             expected = kornia.rgb_to_hls(data)
             assert_allclose(actual, expected)
@@ -154,7 +162,7 @@ class TestRgbToHls:
 
 class TestHlsToRgb:
 
-    def test_hls_to_rgb(self):
+    def test_hls_to_rgb(self, device):
 
         data = torch.tensor([[[0.5513626, 0.8487718, 0.1822479, 0.2851745, 0.2669488],
                               [0.7596772, 0.4565057, 0.6181599, 0.3852497, 0.7746902],
@@ -173,6 +181,7 @@ class TestHlsToRgb:
                               [0.0803350, 0.9432759, 0.0241543, 0.8292291, 0.7745832],
                               [0.3707901, 0.0851424, 0.5805428, 0.1098685, 0.4238486],
                               [0.1058410, 0.0816052, 0.5792874, 0.9578886, 0.6281684]]])  # 3x5x5
+        data = data.to(device)
 
         # OpenCV
         r_expected = torch.tensor([[0.21650219, 0.01911971, 0.91374826, 0.1760952, 0.10979544],
@@ -180,16 +189,21 @@ class TestHlsToRgb:
                                    [0.7321301, 0.8110298, 0.4724091, 0.96834683, 0.2910835],
                                    [0.935407, 0.6478001, 0.615513, 0.3506698, 0.89171433],
                                    [0.0945498, 0.6919248, 0.98795897, 0.25782573, 0.08763295]])
+        r_expected = r_expected.to(device)
+
         g_expected = torch.tensor([[0.48587522, 0.017571, 0.9437648, 0.5853925, 0.13439366],
                                    [0.30897713, 0.18483935, 0.8082967, 0.75936294, 0.25883088],
                                    [0.7542145, 0.97218925, 0.46058673, 0.9910847, 0.03697497],
                                    [0.8592784, 0.675717, 0.8979618, 0.28124255, 0.8925654],
                                    [0.07645091, 0.6548674, 0.99254686, 0.500144, 0.38372523]])
+        g_expected = g_expected.to(device)
+
         b_expected = torch.tensor([[0.60586834, 0.01897625, 0.62269044, 0.00976634, 0.09351197],
                                    [0.93256867, 0.14439031, 0.89391685, 0.49867177, 0.2600806],
                                    [0.7719684, 0.04724807, 0.48338777, 0.904503, 0.12093388],
                                    [0.8630215, 0.6153573, 0.85029656, 0.34361976, 0.73449594],
                                    [0.08502806, 0.6371759, 0.99679226, 0.9840369, 0.16492467]])
+        b_expected = b_expected.to(device)
 
         # Kornia
         f = kornia.color.HlsToRgb()
@@ -204,7 +218,7 @@ class TestHlsToRgb:
         assert_allclose(g, g_expected)
         assert_allclose(b, b_expected)
 
-    def test_batch_hls_to_rgb(self):
+    def test_batch_hls_to_rgb(self, device):
 
         data = torch.tensor([[[0.5513626, 0.8487718, 0.1822479, 0.2851745, 0.2669488],
                               [0.7596772, 0.4565057, 0.6181599, 0.3852497, 0.7746902],
@@ -223,6 +237,9 @@ class TestHlsToRgb:
                               [0.0803350, 0.9432759, 0.0241543, 0.8292291, 0.7745832],
                               [0.3707901, 0.0851424, 0.5805428, 0.1098685, 0.4238486],
                               [0.1058410, 0.0816052, 0.5792874, 0.9578886, 0.6281684]]])  # 3x5x5
+        data = data.to(device)
+        data[0] = 2 * pi * data[0]
+        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
 
         # OpenCV
         expected = torch.tensor([[[0.21650219, 0.01911971, 0.91374826, 0.1760952, 0.10979544],
@@ -242,14 +259,11 @@ class TestHlsToRgb:
                                   [0.7719684, 0.04724807, 0.48338777, 0.904503, 0.12093388],
                                   [0.8630215, 0.6153573, 0.85029656, 0.34361976, 0.73449594],
                                   [0.08502806, 0.6371759, 0.99679226, 0.9840369, 0.16492467]]])
+        expected = expected.to(device)
+        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
 
         # Kornia
         f = kornia.color.HlsToRgb()
-
-        data[0] = 2 * pi * data[0]
-        data = data.repeat(2, 1, 1, 1)  # 2x3x5x5
-
-        expected = expected.repeat(2, 1, 1, 1)  # 2x3x2x2
 
         assert_allclose(f(data), expected)
 
@@ -259,9 +273,9 @@ class TestHlsToRgb:
         data[:, 0] -= 4 * pi
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        data = torch.rand(3, 5, 5)  # 3x5x5
+        data = torch.rand(3, 5, 5).to(device)  # 3x5x5
         data[0] = 2 * pi * data[0]
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
@@ -270,7 +284,7 @@ class TestHlsToRgb:
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(data: torch.tensor) -> torch.Tensor:
             return kornia.hls_to_rgb(data)
@@ -284,6 +298,7 @@ class TestHlsToRgb:
                                   [[8., 8.],
                                    [8., 8.]]]])  # 3x2x2
 
+            data = data.to(device)
             actual = op_script(data)
             expected = kornia.hls_to_rgb(data)
             assert_allclose(actual, expected)
