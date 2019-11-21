@@ -2,7 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import TEST_DEVICES
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -45,19 +45,18 @@ def euler_angles_to_rotation_matrix(x, y, z):
 
 class TestTransformPoints:
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points(
-            self, batch_size, num_points, num_dims, device_type):
+            self, device, batch_size, num_points, num_dims):
         # generate input data
         eye_size = num_dims + 1
         points_src = torch.rand(batch_size, num_points, num_dims)
-        points_src = points_src.to(torch.device(device_type))
+        points_src = points_src.to(device)
 
         dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.to(torch.device(device_type))
+        dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
         points_dst = kornia.transform_points(dst_homo_src, points_src)
@@ -69,12 +68,12 @@ class TestTransformPoints:
         # projected should be equal as initial
         assert_allclose(points_src, points_dst_to_src)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = num_dims + 1
-        points_src = torch.rand(batch_size, num_points, num_dims)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        points_src = torch.rand(batch_size, num_points, num_dims).to(device)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device)
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
@@ -82,26 +81,26 @@ class TestTransformPoints:
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(transform, points):
             return kornia.transform_points(transform, points)
 
-        points = torch.ones(1, 2, 2)
-        transform = torch.eye(3)[None]
+        points = torch.ones(1, 2, 2).to(device)
+        transform = torch.eye(3)[None].to(device)
         actual = op_script(transform, points)
         expected = kornia.transform_points(transform, points)
 
         assert_allclose(actual, expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_trace(self):
+    def test_jit_trace(self, device):
         @torch.jit.script
         def op_script(transform, points):
             return kornia.transform_points(transform, points)
 
-        points = torch.ones(1, 2, 2)
-        transform = torch.eye(3)[None]
+        points = torch.ones(1, 2, 2).to(device)
+        transform = torch.eye(3)[None].to(device)
         op_script_trace = torch.jit.trace(op_script, (transform, points,))
         actual = op_script_trace(transform, points)
         expected = kornia.transform_points(transform, points)
@@ -111,17 +110,17 @@ class TestTransformPoints:
 
 class TestComposeTransforms:
 
-    def test_translation_4x4(self):
+    def test_translation_4x4(self, device):
         offset = 10
-        trans_01 = identity_matrix(batch_size=1)[0]
-        trans_12 = identity_matrix(batch_size=1)[0]
+        trans_01 = identity_matrix(batch_size=1)[0].to(device)
+        trans_12 = identity_matrix(batch_size=1)[0].to(device)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
         assert_allclose(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_translation_Bx4x4(self, batch_size):
+    def test_translation_Bx4x4(self, device, batch_size):
         offset = 10
         trans_01 = identity_matrix(batch_size)
         trans_12 = identity_matrix(batch_size)
@@ -131,9 +130,9 @@ class TestComposeTransforms:
         assert_allclose(trans_02, trans_12)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, batch_size):
-        trans_01 = identity_matrix(batch_size)
-        trans_12 = identity_matrix(batch_size)
+    def test_gradcheck(self, device, batch_size):
+        trans_01 = identity_matrix(batch_size).to(device)
+        trans_12 = identity_matrix(batch_size).to(device)
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
@@ -143,9 +142,9 @@ class TestComposeTransforms:
 
 class TestInverseTransformation:
 
-    def test_translation_4x4(self):
+    def test_translation_4x4(self, device):
         offset = 10
-        trans_01 = identity_matrix(batch_size=1)[0]
+        trans_01 = identity_matrix(batch_size=1)[0].to(device)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
         trans_10 = kornia.inverse_transformation(trans_01)
@@ -153,9 +152,9 @@ class TestInverseTransformation:
         assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_translation_Bx4x4(self, batch_size):
+    def test_translation_Bx4x4(self, device, batch_size):
         offset = 10
-        trans_01 = identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size).to(device)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
         trans_10 = kornia.inverse_transformation(trans_01)
@@ -163,13 +162,13 @@ class TestInverseTransformation:
         assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_rotation_translation_Bx4x4(self, batch_size):
+    def test_rotation_translation_Bx4x4(self, device, batch_size):
         offset = 10
         x, y, z = 0, 0, kornia.pi
-        ones = torch.ones(batch_size)
+        ones = torch.ones(batch_size).to(device)
         rmat_01 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
-        trans_01 = identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size).to(device)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
         trans_01[..., :3, :3] = rmat_01[..., :3, :3]
 
@@ -178,8 +177,8 @@ class TestInverseTransformation:
         assert_allclose(trans_01, trans_01_hat)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, batch_size):
-        trans_01 = identity_matrix(batch_size)
+    def test_gradcheck(self, device, batch_size):
+        trans_01 = identity_matrix(batch_size).to(device)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         assert gradcheck(kornia.inverse_transformation, (trans_01,),
                          raise_exception=True)
@@ -187,10 +186,10 @@ class TestInverseTransformation:
 
 class TestRelativeTransformation:
 
-    def test_translation_4x4(self):
+    def test_translation_4x4(self, device):
         offset = 10.
-        trans_01 = identity_matrix(batch_size=1)[0]
-        trans_02 = identity_matrix(batch_size=1)[0]
+        trans_01 = identity_matrix(batch_size=1)[0].to(device)
+        trans_02 = identity_matrix(batch_size=1)[0].to(device)
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
@@ -198,14 +197,14 @@ class TestRelativeTransformation:
         assert_allclose(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_rotation_translation_Bx4x4(self, batch_size):
+    def test_rotation_translation_Bx4x4(self, device, batch_size):
         offset = 10.
         x, y, z = 0., 0., kornia.pi
-        ones = torch.ones(batch_size)
+        ones = torch.ones(batch_size).to(device)
         rmat_02 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
-        trans_01 = identity_matrix(batch_size)
-        trans_02 = identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size).to(device)
+        trans_02 = identity_matrix(batch_size).to(device)
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
@@ -214,9 +213,9 @@ class TestRelativeTransformation:
         assert_allclose(trans_02_hat, trans_02)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, batch_size):
-        trans_01 = identity_matrix(batch_size)
-        trans_02 = identity_matrix(batch_size)
+    def test_gradcheck(self, device, batch_size):
+        trans_01 = identity_matrix(batch_size).to(device)
+        trans_02 = identity_matrix(batch_size).to(device)
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
@@ -226,18 +225,16 @@ class TestRelativeTransformation:
 
 class TestTransformLAFs:
 
-    @pytest.mark.parametrize("device_type", TEST_DEVICES)
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     def test_transform_points(
-            self, batch_size, num_points, device_type):
+            self, batch_size, num_points, device):
         # generate input data
         eye_size = 3
-        lafs_src = torch.rand(batch_size, num_points, 2, 3)
-        lafs_src = lafs_src.to(torch.device(device_type))
+        lafs_src = torch.rand(batch_size, num_points, 2, 3).to(device)
 
         dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.to(torch.device(device_type))
+        dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
         lafs_dst = kornia.perspective_transform_lafs(dst_homo_src, lafs_src)
@@ -249,12 +246,12 @@ class TestTransformLAFs:
         # projected should be equal as initial
         assert_allclose(lafs_src, lafs_dst_to_src)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = 3
-        points_src = torch.rand(batch_size, num_points, 2, 3)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        points_src = torch.rand(batch_size, num_points, 2, 3).to(device)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device)
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
