@@ -8,6 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, ColorJitter, RandomRectangleErasing
+from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
 
 
 class TestRandomHorizontalFlip:
@@ -627,27 +628,31 @@ class TestColorJitter:
 
 
 class TestRectangleRandomErasing:
-    @pytest.mark.parametrize("erase_area", [(.001, .001), (1., 1.)])
-    @pytest.mark.parametrize("aspect_ratio", [(.1, .1), (10., 10.)])
+    @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
+    @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+    @pytest.mark.parametrize("device_type", ("cpu", "cuda"))
     def test_random_rectangle_erasing(
-            self, batch_shape, erase_area, aspect_ratio, device_type):
+            self, batch_shape, erase_scale_range, aspect_ratio_range, device_type):
         input = torch.rand(batch_shape).to(torch.device(device_type))
-        rand_rec = RandomRectangleErasing(erase_area, aspect_ratio)
+        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
     def test_gradcheck(self):
         # test parameters
         batch_shape = (2, 3, 11, 7)
-        erase_area = (.2, .4)
-        aspect_ratio = (.3, .5)
+        erase_scale_range = (.2, .4)
+        aspect_ratio_range = (.3, .5)
+        rect_params = get_random_rectangles_params(
+            (2,), 11, 7, erase_scale_range, aspect_ratio_range
+        )
 
         # evaluate function gradient
         input = torch.rand(batch_shape, dtype=torch.double)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            kornia.augmentation.random_rectangle_erase,
-            (input, erase_area, aspect_ratio),
+            erase_rectangles,
+            (input, rect_params),
             raise_exception=True,
         )
 
