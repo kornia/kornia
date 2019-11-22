@@ -25,6 +25,8 @@ from kornia.color import (
     rgb_to_hsv,
     hsv_to_rgb,
     rgb_to_hls,
+    rgb_to_yuv,
+    yuv_to_rgb,
     hls_to_rgb,
     rgb_to_ycbcr,
     ycbcr_to_rgb,
@@ -66,7 +68,9 @@ from kornia.losses import (
     tversky_loss,
     inverse_depth_smoothness_loss,
     total_variation,
-    psnr_loss
+    psnr_loss,
+    kl_div_loss_2d,
+    js_div_loss_2d,
 )
 from kornia.utils import (
     one_hot,
