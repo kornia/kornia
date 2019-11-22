@@ -134,7 +134,7 @@ def HomographyRegressionApp():
                 [-1, 1],  # top-right
             ]]).to(dst_homo_src.device)
             # transform points
-            pts_dst = dgm.transform_points(dgm.inverse(dst_homo_src), pts_src)
+            pts_dst = dgm.transform_points(torch.inverse(dst_homo_src), pts_src)
 
             def compute_factor(size):
                 return 1.0 * size / 2
