@@ -631,10 +631,9 @@ class TestRectangleRandomErasing:
     @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
     @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    @pytest.mark.parametrize("device_type", ("cpu", "cuda"))
     def test_random_rectangle_erasing(
-            self, batch_shape, erase_scale_range, aspect_ratio_range, device_type):
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+            self, batch_shape, erase_scale_range, aspect_ratio_range):
+        input = torch.rand(batch_shape)
         rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
