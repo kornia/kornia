@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import cv2
 import kornia
+from kornia.geometry import pi
 
 
 class HlsToRgb(nn.Module):
@@ -36,7 +37,7 @@ class HlsToRgb(nn.Module):
         return hls_to_rgb(image)
 
 
-def hls_to_rgb(image):
+def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an HLS image to RGB
     The image data is assumed to be in the range of (0, 1).
 
@@ -56,20 +57,23 @@ def hls_to_rgb(image):
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] * 360
+    h: torch.Tensor = image[..., 0, :, :] * 360 / (2 * pi)
     l: torch.Tensor = image[..., 1, :, :]
     s: torch.Tensor = image[..., 2, :, :]
 
     kr = (0 + h / 30) % 12
     kg = (8 + h / 30) % 12
     kb = (4 + h / 30) % 12
-    a = s * torch.min(l, 1 - l)
+    a = s * torch.min(l, torch.tensor(1.) - l)
 
     ones_k = torch.ones_like(kr)
 
-    fr = l - a * torch.max(torch.min(torch.min(kr - 3, 9 - kr), ones_k), -1 * ones_k)
-    fg = l - a * torch.max(torch.min(torch.min(kg - 3, 9 - kg), ones_k), -1 * ones_k)
-    fb = l - a * torch.max(torch.min(torch.min(kb - 3, 9 - kb), ones_k), -1 * ones_k)
+    fr: torch.Tensor = l - a * torch.max(torch.min(torch.min(kr - torch.tensor(3.),
+                                                             torch.tensor(9.) - kr), ones_k), -1 * ones_k)
+    fg: torch.Tensor = l - a * torch.max(torch.min(torch.min(kg - torch.tensor(3.),
+                                                             torch.tensor(9.) - kg), ones_k), -1 * ones_k)
+    fb: torch.Tensor = l - a * torch.max(torch.min(torch.min(kb - torch.tensor(3.),
+                                                             torch.tensor(9.) - kb), ones_k), -1 * ones_k)
 
     out: torch.Tensor = torch.stack([fr, fg, fb], dim=-3)
 
@@ -105,7 +109,7 @@ class RgbToHls(nn.Module):
         return rgb_to_hls(image)
 
 
-def rgb_to_hls(image):
+def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to HLS
     The image data is assumed to be in the range of (0, 1).
 
@@ -138,7 +142,8 @@ def rgb_to_hls(image):
 
     deltac: torch.Tensor = maxc - minc
 
-    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac / (2 - (maxc + minc)))  # saturation
+    s: torch.Tensor = torch.where(l < 0.5, deltac / (maxc + minc), deltac /
+                                  (torch.tensor(2.) - (maxc + minc)))  # saturation
 
     hi: torch.Tensor = torch.zeros_like(deltac)
 
@@ -146,6 +151,10 @@ def rgb_to_hls(image):
     hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
     hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
 
-    h: torch.Tensor = (60 * hi) / 360  # hue
+    h: torch.Tensor = 2. * pi * (60. * hi) / 360.  # hue [0, 2*pi]
 
-    return torch.stack([h, l, s], dim=-3)
+    image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
+
+    image_hls[torch.isnan(image_hls)] = 0.
+
+    return image_hls

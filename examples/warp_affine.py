@@ -17,7 +17,7 @@ img: np.ndarray = cv2.imread('./data/bennett_aden.png')
 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 # convert to torch tensor
-data: torch.tensor = kornia.image_to_tensor(img)  # BxCxHxW
+data: torch.tensor = kornia.image_to_tensor(img, keepdim=False)  # BxCxHxW
 
 # create transformation (rotation)
 alpha: float = 45.0  # in degrees
