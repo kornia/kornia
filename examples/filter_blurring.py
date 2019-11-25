@@ -45,7 +45,7 @@ x_blur: torch.Tensor = kornia.box_blur(x_rgb, (9, 9))
 imshow(x_blur)
 
 #############################
-# Media Blur
+# Median Blur
 x_blur: torch.Tensor = kornia.median_blur(x_rgb, (5, 5))
 imshow(x_blur)
 
