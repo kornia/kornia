@@ -29,11 +29,11 @@ def create_meshgrid(
     xs: Optional[torch.Tensor] = None
     ys: Optional[torch.Tensor] = None
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device)
-        ys = torch.linspace(-1, 1, height, device=device)
+        xs = torch.linspace(-1, 1, width, device=device, dtype=torch.float)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=torch.float)
     else:
-        xs = torch.linspace(0, width - 1, width, device=device)
-        ys = torch.linspace(0, height - 1, height, device=device)
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
@@ -68,13 +68,13 @@ def create_meshgrid3d(
     ys: Optional[torch.Tensor] = None
     zs: Optional[torch.Tensor] = None
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device)
-        ys = torch.linspace(-1, 1, height, device=device)
-        zs = torch.linspace(-1, 1, depth, device=device)
+        xs = torch.linspace(-1, 1, width, device=device, dtype=torch.float)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=torch.float)
+        zs = torch.linspace(-1, 1, depth, device=device, dtype=torch.float)
     else:
-        xs = torch.linspace(0, width - 1, width, device=device)
-        ys = torch.linspace(0, height - 1, height, device=device)
-        zs = torch.linspace(0, depth - 1, depth, device=device)
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+        zs = torch.linspace(0, depth - 1, depth, device=device, dtype=torch.float)
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([zs, xs, ys])).transpose(1, 2)  # 3xHxW
