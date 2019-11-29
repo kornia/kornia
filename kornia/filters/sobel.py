@@ -61,7 +61,7 @@ class SpatialGradient(nn.Module):
                        self.kernel.size(2) // 2,
                        self.kernel.size(2) // 2]
         out_channels: int = 3 if self.order == 2 else 2
-        padded_inp: torch.Tensor = F.pad(input.view(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
+        padded_inp: torch.Tensor = F.pad(input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
         return F.conv3d(padded_inp, kernel_flip, padding=0).view(b, c, out_channels, h, w)
 
 
