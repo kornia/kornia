@@ -43,3 +43,18 @@ def test_normalize_pixel_grid():
     grid_norm_to_pix = kornia.transform_points(pix_trans_norm, grid_norm)
     assert_allclose(grid_pix, grid_norm_to_pix)
     assert_allclose(grid_norm, grid_pix_to_norm)
+
+
+def test_create_meshgrid3d():
+    depth, height, width = 5, 4, 6
+    normalized_coordinates = False
+
+    # create the meshgrid and verify shape
+    grid = kornia.utils.create_meshgrid3d(
+        depth, height, width, normalized_coordinates)
+    assert grid.shape == (1, depth, height, width, 3)
+
+    # check grid corner values
+    assert tuple(grid[0, 0, 0, 0].numpy()) == (0., 0., 0.)
+    assert tuple(
+        grid[0, depth - 1, height - 1, width - 1].numpy()) == (depth - 1, width - 1, height - 1)
