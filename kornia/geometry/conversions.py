@@ -317,6 +317,7 @@ def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
     q *= 0.5
     return q
 
+
 def normalize_quaternion(quaternion: torch.Tensor,
                          eps: float = 1e-12) -> torch.Tensor:
     r"""Normalizes a quaternion.
