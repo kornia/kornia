@@ -62,11 +62,18 @@ def create_meshgrid3d(
     Return:
         torch.Tensor: returns a grid tensor with shape :math:`(1, D, H, W, 3)`.
     """
-    grid2d = create_meshgrid(height, width, normalized_coordinates)
+    xs: Optional[torch.Tensor] = None
+    ys: Optional[torch.Tensor] = None
+    zs: Optional[torch.Tensor] = None
     if normalized_coordinates:
-        z = torch.linspace(-1, 1, depth)
+        xs = torch.linspace(-1, 1, width)
+        ys = torch.linspace(-1, 1, height)
+        zs = torch.linspace(-1, 1, depth)
     else:
-        z = torch.linspace(0, depth - 1, depth)
-    z = z.view(depth, 1, 1, 1)
-    grid3d = torch.cat([z.repeat(1, height, width, 1).contiguous(), grid2d.repeat(depth, 1, 1, 1)], dim=3)
-    return grid3d.unsqueeze(0)  # 1xDxHxWx3
+        xs = torch.linspace(0, width - 1, width)
+        ys = torch.linspace(0, height - 1, height)
+        zs = torch.linspace(0, depth - 1, depth)
+    # generate grid by stacking coordinates
+    base_grid: torch.Tensor = torch.stack(
+        torch.meshgrid([zs, xs, ys])).transpose(1, 2)  # 3xHxW
+    return base_grid.unsqueeze(0).permute(0, 3, 4, 2, 1)  # 1xHxWx3
