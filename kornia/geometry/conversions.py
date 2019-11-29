@@ -233,89 +233,89 @@ def rotation_matrix_to_angle_axis(
     return quaternion_to_angle_axis(quaternion)
 
 
-def rotation_matrix_to_quaternion(
-        rotation_matrix: torch.Tensor,
-        eps: float = 1e-8) -> torch.Tensor:
-    r"""Convert 3x3 rotation matrix to 4d quaternion vector.
-    The quaternion vector has components in (x, y, z, w) format.
+def rotation_matrix_to_quaternion(rotation_matrix, eps=1e-6):
+    """Convert 3x4 rotation matrix to 4d quaternion vector
+
+    This algorithm is based on algorithm described in
+    https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py#L201
 
     Args:
-        rotation_matrix (torch.Tensor): the rotation matrix to convert.
-        eps (float): small value to avoid zero division. Default: 1e-8.
+        rotation_matrix (Tensor): the rotation matrix to convert.
 
     Return:
-        torch.Tensor: the rotation in quaternion.
+        Tensor: the rotation in quaternion
 
     Shape:
-        - Input: :math:`(*, 3, 3)`
-        - Output: :math:`(*, 4)`
+        - Input: :math:`(N, 3, 4)`
+        - Output: :math:`(N, 4)`
 
     Example:
-        >>> input = torch.rand(4, 3, 3)  # Nx3x3
-        >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
+        >>> input = torch.rand(4, 3, 4)  # Nx3x4
+        >>> output = tgm.rotation_matrix_to_quaternion(input)  # Nx4
     """
-    if not isinstance(rotation_matrix, torch.Tensor):
+    if not torch.is_tensor(rotation_matrix):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(rotation_matrix)))
 
-    if not rotation_matrix.shape[-2:] == (3, 3):
+    if len(rotation_matrix.shape) > 3:
         raise ValueError(
-            "Input size must be a (*, 3, 3) tensor. Got {}".format(
+            "Input size must be a three dimensional tensor. Got {}".format(
                 rotation_matrix.shape))
 
-    def safe_zero_division(numerator: torch.Tensor,
-                           denominator: torch.Tensor) -> torch.Tensor:
-        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
-        return numerator / torch.clamp(denominator, min=eps)
+    if rotation_matrix.shape[-2:] == (3, 3):
+        from torch.nn import functional as F
+        rotation_matrix = F.pad(rotation_matrix, [0, 1])
 
-    rotation_matrix_vec: torch.Tensor = rotation_matrix.view(
-        *rotation_matrix.shape[:-2], 9)
+    if not rotation_matrix.shape[-2:] == (3, 4):
+        raise ValueError(
+            "Input size must be a N x 3 x 4  tensor. Got {}".format(
+                rotation_matrix.shape))
 
-    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(
-        rotation_matrix_vec, chunks=9, dim=-1)
+    rmat_t = torch.transpose(rotation_matrix, 1, 2)
 
-    trace: torch.Tensor = m00 + m11 + m22
+    mask_d2 = rmat_t[:, 2, 2] < eps
 
-    def trace_positive_cond():
-        sq = torch.sqrt(trace + 1.0) * 2.  # sq = 4 * qw.
-        qw = 0.25 * sq
-        qx = safe_zero_division(m21 - m12, sq)
-        qy = safe_zero_division(m02 - m20, sq)
-        qz = safe_zero_division(m10 - m01, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+    mask_d0_d1 = rmat_t[:, 0, 0] > rmat_t[:, 1, 1]
+    mask_d0_nd1 = rmat_t[:, 0, 0] < -rmat_t[:, 1, 1]
 
-    def cond_1():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qx.
-        qw = safe_zero_division(m21 - m12, sq)
-        qx = 0.25 * sq
-        qy = safe_zero_division(m01 + m10, sq)
-        qz = safe_zero_division(m02 + m20, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+    t0 = 1 + rmat_t[:, 0, 0] - rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
+    q0 = torch.stack([rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
+                      t0, rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                      rmat_t[:, 2, 0] + rmat_t[:, 0, 2]], -1)
+    t0_rep = t0.repeat(4, 1).t()
 
-    def cond_2():
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.  # sq = 4 * qy.
-        qw = safe_zero_division(m02 - m20, sq)
-        qx = safe_zero_division(m01 + m10, sq)
-        qy = 0.25 * sq
-        qz = safe_zero_division(m12 + m21, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+    t1 = 1 - rmat_t[:, 0, 0] + rmat_t[:, 1, 1] - rmat_t[:, 2, 2]
+    q1 = torch.stack([rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
+                      rmat_t[:, 0, 1] + rmat_t[:, 1, 0],
+                      t1, rmat_t[:, 1, 2] + rmat_t[:, 2, 1]], -1)
+    t1_rep = t1.repeat(4, 1).t()
 
-    def cond_3():
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.  # sq = 4 * qz.
-        qw = safe_zero_division(m10 - m01, sq)
-        qx = safe_zero_division(m02 + m20, sq)
-        qy = safe_zero_division(m12 + m21, sq)
-        qz = 0.25 * sq
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+    t2 = 1 - rmat_t[:, 0, 0] - rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q2 = torch.stack([rmat_t[:, 0, 1] - rmat_t[:, 1, 0],
+                      rmat_t[:, 2, 0] + rmat_t[:, 0, 2],
+                      rmat_t[:, 1, 2] + rmat_t[:, 2, 1], t2], -1)
+    t2_rep = t2.repeat(4, 1).t()
 
-    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
-    where_1 = torch.where(
-        (m00 > m11) & (m00 > m22), cond_1(), where_2)
+    t3 = 1 + rmat_t[:, 0, 0] + rmat_t[:, 1, 1] + rmat_t[:, 2, 2]
+    q3 = torch.stack([t3, rmat_t[:, 1, 2] - rmat_t[:, 2, 1],
+                      rmat_t[:, 2, 0] - rmat_t[:, 0, 2],
+                      rmat_t[:, 0, 1] - rmat_t[:, 1, 0]], -1)
+    t3_rep = t3.repeat(4, 1).t()
 
-    quaternion: torch.Tensor = torch.where(
-        trace > 0., trace_positive_cond(), where_1)
-    return quaternion
+    mask_c0 = mask_d2 * mask_d0_d1
+    mask_c1 = mask_d2 * (~mask_d0_d1)
+    mask_c2 = (~mask_d2) * mask_d0_nd1
+    mask_c3 = (~mask_d2) * (~mask_d0_nd1)
+    mask_c0 = mask_c0.view(-1, 1).type_as(q0)
+    mask_c1 = mask_c1.view(-1, 1).type_as(q1)
+    mask_c2 = mask_c2.view(-1, 1).type_as(q2)
+    mask_c3 = mask_c3.view(-1, 1).type_as(q3)
 
+    q = q0 * mask_c0 + q1 * mask_c1 + q2 * mask_c2 + q3 * mask_c3
+    q /= torch.sqrt(t0_rep * mask_c0 + t1_rep * mask_c1 +  # noqa
+                    t2_rep * mask_c2 + t3_rep * mask_c3)  # noqa
+    q *= 0.5
+    return q
 
 def normalize_quaternion(quaternion: torch.Tensor,
                          eps: float = 1e-12) -> torch.Tensor:
