@@ -8,27 +8,31 @@ from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordin
 from typing import Tuple, Union
 
 
-def _get_window_grid_kernel2d(h: int, w: int) -> torch.Tensor:
+def _get_window_grid_kernel2d(h: int, w: int,
+                              device: torch.device = torch.device('cpu')) -> torch.Tensor:
     '''Helper function, which generates a kernel to
     with window coordinates, residual to window center
     Args:
          h (int): kernel height
          w (int): kernel width
+         device (torch.device): device, on which generate
     Returns:
         conv_kernel (torch.Tensor) [2x1xhxw]
     '''
-    window_grid2d = create_meshgrid(h, w, False)
+    window_grid2d = create_meshgrid(h, w, False, device=device)
     window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
     conv_kernel = window_grid2d.permute(3, 0, 1, 2)
     return conv_kernel
 
 
-def _get_center_kernel2d(h: int, w: int) -> torch.Tensor:
+def _get_center_kernel2d(h: int, w: int,
+                         device: torch.device = torch.device('cpu')) -> torch.Tensor:
     '''Helper function, which generates a kernel to
     return center coordinates, when applied with F.conv2d to 2d coordinates grid
     Args:
          h (int): kernel height
          w (int): kernel width
+         device (torch.device): device, on which generate
     Returns:
         conv_kernel (torch.Tensor) [2x2xhxw]
     '''
@@ -48,16 +52,18 @@ def _get_center_kernel2d(h: int, w: int) -> torch.Tensor:
         w_i1 = (w // 2) - 1
         w_i2 = (w // 2) + 1
     center_kernel[(0, 1), (0, 1), h_i1: h_i2, w_i1: w_i2] = 1.0 / float(((h_i2 - h_i1) * (w_i2 - w_i1)))
-    return center_kernel
+    return center_kernel.to(device)
 
 
-def _get_center_kernel3d(d: int, h: int, w: int) -> torch.Tensor:
+def _get_center_kernel3d(d: int, h: int, w: int,
+                         device: torch.device = torch.device('cpu')) -> torch.Tensor:
     '''Helper function, which generates a kernel to
     return center coordinates, when applied with F.conv2d to 3d coordinates grid
     Args:
          d (int): kernel depth
          h (int): kernel height
          w (int): kernel width
+         device (torch.device): device, on which generate
     Returns:
         conv_kernel (torch.Tensor) [3x3xdxhxw]
     '''
@@ -83,24 +89,26 @@ def _get_center_kernel3d(d: int, h: int, w: int) -> torch.Tensor:
         d_i2 = (d // 2) + 1
     center_num = float((h_i2 - h_i1) * (w_i2 - w_i1) * (d_i2 - d_i1))
     center_kernel[(0, 1, 2), (0, 1, 2), d_i1: d_i2, h_i1: h_i2, w_i1: w_i2] = 1.0 / center_num
-    return center_kernel
+    return center_kernel.to(device)
 
 
-def _get_window_grid_kernel3d(d: int, h: int, w: int) -> torch.Tensor:
+def _get_window_grid_kernel3d(d: int, h: int, w: int,
+                              device: torch.device = torch.device('cpu')) -> torch.Tensor:
     '''Helper function, which generates a kernel to return coordinates,
     residual to window center
     Args:
          d (int): kernel depth
          h (int): kernel height
          w (int): kernel width
+         device (torch.device): device, on which generate
     Returns:
         conv_kernel (torch.Tensor) [3x1xdxhxw]
     '''
-    grid2d = create_meshgrid(h, w, True)
+    grid2d = create_meshgrid(h, w, True, device=device)
     if d > 1:
-        z = torch.linspace(-1, 1, d).view(d, 1, 1, 1)
+        z = torch.linspace(-1, 1, d, device=device).view(d, 1, 1, 1)
     else:  # only onr channel with index == 0
-        z = torch.zeros(1, 1, 1, 1)
+        z = torch.zeros(1, 1, 1, 1, device=device)
     grid3d = torch.cat([z.repeat(1, h, w, 1).contiguous(), grid2d.repeat(d, 1, 1, 1)], dim=3)
     conv_kernel = grid3d.permute(3, 0, 1, 2).unsqueeze(1)
     return conv_kernel
@@ -252,11 +260,12 @@ def conv_soft_argmax2d(input: torch.Tensor,
                          .format(temperature))
 
     b, c, h, w = input.shape
+    dev: torch.device = input.device
     input = input.view(b * c, 1, h, w)
 
-    center_kernel = _get_center_kernel2d(kernel_size[0], kernel_size[1])
-    window_kernel = _get_window_grid_kernel2d(kernel_size[0], kernel_size[1])
-    window_kernel = window_kernel.to(input.device).to(input.dtype)
+    center_kernel = _get_center_kernel2d(kernel_size[0], kernel_size[1], dev)
+    window_kernel = _get_window_grid_kernel2d(kernel_size[0], kernel_size[1], dev)
+    window_kernel = window_kernel.to(input.dtype)
 
     x_exp = (input / temperature).exp()
 
@@ -278,10 +287,10 @@ def conv_soft_argmax2d(input: torch.Tensor,
 
     # We need to output also coordinates
     # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid(h, w, False).permute(0, 3, 1, 2)
-    grid_global = grid_global.to(input.device).to(input.dtype)
+    grid_global: torch.Tensor = create_meshgrid(h, w, False, dev).permute(0, 3, 1, 2)
+    grid_global = grid_global.to(input.dtype)
     grid_global_pooled = F.conv2d(grid_global,
-                                  center_kernel.to(input.device).to(input.dtype),
+                                  center_kernel.to(input.dtype),
                                   stride=stride,
                                   padding=padding)
 
@@ -373,10 +382,11 @@ def conv_soft_argmax3d(input: torch.Tensor,
 
     b, c, d, h, w = input.shape
     input = input.view(b * c, 1, d, h, w)
+    dev: torch.device = input.device
 
-    center_kernel = _get_center_kernel3d(kernel_size[0], kernel_size[1], kernel_size[2])
-    window_kernel = _get_window_grid_kernel3d(kernel_size[0], kernel_size[1], kernel_size[2])
-    window_kernel = window_kernel.to(input.device).to(input.dtype)
+    center_kernel = _get_center_kernel3d(kernel_size[0], kernel_size[1], kernel_size[2], dev)
+    window_kernel = _get_window_grid_kernel3d(kernel_size[0], kernel_size[1], kernel_size[2], dev)
+    window_kernel = window_kernel.to(input.dtype)
 
     x_exp = (input / temperature).exp()
 
@@ -400,10 +410,11 @@ def conv_soft_argmax3d(input: torch.Tensor,
 
     # We need to output also coordinates
     # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False).permute(0, 4, 1, 2, 3)
-    grid_global = grid_global.to(input.device).to(input.dtype)
+    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False,
+                                                  device=input.device).permute(0, 4, 1, 2, 3)
+    grid_global = grid_global.to(input.dtype)
     grid_global_pooled = F.conv3d(grid_global,
-                                  center_kernel.to(input.device).to(input.dtype),
+                                  center_kernel.to(input.dtype),
                                   stride=stride,
                                   padding=padding)
 
