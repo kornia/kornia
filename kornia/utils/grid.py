@@ -6,7 +6,8 @@ import torch
 def create_meshgrid(
         height: int,
         width: int,
-        normalized_coordinates: Optional[bool] = True) -> torch.Tensor:
+        normalized_coordinates: Optional[bool] = True,
+        device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
     When the flag `normalized_coordinates` is set to True, the grid is
@@ -28,11 +29,11 @@ def create_meshgrid(
     xs: Optional[torch.Tensor] = None
     ys: Optional[torch.Tensor] = None
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width)
-        ys = torch.linspace(-1, 1, height)
+        xs = torch.linspace(-1, 1, width, device=device)
+        ys = torch.linspace(-1, 1, height, device=device)
     else:
-        xs = torch.linspace(0, width - 1, width)
-        ys = torch.linspace(0, height - 1, height)
+        xs = torch.linspace(0, width - 1, width, device=device)
+        ys = torch.linspace(0, height - 1, height, device=device)
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
@@ -43,7 +44,8 @@ def create_meshgrid3d(
         depth: int,
         height: int,
         width: int,
-        normalized_coordinates: Optional[bool] = True) -> torch.Tensor:
+        normalized_coordinates: Optional[bool] = True,
+        device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
     When the flag `normalized_coordinates` is set to True, the grid is
@@ -66,13 +68,13 @@ def create_meshgrid3d(
     ys: Optional[torch.Tensor] = None
     zs: Optional[torch.Tensor] = None
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width)
-        ys = torch.linspace(-1, 1, height)
-        zs = torch.linspace(-1, 1, depth)
+        xs = torch.linspace(-1, 1, width, device=device)
+        ys = torch.linspace(-1, 1, height, device=device)
+        zs = torch.linspace(-1, 1, depth, device=device)
     else:
-        xs = torch.linspace(0, width - 1, width)
-        ys = torch.linspace(0, height - 1, height)
-        zs = torch.linspace(0, depth - 1, depth)
+        xs = torch.linspace(0, width - 1, width, device=device)
+        ys = torch.linspace(0, height - 1, height, device=device)
+        zs = torch.linspace(0, depth - 1, depth, device=device)
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([zs, xs, ys])).transpose(1, 2)  # 3xHxW
