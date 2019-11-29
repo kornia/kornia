@@ -278,8 +278,9 @@ def conv_soft_argmax2d(input: torch.Tensor,
 
     # We need to output also coordinates
     # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid(h, w, False).permute(0, 3, 1, 2)
-    grid_global = grid_global.to(input.device).to(input.dtype)
+    grid_global: torch.Tensor = create_meshgrid(h, w, False,
+                                                device=input.device).permute(0, 3, 1, 2)
+    grid_global = grid_global.to(input.dtype)
     grid_global_pooled = F.conv2d(grid_global,
                                   center_kernel.to(input.device).to(input.dtype),
                                   stride=stride,
@@ -400,8 +401,9 @@ def conv_soft_argmax3d(input: torch.Tensor,
 
     # We need to output also coordinates
     # Pooled window center coordinates
-    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False).permute(0, 4, 1, 2, 3)
-    grid_global = grid_global.to(input.device).to(input.dtype)
+    grid_global: torch.Tensor = create_meshgrid3d(d, h, w, False,
+                                                  device=input.device).permute(0, 4, 1, 2, 3)
+    grid_global = grid_global.to(input.dtype)
     grid_global_pooled = F.conv3d(grid_global,
                                   center_kernel.to(input.device).to(input.dtype),
                                   stride=stride,
