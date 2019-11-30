@@ -32,33 +32,37 @@ class RgbToGrayscale(nn.Module):
         super(RgbToGrayscale, self).__init__()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return rgb_to_grayscale(input)
+        return self.rgb_to_grayscale(input)
 
 
-def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
-    r"""Convert a RGB image to grayscale.
+    def rgb_to_grayscale(self, input: torch.Tensor) -> torch.Tensor:
+        r"""Convert a RGB image to grayscale.
 
-    See :class:`~kornia.color.RgbToGrayscale` for details.
+        See :class:`~kornia.color.RgbToGrayscale` for details.
 
-    Args:
-        input (torch.Tensor): RGB image to be converted to grayscale.
+        Args:
+            input (torch.Tensor): RGB image to be converted to grayscale.
 
-    Returns:
-        torch.Tensor: Grayscale version of the image.
-    """
-    if not torch.is_tensor(input):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(input)))
+        Returns:
+            torch.Tensor: Grayscale version of the image.
+        """
+        if not torch.is_tensor(input):
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+                type(input)))
 
-    if len(input.shape) < 3 and input.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(input.shape))
+        if len(input.shape) < 3 and input.shape[-3] != 3:
+            raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                             .format(input.shape))
+        
+        r, g, b = torch.chunk(input, chunks=3, dim=-3)
+        self.register_buffer("rgb2gray_r_chunk", r)
+        self.register_buffer("rgb2gray_g_chunk", g)
+        self.register_buffer("rgb2gray_b_chunk", b)
+        gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
+        self.register_buffer("rgb2gray_gray", gray)
+        return gray
 
-    r, g, b = torch.chunk(input, chunks=3, dim=-3)
-    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
-    return gray
-
-
+    
 class BgrToGrayscale(nn.Module):
     r"""convert BGR image to grayscale version of image.
 
@@ -88,28 +92,38 @@ class BgrToGrayscale(nn.Module):
         super(BgrToGrayscale, self).__init__()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return bgr_to_grayscale(input)
+        return self.bgr_to_grayscale(input)
 
+
+    def bgr_to_grayscale(self, input: torch.Tensor) -> torch.Tensor:
+        r"""Convert a BGR image to grayscale.
+
+        See :class:`~kornia.color.BgrToGrayscale` for details.
+
+        Args:
+            input (torch.Tensor): BGR image to be converted to grayscale.
+
+        Returns:
+            torch.Tensor: Grayscale version of the image.
+        """
+        if not torch.is_tensor(input):
+            raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+                type(input)))
+
+        if len(input.shape) < 3 and input.shape[-3] != 3:
+            raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                             .format(input.shape))
+        
+        input_rgb = bgr_to_rgb(input)
+        self.register_to_buffer("bgr2gray_rgb", input_rgb)
+        gray: torch.Tensor = rgb_to_grayscale(input_rgb)
+        self.register_to_buffer("bgr2gray_gray", gray)
+        return gray
+
+def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
+    rgbToGrayModule = RgbToGrayscale()
+    return rgbToGrayModule(input)
 
 def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
-    r"""Convert a BGR image to grayscale.
-
-    See :class:`~kornia.color.BgrToGrayscale` for details.
-
-    Args:
-        input (torch.Tensor): BGR image to be converted to grayscale.
-
-    Returns:
-        torch.Tensor: Grayscale version of the image.
-    """
-    if not torch.is_tensor(input):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(input)))
-
-    if len(input.shape) < 3 and input.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(input.shape))
-
-    input_rgb = bgr_to_rgb(input)
-    gray: torch.Tensor = rgb_to_grayscale(input_rgb)
-    return gray
+    bgrToGrayModule = BgrToGrayscale()
+    return bgrToGrayModule(input)
