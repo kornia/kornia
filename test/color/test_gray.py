@@ -1,4 +1,5 @@
 import pytest
+import cv2
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -20,6 +21,14 @@ class TestRgbToGrayscale:
         img = torch.ones(batch_size, channels, height, width).to(device)
         assert kornia.rgb_to_grayscale(img).shape == \
             (batch_size, 1, height, width)
+
+    def test_opencv(self, device):
+        batch_size, channels, height, width = 1, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width).to(device)
+        img_gray = kornia.rgb_to_grayscale(img)
+        img_np = kornia.tensor_to_image(img)
+        img_gray_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        assert_allclose(img_gray, kornia.image_to_tensor(img_gray_cv).to(device))
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
@@ -47,6 +56,14 @@ class TestBgrToGrayscale:
         img = torch.ones(batch_size, channels, height, width).to(device)
         assert kornia.bgr_to_grayscale(img).shape == \
             (batch_size, 1, height, width)
+
+    def test_opencv(self, device):
+        batch_size, channels, height, width = 1, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width).to(device)
+        img_gray = kornia.bgr_to_grayscale(img)
+        img_np = kornia.tensor_to_image(img)
+        img_gray_cv = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
+        assert_allclose(img_gray, kornia.image_to_tensor(img_gray_cv).to(device))
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
