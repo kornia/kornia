@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import cv2
 import kornia
 from kornia.geometry import pi
 
