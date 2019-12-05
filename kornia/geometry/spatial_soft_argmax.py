@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
 from kornia.geometry import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
@@ -170,7 +171,8 @@ class ConvSoftArgmax3d(nn.Module):
                  temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
                  normalized_coordinates: bool = False,
                  eps: float = 1e-8,
-                 output_value: bool = True) -> None:
+                 output_value: bool = True,
+                 strict_maxima_bonus: float = 0.0) -> None:
         super(ConvSoftArgmax3d, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -179,6 +181,7 @@ class ConvSoftArgmax3d(nn.Module):
         self.normalized_coordinates = normalized_coordinates
         self.eps = eps
         self.output_value = output_value
+        self.strict_maxima_bonus = strict_maxima_bonus
         return
 
     def __repr__(self) -> str:
@@ -189,6 +192,7 @@ class ConvSoftArgmax3d(nn.Module):
             ', ' + 'temperature=' + str(self.temperature) +\
             ', ' + 'normalized_coordinates=' + str(self.normalized_coordinates) +\
             ', ' + 'eps=' + str(self.eps) +\
+            ', ' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) +\
             ', ' + 'output_value=' + str(self.output_value) + ')'
 
     def forward(self, x: torch.Tensor):  # type: ignore
@@ -199,7 +203,8 @@ class ConvSoftArgmax3d(nn.Module):
                                   self.temperature,
                                   self.normalized_coordinates,
                                   self.eps,
-                                  self.output_value)
+                                  self.output_value,
+                                  self.strict_maxima_bonus)
 
 
 def conv_soft_argmax2d(input: torch.Tensor,
@@ -325,8 +330,8 @@ def conv_soft_argmax3d(input: torch.Tensor,
                        temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
                        normalized_coordinates: bool = False,
                        eps: float = 1e-8,
-                       output_value: bool = True) -> Union[torch.Tensor,
-                                                           Tuple[torch.Tensor, torch.Tensor]]:
+                       output_value: bool = True,
+                       strict_maxima_bonus: float = 0.0) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Function that computes the convolutional spatial Soft-Argmax 3D over the windows
     of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
     themselves.
@@ -349,7 +354,8 @@ def conv_soft_argmax3d(input: torch.Tensor,
                                        it will return the coordinates in the range of the input shape. Default is False.
         eps (float): small value to avoid zero division. Default is 1e-8.
         output_value (bool): if True, val is outputed, if False, only ij
-
+        strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
+                                     This is needed for mimic behavior of strict NMS in classic local features
     Shape:
         - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
         - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
@@ -396,17 +402,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
     den = pool_coef * F.avg_pool3d(x_exp.view(input.size()),
                                    kernel_size,
                                    stride=stride,
-                                   padding=padding) + 1e-12
-
-    x_softmaxpool = pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input,
-                                             kernel_size,
-                                             stride=stride,
-                                             padding=padding) / den
-    x_softmaxpool = x_softmaxpool.view(b,
-                                       c,
-                                       x_softmaxpool.size(2),
-                                       x_softmaxpool.size(3),
-                                       x_softmaxpool.size(4))
+                                   padding=padding) + eps
 
     # We need to output also coordinates
     # Pooled window center coordinates
@@ -438,9 +434,25 @@ def conv_soft_argmax3d(input: torch.Tensor,
     # Back B*C -> (b, c)
     coords_max = coords_max.view(b, c, 3, coords_max.size(2), coords_max.size(3), coords_max.size(4))
 
-    if output_value:
-        return coords_max, x_softmaxpool
-    return coords_max
+    if not output_value:
+        return coords_max
+    x_softmaxpool = pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input,
+                                             kernel_size,
+                                             stride=stride,
+                                             padding=padding) / den
+    if strict_maxima_bonus > 0:
+        def nms3d(x):
+            return ((x - F.max_pool3d(x,
+                                      kernel_size,
+                                      stride=1,
+                                      padding=[x // 2 for x in kernel_size]) + eps) > 0).to(x.dtype)
+        x_softmaxpool *= 1.0 + strict_maxima_bonus * F.avg_pool3d(nms3d(input), 1, stride, 0)
+    x_softmaxpool = x_softmaxpool.view(b,
+                                       c,
+                                       x_softmaxpool.size(2),
+                                       x_softmaxpool.size(3),
+                                       x_softmaxpool.size(4))
+    return coords_max, x_softmaxpool
 
 
 def spatial_soft_argmax2d(
