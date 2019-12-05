@@ -88,23 +88,14 @@ class RgbToLab(nn.Module):
 
         # [b, c, h, w] -> [b, h, w, c]
         permuted_input = input.permute(0, 2, 3, 1)
-        # self.register_buffer('srgb2lab_permuted_input', permuted_input)
         srgb_pixels = permuted_input.reshape(-1, 3)
-        # self.register_buffer('srgb2lab_reshaped', srgb_pixels)
-        #     printf("srgb size: %s\n", srgb_pixels.size())
         xyz_pixels = self.srgb_to_xyz(srgb_pixels)
-        # self.register_buffer('srgb2xyz_xyz', xyz_pixels)
         lab_pixels = self.xyz_to_cielab(xyz_pixels)
-        # self.register_buffer('xyz2lab_lab_', lab_pixels)
 
         # Reshape to input size
         # [b, h, w, c] -> [b, c, h, w]
         lab_pixels = lab_pixels.reshape(permuted_input.size())
-        # self.register_buffer('srgb2lab_lab_reshaped', lab_pixels)
         lab_pixels = lab_pixels.permute(0, 3, 1, 2)
-        # self.register_buffer('srgb2lab_lab_permuted', lab_pixels)
-        # lab_pixels = lab_pixels.float()
-        # self.register_buffer('srgb2lab_lab', lab_pixels)
 
         if input_dims == 3:
             lab_pixels = lab_pixels[0, :, :, :]
@@ -118,23 +109,12 @@ class RgbToLab(nn.Module):
         rgb_to_xyz = self.rgb_to_xyz.type(input.data.type())
 
         linear_mask = (input <= 0.04045).type(input.data.type()) + eps
-        # self.register_buffer('srgb2xyz_linear_mask', linear_mask)
         exponential_mask = (input > 0.04045).type(input.data.type()) + eps
-        # self.register_buffer('srgb2xyz_exponential_mask', exponential_mask)
-
-        # rgb_pixels[rgb_pixels.ne(rgb_pixels)] = 0
-        # rgb_pixels += 10e-12
 
         # avoid a slightly negative number messing up the conversion
         input = torch.clamp(input, 0.0, 1.0-eps) + eps
 
         rgb_pixels = (input / 12.92 * linear_mask)
-        # temp = ((input + 0.055) / 1.055)
-        # temp[temp.ne(temp)] = 0
-        # temp += 10e-12
-        # temp2 = (temp ** 2.4)
-        # temp2[temp2.ne(temp2)] = 0
-        # temp2 += 10e-12
         rgb_pixels += (((input + 0.055) / 1.055) ** 2.4)  * exponential_mask
 
         # self.register_buffer('srgb2xyz_rgb', rgb_pixels)
@@ -169,19 +149,6 @@ class RgbToLab(nn.Module):
         xyz_normalized_pixels[xyz_normalized_pixels.ne(xyz_normalized_pixels)] = 0
         xyz_normalized_pixels += eps
         fxfyfz_pixels += (xyz_normalized_pixels ** (1/3)) * exponential_mask
-
-        # eps = 10e-12
-        # printf("fxfyfz_pixels: %s\n", (torch.isnan(fxfyfz_pixels) == True).nonzero())
-        # printf("fxfyfz_pixels != fxfyfz_pixels: %s\n", (fxfyfz_pixels != fxfyfz_pixels).any())
-        # printf("fxfyfz_pixels %s\n", fxfyfz_pixels[(torch.isnan(fxfyfz_pixels) == True)])
-        # fxfyfz_pixels[(torch.isnan(fxfyfz_pixels) == True)] = 0
-        # printf("fxfyfz_pixels %s\n", fxfyfz_pixels[(torch.isnan(fxfyfz_pixels) == True)])
-        # fxfyfz_pixels[fxfyfz_pixels.ne(fxfyfz_pixels)] = 0
-
-        # assert ((input != input).any()), "Checkpoint 0"
-
-
-        # self.register_buffer('xyz2lab_fxfyfz', fxfyfz_pixels)
 
         lab_pixels = torch.matmul(fxfyfz_pixels, fxfyfz_to_lab) + lab_normalization_const
 
@@ -269,34 +236,17 @@ class LabToRgb(nn.Module):
         if input_dims == 3:
             input = input[None, :, :, :]
 
-        # [b, c, h, w] -> [b, h, w, c]
         permuted_input = input.permute(0, 2, 3, 1)
-        # self.register_buffer('lab2srgb_permuted_input', permuted_input)
         lab_pixels = permuted_input.reshape(-1, 3)
-        # self.register_buffer('lab2srgb_reshaped', lab_pixels)
         xyz_pixels = self.cielab_to_xyz(lab_pixels)
-        # self.register_buffer('lab2xyz_xyz', xyz_pixels)
         srgb_pixels = self.xyz_to_srgb(xyz_pixels)
-        # self.register_buffer('xyz2srgb_srgb_', srgb_pixels)
 
         # Reshape to input size
-        # [b, h, w, c] -> [b, c, h, w]
         srgb_pixels = srgb_pixels.reshape(permuted_input.size())
-        # self.register_buffer('xyz2srgb_srgb_reshaped', srgb_pixels)
         srgb_pixels = srgb_pixels.permute(0, 3, 1, 2)
-        # self.register_buffer('xyz2srgb_srgb_permuted', srgb_pixels)
-
-        # assert ((srgb_pixels != srgb_pixels).any()), "Checkpoint 1"
 
         if input_dims == 3:
             srgb_pixels = srgb_pixels[0, :, :, :]
-
-
-        # srgb_pixels = srgb_pixels.float()
-        # self.register_buffer('lab2srgb_srgb', srgb_pixels)
-
-        # assert((srgb_pixels != srgb_pixels).any()), "Checkpoint 2"
-        # printf("srgb_pixels: %s\n", srgb_pixels[(torch.isnan(srgb_pixels) == True)])
 
         return srgb_pixels
 
@@ -311,13 +261,9 @@ class LabToRgb(nn.Module):
         # convert to xyz
         epsilon = 6/29
         linear_mask = (fxfyfz_pixels <= epsilon).type(input.data.type()) + eps
-        # self.register_buffer('lab2xyz_linear_mask', linear_mask)
-
         exponential_mask = (fxfyfz_pixels > epsilon).type(input.data.type()) + eps
-        # self.register_buffer('lab2xyz_exponential_mask', exponential_mask)
 
         xyz_pixels = (3 * epsilon**2 * (fxfyfz_pixels - 4/29)) * linear_mask + (fxfyfz_pixels ** 3) * exponential_mask
-        # self.register_buffer('lab2xyz_xyz_', xyz_pixels)
 
         # denormalize for D65 white point
         xyz_denormalization_const = self.xyz_denormalization_const.type(input.data.type())
@@ -331,24 +277,17 @@ class LabToRgb(nn.Module):
         xyz_to_rgb = self.xyz_to_rgb.type(input.data.type())
 
         rgb_pixels = torch.matmul(input, xyz_to_rgb)
-        # self.register_buffer('xyz2srgb_rgb', rgb_pixels)
 
         # avoid a slightly negative number messing up the conversion
         rgb_pixels = torch.clamp(rgb_pixels, 0.0, 1.0-eps) + eps
-        # self.register_buffer('xyz2srgb_rgb_clamp', rgb_pixels)
 
         linear_mask = (rgb_pixels <= 0.0031308).type(input.data.type()) + eps
-        # self.register_buffer('xyz2srgb_linear_mask', linear_mask)
 
         exponential_mask = (rgb_pixels > 0.0031308).type(input.data.type()) + eps
-        # self.register_buffer('xyz2srgb_exponential_mask', exponential_mask)
 
         srgb_pixels = (rgb_pixels * 12.92 * linear_mask)
         ##### TODO: problematic grad here!
         # Function 'PowBackward0' returned nan values in its 0th output.
-
-        # rgb_pixels[rgb_pixels.ne(rgb_pixels)] = 0
-        # rgb_pixels += 10e-12
         srgb_pixels += ((rgb_pixels ** (1/2.4) * 1.055) - 0.055) * exponential_mask
 
         return srgb_pixels
