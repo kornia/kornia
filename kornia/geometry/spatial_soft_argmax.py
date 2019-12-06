@@ -442,11 +442,17 @@ def conv_soft_argmax3d(input: torch.Tensor,
                                              padding=padding) / den
     if strict_maxima_bonus > 0:
         def nms3d(x):
-            return ((x - F.max_pool3d(x,
+            mask = ((x - F.max_pool3d(x,
                                       kernel_size,
                                       stride=1,
                                       padding=[x // 2 for x in kernel_size]) + eps) > 0).to(x.dtype)
-        x_softmaxpool *= 1.0 + strict_maxima_bonus * F.avg_pool3d(nms3d(input), 1, stride, 0)
+            return mask
+        in_levels: int = input.size(2)
+        out_levels: int = x_softmaxpool.size(2)
+        skip_levels: int = (in_levels - out_levels) //2
+        #print (skip_levels, in_levels - skip_levels)
+        strict_maxima = F.avg_pool3d(nms3d(input), 1, stride, 0)[:,:, skip_levels:in_levels - skip_levels ]
+        x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b,
                                        c,
                                        x_softmaxpool.size(2),

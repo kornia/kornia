@@ -161,7 +161,7 @@ class ScalePyramid(nn.Module):
             'double_image=' + str(self.double_image) + ')'
 
     def get_kernel_size(self, sigma: float):
-        ksize = int(2.0 * 3.0 * sigma + 1.0)
+        ksize = int(2.0 * 4.0 * sigma + 1.0)
         if ksize % 2 == 0:
             ksize += 1
         return ksize

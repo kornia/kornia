@@ -51,6 +51,23 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     return out
 
 
+class BlobDoGOct(nn.Module):
+    r"""nn.Module that calculates DoG blobs
+    See :func:`~kornia.feature.hessian_response` for details.
+    """
+
+    def __init__(self) -> None:
+        super(BlobDoGOct, self).__init__()
+        return
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__
+
+    def forward(self, input: torch.Tensor,  # type: ignore
+                sigmas = None) -> torch.Tensor:
+        return input[:,1:,...] - input[:,:-1,...]
+
+
 class ScaleSpaceDetector(nn.Module):
     """Module for differentiable local feature detection, as close as possible to classical
      local feature detectors like Harris, Hessian-Affine or SIFT (DoG).
@@ -122,7 +139,10 @@ class ScaleSpaceDetector(nn.Module):
             pix_dists_oct = pix_dists[oct_idx]
             B, L, CH, H, W = octave.size()
             # Run response function
-            oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
+            if self.resp.__class__.__name__ == 'BlobDoGOct':
+                oct_resp = self.resp(octave)
+            else:
+                oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
 
             # We want nms for scale responses, so reorder to (B, CH, L, H, W)
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
@@ -148,7 +168,11 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
+            if self.resp.__class__.__name__ == 'BlobDoGOct':
+                #print (oct_resp.shape, sigmas_oct.shape)
+                max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct[:,1:])
+            else:
+                max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
 
             # Create local affine frames (LAFs)
             rotmat = angle_to_rotation_matrix(torch.zeros(B, N, dtype=dtype, device=dev))
