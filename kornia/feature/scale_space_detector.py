@@ -112,6 +112,8 @@ class ScaleSpaceDetector(nn.Module):
             'aff=' + self.aff.__repr__() + ')'
 
     def detect(self, img: torch.Tensor, num_feats: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        dev: torch.device = img.device
+        dtype: torch.dtype = img.dtype
         sp, sigmas, pix_dists = self.scale_pyr(img)
         all_responses = []
         all_lafs = []
@@ -149,13 +151,13 @@ class ScaleSpaceDetector(nn.Module):
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
 
             # Create local affine frames (LAFs)
-            rotmat = angle_to_rotation_matrix(torch.zeros(B, N).to(max_coords_best.device).to(max_coords_best.dtype))
+            rotmat = angle_to_rotation_matrix(torch.zeros(B, N, dtype=dtype, device=dev))
             current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                                       max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
-            resp_flat_best = resp_flat_best * good_mask.to(resp_flat_best.device).to(resp_flat_best.dtype)
+            resp_flat_best = resp_flat_best * good_mask.to(dtype, dev)
 
             # Normalize LAFs
             current_lafs = normalize_laf(current_lafs, octave[:, 0])  # We don`t need # of scale levels, only shape
