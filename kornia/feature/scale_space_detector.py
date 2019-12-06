@@ -44,10 +44,10 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     scale_grid = torch.cat([scale_coords_index, dummy_x], dim=3)
 
     # Finally, interpolate the scale value
-    scale_val = F.grid_sample(sigmas[0].view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L), scale_grid)
+    scale_val = F.grid_sample(sigmas[0].log2().view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L), scale_grid)
 
     # Replace the scale_x_y
-    out = torch.cat([scale_val.view(B, N, 1), max_coords[:, :, 1:]], dim=2)
+    out = torch.cat([torch.pow(2.0,scale_val).view(B, N, 1), max_coords[:, :, 1:]], dim=2)
     return out
 
 
