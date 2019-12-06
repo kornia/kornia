@@ -91,6 +91,12 @@ class TestScalePyramid:
         sp, sigmas, pd = SP(inp)
         assert sp[0].shape == (3, 1, 2, 6, 6)
 
+    def test_shape_batch_double(self, device):
+        inp = torch.zeros(3, 2, 6, 6).to(device)
+        SP = kornia.geometry.ScalePyramid(n_levels=1, double_image=True)
+        sp, sigmas, pd = SP(inp)
+        assert sp[0].shape == (3, 1, 2, 12, 12)
+
     def test_n_levels_shape(self, device):
         inp = torch.zeros(1, 1, 6, 6).to(device)
         SP = kornia.geometry.ScalePyramid(n_levels=5)
