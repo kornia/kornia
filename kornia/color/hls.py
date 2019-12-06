@@ -23,6 +23,8 @@ class HlsToRgb(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -95,9 +97,11 @@ class RgbToHls(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hsv = kornia.color.RgbToHls()
-        >>> output = hsv(input)  # 2x3x4x5
+        >>> hls = kornia.color.RgbToHls()
+        >>> output = hls(input)  # 2x3x4x5
 
     """
 
