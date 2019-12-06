@@ -174,6 +174,7 @@ class ScalePyramid(nn.Module):
         if self.double_image:
             x = F.interpolate(x, scale_factor=2.0, mode='bilinear', align_corners=False)
             pixel_distance = 0.5
+            cur_sigma *= 2.0
         if self.init_sigma > cur_sigma:
             sigma = math.sqrt(self.init_sigma**2 - cur_sigma**2)
             cur_sigma = self.init_sigma
@@ -198,7 +199,7 @@ class ScalePyramid(nn.Module):
                 pyr[-1].append(cur_level.unsqueeze(1))
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            nextOctaveFirstLevel = F.interpolate(cur_level, scale_factor=0.5,
+            nextOctaveFirstLevel = F.interpolate(pyr[-1][-1].squeeze(1), scale_factor=0.5,
                                                  mode='bilinear',
                                                  align_corners=False)
             pixel_distance *= 2.0
