@@ -73,7 +73,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def convert_points_from_homogeneous(
-        points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+        points: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
     r"""Function that converts points from homogeneous to Euclidean space.
 
     Examples::
@@ -84,6 +84,7 @@ def convert_points_from_homogeneous(
     if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
+
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
@@ -94,9 +95,10 @@ def convert_points_from_homogeneous(
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
+    mask_valid_points = torch.abs(z_vec) > eps
     scale: torch.Tensor = torch.where(
-        torch.abs(z_vec) > eps,
-        torch.tensor(1.) / z_vec,
+        mask_valid_points,
+        torch.tensor(1.) / z_vec.masked_fill(~mask_valid_points, eps),
         torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
