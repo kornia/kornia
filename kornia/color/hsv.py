@@ -19,6 +19,8 @@ class HsvToRgb(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -91,6 +93,8 @@ class RgbToHsv(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> hsv = kornia.color.RgbToHsv()
         >>> output = hsv(input)  # 2x3x4x5
