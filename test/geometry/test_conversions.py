@@ -491,15 +491,6 @@ class TestConvertPointsFromHomogeneous:
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
-    def test_gradcheck_zero_division(self, device):
-        points_h = torch.tensor([[1., 2., 3., 4., 5.],
-                                 [4., 6., 0., -3., 1e-9]]).t().to(device)
-
-        # evaluate function gradient
-        points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
-                         raise_exception=True)
-
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
         op = kornia.convert_points_from_homogeneous
