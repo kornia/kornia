@@ -630,11 +630,77 @@ class TestRectangleRandomErasing:
     @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
     @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_random_rectangle_erasing(
+    def test_random_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
         rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
+
+    def test_rectangle_erasing1(self):
+        inputs = torch.ones(1, 1, 10, 10)
+        rect_params = (
+            torch.tensor([5]), torch.tensor([5]),
+            torch.tensor([5]), torch.tensor([5])
+        )
+        expected = torch.tensor([[[
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.]
+        ]]])
+        assert_allclose(erase_rectangles(inputs, rect_params), expected)
+
+    def test_rectangle_erasing2(self):
+        inputs = torch.ones(3, 3, 3, 3)
+        rect_params = (
+            torch.tensor([3, 2, 1]), torch.tensor([3, 2, 1]),
+            torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2])
+        )
+        expected = torch.tensor(
+            [[[[0., 0., 0.],
+               [0., 0., 0.],
+                [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]]]]
+        )
+
+        assert_allclose(erase_rectangles(inputs, rect_params), expected)
 
     def test_gradcheck(self):
         # test parameters
