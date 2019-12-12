@@ -70,7 +70,7 @@ def get_random_rectangles_params(
     return widths, heights, xs, ys
 
 
-def draw_rectangles(mask_size, rectangle_params):
+def draw_rectangles(mask_size, rectangle_params, device):
     r"""
     Generate a {0, 1} mask with drawed rectangle having parameters defined by rectangle_params
     and size by mask_size
@@ -82,6 +82,7 @@ def draw_rectangles(mask_size, rectangle_params):
             rectangle_params[1] must be heights tensor
             rectangle_params[2] must be x positions tensor
             rectangle_params[3] must be y positions tensor
+        device (torch.device): device to use.
     """
     if not (rectangle_params[0].size() == rectangle_params[1].size(
     ) == rectangle_params[2].size() == rectangle_params[3].size()):
@@ -90,7 +91,7 @@ def draw_rectangles(mask_size, rectangle_params):
         )
 
     widths, heights, xs, ys = rectangle_params
-    mask = torch.zeros(mask_size, dtype=torch.float)
+    mask = torch.zeros(mask_size, dtype=torch.float, device=device)
     for i_elem in range(mask_size[0]):
         h = heights[i_elem].item()
         w = widths[i_elem].item()
@@ -102,7 +103,7 @@ def draw_rectangles(mask_size, rectangle_params):
 
 def erase_rectangles(images, rectangle_params):
     device = images.device
-    mask = draw_rectangles(images.size(), rectangle_params).to(device)
+    mask = draw_rectangles(images.size(), rectangle_params, device)
     mask = 1. - mask
     return images * mask
 
