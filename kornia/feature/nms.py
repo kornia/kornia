@@ -27,12 +27,12 @@ class NonMaximaSuppression2d(nn.Module):
         ky, kx = kernel_size     # we assume a cubic kernel
         return (pad(ky), pad(kx))
 
-    def forward(self, x: torch.Tensor, mask_only: bool=False) -> torch.Tensor:  # type: ignore
+    def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:  # type: ignore
         assert len(x.shape) == 4, x.shape
         # find local maximum values
         if mask_only:
-            return x == self.max_pool3d(x)
-        return x * (x == self.max_pool3d(x)).to(x.dtype)
+            return x == self.max_pool2d(x)
+        return x * (x == self.max_pool2d(x)).to(x.dtype)
 
 
 class NonMaximaSuppression3d(nn.Module):
@@ -69,7 +69,7 @@ class NonMaximaSuppression3d(nn.Module):
 # functiona api
 
 
-def non_maxima_suppression2d(
+def nms2d(
         input: torch.Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Applies non maxima suppression to filter.
 
@@ -78,7 +78,7 @@ def non_maxima_suppression2d(
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
-def non_maxima_suppression3d(
+def nms3d(
         input: torch.Tensor, kernel_size: Tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Applies non maxima suppression to filter.
 

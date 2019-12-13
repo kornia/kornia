@@ -41,8 +41,10 @@ from kornia.contrib import (
     max_blur_pool2d,
 )
 from kornia.feature import (
-    non_maxima_suppression2d,
+    nms2d,
     harris_response,
+    hessian_response,
+    gftt_response,
     SIFTDescriptor
 )
 from kornia.filters import (

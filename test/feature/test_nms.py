@@ -43,7 +43,7 @@ class TestNMS2d:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.non_maxima_suppression2d, (img, (3,3)),
+        assert gradcheck(kornia.feature.nms2d, (img, (3, 3)),
                          raise_exception=True, nondet_tol=1e-4)
 
 
@@ -78,20 +78,20 @@ class TestNMS3d:
         ]]]).to(device)
 
         expected = torch.tensor([[[[[0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]],
-                  [[0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 2., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]],
-                  [[0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]]]]])
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.]],
+                                  [[0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 2., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.]],
+                                  [[0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.],
+                                   [0., 0., 0., 0., 0.]]]]])
         nms = kornia.feature.NonMaximaSuppression3d((3, 3, 3)).to(device)
         scores = nms(inp)
         assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)
@@ -101,6 +101,5 @@ class TestNMS3d:
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
         img = torch.rand(batch_size, channels, depth, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.non_maxima_suppression3d, (img, (3, 3, 3)),
+        assert gradcheck(kornia.feature.nms3d, (img, (3, 3, 3)),
                          raise_exception=True, nondet_tol=1e-4)
-

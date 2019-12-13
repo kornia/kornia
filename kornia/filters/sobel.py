@@ -183,8 +183,8 @@ def spatial_gradient(input: torch.Tensor,
 
 
 def spatial_gradient3d(input: torch.Tensor,
-                     mode: str = 'diff',
-                     order: int = 1) -> torch.Tensor:
+                       mode: str = 'diff',
+                       order: int = 1) -> torch.Tensor:
     r"""Computes the first or second order image derivative in both x and y and y using a diff
     operator.
 

@@ -441,17 +441,11 @@ def conv_soft_argmax3d(input: torch.Tensor,
                                              stride=stride,
                                              padding=padding) / den
     if strict_maxima_bonus > 0:
-        def nms3d(x):
-            mask = ((x - F.max_pool3d(x,
-                                      kernel_size,
-                                      stride=1,
-                                      padding=[x // 2 for x in kernel_size]) + eps) > 0).to(x.dtype)
-            return mask
         in_levels: int = input.size(2)
         out_levels: int = x_softmaxpool.size(2)
         skip_levels: int = (in_levels - out_levels) // 2
-        #print (skip_levels, in_levels - skip_levels)
-        strict_maxima = F.avg_pool3d(nms3d(input), 1, stride, 0)[:, :, skip_levels:in_levels - skip_levels]
+        strict_maxima: torch.Tensor = F.avg_pool3d(kornia.feature.nms3d(input, kernel_size), kernel_size, 1, stride, 0)
+        strict_maxima = strict_maxima[:, :, skip_levels:out_levels - skip_levels]
         x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b,
                                        c,
@@ -578,12 +572,12 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0):
     # for the Hessian
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss]).view(-1, 3, 3)
 
-    nms_mask: torch.Tensor = kornia.feature.non_maxima_suppression3d(input, (3, 3, 3), True)
+    nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
     x_solved_masked, _ = torch.solve(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
     x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
     dx: torch.Tensor = -x_solved
-    
+
     # Ignore ones, which are far from window,
     dx[(dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1), :, :] = 0
 
@@ -610,9 +604,7 @@ class ConvQuadInterp3d(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + \
-               '('  + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
+        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
 
     def forward(self, x: torch.Tensor):  # type: ignore
         return conv_quad_interp3d(x, self.strict_maxima_bonus)
-
