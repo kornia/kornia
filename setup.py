@@ -58,6 +58,7 @@ long_description = '\n'.join(readme.split('\n')[7:])
 
 requirements = [
     'torch>=1.0.0',
+    'pillow>=6.2.0',
 ]
 
 
@@ -74,7 +75,7 @@ if __name__ == '__main__':
 	long_description=long_description,
 	license='Apache License 2.0',
 	python_requires='>=3.6',
-	    
+
 	# Test
 	setup_requires=['pytest-runner'],
 	tests_require=['pytest'],

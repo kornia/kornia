@@ -66,14 +66,12 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel.to(input.device).to(input.dtype)
-    tmp_kernel = tmp_kernel.repeat(c, 1, 1, 1)
+    tmp_kernel: torch.Tensor = kernel.unsqueeze(0).to(input.device).to(input.dtype)
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
     padding_shape: List[int] = compute_padding((height, width))
-    input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
-
+    input_pad: torch.Tensor = F.pad(input.view(b * c, 1, h, w), padding_shape, mode=border_type)
     # convolve the tensor with the kernel
-    return F.conv2d(input_pad, tmp_kernel, padding=0, stride=1, groups=c)
+    return F.conv2d(input_pad, tmp_kernel, padding=0, stride=1).view(b, c, h, w)
