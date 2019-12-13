@@ -163,7 +163,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
     if return_transform:
 
-        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).expand(input.shape[0], -1, -1)
+        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
 
         w: int = input.shape[-2]
         flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
@@ -273,7 +273,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
 
     if return_transform:
 
-        identity: torch.Tensor = torch.eye(3, device=device, dtype=dtype).expand(input.shape[0], -1, -1)
+        identity: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
 
         return jittered, identity
 
