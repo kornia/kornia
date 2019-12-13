@@ -38,13 +38,13 @@ class TestScaleSpaceDetector:
                                  resp_module=kornia.feature.BlobHessian(),
                                  mr_size=3.0).to(device)
         lafs, resps = det(inp)
-        expected_laf = torch.tensor([[[[6.0548, 0.0000, 16.0], [0.0, 6.0548, 16.0]]]], device=device)
-        expected_resp = torch.tensor([[0.0806]], device=device)
-        assert_allclose(expected_laf, lafs)
-        assert_allclose(expected_resp, resps)
+        expected_laf = torch.tensor([[[[6.0543, 0.0000, 16.0], [0.0, 6.0543, 16.0]]]], device=device)
+        expected_resp = torch.tensor([[0.0804]], device=device)
+        assert_allclose(expected_laf, lafs, rtol=0.0001, atol=1e-04)
+        assert_allclose(expected_resp, resps, rtol=0.0001, atol=1e-04)
 
     def test_toy_strict_maxima(self, device):
-        inp = torch.zeros(1, 1, 22, 22, device=device)
+        inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 8:-8, 8:-8] = 1.0
         n_feats = 4
         nms = kornia.geometry.ConvSoftArgmax3d(kernel_size=(3, 3, 3),  # nms windows size (scale, height, width)
@@ -57,17 +57,17 @@ class TestScaleSpaceDetector:
                                  nms_module=nms,
                                  mr_size=1.0).to(device)
         lafs, resps = det(inp)
-        expected_laf = torch.tensor([[[[1.7385, 0.0000, 11.9998],
-                                       [-0.0000, 1.7385, 9.0002]],
-                                      [[1.7385, 0.0000, 9.0002],
-                                       [-0.0000, 1.7385, 9.0002]],
-                                      [[1.7385, 0.0000, 9.0002],
-                                       [-0.0000, 1.7385, 11.9998]],
-                                      [[1.7385, 0.0000, 11.9998],
-                                       [-0.0000, 1.7385, 11.9998]]]], device=device)
-        expected_resp = torch.tensor([[0.0012, 0.0012, 0.0012, 0.0012]], device=device)
+        expected_laf = torch.tensor([[[[3.4559, 0.0000, 9.9992],
+                                      [-0.0000, 3.4559, 20.0008]],
+                                     [[3.4559, 0.0000, 9.9992],
+                                      [-0.0000, 3.4559, 9.9992]],
+                                     [[3.4559, 0.0000, 20.0008],
+                                      [-0.0000, 3.4559, 9.9992]],
+                                     [[3.4559, 0.0000, 20.0008],
+                                      [-0.0000, 3.4559, 20.0008]]]], device=device)
+        expected_resp = torch.tensor([[0.0007, 0.0007, 0.0007, 0.0007]], device=device)
         assert_allclose(expected_laf, lafs)
-        assert_allclose(expected_resp, resps)
+        assert_allclose(expected_resp, resps, atol=1e-04, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 31, 21
