@@ -1,5 +1,6 @@
 import pytest
 import kornia.testing as utils  # test utils
+from test.common import device
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
@@ -25,43 +26,43 @@ def test_get_sift_bin_ksize_stride_pad(ps,
 
 
 class TestSIFTDescriptor:
-    def test_shape(self):
-        inp = torch.ones(1, 1, 32, 32)
-        sift = SIFTDescriptor(32)
+    def test_shape(self, device):
+        inp = torch.ones(1, 1, 32, 32, device=device)
+        sift = SIFTDescriptor(32).to(device)
         out = sift(inp)
         assert out.shape == (1, 128)
 
-    def test_batch_shape(self):
-        inp = torch.ones(13, 1, 41, 41)
-        sift = SIFTDescriptor(41)
+    def test_batch_shape(self, device):
+        inp = torch.ones(2, 1, 15, 15, device=device)
+        sift = SIFTDescriptor(15).to(device)
         out = sift(inp)
-        assert out.shape == (13, 128)
+        assert out.shape == (2, 128)
 
-    def test_batch_shape_non_std(self):
-        inp = torch.ones(13, 1, 41, 41)
-        sift = SIFTDescriptor(41, 5, 3)
+    def test_batch_shape_non_std(self, device):
+        inp = torch.ones(3, 1, 19, 19, device=device)
+        sift = SIFTDescriptor(19, 5, 3).to(device)
         out = sift(inp)
-        assert out.shape == (13, (3 ** 2) * 5)
+        assert out.shape == (3, (3 ** 2) * 5)
 
-    def test_print(self):
+    def test_print(self, device):
         sift = SIFTDescriptor(41)
         sift.__repr__()
 
-    def test_toy(self):
-        patch = torch.ones(1, 1, 6, 6).float()
+    def test_toy(self, device):
+        patch = torch.ones(1, 1, 6, 6, device=device).float()
         patch[0, 0, :, 3:] = 0
         sift = SIFTDescriptor(6,
                               num_ang_bins=4,
                               num_spatial_bins=1,
                               clipval=0.2,
-                              rootsift=False)
+                              rootsift=False).to(device)
         out = sift(patch)
-        expected = torch.tensor([[0, 0, 1., 0]])
+        expected = torch.tensor([[0, 0, 1., 0]], device=device)
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
-    def test_gradcheck(self):
-        batch_size, channels, height, width = 1, 1, 41, 41
-        patches = torch.rand(batch_size, channels, height, width)
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 1, 1, 13, 13
+        patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(sift_describe, (patches, 41),
-                         raise_exception=True)
+        assert gradcheck(sift_describe, (patches, 13),
+                         raise_exception=True, nondet_tol=1e-4)
