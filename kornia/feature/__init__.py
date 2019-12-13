@@ -4,7 +4,7 @@ from .responses import (CornerHarris,
                         harris_response,
                         gftt_response,
                         hessian_response)
-from .nms import NonMaximaSuppression2d, non_maxima_suppression2d
+from .nms import NonMaximaSuppression2d, non_maxima_suppression2d, NonMaximaSuppression3d, non_maxima_suppression3d
 from .laf import (extract_patches_from_pyramid,
                   extract_patches_simple,
                   normalize_laf,
@@ -28,10 +28,12 @@ from .orientation import LAFOrienter, PatchDominantGradientOrientation
 
 __all__ = [
     "non_maxima_suppression2d",
+    "non_maxima_suppression3d",
     "harris_response",
     "gftt_response",
     "hessian_response",
     "NonMaximaSuppression2d",
+    "NonMaximaSuppression3d",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
