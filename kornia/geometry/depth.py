@@ -150,6 +150,7 @@ def warp_frame_depth(
 
     # transform points from source to destionation
     points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
+    points_3d_dst = points_3d_dst.repeat(src_trans_dst.shape[0], 1, 1, 1)
 
     # apply transformation to the 3d points
     points_3d_src = transform_points(src_trans_dst[:, None], points_3d_dst)  # BxHxWx3
