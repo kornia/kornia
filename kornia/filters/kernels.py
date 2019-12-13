@@ -95,6 +95,124 @@ def get_diff_kernel_3x3() -> torch.Tensor:
     ])
 
 
+def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [-0.5, 0.0, 0.5],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, -0.5, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.5, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, -0.5, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.5, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
+
+def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [1.0, -2.0, 1.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 1.0, 0.0],
+                                           [0.0, -2.0, 0.0],
+                                           [0.0, 1.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, -2.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[1.0, 0.0, -1.0],
+                                           [0.0, 0.0, 0.0],
+                                           [-1.0, 0.0, 1.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, -1.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, -1.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [1.0, 0.0, -1.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [-1.0, 0.0, 1.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
+
 def get_sobel_kernel2d() -> torch.Tensor:
     kernel_x: torch.Tensor = get_sobel_kernel_3x3()
     kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
@@ -146,6 +264,26 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
         kernel = get_diff_kernel2d()
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel2d_2nd_order()
+    else:
+        raise NotImplementedError("")
+    return kernel
+
+
+def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients,
+    using one of the following operators: sobel, diff"""
+    if mode not in ['sobel', 'diff']:
+        raise TypeError("mode should be either sobel\
+                         or diff. Got {}".format(mode))
+    if order not in [1, 2]:
+        raise TypeError("order should be either 1 or 2\
+                         Got {}".format(order))
+    if mode == 'sobel':
+        raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
+    elif mode == 'diff' and order == 1:
+        kernel = get_diff_kernel3d(device, dtype)
+    elif mode == 'diff' and order == 2:
+        kernel = get_diff_kernel3d_2nd_order(device, dtype)
     else:
         raise NotImplementedError("")
     return kernel
