@@ -47,25 +47,8 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     scale_val = F.grid_sample(sigmas[0].log2().view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L), scale_grid)
 
     # Replace the scale_x_y
-    out = torch.cat([torch.pow(2.0,scale_val).view(B, N, 1), max_coords[:, :, 1:]], dim=2)
+    out = torch.cat([torch.pow(2.0, scale_val).view(B, N, 1), max_coords[:, :, 1:]], dim=2)
     return out
-
-
-class BlobDoGOct(nn.Module):
-    r"""nn.Module that calculates DoG blobs
-    See :func:`~kornia.feature.hessian_response` for details.
-    """
-
-    def __init__(self) -> None:
-        super(BlobDoGOct, self).__init__()
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__
-
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas = None) -> torch.Tensor:
-        return input[:,1:,...] - input[:,:-1,...]
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -139,10 +122,7 @@ class ScaleSpaceDetector(nn.Module):
             pix_dists_oct = pix_dists[oct_idx]
             B, L, CH, H, W = octave.size()
             # Run response function
-            if self.resp.__class__.__name__ == 'BlobDoGOct':
-                oct_resp = self.resp(octave)
-            else:
-                oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
+            oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
 
             # We want nms for scale responses, so reorder to (B, CH, L, H, W)
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
@@ -168,11 +148,7 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            if self.resp.__class__.__name__ == 'BlobDoGOct':
-                #print (oct_resp.shape, sigmas_oct.shape)
-                max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct[:,1:])
-            else:
-                max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
+            max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
 
             # Create local affine frames (LAFs)
             rotmat = angle_to_rotation_matrix(torch.zeros(B, N, dtype=dtype, device=dev))
@@ -181,7 +157,7 @@ class ScaleSpaceDetector(nn.Module):
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
-            resp_flat_best = resp_flat_best * good_mask.to(dtype, dev)
+            resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
 
             # Normalize LAFs
             current_lafs = normalize_laf(current_lafs, octave[:, 0])  # We don`t need # of scale levels, only shape
