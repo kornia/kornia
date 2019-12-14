@@ -76,7 +76,7 @@ class TestFilter2D:
         assert_allclose(actual, expected)
 
     def test_even_sized_filter(self, device):
-        kernel = torch.ones(1, 4, 4).to(device)
+        kernel = torch.ones(1, 2, 2).to(device)
         input = torch.tensor([[[
             [0., 0., 0., 0., 0.],
             [0., 0., 0., 0., 0.],
