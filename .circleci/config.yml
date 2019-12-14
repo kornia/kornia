@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 common: &common
   working_directory: ~/kornia-tester
