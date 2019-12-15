@@ -88,7 +88,7 @@ class RandomHorizontalFlip(RandomFlip):
         self.p = p
         self.return_transform = return_transform
 
-    def forward(self, input: UnionType) -> UnionType:
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
         return self.forward_flip(input, random_hflip)
 
 
@@ -128,7 +128,7 @@ class RandomVerticalFlip(RandomFlip):
         self.p = p
         self.return_transform = return_transform
 
-    def forward(self, input: UnionType) -> UnionType:
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
         return self.forward_flip(input, random_vflip)
 
 
