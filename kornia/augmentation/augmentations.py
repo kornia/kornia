@@ -1,4 +1,4 @@
-from typing import Tuple, List, Union, cast
+from typing import Callable, Tuple, List, Union, cast
 
 import torch
 import torch.nn as nn
@@ -12,7 +12,45 @@ UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
 
-class RandomHorizontalFlip(nn.Module):
+class RandomFlip(nn.Module):
+    def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
+        super(RandomFlip, self).__init__()
+        self.p = p
+        self.return_transform = return_transform
+        self.flip_func = None
+
+    def __repr__(self) -> str:
+        repr = f"(p={self.p}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    def forward_flip(self, input: UnionType, flip_func: Callable) -> UnionType:  # type: ignore
+
+        if isinstance(input, tuple):
+
+            inp: torch.Tensor = input[0]
+            prev_trans: torch.Tensor = input[1]
+
+            if self.return_transform:
+
+                out = flip_func(inp, p=self.p, return_transform=True)
+                img: torch.Tensor = out[0]
+                trans_mat: torch.Tensor = out[1]
+
+                return img, prev_trans @ trans_mat
+
+            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
+            img = cast(torch.Tensor, flip_func(inp, p=self.p, return_transform=False))
+
+            # Transform image but pass along the previous transformation
+            return img, prev_trans
+
+        return flip_func(input, p=self.p, return_transform=self.return_transform)
+
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
+        raise NotImplementedError("forward method is not implemented for this class.")
+
+
+class RandomHorizontalFlip(RandomFlip):
 
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -50,35 +88,11 @@ class RandomHorizontalFlip(nn.Module):
         self.p = p
         self.return_transform = return_transform
 
-    def __repr__(self) -> str:
-        repr = f"(p={self.p}, return_transform={self.return_transform})"
-        return self.__class__.__name__ + repr
-
-    def forward(self, input: UnionType) -> UnionType:  # type: ignore
-
-        if isinstance(input, tuple):
-
-            inp: torch.Tensor = input[0]
-            prev_trans: torch.Tensor = input[1]
-
-            if self.return_transform:
-
-                out = random_hflip(inp, p=self.p, return_transform=True)
-                img: torch.Tensor = out[0]
-                trans_mat: torch.Tensor = out[1]
-
-                return img, prev_trans @ trans_mat
-
-            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
-            img = cast(torch.Tensor, random_hflip(inp, p=self.p, return_transform=False))
-
-            # Transform image but pass along the previous transformation
-            return img, prev_trans
-
-        return random_hflip(input, p=self.p, return_transform=self.return_transform)
+    def forward(self, input: UnionType) -> UnionType:
+        return self.forward_flip(input, random_hflip)
 
 
-class RandomVerticalFlip(nn.Module):
+class RandomVerticalFlip(RandomFlip):
 
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -114,32 +128,8 @@ class RandomVerticalFlip(nn.Module):
         self.p = p
         self.return_transform = return_transform
 
-    def __repr__(self) -> str:
-        repr = f"(p={self.p}, return_transform={self.return_transform})"
-        return self.__class__.__name__ + repr
-
-    def forward(self, input: UnionType) -> UnionType:  # type: ignore
-
-        if isinstance(input, tuple):
-
-            inp: torch.Tensor = input[0]
-            prev_trans: torch.Tensor = input[1]
-
-            if self.return_transform:
-
-                out = random_vflip(inp, p=self.p, return_transform=True)
-                img: torch.Tensor = out[0]
-                trans_mat: torch.Tensor = out[1]
-
-                return img, prev_trans @ trans_mat
-
-            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
-            img = cast(torch.Tensor, random_vflip(inp, p=self.p, return_transform=False))
-
-            # Transform image but pass along the previous transformation
-            return img, prev_trans
-
-        return random_vflip(input, p=self.p, return_transform=self.return_transform)
+    def forward(self, input: UnionType) -> UnionType:
+        return self.forward_flip(input, random_vflip)
 
 
 class ColorJitter(nn.Module):
