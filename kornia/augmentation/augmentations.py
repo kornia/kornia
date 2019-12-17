@@ -165,7 +165,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
         trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
 
-        w: int = input.shape[-2]
+        w: int = input.shape[-1]
         flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
                                                [0, 1, 0],
                                                [0, 0, 1]])
