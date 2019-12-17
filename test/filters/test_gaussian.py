@@ -36,6 +36,17 @@ class TestGaussianBlur:
         gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
         assert gauss(input).shape == batch_shape
 
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = (3, 3)
+        sigma = (1.5, 2.1)
+        gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
+        actual = gauss(inp)
+        expected = actual
+        assert_allclose(actual, actual)
+
     def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
@@ -101,6 +112,16 @@ class TestLaplacian:
         input = torch.rand(batch_shape).to(device)
         laplace = kornia.filters.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape
+
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = 3
+        laplace = kornia.filters.Laplacian(kernel_size)
+        actual = laplace(inp)
+        expected = actual
+        assert_allclose(actual, actual)
 
     def test_gradcheck(self, device):
         # test parameters

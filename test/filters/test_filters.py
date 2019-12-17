@@ -75,6 +75,35 @@ class TestFilter2D:
         actual = kornia.filter2D(input, kernel, normalized=True)
         assert_allclose(actual, expected)
 
+    def test_even_sized_filter(self, device):
+        kernel = torch.ones(1, 2, 2).to(device)
+        input = torch.tensor([[[
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 5., 0., 0.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0.],
+        ]]]).to(device)
+        expected = torch.tensor([[[
+            [0., 0., 0., 0., 0.],
+            [0., 5., 5., 0., 0.],
+            [0., 5., 5., 0., 0.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0.],
+        ]]]).to(device)
+
+        actual = kornia.filter2D(input, kernel)
+        assert_allclose(actual, expected)
+
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+        kernel = torch.ones(1, 2, 2).to(device)
+
+        actual = kornia.filter2D(inp, kernel)
+        expected = actual
+        assert_allclose(actual, actual)
+
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3).to(device)
         input = torch.ones(1, 1, 7, 8).to(device)
