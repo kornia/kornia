@@ -57,7 +57,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
                          .format(input.shape))
 
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
-    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
+    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 
 
