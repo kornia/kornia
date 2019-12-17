@@ -99,8 +99,8 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://github.com/arraiyopensource/kornia/
-       blob/master/docs/source/warp_perspective.ipynb>`_.
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/warp_perspective.html>`_.
     """
     if not torch.is_tensor(src):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"
