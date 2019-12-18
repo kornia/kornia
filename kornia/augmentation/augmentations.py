@@ -268,7 +268,6 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     flipped: torch.Tensor = input.clone()
 
     flipped[to_flip] = vflip(input[to_flip])
-    flipped.squeeze_()
 
     if return_transform:
 
