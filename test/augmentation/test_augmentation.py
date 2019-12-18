@@ -10,6 +10,8 @@ import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, RandomRectangleErasing
 from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
 
+from test.common import device
+
 
 class TestRandomHorizontalFlip:
 
@@ -152,7 +154,7 @@ class TestRandomVerticalFlip:
         repr = "RandomVerticalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_vflip(self):
+    def test_random_vflip(self, device):
 
         f = RandomVerticalFlip(p=1.0, return_transform=True)
         f1 = RandomVerticalFlip(p=0., return_transform=True)
@@ -162,6 +164,7 @@ class TestRandomVerticalFlip:
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
                               [0., 1., 1.]])  # 3 x 3
+        input.to(device)
 
         expected = torch.tensor([[0., 1., 1.],
                                  [0., 0., 0.],
@@ -175,14 +178,14 @@ class TestRandomVerticalFlip:
                                  [0., 1., 0.],
                                  [0., 0., 1.]])  # 3 x 3
 
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
-        assert (f1(input)[0] == input).all()
-        assert (f1(input)[1] == identity).all()
-        assert (f2(input) == expected).all()
-        assert (f3(input) == input).all()
+        assert_allclose(f(input)[0], expected)
+        assert_allclose(f(input)[1], expected_transform)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], identity)
+        assert_allclose(f2(input), expected)
+        assert_allclose(f3(input), input)
 
-    def test_batch_random_vflip(self):
+    def test_batch_random_vflip(self, device):
 
         f = RandomVerticalFlip(p=1.0, return_transform=True)
         f1 = RandomVerticalFlip(p=0.0, return_transform=True)
@@ -190,6 +193,7 @@ class TestRandomVerticalFlip:
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input.to(device)
 
         expected = torch.tensor([[[[0., 1., 1.],
                                    [0., 0., 0.],
@@ -208,12 +212,12 @@ class TestRandomVerticalFlip:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
-        assert (f(input)[0] == expected).all()
-        assert (f(input)[1] == expected_transform).all()
-        assert (f1(input)[0] == input).all()
-        assert (f1(input)[1] == identity).all()
+        assert_allclose(f(input)[0], expected)
+        assert_allclose(f(input)[1], expected_transform)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], identity)
 
-    def test_sequential(self):
+    def test_sequential(self, device):
 
         f = nn.Sequential(
             RandomVerticalFlip(1.0, return_transform=True),
@@ -227,6 +231,7 @@ class TestRandomVerticalFlip:
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
                                             [0., -1., 3.],
@@ -234,10 +239,10 @@ class TestRandomVerticalFlip:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert(f(input)[0] == input).all()
-        assert(f(input)[1] == expected_transform_1).all()
-        assert(f1(input)[0] == input).all()
-        assert(f1(input)[1] == expected_transform).all()
+        assert_allclose(f(input)[0], input)
+        assert_allclose(f(input)[1], expected_transform_1)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], expected_transform)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self):
