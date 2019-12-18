@@ -124,6 +124,14 @@ class TestSpatialGradient:
                                                 normalized=True)
         assert_allclose(edges, expected)
 
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        actual = kornia.filters.spatial_gradient(inp)
+        expected = actual
+        assert_allclose(actual, actual)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width).to(device)
@@ -172,6 +180,14 @@ class TestSobel:
 
         edges = kornia.filters.sobel(inp, normalized=False)
         assert_allclose(edges, expected)
+
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        actual = kornia.filters.sobel(inp)
+        expected = actual
+        assert_allclose(actual, actual)
 
     def test_gradcheck_unnorm(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
