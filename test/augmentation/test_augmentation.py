@@ -25,15 +25,15 @@ class TestRandomHorizontalFlip:
         f2 = RandomHorizontalFlip(p=1.)
         f3 = RandomHorizontalFlip(p=0.)
 
-        input = torch.tensor([[0., 0., 0.],
-                              [0., 0., 0.],
-                              [0., 1., 1.]])  # 3 x 3
+        input = torch.tensor([[0., 0., 0., 0.],
+                              [0., 0., 0., 0.],
+                              [0., 0., 1., 2.]])  # 3 x 4
 
-        expected = torch.tensor([[0., 0., 0.],
-                                 [0., 0., 0.],
-                                 [1., 1., 0.]])  # 3 x 3
+        expected = torch.tensor([[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [2., 1., 0., 0.]])  # 3 x 4
 
-        expected_transform = torch.tensor([[-1., 0., 3.],
+        expected_transform = torch.tensor([[-1., 0., 4.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
