@@ -125,13 +125,15 @@ def random_rectangle_erase(
         erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
         aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
     """
-    if not (isinstance(erase_scale_range[0], float) and isinstance(erase_scale_range[1],
-            float) and erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
+    if not (isinstance(erase_scale_range[0], float) and
+            isinstance(erase_scale_range[1], float) and
+            erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
         raise TypeError(
             f"'erase_scale_range' must be a Tuple[float, float] with positive values"
         )
-    if not (isinstance(aspect_ratio_range[0], float) and isinstance(aspect_ratio_range[1],
-            float) and aspect_ratio_range[0] > 0. and aspect_ratio_range[1] > 0.):
+    if not (isinstance(aspect_ratio_range[0], float) and
+            isinstance(aspect_ratio_range[1], float) and
+            aspect_ratio_range[0] > 0. and aspect_ratio_range[1] > 0.):
         raise TypeError(
             f"'aspect_ratio_range' must be a Tuple[float, float] with positive values"
         )
