@@ -108,6 +108,77 @@ class TestTransformPoints:
         assert_allclose(actual, expected)
 
 
+class TestTransformBoxes:
+
+    def test_transform_boxes(self, device):
+
+        boxes = torch.Tensor([139.2640, 103.0150, 397.3120, 410.5225]).to(device)
+
+        expected = torch.Tensor([372.7360, 103.0150, 114.6880, 410.5225]).to(device)
+
+        trans_mat = torch.Tensor([[[-1., 0., 512.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]]]).to(device)
+
+        out = kornia.transform_boxes(trans_mat, boxes)
+        assert_allclose(out, expected)
+
+    def test_transform_boxes_wh(self, device):
+
+        boxes = torch.Tensor([[139.2640, 103.0150, 258.0480, 307.5075],
+                              [1.0240, 80.5547, 510.9760, 431.4453],
+                              [165.2053, 262.1440, 345.4293, 246.7840],
+                              [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
+
+        expected = torch.Tensor([[372.7360, 103.0150, -258.0480, 307.5075],
+                                 [510.9760, 80.5547, -510.9760, 431.4453],
+                                 [346.7947, 262.1440, -345.4293, 246.7840],
+                                 [392.1920, 144.2067, -137.2160, 265.9225]]).to(device)
+
+        trans_mat = torch.Tensor([[[-1., 0., 512.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]]]).to(device)
+
+        trans_mat = trans_mat.expand(4, -1, -1)
+
+        out = kornia.transform_boxes(trans_mat, boxes, mode='xywh')
+        assert_allclose(out, expected)
+
+    def test_gradcheck(self, device):
+
+        boxes = torch.Tensor([[139.2640, 103.0150, 258.0480, 307.5075],
+                              [1.0240, 80.5547, 510.9760, 431.4453],
+                              [165.2053, 262.1440, 345.4293, 246.7840],
+                              [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
+
+        trans_mat = torch.Tensor([[[-1., 0., 512.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]]]).to(device)
+
+        trans_mat = trans_mat.expand(4, -1, -1)
+        trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
+        boxes = utils.tensor_to_gradcheck_var(boxes)
+
+        assert gradcheck(kornia.transform_boxes, (trans_mat, boxes), raise_exception=True)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self, device):
+        @torch.jit.script
+        def op_script(transform, boxes):
+            return kornia.transform_boxes(transform, boxes)
+
+        boxes = torch.Tensor([139.2640, 103.0150, 258.0480, 307.5075]).to(device)
+
+        trans_mat = torch.Tensor([[[-1., 0., 512.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]]]).to(device)
+
+        actual = op_script(trans_mat, boxes)
+        expected = kornia.transform_points(trans_mat, boxes)
+
+        assert_allclose(actual, expected)
+
+
 class TestComposeTransforms:
 
     def test_translation_4x4(self, device):
