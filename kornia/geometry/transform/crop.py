@@ -90,7 +90,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
 
     patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (dst_h, dst_w))
+        tensor, dst_trans_src, (int(dst_h), int(dst_w)))
 
     # return in the original shape
     if is_unbatched:
@@ -125,12 +125,15 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
+
     if not len(tensor.shape) in (3, 4,):
         raise ValueError("Input tensor must be in the shape of CxHxW or "
                          "BxCxHxW. Got {}".format(tensor.shape))
+
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+
     # unpack input sizes
     dst_h: torch.Tensor = torch.tensor(size[0])
     dst_w: torch.Tensor = torch.tensor(size[1])
@@ -178,7 +181,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     dst_trans_src = dst_trans_src.repeat(tensor.shape[0], 1, 1)
 
     patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (dst_h, dst_w))
+        tensor, dst_trans_src, (int(dst_h), int(dst_w)))
 
     # return in the original shape
     if is_unbatched:
