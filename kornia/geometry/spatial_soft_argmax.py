@@ -252,9 +252,11 @@ def conv_soft_argmax2d(input: torch.Tensor,
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
+
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
+
     if temperature <= 0:
         raise ValueError("Temperature should be positive float or tensor. Got: {}"
                          .format(temperature))
@@ -267,7 +269,13 @@ def conv_soft_argmax2d(input: torch.Tensor,
     window_kernel = _get_window_grid_kernel2d(kernel_size[0], kernel_size[1], dev)
     window_kernel = window_kernel.to(input.dtype)
 
-    x_exp = (input / temperature).exp()
+    # applies exponential normalization trick
+    # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
+    # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
+    x_max = F.adaptive_max_pool2d(input, (1, 1))
+
+    # max is detached to prevent undesired backprop loops in the graph
+    x_exp = ((input - x_max.detach()) / temperature).exp()
 
     # F.avg_pool2d(.., divisor_override = 1.0) - proper way for sum pool in PyTorch 1.2.
     # Not available yet in version 1.0, so let's do manually
@@ -277,7 +285,7 @@ def conv_soft_argmax2d(input: torch.Tensor,
     den = pool_coef * F.avg_pool2d(x_exp,
                                    kernel_size,
                                    stride=stride,
-                                   padding=padding) + 1e-12
+                                   padding=padding) + eps
 
     x_softmaxpool = pool_coef * F.avg_pool2d(x_exp * input,
                                              kernel_size,
@@ -373,9 +381,11 @@ def conv_soft_argmax3d(input: torch.Tensor,
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
+
     if not len(input.shape) == 5:
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
                          .format(input.shape))
+
     if temperature <= 0:
         raise ValueError("Temperature should be positive float or tensor. Got: {}"
                          .format(temperature))
@@ -388,7 +398,13 @@ def conv_soft_argmax3d(input: torch.Tensor,
     window_kernel = _get_window_grid_kernel3d(kernel_size[0], kernel_size[1], kernel_size[2], dev)
     window_kernel = window_kernel.to(input.dtype)
 
-    x_exp = (input / temperature).exp()
+    # applies exponential normalization trick
+    # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
+    # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
+    x_max = F.adaptive_max_pool3d(input, (1, 1, 1))
+
+    # max is detached to prevent undesired backprop loops in the graph
+    x_exp = ((input - x_max.detach()) / temperature).exp()
 
     pool_coef: float = float(kernel_size[0] * kernel_size[1] * kernel_size[2])
 
@@ -396,7 +412,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
     den = pool_coef * F.avg_pool3d(x_exp.view(input.size()),
                                    kernel_size,
                                    stride=stride,
-                                   padding=padding) + 1e-12
+                                   padding=padding) + eps
 
     x_softmaxpool = pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input,
                                              kernel_size,
