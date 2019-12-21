@@ -44,10 +44,10 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     scale_grid = torch.cat([scale_coords_index, dummy_x], dim=3)
 
     # Finally, interpolate the scale value
-    scale_val = F.grid_sample(sigmas[0].view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L), scale_grid)
+    scale_val = F.grid_sample(sigmas[0].log2().view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L), scale_grid)
 
     # Replace the scale_x_y
-    out = torch.cat([scale_val.view(B, N, 1), max_coords[:, :, 1:]], dim=2)
+    out = torch.cat([torch.pow(2.0, scale_val).view(B, N, 1), max_coords[:, :, 1:]], dim=2)
     return out
 
 
@@ -73,6 +73,8 @@ class ScaleSpaceDetector(nn.Module):
                     which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module:  (nn.Module) for local feature affine shape estimation. Default is :class:`~kornia.feature.PassLAF`,
                     which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+        minima_are_also_good:  (bool) if True, then both response function minima and maxima are detected
+                                Useful for symmetric responce functions like DoG or Hessian. Default is False
     """
 
     def __init__(self,
@@ -86,7 +88,8 @@ class ScaleSpaceDetector(nn.Module):
                                                           normalized_coordinates=False,
                                                           output_value=True),
                  ori_module: nn.Module = PassLAF(),
-                 aff_module: nn.Module = PassLAF()):
+                 aff_module: nn.Module = PassLAF(),
+                 minima_are_also_good: bool = False):
         super(ScaleSpaceDetector, self).__init__()
         self.mr_size = mr_size
         self.num_features = num_features
@@ -95,6 +98,7 @@ class ScaleSpaceDetector(nn.Module):
         self.nms = nms_module
         self.ori = ori_module
         self.aff = aff_module
+        self.minima_are_also_good = minima_are_also_good
         return
 
     def __repr__(self):
@@ -108,6 +112,8 @@ class ScaleSpaceDetector(nn.Module):
             'aff=' + self.aff.__repr__() + ')'
 
     def detect(self, img: torch.Tensor, num_feats: int) -> Tuple[torch.Tensor, torch.Tensor]:
+        dev: torch.device = img.device
+        dtype: torch.dtype = img.dtype
         sp, sigmas, pix_dists = self.scale_pyr(img)
         all_responses = []
         all_lafs = []
@@ -123,9 +129,14 @@ class ScaleSpaceDetector(nn.Module):
 
             # Differentiable nms
             coord_max, response_max = self.nms(oct_resp)
+            if self.minima_are_also_good:
+                coord_min, response_min = self.nms(-oct_resp)
+                take_min_mask = (response_min > response_max).to(response_max.dtype)
+                response_max = response_min * take_min_mask + (1 - take_min_mask) * response_max
+                coord_max = coord_min * take_min_mask.unsqueeze(1) + (1 - take_min_mask.unsqueeze(1)) * coord_max
 
             # Now, lets crop out some small responses
-            responses_flatten = response_max.view(response_max.size(0), -1)  # [B * N, 3]
+            responses_flatten = response_max.view(response_max.size(0), -1)  # [B, N]
             max_coords_flatten = coord_max.view(response_max.size(0), 3, -1).permute(0, 2, 1)  # [B, N, 3]
 
             if responses_flatten.size(1) > num_feats:
@@ -140,13 +151,13 @@ class ScaleSpaceDetector(nn.Module):
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
 
             # Create local affine frames (LAFs)
-            rotmat = angle_to_rotation_matrix(torch.zeros(B, N).to(max_coords_best.device).to(max_coords_best.dtype))
+            rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
             current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                                       max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
-            resp_flat_best = resp_flat_best * good_mask.to(resp_flat_best.device).to(resp_flat_best.dtype)
+            resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
 
             # Normalize LAFs
             current_lafs = normalize_laf(current_lafs, octave[:, 0])  # We don`t need # of scale levels, only shape
