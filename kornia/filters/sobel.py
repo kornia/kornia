@@ -50,7 +50,7 @@ class SpatialGradient(nn.Module):
                              .format(input.shape))
         # prepare kernel
         b, c, h, w = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
+        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype).detach()
         kernel: torch.Tensor = tmp_kernel.unsqueeze(1).unsqueeze(1)
 
         # convolve input tensor with sobel kernel
@@ -104,7 +104,7 @@ class SpatialGradient3d(nn.Module):
                              .format(input.shape))
         # prepare kernel
         b, c, d, h, w = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
+        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype).detach()
         kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1, 1)
 
         # convolve input tensor with grad kernel
