@@ -151,7 +151,7 @@ class ScaleSpaceDetector(nn.Module):
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct)
 
             # Create local affine frames (LAFs)
-            rotmat = angle_to_rotation_matrix(torch.zeros(B, N, dtype=dtype, device=dev))
+            rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
             current_lafs = torch.cat([self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                                       max_coords_best[:, :, 1:3].view(B, N, 2, 1)], dim=3)
 

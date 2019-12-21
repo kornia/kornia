@@ -66,14 +66,14 @@ class SpatialGradient(nn.Module):
 
 
 class SpatialGradient3d(nn.Module):
-    r"""Computes the first  and second order image pyramid derivative in x, y and d using a diff
+    r"""Computes the first and second order volume derivative in x, y and d using a diff
     operator.
 
     Return:
         torch.Tensor: the spatial gradients of the input feature map.
 
     Shape:
-        - Input: :math:`(B, C, D, H, W)`
+        - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
         - Output: :math:`(B, C, 3, D, H, W)` or :math:`(B, C, 6, D, H, W)`
 
     Examples:

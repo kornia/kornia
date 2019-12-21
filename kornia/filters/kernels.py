@@ -96,6 +96,7 @@ def get_diff_kernel_3x3() -> torch.Tensor:
 
 
 def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns a first order derivative kernel of 3x3x3"""
     kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.0]],
@@ -137,6 +138,7 @@ def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Te
 
 
 def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns a first order derivative kernel of 3x3x3"""
     kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.0]],
