@@ -84,6 +84,7 @@ from kornia.utils import (
 )
 from kornia.augmentation import (
     random_hflip,
+    random_vflip,
     color_jitter,
 )
 
