@@ -1,6 +1,6 @@
 from .gaussian import GaussianBlur2d, gaussian_blur2d
 from .laplacian import Laplacian, laplacian
-from .sobel import SpatialGradient, spatial_gradient
+from .sobel import SpatialGradient, spatial_gradient, SpatialGradient3d, spatial_gradient3d
 from .sobel import Sobel, sobel
 from .blur import BoxBlur, box_blur
 from .median import MedianBlur, median_blur
@@ -18,7 +18,8 @@ from .kernels import (
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
-    get_motion_kernel2d
+    get_motion_kernel2d,
+    get_spatial_gradient_kernel3d,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "get_laplacian_kernel1d",
     "get_laplacian_kernel2d",
     "get_spatial_gradient_kernel2d",
+    "get_spatial_gradient_kernel3d",
     "get_sobel_kernel2d",
     "get_diff_kernel2d",
     "gaussian_blur2d",
@@ -44,5 +46,7 @@ __all__ = [
     "Sobel",
     "BoxBlur",
     "MedianBlur",
-    "MotionBlur"
+    "MotionBlur",
+    "SpatialGradient3d",
+    "spatial_gradient3d",
 ]
