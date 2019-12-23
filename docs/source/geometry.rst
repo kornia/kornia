@@ -8,12 +8,14 @@ kornia.geometry
 .. autofunction:: render_gaussian_2d
 .. autofunction:: conv_soft_argmax2d
 .. autofunction:: conv_soft_argmax3d
+.. autofunction:: conv_quad_interp3d
 .. autofunction:: spatial_softmax_2d
-.. autofunction:: spatial_softmax_2d
+
 
 .. autoclass:: SpatialSoftArgmax2d
 .. autoclass:: ConvSoftArgmax2d
 .. autoclass:: ConvSoftArgmax3d
+.. autoclass:: ConvQuadInterp3d
 
 
 .. toctree::
