@@ -191,7 +191,9 @@ class ScaleSpaceDetector(nn.Module):
         detect function. Then affine shape and orientation.
 
         Args:
-            img: (torch.Tensor), shape [BxCxHxW]
+            img (torch.Tensor): image to extract features with shape [BxCxHxW]
+            mask (torch.Tensor, optional): a mask with weights where to apply the
+            response function. The shae must same as the input image.
 
         Returns:
             lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.
