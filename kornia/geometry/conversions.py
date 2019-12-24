@@ -263,57 +263,54 @@ def rotation_matrix_to_quaternion(
             "Input size must be a (*, 3, 3) tensor. Got {}".format(
                 rotation_matrix.shape))
 
-    def safe_zero_division(numerator: torch.Tensor,
-                           denominator: torch.Tensor) -> torch.Tensor:
-        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
-        return numerator / torch.clamp(denominator, min=eps)
+    rotation_matrix_t = torch.transpose(rotation_matrix, -2, -1).contiguous()
 
-    rotation_matrix_vec: torch.Tensor = rotation_matrix.view(
+    rotation_matrix_vec: torch.Tensor = rotation_matrix_t.view(
         *rotation_matrix.shape[:-2], 9)
 
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(
         rotation_matrix_vec, chunks=9, dim=-1)
 
-    trace: torch.Tensor = m00 + m11 + m22
-
-    def trace_positive_cond():
-        sq = torch.sqrt(trace + 1.0) * 2.  # sq = 4 * qw.
-        qw = 0.25 * sq
-        qx = safe_zero_division(m21 - m12, sq)
-        qy = safe_zero_division(m02 - m20, sq)
-        qz = safe_zero_division(m10 - m01, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+    def quat(qx, qy, qz, qw, t):
+        return 0.5 * torch.cat([qx, qy, qz, qw], dim=-1) / (torch.sqrt(t) + eps)
 
     def cond_1():
-        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qx.
-        qw = safe_zero_division(m21 - m12, sq)
-        qx = 0.25 * sq
-        qy = safe_zero_division(m01 + m10, sq)
-        qz = safe_zero_division(m02 + m20, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+        t = 1. + m00 - m11 - m22
+        qx = t
+        qy = m01 + m10
+        qz = m20 + m02
+        qw = m12 - m21
+        return quat(qx, qy, qz, qw, t)
 
     def cond_2():
-        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.  # sq = 4 * qy.
-        qw = safe_zero_division(m02 - m20, sq)
-        qx = safe_zero_division(m01 + m10, sq)
-        qy = 0.25 * sq
-        qz = safe_zero_division(m12 + m21, sq)
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+        t = 1. - m00 + m11 - m22
+        qx = m01 + m10
+        qy = t
+        qz = m12 + m21
+        qw = m20 - m02
+        return quat(qx, qy, qz, qw, t)
 
     def cond_3():
-        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.  # sq = 4 * qz.
-        qw = safe_zero_division(m10 - m01, sq)
-        qx = safe_zero_division(m02 + m20, sq)
-        qy = safe_zero_division(m12 + m21, sq)
-        qz = 0.25 * sq
-        return torch.cat([qx, qy, qz, qw], dim=-1)
+        t = 1. - m00 - m11 + m22
+        qx = m20 + m02
+        qy = m12 + m21
+        qz = t
+        qw = m01 - m10
+        return quat(qx, qy, qz, qw, t)
 
-    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
-    where_1 = torch.where(
-        (m00 > m11) & (m00 > m22), cond_1(), where_2)
+    def cond_4():
+        t = 1. + m00 + m11 + m22
+        qx = m12 - m21
+        qy = m20 - m02
+        qz = m01 - m10
+        qw = t
+        return quat(qx, qy, qz, qw, t)
 
-    quaternion: torch.Tensor = torch.where(
-        trace > 0., trace_positive_cond(), where_1)
+    where_1 = torch.where(m00 > m11, cond_1(), cond_2())
+    where_2 = torch.where(m00 < -m11, cond_3(), cond_4())
+
+    quaternion: torch.Tensor = torch.where((m22 < eps), where_1, where_2)
+
     return quaternion
 
 

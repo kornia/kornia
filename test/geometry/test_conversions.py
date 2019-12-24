@@ -100,6 +100,22 @@ class TestRotationMatrixToQuaternion:
         matrix_hat = kornia.quaternion_to_rotation_matrix(quaternion)
         assert_allclose(matrix, matrix_hat)
 
+    def test_back_and_forth_batch(self, device):
+        # this data has been generated using scipy.stats.special_ortho_group.rvs(3)
+        # the reason is that special_ortho_group assures transformations with a determinant +1
+        matrix = torch.tensor([[
+            [-0.24643765, -0.14000933, 0.95899211],
+            [-0.83072087, 0.5401688, -0.1346124],
+            [-0.49917063, -0.82982833, -0.24942661],
+        ], [
+            [-0.54844401, -0.48578465, -0.68060447],
+            [0.83607579, -0.33186838, -0.43685313],
+            [-0.01365456, -0.8086264, 0.58816401],
+        ]]).to(device)
+        quaternion = kornia.rotation_matrix_to_quaternion(matrix)
+        matrix_hat = kornia.quaternion_to_rotation_matrix(quaternion)
+        assert_allclose(matrix, matrix_hat)
+
     def test_corner_case(self, device):
         matrix = torch.tensor([
             [-0.7799533010, -0.5432914495, 0.3106555045],
@@ -113,7 +129,13 @@ class TestRotationMatrixToQuaternion:
         assert_allclose(quaternion_true, quaternion)
 
     def test_gradcheck(self, device):
-        matrix = torch.eye(3).to(device)
+        # this data has been generated using scipy.stats.special_ortho_group.rvs(3)
+        # the reason is that special_ortho_group assures transformations with a determinant +1
+        matrix = torch.tensor([[
+            [-0.24643765, -0.14000933, 0.95899211],
+            [-0.83072087, 0.5401688, -0.1346124],
+            [-0.49917063, -0.82982833, -0.24942661],
+        ]]).to(device)
         matrix = tensor_to_gradcheck_var(matrix)
         # evaluate function gradient
         assert gradcheck(kornia.rotation_matrix_to_quaternion, (matrix,),
