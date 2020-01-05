@@ -30,6 +30,17 @@ class TestMotionBlur:
         motion = kornia.filters.MotionBlur(ksize, angle, direction)
         assert motion(input).shape == batch_shape
 
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = 3
+        angle = 200.
+        direction = 0.3
+        actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
+        expected = actual
+        assert_allclose(actual, actual)
+
     def test_gradcheck(self, device):
         batch_shape = (2, 3, 11, 7)
         ksize = 9

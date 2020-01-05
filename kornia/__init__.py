@@ -28,6 +28,8 @@ from kornia.color import (
     rgb_to_yuv,
     yuv_to_rgb,
     hls_to_rgb,
+    rgb_to_ycbcr,
+    ycbcr_to_rgb,
     normalize,
     denormalize,
     adjust_brightness,
@@ -41,8 +43,10 @@ from kornia.contrib import (
     max_blur_pool2d,
 )
 from kornia.feature import (
-    non_maxima_suppression2d,
+    nms2d,
     harris_response,
+    hessian_response,
+    gftt_response,
     SIFTDescriptor
 )
 from kornia.filters import (
@@ -80,7 +84,9 @@ from kornia.utils import (
 )
 from kornia.augmentation import (
     random_hflip,
+    random_vflip,
     color_jitter,
+    random_grayscale,
 )
 
 from kornia.geometry import *

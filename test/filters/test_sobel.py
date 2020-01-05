@@ -124,11 +124,116 @@ class TestSpatialGradient:
                                                 normalized=True)
         assert_allclose(edges, expected)
 
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        actual = kornia.filters.spatial_gradient(inp)
+        expected = actual
+        assert_allclose(actual, actual)
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.spatial_gradient, (img,),
+                         raise_exception=True)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self, device):
+        @torch.jit.script
+        def op_script(input):
+            return kornia.filters.spatial_gradient(input)
+        img = torch.rand(2, 3, 4, 5).to(device)
+        actual = op_script(img)
+        expected = kornia.filters.spatial_gradient(img)
+        assert_allclose(actual, expected)
+
+
+class TestSpatialGradient3d:
+    def test_shape(self, device):
+        inp = torch.zeros(1, 2, 4, 5, 6).to(device)
+        sobel = kornia.filters.SpatialGradient3d()
+        assert sobel(inp).shape == (1, 2, 3, 4, 5, 6)
+
+    def test_shape_batch(self, device):
+        inp = torch.zeros(7, 2, 4, 5, 6).to(device)
+        sobel = kornia.filters.SpatialGradient3d()
+        assert sobel(inp).shape == (7, 2, 3, 4, 5, 6)
+
+    def test_edges(self, device):
+        inp = torch.tensor([[[
+            [[0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0.],
+             [0., 0., 1., 0., 0.],
+             [0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0.]],
+            [[0., 0., 0., 0., 0.],
+             [0., 0., 1., 0., 0.],
+             [0., 1., 1., 1., 0.],
+             [0., 0., 1., 0., 0.],
+             [0., 0., 0., 0., 0.]],
+            [[0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0.],
+             [0., 0., 1., 0., 0.],
+             [0., 0., 0., 0., 0.],
+             [0., 0., 0., 0., 0.]],
+        ]]]).to(device)
+
+        expected = torch.tensor([[[[[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                                    [0.5000, 0.5000, 0.0000, -0.5000, -0.5000],
+                                    [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
+                                  [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.5000, 0.5000, 0.5000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, -0.5000, -0.5000, -0.5000, 0.0000],
+                                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
+                                  [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.5000, 0.0000, 0.5000, 0.0000],
+                                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                   [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                                    [0.0000, -0.5000, 0.0000, -0.5000, 0.0000],
+                                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]]]])
+
+        edges = kornia.filters.spatial_gradient3d(inp)
+        assert_allclose(edges, expected)
+
+    def test_gradcheck(self, device):
+        batch_size, channels, depth, height, width = 1, 2, 3, 5, 4
+        img = torch.rand(batch_size, channels, depth, height, width).to(device)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        assert gradcheck(kornia.filters.spatial_gradient3d, (img,),
                          raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -172,6 +277,14 @@ class TestSobel:
 
         edges = kornia.filters.sobel(inp, normalized=False)
         assert_allclose(edges, expected)
+
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        actual = kornia.filters.sobel(inp)
+        expected = actual
+        assert_allclose(actual, actual)
 
     def test_gradcheck_unnorm(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4

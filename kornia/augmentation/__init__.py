@@ -1,3 +1,15 @@
 from kornia.augmentation.augmentations import *
+from kornia.augmentation.random_erasing import *
 
-__all__ = ["random_hflip", "RandomHorizontalFlip", "color_jitter", "ColorJitter"]
+__all__ = [
+    "random_hflip",
+    "RandomHorizontalFlip",
+    "random_vflip",
+    "RandomVerticalFlip",
+    "color_jitter",
+    "ColorJitter",
+    "random_rectangle_erase",
+    "RandomRectangleErasing",
+    "random_grayscale",
+    "RandomGrayscale",
+]
