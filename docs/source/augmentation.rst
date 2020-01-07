@@ -9,8 +9,10 @@ The functions in this section perform various data augmentation operations
 .. autofunction:: random_vflip
 .. autofunction:: color_jitter
 .. autofunction:: random_rectangle_erase
+.. autofunction:: random_grayscale
 
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomVerticalFlip
 .. autoclass:: ColorJitter
 .. autoclass:: RandomRectangleErasing
+.. autoclass:: RandomGrayscale

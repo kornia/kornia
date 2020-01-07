@@ -4,6 +4,9 @@ kornia.feature
 .. currentmodule:: kornia.feature
 
 .. autofunction:: non_maxima_suppression2d
+.. autofunction:: non_maxima_suppression3d
+.. autofunction:: nms2d
+.. autofunction:: nms3d
 .. autofunction:: gftt_response
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
@@ -19,6 +22,7 @@ kornia.feature
 .. autofunction:: raise_error_if_laf_is_not_valid
 
 .. autoclass:: NonMaximaSuppression2d
+.. autoclass:: NonMaximaSuppression3d
 .. autoclass:: BlobHessian
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
