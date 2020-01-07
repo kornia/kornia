@@ -217,8 +217,8 @@ def transform_points(trans_01: torch.Tensor,
 def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
 
     r""" Function that applies a transformation matrix to a box or batch of boxes. Boxes must
-    be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
-    transformation matrix
+    be a tensor of the shape (N, 4) or (4,). Boxes can also be a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
+    transformation matrix or a batch of transformation matrices (B, 3, 3)
 
     Args:
         trans_mat (torch.Tensor): The transformation matrix to be applied
