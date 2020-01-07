@@ -64,8 +64,8 @@ class PyrDown(nn.Module):
         # blur image
         x_blur: torch.Tensor = filter2D(input, self.kernel, self.border_type)
 
-        # reject even rows and columns.
-        out: torch.Tensor = F.avg_pool2d(x_blur, 2, 2)
+        # downsample.
+        out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear', align_corners=False)
         return out
 
 
@@ -161,7 +161,7 @@ class ScalePyramid(nn.Module):
             'double_image=' + str(self.double_image) + ')'
 
     def get_kernel_size(self, sigma: float):
-        ksize = int(2.0 * 3.0 * sigma + 1.0)
+        ksize = int(2.0 * 4.0 * sigma + 1.0)
         if ksize % 2 == 0:
             ksize += 1
         return ksize
@@ -174,6 +174,7 @@ class ScalePyramid(nn.Module):
         if self.double_image:
             x = F.interpolate(x, scale_factor=2.0, mode='bilinear', align_corners=False)
             pixel_distance = 0.5
+            cur_sigma *= 2.0
         if self.init_sigma > cur_sigma:
             sigma = math.sqrt(self.init_sigma**2 - cur_sigma**2)
             cur_sigma = self.init_sigma
@@ -198,8 +199,9 @@ class ScalePyramid(nn.Module):
                 pyr[-1].append(cur_level.unsqueeze(1))
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            nextOctaveFirstLevel = F.avg_pool2d(
-                cur_level, kernel_size=2, stride=2, padding=0)
+            nextOctaveFirstLevel = F.interpolate(pyr[-1][-1].squeeze(1), scale_factor=0.5,
+                                                 mode='bilinear',
+                                                 align_corners=False)
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if (min(nextOctaveFirstLevel.size(2),
