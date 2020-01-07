@@ -123,6 +123,36 @@ class TestTransformBoxes:
         out = kornia.transform_boxes(trans_mat, boxes)
         assert_allclose(out, expected)
 
+    def test_transform_multiple_boxes(self, device):
+
+        boxes = torch.Tensor([[139.2640, 103.0150, 397.3120, 410.5225],
+                              [1.0240, 80.5547, 512.0000, 512.0000],
+                              [165.2053, 262.1440, 510.6347, 508.9280],
+                              [119.8080, 144.2067, 257.0240, 410.1292]]).to(device)
+
+        boxes = boxes.repeat(2, 1, 1)  # 2, 4, 4 two images 4 boxes each
+
+        expected = torch.Tensor([[[372.7360, 103.0150, 114.6880, 410.5225],
+                                  [510.9760, 80.5547, 0.0000, 512.0000],
+                                  [346.7947, 262.1440, 1.3653, 508.9280],
+                                  [392.1920, 144.2067, 254.9760, 410.1292]],
+
+                                 [[139.2640, 103.0150, 397.3120, 410.5225],
+                                  [1.0240, 80.5547, 512.0000, 512.0000],
+                                  [165.2053, 262.1440, 510.6347, 508.9280],
+                                  [119.8080, 144.2067, 257.0240, 410.1292]]]).to(device)
+
+        trans_mat = torch.Tensor([[[-1., 0., 512.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]],
+
+                                  [[1., 0., 0.],
+                                   [0., 1., 0.],
+                                   [0., 0., 1.]]]).to(device)
+
+        out = kornia.transform_boxes(trans_mat, boxes)
+        assert_allclose(out, expected)
+
     def test_transform_boxes_wh(self, device):
 
         boxes = torch.Tensor([[139.2640, 103.0150, 258.0480, 307.5075],
