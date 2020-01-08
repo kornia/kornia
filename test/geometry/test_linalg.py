@@ -112,7 +112,7 @@ class TestTransformBoxes:
 
     def test_transform_boxes(self, device):
 
-        boxes = torch.Tensor([139.2640, 103.0150, 397.3120, 410.5225]).to(device)
+        boxes = torch.Tensor([[139.2640, 103.0150, 397.3120, 410.5225]]).to(device)
 
         expected = torch.Tensor([372.7360, 103.0150, 114.6880, 410.5225]).to(device)
 
@@ -121,6 +121,7 @@ class TestTransformBoxes:
                                    [0., 0., 1.]]]).to(device)
 
         out = kornia.transform_boxes(trans_mat, boxes)
+        print(out)
         assert_allclose(out, expected)
 
     def test_transform_multiple_boxes(self, device):
@@ -130,7 +131,7 @@ class TestTransformBoxes:
                               [165.2053, 262.1440, 510.6347, 508.9280],
                               [119.8080, 144.2067, 257.0240, 410.1292]]).to(device)
 
-        boxes = boxes.repeat(2, 1, 1)  # 2, 4, 4 two images 4 boxes each
+        boxes = boxes.repeat(2, 1, 1)  # 2 x 4 x 4 two images 4 boxes each
 
         expected = torch.Tensor([[[372.7360, 103.0150, 114.6880, 410.5225],
                                   [510.9760, 80.5547, 0.0000, 512.0000],
@@ -169,8 +170,6 @@ class TestTransformBoxes:
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
-        trans_mat = trans_mat.expand(4, -1, -1)
-
         out = kornia.transform_boxes(trans_mat, boxes, mode='xywh')
         assert_allclose(out, expected)
 
@@ -185,7 +184,6 @@ class TestTransformBoxes:
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
-        trans_mat = trans_mat.expand(4, -1, -1)
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
 
