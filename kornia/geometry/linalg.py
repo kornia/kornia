@@ -199,8 +199,8 @@ def transform_points(trans_01: torch.Tensor,
         raise TypeError("Input type is not a torch.Tensor")
     if not trans_01.device == points_1.device:
         raise TypeError("Tensor must be in the same device")
-    if not trans_01.shape[0] == points_1.shape[0]:
-        raise ValueError("Input batch size must be the same for both tensors")
+    if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
+        raise ValueError("Input batch size must be the same for both tensors or 1")
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError("Last input dimensions must differe by one unit")
     # to homogeneous
@@ -217,7 +217,7 @@ def transform_points(trans_01: torch.Tensor,
 def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
 
     r""" Function that applies a transformation matrix to a box or batch of boxes. Boxes must
-    be a tensor of the shape (N, 4) or (4,). Boxes can also be a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
+    be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
     transformation matrix or a batch of transformation matrices (B, 3, 3)
 
     Args:
@@ -245,31 +245,19 @@ def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "x
     if mode not in ("xyxy", "xywh"):
         raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
 
-    device: torch.device = trans_mat.device
-    boxes = boxes.unsqueeze(0)
-
     # convert boxes to format xyxy
     if mode == "xywh":
         boxes[..., -2] = boxes[..., 0] + boxes[..., -2]  # x + w
         boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
 
-    # adjust transfomation matrix shape
-    to_expand: int = boxes.view(-1, 2, 2).shape[0]
-    b_size: int = trans_mat.shape[0]
-    trans_mat = trans_mat.expand(to_expand // b_size, -1, -1, -1).reshape(-1, 3, 3)  # B * N x 3 x 3
-
-    # put transformations in the correct order so as to all boxes belonging to the same batch
-    # element are transformed in the same way
-    perm: torch.Tensor = torch.cat([torch.arange(i, to_expand, b_size) for i in range(b_size)]).to(device)
-    trans_mat = trans_mat[perm, ...]
-
-    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(-1, 2, 2)).view_as(boxes)
+    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    transformed_boxes = transformed_boxes.view_as(boxes)
 
     if mode == 'xywh':
         transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
         transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
 
-    return transformed_boxes.squeeze()
+    return transformed_boxes
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor,
