@@ -112,28 +112,27 @@ class TestTransformBoxes:
 
     def test_transform_boxes(self, device):
 
-        boxes = torch.Tensor([[139.2640, 103.0150, 397.3120, 410.5225]]).to(device)
+        boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]]).to(device)
 
-        expected = torch.Tensor([372.7360, 103.0150, 114.6880, 410.5225]).to(device)
+        expected = torch.tensor([372.7360, 103.0150, 114.6880, 410.5225]).to(device)
 
-        trans_mat = torch.Tensor([[[-1., 0., 512.],
+        trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
         out = kornia.transform_boxes(trans_mat, boxes)
-        print(out)
         assert_allclose(out, expected)
 
     def test_transform_multiple_boxes(self, device):
 
-        boxes = torch.Tensor([[139.2640, 103.0150, 397.3120, 410.5225],
+        boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225],
                               [1.0240, 80.5547, 512.0000, 512.0000],
                               [165.2053, 262.1440, 510.6347, 508.9280],
                               [119.8080, 144.2067, 257.0240, 410.1292]]).to(device)
 
         boxes = boxes.repeat(2, 1, 1)  # 2 x 4 x 4 two images 4 boxes each
 
-        expected = torch.Tensor([[[372.7360, 103.0150, 114.6880, 410.5225],
+        expected = torch.tensor([[[372.7360, 103.0150, 114.6880, 410.5225],
                                   [510.9760, 80.5547, 0.0000, 512.0000],
                                   [346.7947, 262.1440, 1.3653, 508.9280],
                                   [392.1920, 144.2067, 254.9760, 410.1292]],
@@ -143,7 +142,7 @@ class TestTransformBoxes:
                                   [165.2053, 262.1440, 510.6347, 508.9280],
                                   [119.8080, 144.2067, 257.0240, 410.1292]]]).to(device)
 
-        trans_mat = torch.Tensor([[[-1., 0., 512.],
+        trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]],
 
@@ -156,17 +155,17 @@ class TestTransformBoxes:
 
     def test_transform_boxes_wh(self, device):
 
-        boxes = torch.Tensor([[139.2640, 103.0150, 258.0480, 307.5075],
+        boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075],
                               [1.0240, 80.5547, 510.9760, 431.4453],
                               [165.2053, 262.1440, 345.4293, 246.7840],
                               [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
 
-        expected = torch.Tensor([[372.7360, 103.0150, -258.0480, 307.5075],
+        expected = torch.tensor([[372.7360, 103.0150, -258.0480, 307.5075],
                                  [510.9760, 80.5547, -510.9760, 431.4453],
                                  [346.7947, 262.1440, -345.4293, 246.7840],
                                  [392.1920, 144.2067, -137.2160, 265.9225]]).to(device)
 
-        trans_mat = torch.Tensor([[[-1., 0., 512.],
+        trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
@@ -175,12 +174,12 @@ class TestTransformBoxes:
 
     def test_gradcheck(self, device):
 
-        boxes = torch.Tensor([[139.2640, 103.0150, 258.0480, 307.5075],
+        boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075],
                               [1.0240, 80.5547, 510.9760, 431.4453],
                               [165.2053, 262.1440, 345.4293, 246.7840],
                               [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
 
-        trans_mat = torch.Tensor([[[-1., 0., 512.],
+        trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
@@ -195,9 +194,9 @@ class TestTransformBoxes:
         def op_script(transform, boxes):
             return kornia.transform_boxes(transform, boxes)
 
-        boxes = torch.Tensor([139.2640, 103.0150, 258.0480, 307.5075]).to(device)
+        boxes = torch.tensor([139.2640, 103.0150, 258.0480, 307.5075]).to(device)
 
-        trans_mat = torch.Tensor([[[-1., 0., 512.],
+        trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]]]).to(device)
 
