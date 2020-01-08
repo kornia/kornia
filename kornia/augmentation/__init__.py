@@ -8,6 +8,8 @@ __all__ = [
     "RandomVerticalFlip",
     "color_jitter",
     "ColorJitter",
-    "RandomRectangleErasing",
     "random_rectangle_erase",
+    "RandomRectangleErasing",
+    "random_grayscale",
+    "RandomGrayscale",
 ]
