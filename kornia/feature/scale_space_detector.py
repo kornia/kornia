@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List, Optional
 
 import torch
 import torch.nn as nn
@@ -49,6 +49,13 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     # Replace the scale_x_y
     out = torch.cat([torch.pow(2.0, scale_val).view(B, N, 1), max_coords[:, :, 1:]], dim=2)
     return out
+
+
+def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
+    """Downsamples a mask based on the given octave shape."""
+    mask_shape = octave_shape[-2:]
+    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=True)
+    return mask_octave.unsqueeze(1)
 
 
 class ScaleSpaceDetector(nn.Module):
@@ -111,7 +118,8 @@ class ScaleSpaceDetector(nn.Module):
             'ori=' + self.ori.__repr__() + ', ' + \
             'aff=' + self.aff.__repr__() + ')'
 
-    def detect(self, img: torch.Tensor, num_feats: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def detect(self, img: torch.Tensor, num_feats: int,
+               mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, pix_dists = self.scale_pyr(img)
@@ -120,12 +128,17 @@ class ScaleSpaceDetector(nn.Module):
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
             pix_dists_oct = pix_dists[oct_idx]
+
             B, L, CH, H, W = octave.size()
             # Run response function
-            oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
+            oct_resp = self.resp(octave.view(B * L, CH, H, W), sigmas_oct.view(-1))
 
             # We want nms for scale responses, so reorder to (B, CH, L, H, W)
-            oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
+            oct_resp = oct_resp.view_as(octave).permute(0, 2, 1, 3, 4)
+
+            if mask is not None:
+                oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
+                oct_resp = oct_mask * oct_resp
 
             # Differentiable nms
             coord_max, response_max = self.nms(oct_resp)
@@ -172,17 +185,20 @@ class ScaleSpaceDetector(nn.Module):
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, denormalize_laf(lafs, img)
 
-    def forward(self, img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    def forward(self, img: torch.Tensor,  # type: ignore
+                mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 
         Args:
-            img: (torch.Tensor), shape [BxCxHxW]
+            img (torch.Tensor): image to extract features with shape [BxCxHxW]
+            mask (torch.Tensor, optional): a mask with weights where to apply the
+            response function. The shae must same as the input image.
 
         Returns:
             lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.
             responses (torch.Tensor): shape [BxNx1]. Response function values for corresponding lafs"""
-        responses, lafs = self.detect(img, self.num_features)
+        responses, lafs = self.detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
         return lafs, responses
