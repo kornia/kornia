@@ -6,6 +6,7 @@ from torch.distributions import Uniform
 
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
+from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry import pi
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -176,6 +177,41 @@ class ColorJitter(nn.Module):
             return jittered, input[1]
 
         return color_jitter(input, self.brightness, self.contrast, self.saturation, self.hue, self.return_transform)
+
+
+class RandomGrayscale(nn.Module):
+    r"""Random Grayscale transformation according to a probability p value
+
+    Args:
+        p (float): probability of the image to be transformed to grayscale. Default value is 0.5
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    """
+
+    def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
+        super(RandomGrayscale, self).__init__()
+        self.p = p
+        self.return_transform = return_transform
+
+    def __repr__(self) -> str:
+        repr = f"(p={self.p}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
+
+        if isinstance(input, tuple):
+
+            output: torch.Tensor = cast(
+                torch.Tensor,
+                random_grayscale(
+                    input[0],
+                    p=self.p,
+                    return_transform=False))
+
+            return output, input[1]
+
+        return random_grayscale(input, p=self.p, return_transform=self.return_transform)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
@@ -386,3 +422,42 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
         return jittered, identity
 
     return jittered
+
+
+def random_grayscale(input: torch.Tensor, p: float = .5, return_transform: bool = False) -> UnionType:
+    r"""Random grayscale of an image or batch of images.
+
+    See :class:`~kornia.augmentation.RandomGrayscale` for details.
+    """
+
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if len(input.shape) > 3 and input.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
+
+    if not isinstance(p, float):
+        raise TypeError(f"The probability should be a float number. Got {type(p)}")
+
+    if not isinstance(return_transform, bool):
+        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    input = input.unsqueeze(0)
+    input = input.view((-1, (*input.shape[-3:])))
+
+    probs: torch.Tensor = torch.empty(input.shape[0], device=device).uniform_(0, 1)
+
+    to_gray: torch.Tensor = probs < p
+    grayscale: torch.Tensor = input.clone()
+
+    grayscale[to_gray] = rgb_to_grayscale(input[to_gray])
+    if return_transform:
+
+        identity: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
+
+        return grayscale, identity
+
+    return grayscale
