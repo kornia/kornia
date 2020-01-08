@@ -45,6 +45,17 @@ class TestFocalLoss:
             ).shape == ()
         )
 
+    def test_smoke_mean_flat(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes).to(device)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+        assert (
+            kornia.losses.focal_loss(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
+            ).shape == ()
+        )
+
     # TODO: implement me
     def test_jit(self, device):
         pass
