@@ -144,6 +144,10 @@ class ColorJitter(nn.Module):
         contrast (float or tuple): Default value is 0
         saturation (float or tuple): Default value is 0
         hue (float or tuple): Default value is 0
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+
     """
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
@@ -215,18 +219,15 @@ class RandomGrayscale(nn.Module):
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
-    r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Horizontally Flip an image or a batch of images
+
+    See :class:`~kornia.augmentation.RandomHorizontalFlip` for details.
 
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-        input tensor.
-
-    Returns:
-        torch.Tensor: The horizontally flipped input
-        torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)` if return_transform flag
-                      is set to ``True``
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
     """
 
     if not torch.is_tensor(input):
@@ -269,18 +270,15 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
-    r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Vertically flip an image or a batch of images
+
+    See :class:`~kornia.augmentation.RandomVerticalFlip` for details.
 
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-        input tensor.
-
-    Returns:
-        torch.Tensor: The vertically flipped input
-        torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)` if return_transform flag
-                      is set to ``True``
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
     """
 
     if not torch.is_tensor(input):
@@ -324,7 +322,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
                  contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
                  hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
-    r"""Random color jiter of an image or batch of images.
+    r"""Random color jitter of an image or batch of images.
 
     See :class:`~kornia.augmentation.ColorJitter` for details.
     """
