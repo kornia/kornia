@@ -16,6 +16,7 @@ from .adjust import (
 )
 from .adjust import (
     adjust_brightness, adjust_contrast, adjust_gamma, adjust_hue, adjust_saturation,
+    adjust_hue_raw, adjust_saturation_raw
 )
 
 __all__ = [
@@ -38,6 +39,8 @@ __all__ = [
     "adjust_gamma",
     "adjust_hue",
     "adjust_saturation",
+    "adjust_hue_raw",
+    "adjust_saturation_raw",
     "add_weighted",
     "AddWeighted",
     "RgbToGrayscale",
