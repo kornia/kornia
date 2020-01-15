@@ -26,6 +26,7 @@ class MaxBlurPool2d(nn.Module):
 
     Args:
         kernel_size (int): the kernel size for max pooling..
+        ceil_mode (bool): should be true to match output size of conv2d with same kernel size.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -40,8 +41,9 @@ class MaxBlurPool2d(nn.Module):
         >>> output = pool(input)  # 1x4x2x4
     """
 
-    def __init__(self, kernel_size: int) -> None:
+    def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
         super(MaxBlurPool2d, self).__init__()
+        self.ceil_mode: bool = ceil_mode
         self.kernel_size: Tuple[int, int] = (kernel_size, kernel_size)
         self.padding: Tuple[int, int] = _compute_zero_padding(self.kernel_size)
 
@@ -55,7 +57,7 @@ class MaxBlurPool2d(nn.Module):
         # compute local maxima
         x_max: torch.Tensor = F.max_pool2d(
             input, kernel_size=self.kernel_size,
-            padding=self.padding, stride=1)
+            padding=self.padding, stride=1, ceil_mode=self.ceil_mode)
 
         # blur and downsample
         x_down: torch.Tensor = pyrdown(x_max)
@@ -67,10 +69,10 @@ class MaxBlurPool2d(nn.Module):
 ######################
 
 
-def max_blur_pool2d(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
+def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
     r"""Creates a module that computes pools and blurs and downsample a given
     feature map.
 
     See :class:`~kornia.contrib.MaxBlurPool2d` for details.
     """
-    return MaxBlurPool2d(kernel_size)(input)
+    return MaxBlurPool2d(kernel_size, ceil_mode)(input)
