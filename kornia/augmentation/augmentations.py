@@ -232,7 +232,17 @@ class RandomRotation(nn.Module):
                                       wont be concatenated
 
     Examples:
-
+    >>> input = torch.tensor([[[[10., 0., 0.],
+                                [0., 4.5, 4.],
+                                [0., 1., 1.]]]])
+    >>> seq = nn.Sequential(kornia.augmentation.RandomRotation(degrees=90.0, return_transform=True))
+    >>> seq(input)
+    (tensor([[[0.0000e+00, 8.8409e-02, 9.8243e+00],
+              [9.9131e-01, 4.5000e+00, 1.7524e-04],
+              [9.9121e-01, 3.9735e+00, 3.5140e-02]]]),
+    tensor([[[ 0.0088, -1.0000,  1.9911],
+             [ 1.0000,  0.0088, -0.0088],
+             [ 0.0000,  0.0000,  1.0000]]]))
     """
 
     def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
