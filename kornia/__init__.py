@@ -87,6 +87,7 @@ from kornia.augmentation import (
     random_vflip,
     color_jitter,
     random_grayscale,
+    random_rotation,
 )
 
 from kornia.geometry import *
