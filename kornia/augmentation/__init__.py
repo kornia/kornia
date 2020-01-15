@@ -12,4 +12,6 @@ __all__ = [
     "RandomRectangleErasing",
     "random_grayscale",
     "RandomGrayscale",
+    "random_rotation",
+    "RandomRotation",
 ]

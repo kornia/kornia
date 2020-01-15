@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale
+    RandomRectangleErasing, RandomGrayscale, RandomRotation
 from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
@@ -1054,3 +1054,156 @@ class TestRandomGrayscale:
 
         assert gradcheck(kornia.random_grayscale, (input, 0.), raise_exception=True)
         assert gradcheck(kornia.random_grayscale, (input, 1.), raise_exception=True)
+
+
+class TestRandomRotation:
+
+    torch.manual_seed(0)  # for random reproductibility
+
+    def smoke_test(self):
+        f = RandomRotation(degrees=45.5)
+        repr = "RandomHorizontalFlip(degrees=45.5, return_transform=False)"
+        assert str(f) == repr
+
+    def test_random_rotation(self):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        f = RandomRotation(degrees=45.0, return_transform=True)
+        f1 = RandomRotation(degrees=45.0)
+
+        input = torch.tensor([[1., 0., 0., 2.],
+                              [0., 0., 0., 0.],
+                              [0., 1., 2., 0.],
+                              [0., 0., 1., 2.]])  # 4 x 4
+
+        expected = torch.tensor([[[0.9824, 0.0088, 0.0000, 1.9649],
+                                  [0.0000, 0.0029, 0.0000, 0.0176],
+                                  [0.0029, 1.0000, 1.9883, 0.0000],
+                                  [0.0000, 0.0088, 1.0117, 1.9649]]])  # 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[1.0000, -0.0059, 0.0088],
+                                            [0.0059, 1.0000, -0.0088],
+                                            [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
+
+        expected_2 = torch.tensor([[0.1322, 0.0000, 0.7570, 0.2644],
+                                   [0.3785, 0.0000, 0.4166, 0.0000],
+                                   [0.0000, 0.6309, 1.5910, 1.2371],
+                                   [0.0000, 0.1444, 0.3177, 0.6499]])  # 1 x 4 x 4
+
+        out, mat = f(input)
+        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
+        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_allclose(f1(input), expected_2, rtol=1e-6, atol=1e-4)
+
+    def test_batch_random_rotation(self):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        f = RandomRotation(degrees=45.0, return_transform=True)
+
+        input = torch.tensor([[[[1., 0., 0., 2.],
+                                [0., 0., 0., 0.],
+                                [0., 1., 2., 0.],
+                                [0., 0., 1., 2.]]]])  # 1 x 1 x 4 x 4
+
+        expected = torch.tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
+                                   [0.0000, 0.0029, 0.0000, 0.0176],
+                                   [0.0029, 1.0000, 1.9883, 0.0000],
+                                   [0.0000, 0.0088, 1.0117, 1.9649]]],
+                                 [[[0.1322, 0.0000, 0.7570, 0.2644],
+                                   [0.3785, 0.0000, 0.4166, 0.0000],
+                                   [0.0000, 0.6309, 1.5910, 1.2371],
+                                   [0.0000, 0.1444, 0.3177, 0.6499]]]])  # 2 x 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[1.0000, -0.0059, 0.0088],
+                                            [0.0059, 1.0000, -0.0088],
+                                            [0.0000, 0.0000, 1.0000]],
+
+                                           [[0.9125, 0.4090, -0.4823],
+                                            [-0.4090, 0.9125, 0.7446],
+                                            [0.0000, 0.0000, 1.0000]]])  # 2 x 3 x 3
+
+        input = input.repeat(2, 1, 1, 1)  # 5 x 3 x 3 x 3
+
+        out, mat = f(input)
+        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
+        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+
+    def test_sequential(self):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        f = nn.Sequential(
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
+            RandomRotation(-10.4, return_transform=True),
+        )
+        f1 = nn.Sequential(
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
+            RandomRotation(-10.4),
+        )
+
+        input = torch.tensor([[1., 0., 0., 2.],
+                              [0., 0., 0., 0.],
+                              [0., 1., 2., 0.],
+                              [0., 0., 1., 2.]])  # 4 x 4
+
+        expected = torch.tensor([[[0.1314, 0.1050, 0.6649, 0.2628],
+                                  [0.3234, 0.0202, 0.4256, 0.1671],
+                                  [0.0525, 0.5976, 1.5199, 1.1306],
+                                  [0.0000, 0.1453, 0.3224, 0.5796]]])  # 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[0.8864, 0.4629, -0.5240],
+                                            [-0.4629, 0.8864, 0.8647],
+                                            [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
+
+        expected_transform_2 = torch.tensor([[[0.8381, -0.5455, 1.0610],
+                                              [0.5455, 0.8381, -0.5754],
+                                              [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
+
+        out, mat = f(input)
+        _, mat_2 = f1(input)
+        assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
+        assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+        assert_allclose(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        @torch.jit.script
+        def op_script(data: torch.Tensor) -> torch.Tensor:
+
+            return kornia.random_rotation(data, degrees=45.0)
+
+        input = torch.tensor([[1., 0., 0., 2.],
+                              [0., 0., 0., 0.],
+                              [0., 1., 2., 0.],
+                              [0., 0., 1., 2.]])  # 4 x 4
+
+        # Build jit trace
+        op_trace = torch.jit.trace(op_script, (input, ))
+
+        # Create new inputs
+        input = torch.tensor([[0., 0., 0.],
+                              [5., 5., 0.],
+                              [0., 0., 0.]])  # 3 x 3
+
+        expected = torch.tensor([[[0.0000, 0.2584, 0.0000],
+                                  [2.9552, 5.0000, 0.2584],
+                                  [1.6841, 0.4373, 0.0000]]])
+
+        actual = op_trace(input)
+
+        assert_allclose(actual, expected, rtol=1e-6, atol=1e-4)
+
+    def test_gradcheck(self):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        input = torch.rand((3, 3)).double()  # 3 x 3
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+
+        assert gradcheck(RandomRotation(degrees=(15.0, 15.0)), (input, ), raise_exception=True)

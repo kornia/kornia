@@ -7,7 +7,8 @@ from torch.distributions import Uniform
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
-from kornia.geometry import pi
+from kornia.geometry import pi, rotate
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
@@ -212,6 +213,59 @@ class RandomGrayscale(nn.Module):
             return output, input[1]
 
         return random_grayscale(input, p=self.p, return_transform=self.return_transform)
+
+
+class RandomRotation(nn.Module):
+
+    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
+    the corresponding transformation matrix that has been applied to them. In this case the module
+    will rotate the tensors and concatenate the corresponding transformation matrix to the
+    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+
+    Args:
+        degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
+        range of degrees to select from will be (-degrees, +degrees)
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+
+    Examples:
+
+    """
+
+    def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
+        super(RandomRotation, self).__init__()
+        self.degrees = degrees
+        self.return_transform = return_transform
+
+    def __repr__(self) -> str:
+        repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
+
+        if isinstance(input, tuple):
+
+            inp: torch.Tensor = input[0]
+            prev_trans: torch.Tensor = input[1]
+
+            if self.return_transform:
+
+                out = random_rotation(inp, degrees=self.degrees, return_transform=True)
+                img: torch.Tensor = out[0]
+                trans_mat: torch.Tensor = out[1]
+
+                return img, prev_trans @ trans_mat
+
+            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
+            img = cast(torch.Tensor, random_rotation(inp, degrees=self.degrees, return_transform=False))
+
+            # Transform image but pass along the previous transformation
+            return img, prev_trans
+
+        return random_rotation(input, self.degrees, self.return_transform)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
@@ -461,3 +515,58 @@ def random_grayscale(input: torch.Tensor, p: float = .5, return_transform: bool 
         return grayscale, identity
 
     return grayscale
+
+
+def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
+
+    r""" Randomly rotate the input tensor.
+
+    See :class `~kornia.RandomRotation` for details
+
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not torch.is_tensor(degrees):
+        if isinstance(degrees, float):
+            degrees = torch.tensor([-abs(degrees), abs(degrees)])  # allow negative angles as inputs
+
+        elif isinstance(degrees, (tuple, list)):
+            degrees = torch.tensor(degrees)
+
+        else:
+            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {type(degrees)}")
+
+    # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
+    degrees = cast(torch.Tensor, degrees)
+
+    if degrees.numel() != 2:
+        raise ValueError("If degrees is a sequence it must be of length 2")
+
+    if not isinstance(return_transform, bool):
+        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    input = input.unsqueeze(0)
+    input = input.view((-1, (*input.shape[-3:])))
+    degrees = degrees.to(device, dtype)
+
+    angles: torch.Tensor = Uniform(degrees[0], degrees[1]).rsample([input.shape[0]])
+
+    transformed: torch.Tensor = rotate(input, angles).squeeze(0)
+
+    if return_transform:
+
+        center: torch.Tensor = _compute_tensor_center(input)
+        rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
+
+        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
+        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
+        trans_mat[:, 0] = rotation_mat[:, 0]
+        trans_mat[:, 1] = rotation_mat[:, 1]
+
+        return transformed, trans_mat
+
+    return transformed
