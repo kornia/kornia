@@ -2,148 +2,70 @@
 Data augmentation on the GPU
 ============================
 
-In this data you learn how to use `kornia` modules in order to perform the data augmentation on the GPU in batch mode.
+In this data you learn how to use `kornia` modules in order to perform the data augmentatio on the GPU in batch mode.
 """
 
 ################################
-import torch.nn as nn
-from torch.utils.data import DataLoader
-from torchvision.datasets import VOCDetection
-from torchvision.transforms import Resize
-import kornia
+# 1. Create a dummy data loader
+
 import torch
-import cv2
-import matplotlib.pyplot as plt
-from PIL import Image
-import glob
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+
+# from: https://gist.github.com/edgarriba/a781de516c508826f79568d08598efdb
 
 
-################################
-# 1. Create dataset
-class DummyDataset():
-    def __init__(self, root, transform=None):
+class DummyDataset(Dataset):
+    def __init__(self, data_root=None):
+        self.data_root = data_root
+        self.data_index = self.build_index(self.data_root)
 
-        self.images = sorted(glob.glob(root + "/*.jpg"))
-        self.targets = sorted(glob.glob(root + "/*.pth"))
-        self.transforms = transform
+    def build_index(self, data_root):
+        return range(10)
 
     def __len__(self):
-        return 4
+        return len(self.data_index)
 
-    def __getitem__(self, index):
+    def __getitem__(self, idx):
+        # get data sample
+        sample = self.data_index[idx]
 
-        img = Image.open(self.images[index]).convert("RGB")
-        target = torch.load(self.targets[index])
-
-        ow, oh = img.size
-
-        # Reescale boxes
-        target[:2].mul_(512 / ow)
-        target[-2:].mul_(512 / oh)
-
-        # Reorder boxes as xyxy
-        perm = torch.LongTensor([0, 2, 1, 3])
-        target = target[perm]
-
-        if self.transforms is not None:
-            img = self.transforms(img)
-
-        return img, target
-
-
-# Utils functions
-def plot_images(org, img):
-
-    fig, ax = plt.subplots(2, img.shape[0], sharex=True, sharey=True)
-    fig.suptitle("Original (Top) / Trasnformed (Bottom)", fontsize=16)
-    for b in range(img.shape[0]):
-        ax[0, b].imshow(org[b])
-        ax[1, b].imshow(img[b])
-
-    plt.xticks([])
-    plt.yticks([])
-    plt.show()
-
-
-def draw_boxes(original, images, transformed_targets, targets):
-
-    for i in range(original.shape[0]):
-        images[i] = cv2.rectangle(
-            images[i],
-            (transformed_targets[i][0], transformed_targets[i][1]),
-            (transformed_targets[i][2], transformed_targets[i][3]),
-            (0, 1, 0),
-            2,
-        ).get()
-        original[i] = cv2.rectangle(
-            original[i],
-            (targets[i][0], targets[i][1]),
-            (targets[i][2], targets[i][3]),
-            (0, 1, 0),
-            2,
-        ).get()
-
-    return original, images
-
-
-def transform_boxes(mat, targets):
-
-    return kornia.transform_points(mat, targets.view(-1, 2, 2).float()).view(-1, 4)
-
+        # load data, NOTE: modify by cv2.imread(...)
+        image = torch.rand(3, 240, 320)
+        label = torch.rand(1, 240, 320)
+        return dict(images=image, labels=label)
 
 ################################
 # 2. Define the data augmentation operations
 # Thanks to the `kornia` design all the operators can be placed inside inside a `nn.Sequential`.
 
+import kornia
+
 transform = nn.Sequential(
-    kornia.augmentation.ColorJitter(
-        brightness=(0.0, 0.0),
-        contrast=(1.0, 1.0),
-        hue=1.5,
-        saturation=2.0,
-        return_transform=True,
-    ),
-    # kornia.augmentation.RandomHorizontalFlip(1.0, return_transform=True),
-    kornia.augmentation.RandomRotation(90.0, return_transform=True),
+    kornia.color.AdjustBrightness(0.5),
+    kornia.color.AdjustGamma(gamma=2.),
+    kornia.color.AdjustContrast(0.7),
 )
 
 ################################
 # 3. Run the dataset and perform the data augmentation
 
-device = torch.device("cuda")
-seed = 0
-torch.manual_seed(seed)
+# NOTE: change device to 'cuda'
+device = torch.device('cpu')
 print(f"Running with device: {device}")
-print(f"Running with seed: {seed}")
 
 # create the dataloader
-batch_size = 4
-dataset = DummyDataset(
-    root="data/aug",
-    transform=lambda x: kornia.image_to_tensor(Resize((512, 512))(x)),
-)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+dataset = DummyDataset()
+dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-# get next batch
-images, targets = next(iter(dataloader))
+# get samples and perform the data augmentation
+for i_batch, sample_batched in enumerate(dataloader):
+    images = sample_batched['images'].to(device)
+    labels = sample_batched['labels'].to(device)
 
-# move tensors to GPU
-images = images.to(device) / 255
-targets = targets.to(device)
+    # perform the transforms
+    images = transform(images)
+    labels = transform(labels)
 
-# keep a copy of the original image
-original = kornia.tensor_to_image(images)
-
-# perform the transforms
-images, mat = transform(images)
-images = kornia.tensor_to_image(images)
-img = cv2.warpAffine(images[0], mat[0, :2, :].cpu().numpy(), (512, 512))
-
-plot_images(original, images)
-
-# transform boxes
-transformed_targets = kornia.transform_boxes(mat, targets)
-
-# draw boxes
-original, images = draw_boxes(original, images, transformed_targets, targets)
-plot_images(original, images)
+    print(f"Iteration: {i_batch} Image shape: {images.shape}")
