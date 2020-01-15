@@ -77,6 +77,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
     padding_shape: List[int] = compute_padding((height, width))
-    input_pad: torch.Tensor = F.pad(input.reshape(b * c, 1, h, w), padding_shape, mode=border_type)
+    input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
+    b, c, hp, wp = input_pad.shape
     # convolve the tensor with the kernel
-    return F.conv2d(input_pad, tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+    return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
