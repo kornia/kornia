@@ -67,10 +67,9 @@ class RandomHorizontalFlip(RandomFlip):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True),
                                 kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True)
                                )
@@ -109,10 +108,9 @@ class RandomVerticalFlip(RandomFlip):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomVerticalFlip(p=1.0, return_transform=True))
         >>> seq(input)
         (tensor([[0., 1., 1.],
