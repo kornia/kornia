@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -13,10 +13,12 @@ __all__ = [
     "rotate",
     "translate",
     "shear",
+    "resize",
     "Scale",
     "Rotate",
     "Translate",
     "Shear",
+    "Resize",
 ]
 
 # utilities to compute affine matrices
@@ -211,6 +213,58 @@ def shear(tensor: torch.Tensor, shear: torch.Tensor) -> torch.Tensor:
 
     # warp using the affine transform
     return affine(tensor, shear_matrix[..., :2, :3])
+
+
+def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear') -> torch.Tensor:
+    r"""Resize the input torch.Tensor to the given size.
+
+    See :class:`~kornia.Resize` for details.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+
+    new_size: Tuple[int, int]
+
+    if isinstance(size, int):
+        w, h = input.shape[-2:]
+        if (w <= h and w == size) or (h <= w and h == size):
+            return input
+        if w < h:
+            ow = size
+            oh = int(size * h / w)
+        else:
+            oh = size
+            ow = int(size * w / h)
+        new_size = (ow, oh)
+    else:
+        new_size = size
+
+    return torch.nn.functional.interpolate(input, size=new_size, mode=interpolation)
+
+
+class Resize(nn.Module):
+    r"""Resize the input torch.Tensor to the given size.
+
+    Args:
+        size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
+        output size will be matched to this. If size is an int, smaller edge of the image will
+        be matched to this number. i.e, if height > width, then image will be rescaled
+        to (size * height / width, size)
+        interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
+        'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
+
+    Returns:
+        torch.Tensor: The resized tensor.
+    """
+
+    def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear') -> None:
+        super(Resize, self).__init__()
+        self.size: Union[int, Tuple[int, int]] = size
+        self.interpolation: str = interpolation
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return resize(input, self.size, self.interpolation)
 
 
 class Rotate(nn.Module):
