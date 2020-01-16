@@ -153,9 +153,6 @@ def apply_vflip(input: torch.Tensor, params: dict, return_transform: bool = Fals
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
-    # input = input.unsqueeze(0)
-    # input = input.view((-1, (*input.shape[-3:])))
-
     flipped: torch.Tensor = input.clone()
     to_flip = params['batch_prob'].to(device)
     flipped[to_flip] = vflip(input[to_flip])
@@ -316,9 +313,6 @@ def apply_grayscale(input: torch.Tensor, params: dict, return_transform: bool = 
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
-    # print(input.detach().shape)
-    # input = input.view((-1, (*input.shape[-3:])))
-    # print(input.detach().shape)
 
     grayscale: torch.Tensor = input.clone()
 
