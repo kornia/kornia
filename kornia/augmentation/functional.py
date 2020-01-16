@@ -1,4 +1,5 @@
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict
+import warnings
 
 import torch
 import torch.nn as nn
@@ -15,41 +16,48 @@ FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+    warnings.warn("random_hflip is going to be deprecated. Please use kornia.augmentation.RandomHorizontalFlip instead.",
+            DeprecationWarning, stacklevel=1)
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = get_random_p_params(batch_size, p=p)
+    params = _get_random_p_params(batch_size, p=p)
     return apply_hflip(input, params, return_transform)
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+    warnings.warn("random_vflip is going to be deprecated. Please use kornia.augmentation.RandomVerticalFlip instead.",
+            DeprecationWarning, stacklevel=1)
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = get_random_p_params(batch_size, p=p)
+    params = _get_random_p_params(batch_size, p=p)
     return apply_vflip(input, params, return_transform)
 
 
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
                  contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
                  hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
+    warnings.warn("color_jitter is going to be deprecated. Please use kornia.augmentation.ColorJitter instead.",
+            DeprecationWarning, stacklevel=1)
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = get_color_jitter_params(batch_size, brightness, contrast, saturation, hue)
+    params = _get_color_jitter_params(batch_size, brightness, contrast, saturation, hue)
     return apply_color_jitter(input, params, return_transform)
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
-    print()
+    warnings.warn("random_grayscale is going to be deprecated. Please use kornia.augmentation.RandomGrayScale instead.",
+            DeprecationWarning, stacklevel=1)
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = get_random_p_params(batch_size, p=p)
+    params = _get_random_p_params(batch_size, p=p)
     return apply_grayscale(input, params, return_transform)
 
 
@@ -209,9 +217,9 @@ def apply_color_jitter(input: torch.Tensor, params: dict, return_transform: bool
     return jittered
 
 
-def get_color_jitter_params(batch_size: int, brightness: FloatUnionType = 0.,
+def _get_color_jitter_params(batch_size: int, brightness: FloatUnionType = 0.,
                             contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
-                            hue: FloatUnionType = 0.) -> dict:
+                            hue: FloatUnionType = 0.) -> Dict[str, torch.Tensor]:
     r"""Random color jiter of an image or batch of images.
 
     See :class:`~kornia.augmentation.ColorJitter` for details.
@@ -326,7 +334,7 @@ def apply_grayscale(input: torch.Tensor, params: dict, return_transform: bool = 
     return grayscale
 
 
-def get_random_p_params(batch_size: int, p: float = .5) -> dict:
+def _get_random_p_params(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
     r"""Random grayscale of an image or batch of images.
 
     See :class:`~kornia.augmentation.RandomGrayscale` for details.
