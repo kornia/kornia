@@ -1,16 +1,16 @@
-from typing import Callable, Tuple, Union, cast
+from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.functional import *
+import kornia.augmentation.functional as F
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
 
 class AugmentationBase(nn.Module):
-    def __init__(self, return_transform: bool = False):
+    def __init__(self, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
 
@@ -38,10 +38,11 @@ class RandomFlip(AugmentationBase):
         return self.__class__.__name__ + repr
 
     @staticmethod
-    def get_params(batch_size: int, p: float = 0.5):
-        return get_random_p_params(batch_size, p)
+    def get_params(batch_size: int, p: float = 0.5) -> Optional[Dict[str, torch.Tensor]]:
+        return F._get_random_p_params(batch_size, p)
 
-    def forward_flip(self, input: UnionType, flip_func: Callable, params: dict = None) -> UnionType:  # type: ignore
+    def forward_flip(self, input: UnionType, flip_func: Callable,
+                     params: Optional[Dict[str, torch.Tensor]]= None) -> UnionType:  # type: ignore
 
         if params is None:
             if isinstance(input, tuple):
@@ -111,8 +112,8 @@ class RandomHorizontalFlip(RandomFlip):
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(p=p, return_transform=return_transform)
 
-    def forward(self, input: UnionType, params: dict = None) -> UnionType:  # type: ignore
-        return self.forward_flip(input, apply_hflip, params)
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        return self.forward_flip(input, F.apply_hflip, params)
 
 
 class RandomVerticalFlip(RandomFlip):
@@ -149,8 +150,8 @@ class RandomVerticalFlip(RandomFlip):
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomVerticalFlip, self).__init__(p=p, return_transform=return_transform)
 
-    def forward(self, input: UnionType, params: dict = None) -> UnionType:  # type: ignore
-        return self.forward_flip(input, apply_vflip, params)
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        return self.forward_flip(input, F.apply_vflip, params)
 
 
 class ColorJitter(AugmentationBase):
@@ -182,10 +183,10 @@ class ColorJitter(AugmentationBase):
 
     @staticmethod
     def get_params(batch_size: int, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
-                   saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> dict:
-        return get_color_jitter_params(batch_size, brightness, contrast, saturation, hue)
+                   saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> Dict[str, torch.Tensor]:
+        return F._get_color_jitter_params(batch_size, brightness, contrast, saturation, hue)
 
-    def forward(self, input: UnionType, params: dict = None) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]]= None) -> UnionType:  # type: ignore
         if params is None:
             if isinstance(input, tuple):
                 batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
@@ -197,14 +198,14 @@ class ColorJitter(AugmentationBase):
 
             jittered: torch.Tensor = cast(
                 torch.Tensor,
-                apply_color_jitter(
+                F.apply_color_jitter(
                     input[0],
                     params=params,
                     return_transform=False))
 
             return jittered, input[1]
 
-        return apply_color_jitter(input, params, self.return_transform)
+        return F.apply_color_jitter(input, params, self.return_transform)
 
 
 class RandomGrayscale(AugmentationBase):
@@ -226,10 +227,10 @@ class RandomGrayscale(AugmentationBase):
         return self.__class__.__name__ + repr
 
     @staticmethod
-    def get_params(batch_size: int, p: float = .5) -> dict:
-        return get_random_p_params(batch_size, p)
+    def get_params(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
+        return F._get_random_p_params(batch_size, p)
 
-    def forward(self, input: UnionType, params: dict = None) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             if isinstance(input, tuple):
                 batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
@@ -241,11 +242,11 @@ class RandomGrayscale(AugmentationBase):
 
             output: torch.Tensor = cast(
                 torch.Tensor,
-                apply_grayscale(
+                F.apply_grayscale(
                     input[0],
                     params=params,
                     return_transform=False))
 
             return output, input[1]
 
-        return apply_grayscale(input, params=params, return_transform=self.return_transform)
+        return F.apply_grayscale(input, params=params, return_transform=self.return_transform)
