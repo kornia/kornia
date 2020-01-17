@@ -7,7 +7,11 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.augmentation import RandomHorizontalFlip, ColorJitter
+from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
+    RandomRectangleErasing, RandomGrayscale
+from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
+
+from test.common import device
 
 
 class TestRandomHorizontalFlip:
@@ -24,15 +28,15 @@ class TestRandomHorizontalFlip:
         f2 = RandomHorizontalFlip(p=1.)
         f3 = RandomHorizontalFlip(p=0.)
 
-        input = torch.tensor([[0., 0., 0.],
-                              [0., 0., 0.],
-                              [0., 1., 1.]])  # 3 x 3
+        input = torch.tensor([[0., 0., 0., 0.],
+                              [0., 0., 0., 0.],
+                              [0., 0., 1., 2.]])  # 3 x 4
 
-        expected = torch.tensor([[0., 0., 0.],
-                                 [0., 0., 0.],
-                                 [1., 1., 0.]])  # 3 x 3
+        expected = torch.tensor([[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [2., 1., 0., 0.]])  # 3 x 4
 
-        expected_transform = torch.tensor([[-1., 0., 3.],
+        expected_transform = torch.tensor([[-1., 0., 4.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
@@ -142,6 +146,143 @@ class TestRandomHorizontalFlip:
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
         assert gradcheck(RandomHorizontalFlip(p=1.), (input, ), raise_exception=True)
+
+
+class TestRandomVerticalFlip:
+
+    def smoke_test(self):
+        f = RandomVerticalFlip(0.5)
+        repr = "RandomVerticalFlip(p=0.5, return_transform=False)"
+        assert str(f) == repr
+
+    def test_random_vflip(self, device):
+
+        f = RandomVerticalFlip(p=1.0, return_transform=True)
+        f1 = RandomVerticalFlip(p=0., return_transform=True)
+        f2 = RandomVerticalFlip(p=1.)
+        f3 = RandomVerticalFlip(p=0.)
+
+        input = torch.tensor([[0., 0., 0.],
+                              [0., 0., 0.],
+                              [0., 1., 1.]])  # 3 x 3
+        input.to(device)
+
+        expected = torch.tensor([[0., 1., 1.],
+                                 [0., 0., 0.],
+                                 [0., 0., 0.]])  # 3 x 3
+
+        expected_transform = torch.tensor([[1., 0., 0.],
+                                           [0., -1., 3.],
+                                           [0., 0., 1.]])  # 3 x 3
+
+        identity = torch.tensor([[1., 0., 0.],
+                                 [0., 1., 0.],
+                                 [0., 0., 1.]])  # 3 x 3
+
+        assert_allclose(f(input)[0], expected)
+        assert_allclose(f(input)[1], expected_transform)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], identity)
+        assert_allclose(f2(input), expected)
+        assert_allclose(f3(input), input)
+
+    def test_batch_random_vflip(self, device):
+
+        f = RandomVerticalFlip(p=1.0, return_transform=True)
+        f1 = RandomVerticalFlip(p=0.0, return_transform=True)
+
+        input = torch.tensor([[[[0., 0., 0.],
+                                [0., 0., 0.],
+                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input.to(device)
+
+        expected = torch.tensor([[[[0., 1., 1.],
+                                   [0., 0., 0.],
+                                   [0., 0., 0.]]]])  # 1 x 1 x 3 x 3
+
+        expected_transform = torch.tensor([[[1., 0., 0.],
+                                            [0., -1., 3.],
+                                            [0., 0., 1.]]])  # 1 x 3 x 3
+
+        identity = torch.tensor([[[1., 0., 0.],
+                                  [0., 1., 0.],
+                                  [0., 0., 1.]]])  # 1 x 3 x 3
+
+        input = input.repeat(5, 3, 1, 1)  # 5 x 3 x 3 x 3
+        expected = expected.repeat(5, 3, 1, 1)  # 5 x 3 x 3 x 3
+        expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
+        identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
+
+        assert_allclose(f(input)[0], expected)
+        assert_allclose(f(input)[1], expected_transform)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], identity)
+
+    def test_sequential(self, device):
+
+        f = nn.Sequential(
+            RandomVerticalFlip(1.0, return_transform=True),
+            RandomVerticalFlip(1.0, return_transform=True),
+        )
+        f1 = nn.Sequential(
+            RandomVerticalFlip(1.0, return_transform=True),
+            RandomVerticalFlip(1.0),
+        )
+
+        input = torch.tensor([[[[0., 0., 0.],
+                                [0., 0., 0.],
+                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input.to(device)
+
+        expected_transform = torch.tensor([[[1., 0., 0.],
+                                            [0., -1., 3.],
+                                            [0., 0., 1.]]])  # 1 x 3 x 3
+
+        expected_transform_1 = expected_transform @ expected_transform
+
+        assert_allclose(f(input)[0], input)
+        assert_allclose(f(input)[1], expected_transform_1)
+        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[1], expected_transform)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(data: torch.Tensor) -> torch.Tensor:
+
+            return kornia.random_vflip(data)
+
+        input = torch.tensor([[0., 0., 0.],
+                              [0., 0., 0.],
+                              [0., 1., 1.]])  # 3 x 3
+
+        # Build jit trace
+        op_trace = torch.jit.trace(op_script, (input, ))
+
+        # Create new inputs
+        input = torch.tensor([[0., 0., 0.],
+                              [5., 5., 0.],
+                              [0., 0., 0.]])  # 3 x 3
+
+        input = input.repeat(2, 1, 1)  # 2 x 3 x 3
+
+        expected = torch.tensor([[[0., 0., 0.],
+                                  [5., 5., 0.],
+                                  [0., 0., 0.]]])  # 3 x 3
+
+        expected = expected.repeat(2, 1, 1)
+
+        actual = op_trace(input)
+
+        assert_allclose(actual, expected)
+
+    def test_gradcheck(self):
+
+        input = torch.rand((3, 3)).double()  # 3 x 3
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+
+        assert gradcheck(RandomVerticalFlip(p=1.), (input, ), raise_exception=True)
 
 
 class TestColorJitter:
@@ -614,6 +755,7 @@ class TestColorJitter:
         expected_transform = torch.eye(3).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
 
         assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(f(input)[0], expected)
         assert_allclose(f(input)[1], expected_transform)
 
     def test_gradcheck(self):
@@ -623,3 +765,292 @@ class TestColorJitter:
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
         assert gradcheck(kornia.color_jitter, (input, ), raise_exception=True)
+
+
+class TestRectangleRandomErasing:
+    @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
+    @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
+    @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+    def test_random_rectangle_erasing_shape(
+            self, batch_shape, erase_scale_range, aspect_ratio_range):
+        input = torch.rand(batch_shape)
+        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
+        assert rand_rec(input).shape == batch_shape
+
+    def test_rectangle_erasing1(self):
+        inputs = torch.ones(1, 1, 10, 10)
+        rect_params = (
+            torch.tensor([5]), torch.tensor([5]),
+            torch.tensor([5]), torch.tensor([5])
+        )
+        expected = torch.tensor([[[
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.]
+        ]]])
+        assert_allclose(erase_rectangles(inputs, rect_params), expected)
+
+    def test_rectangle_erasing2(self):
+        inputs = torch.ones(3, 3, 3, 3)
+        rect_params = (
+            torch.tensor([3, 2, 1]), torch.tensor([3, 2, 1]),
+            torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2])
+        )
+        expected = torch.tensor(
+            [[[[0., 0., 0.],
+               [0., 0., 0.],
+                [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]]]]
+        )
+
+        assert_allclose(erase_rectangles(inputs, rect_params), expected)
+
+    def test_gradcheck(self):
+        # test parameters
+        batch_shape = (2, 3, 11, 7)
+        erase_scale_range = (.2, .4)
+        aspect_ratio_range = (.3, .5)
+        rect_params = get_random_rectangles_params(
+            (2,), 11, 7, erase_scale_range, aspect_ratio_range
+        )
+
+        # evaluate function gradient
+        input = torch.rand(batch_shape, dtype=torch.double)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(
+            erase_rectangles,
+            (input, rect_params),
+            raise_exception=True,
+        )
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self):
+        @torch.jit.script
+        def op_script(img):
+            return kornia.augmentation.random_rectangle_erase(img, (.2, .4), (.3, .5))
+
+        batch_size, channels, height, width = 2, 3, 64, 64
+        img = torch.ones(batch_size, channels, height, width)
+        expected = RandomRectangleErasing(
+            (.2, .4), (.3, .5)
+        )(img)
+        actual = op_script(img)
+        assert_allclose(actual, expected)
+
+
+class TestRandomGrayscale:
+
+    def smoke_test(self):
+        f = RandomGrayscale()
+        repr = "RandomGrayscale(p=0.5, return_transform=False)"
+        assert str(f) == repr
+
+    def test_random_grayscale(self):
+
+        f = RandomGrayscale(return_transform=True)
+
+        input = torch.rand(3, 5, 5)  # 3 x 5 x 5
+
+        expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
+
+        assert_allclose(f(input)[1], expected_transform)
+
+    def test_opencv_true(self, device):
+        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
+                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
+                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
+                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
+                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
+
+                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
+                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
+                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
+                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
+                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
+
+                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
+                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
+                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
+                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
+                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
+        data = data.to(device)
+
+        # Output data generated with OpenCV 4.1.1: cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        expected = torch.tensor([[[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]],
+
+                                 [[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]],
+
+                                 [[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
+        expected = expected.to(device)
+
+        img_gray = kornia.random_grayscale(data, p=1.)
+        assert_allclose(img_gray, expected)
+
+    def test_opencv_false(self, device):
+        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
+                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
+                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
+                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
+                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
+
+                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
+                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
+                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
+                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
+                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
+
+                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
+                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
+                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
+                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
+                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
+        data = data.to(device)
+
+        expected = data
+
+        img_gray = kornia.random_grayscale(data, p=0.)
+        assert_allclose(img_gray, expected)
+
+    def test_opencv_true_batch(self, device):
+        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
+                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
+                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
+                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
+                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
+
+                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
+                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
+                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
+                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
+                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
+
+                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
+                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
+                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
+                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
+                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
+        data = data.to(device)
+        data = data.unsqueeze(0).repeat(4, 1, 1, 1)
+
+        # Output data generated with OpenCV 4.1.1: cv2.cvtColor(img_np, cv2.COLOR_RGB2GRAY)
+        expected = torch.tensor([[[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]],
+
+                                 [[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]],
+
+                                 [[0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
+                                  [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
+                                  [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
+                                  [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
+                                  [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
+        expected = expected.to(device)
+        expected = expected.unsqueeze(0).repeat(4, 1, 1, 1)
+
+        img_gray = kornia.random_grayscale(data, p=1.)
+        assert_allclose(img_gray, expected)
+
+    def test_opencv_true_batch(self, device):
+        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
+                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
+                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
+                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
+                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
+
+                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
+                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
+                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
+                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
+                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
+
+                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
+                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
+                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
+                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
+                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
+        data = data.to(device)
+        data = data.unsqueeze(0).repeat(4, 1, 1, 1)
+
+        expected = data
+
+        img_gray = kornia.random_grayscale(data, p=0.)
+        assert_allclose(img_gray, expected)
+
+    def test_random_grayscale_sequential_batch(self):
+        f = nn.Sequential(
+            RandomGrayscale(p=0., return_transform=True),
+            RandomGrayscale(p=0., return_transform=True),
+        )
+
+        input = torch.rand(2, 3, 5, 5)  # 2 x 3 x 5 x 5
+        expected = input
+
+        expected_transform = torch.eye(3).unsqueeze(0).expand((2, 3, 3))  # 2 x 3 x 3
+
+        assert_allclose(f(input)[0], expected)
+        assert_allclose(f(input)[1], expected_transform)
+
+    def test_gradcheck(self):
+
+        input = torch.rand((3, 5, 5)).double()  # 3 x 3
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+
+        assert gradcheck(kornia.random_grayscale, (input, 0.), raise_exception=True)
+        assert gradcheck(kornia.random_grayscale, (input, 1.), raise_exception=True)

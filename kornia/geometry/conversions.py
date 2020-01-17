@@ -83,6 +83,7 @@ def convert_points_from_homogeneous(
     if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
+
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
@@ -93,10 +94,9 @@ def convert_points_from_homogeneous(
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
-    scale: torch.Tensor = torch.where(
-        torch.abs(z_vec) > eps,
-        torch.tensor(1.) / z_vec,
-        torch.ones_like(z_vec))
+    mask: torch.Tensor = torch.abs(z_vec) > eps
+    scale: torch.Tensor = torch.ones_like(z_vec).masked_scatter_(
+        mask, torch.tensor(1.0) / z_vec[mask])
 
     return scale * points[..., :-1]
 

@@ -2,7 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -28,22 +28,33 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
 
 class TestGaussianBlur:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_gaussian_blur(self, batch_shape, device_type):
+    def test_gaussian_blur(self, batch_shape, device):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
 
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+        input = torch.rand(batch_shape).to(device)
         gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
         assert gauss(input).shape == batch_shape
 
-    def test_gradcheck(self):
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = (3, 3)
+        sigma = (1.5, 2.1)
+        gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
+        actual = gauss(inp)
+        expected = actual
+        assert_allclose(actual, actual)
+
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         kernel_size = (5, 3)
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape)
+        input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
             kornia.gaussian_blur2d,
@@ -59,7 +70,7 @@ class TestGaussianBlur:
             return kornia.gaussian_blur2d(img, (5, 5), (1.2, 1.2), "replicate")
 
         batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width)
+        img = torch.ones(batch_size, channels, height, width).to(device)
         expected = kornia.filters.GaussianBlur2d(
             (5, 5), (1.2, 1.2), "replicate"
         )(img)
@@ -95,20 +106,30 @@ def test_get_laplacian_kernel2d(window_size):
 
 class TestLaplacian:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_laplacian(self, batch_shape, device_type):
+    def test_laplacian(self, batch_shape, device):
         kernel_size = 5
 
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+        input = torch.rand(batch_shape).to(device)
         laplace = kornia.filters.Laplacian(kernel_size)
         assert laplace(input).shape == batch_shape
 
-    def test_gradcheck(self):
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = 3
+        laplace = kornia.filters.Laplacian(kernel_size)
+        actual = laplace(inp)
+        expected = actual
+        assert_allclose(actual, actual)
+
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         kernel_size = 9
 
         # evaluate function gradient
-        input = torch.rand(batch_shape)
+        input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(
             kornia.laplacian, (input, kernel_size), raise_exception=True)

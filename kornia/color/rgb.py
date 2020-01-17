@@ -67,6 +67,8 @@ class RgbToBgr(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> bgr = kornia.color.RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
@@ -112,6 +114,8 @@ class BgrToRgb(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5

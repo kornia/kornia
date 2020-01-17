@@ -45,12 +45,10 @@ class MedianBlur(nn.Module):
                              .format(input.shape))
         # prepare kernel
         b, c, h, w = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1)
-
+        kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype)
         # map the local window to single vector
         features: torch.Tensor = F.conv2d(
-            input, kernel, padding=self.padding, stride=1, groups=c)
+            input.reshape(b * c, 1, h, w), kernel, padding=self.padding, stride=1)
         features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
 
         # compute the median along the feature axis

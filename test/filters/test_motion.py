@@ -3,7 +3,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device_type
+from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -21,22 +21,33 @@ def test_get_motion_kernel2d(ksize, angle, direction):
 
 class TestMotionBlur:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_motion_blur(self, batch_shape, device_type):
+    def test_motion_blur(self, batch_shape, device):
         ksize = 5
         angle = 200.
         direction = 0.3
 
-        input = torch.rand(batch_shape).to(torch.device(device_type))
+        input = torch.rand(batch_shape).to(device)
         motion = kornia.filters.MotionBlur(ksize, angle, direction)
         assert motion(input).shape == batch_shape
 
-    def test_gradcheck(self):
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = 3
+        angle = 200.
+        direction = 0.3
+        actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
+        expected = actual
+        assert_allclose(actual, actual)
+
+    def test_gradcheck(self, device):
         batch_shape = (2, 3, 11, 7)
         ksize = 9
         angle = 34.
         direction = -0.2
 
-        input = torch.rand(batch_shape)
+        input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(
             kornia.motion_blur,
@@ -46,7 +57,7 @@ class TestMotionBlur:
 
     @pytest.mark.skip("")
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(
             input: torch.Tensor,
@@ -56,7 +67,7 @@ class TestMotionBlur:
         ) -> torch.Tensor:
             return kornia.filters.motion_blur(input, ksize, angle, direction)
 
-        img = torch.rand(2, 3, 4, 5)
+        img = torch.rand(2, 3, 4, 5).to(device)
         ksize = 5
         angle = 65.
         direction = .1

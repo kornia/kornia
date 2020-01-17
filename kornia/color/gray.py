@@ -23,6 +23,8 @@ class RgbToGrayscale(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
@@ -55,7 +57,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
                          .format(input.shape))
 
     r, g, b = torch.chunk(input, chunks=3, dim=-3)
-    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.110 * b
+    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 
 
@@ -79,6 +81,8 @@ class BgrToGrayscale(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5

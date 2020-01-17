@@ -9,12 +9,14 @@ def image_to_tensor(image: Union[np.ndarray, Image.Image], keepdim: bool = True)
     """Converts a numpy or PIL image to a PyTorch 4d tensor image.
 
     Args:
-        image (numpy.ndarray or PIL Image): image of the form math:`(H, W, C)`, math: `(H, W)` or math:`(B, H, W, C)`.
+        image (numpy.ndarray or PIL Image): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
+            :math:`(B, H, W, C)`.
         keepdim (bool): If ``False`` unsqueeze the input image to match the shape
-        math: `(B, H, W, C)`. Default: ``True``
+            :math:`(B, H, W, C)`. Default: ``True``
 
     Returns:
-        torch.Tensor: tensor of the form math:`(B, C, H, W)` if keepdim is ``False``, math:`(C, H, W)` otherwise.
+        torch.Tensor: tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
+            :math:`(C, H, W)` otherwise.
 
     """
     if not isinstance(image, (np.ndarray, Image.Image)):
@@ -53,12 +55,11 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
     it will be copied back to CPU.
 
     Args:
-        tensor (torch.Tensor): image of the form :math:`(H, W)`,
-        math:`(C, H, W)`, or math:`(B, C, H, W)`.
+        tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)` or
+            :math:`(B, C, H, W)`.
 
     Returns:
-        numpy.ndarray: image of the form :math:`(H, W)`,
-        math:`(H, W)`, math:`(H, W, C)`, or math:`(B, H, W, C)`.
+        numpy.ndarray: image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
 
     """
     if not torch.is_tensor(tensor):
