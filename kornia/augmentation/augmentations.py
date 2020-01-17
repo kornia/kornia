@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia.augmentation.functional as F
+import kornia.augmentation.param_gen as pg
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
@@ -39,10 +40,10 @@ class RandomFlip(AugmentationBase):
 
     @staticmethod
     def get_params(batch_size: int, p: float = 0.5) -> Optional[Dict[str, torch.Tensor]]:
-        return F._get_random_p_params(batch_size, p)
+        return pg._random_prob_gen(batch_size, p)
 
     def forward_flip(self, input: UnionType, flip_func: Callable,
-                     params: Optional[Dict[str, torch.Tensor]]= None) -> UnionType:  # type: ignore
+                     params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
 
         if params is None:
             if isinstance(input, tuple):
@@ -184,9 +185,9 @@ class ColorJitter(AugmentationBase):
     @staticmethod
     def get_params(batch_size: int, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
                    saturation: FloatUnionType = 0., hue: FloatUnionType = 0.) -> Dict[str, torch.Tensor]:
-        return F._get_color_jitter_params(batch_size, brightness, contrast, saturation, hue)
+        return pg._random_color_jitter_gen(batch_size, brightness, contrast, saturation, hue)
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]]= None) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             if isinstance(input, tuple):
                 batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
@@ -228,7 +229,7 @@ class RandomGrayscale(AugmentationBase):
 
     @staticmethod
     def get_params(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
-        return F._get_random_p_params(batch_size, p)
+        return pg._random_prob_gen(batch_size, p)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
