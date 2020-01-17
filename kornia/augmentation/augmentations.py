@@ -23,7 +23,7 @@ class AugmentationBase(nn.Module):
         raise NotImplementedError("forward method is not implemented for this class.")
 
     @staticmethod
-    def get_params():
+    def get_params() -> Dict[str, torch.Tensor]:
         raise NotImplementedError("forward method is not implemented for this class.")
 
 
@@ -39,7 +39,7 @@ class RandomFlip(AugmentationBase):
         return self.__class__.__name__ + repr
 
     @staticmethod
-    def get_params(batch_size: int, p: float = 0.5) -> Optional[Dict[str, torch.Tensor]]:
+    def get_params(batch_size: int, p: float = 0.5) -> Dict[str, torch.Tensor]:
         return pg._random_prob_gen(batch_size, p)
 
     def forward_flip(self, input: UnionType, flip_func: Callable,
