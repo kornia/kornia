@@ -14,6 +14,11 @@ FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+    """Generate params and apply operation on input tensor.
+
+    See :class:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :class:`~kornia.augmentation.functional.apply_hflip` for details.
+    """
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -23,6 +28,11 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+    """Generate params and apply operation on input tensor.
+
+    See :class:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :class:`~kornia.augmentation.functional.apply_vflip` for details.
+    """
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -34,6 +44,11 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
                  contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
                  hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
+    """Generate params and apply operation on input tensor.
+
+    See :class:`~kornia.augmentation.param_gen._random_color_jitter_gen` for details.
+    See :class:`~kornia.augmentation.functional.apply_color_jitter` for details.
+    """
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -43,6 +58,11 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
+    """Generate params and apply operation on input tensor.
+
+    See :class:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :class:`~kornia.augmentation.functional.apply_grayscale` for details.
+    """
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -52,11 +72,12 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
 
 
 def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
-    r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
+        params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
+        kornia.augmentation.param_gen._random_prob_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -110,11 +131,12 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
 
 
 def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
-    r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
+        params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
+        kornia.augmentation.param_gen._random_prob_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -164,6 +186,22 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
 
 
 def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+    """Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Args:
+        params (dict): A dict that must have {
+            'brightness_factor': torch.Tensor,
+            'contrast_factor': torch.Tensor,
+            'hue_factor': torch.Tensor,
+            'saturation_factor': torch.Tensor,
+            }. Can be generated from kornia.augmentation.param_gen._random_color_jitter_gen
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        input tensor.
+    Returns:
+        torch.Tensor: The color jitterred input
+        torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)` if return_transform flag
+                      is set to ``True``
+    """
     # TODO: params validation
 
     if not torch.is_tensor(input):
@@ -205,8 +243,17 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], ret
 
 
 def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
-    """
-    params: {'bool_p': torch.Tensor}
+    """Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
+    Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
+    Args:
+        params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
+        kornia.augmentation.param_gen._random_prob_gen
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        input tensor.
+    Returns:
+        torch.Tensor: The grayscaled input
+        torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)` if return_transform flag
+                      is set to ``True``
     """
     # TODO: params validation
 

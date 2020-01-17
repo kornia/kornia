@@ -13,7 +13,14 @@ FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
                              contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
                              hue: FloatUnionType = 0.) -> Dict[str, torch.Tensor]:
-    r"""Random color jiter of an image or batch of images.
+    r"""Generator random color jiter parameters for a batch of images.
+
+    Args:
+        batch_size (int): the number of images.
+        brightness (float or tuple): Default value is 0
+        contrast (float or tuple): Default value is 0
+        saturation (float or tuple): Default value is 0
+        hue (float or tuple): Default value is 0
 
     See :class:`~kornia.augmentation.ColorJitter` for details.
     """
@@ -90,9 +97,15 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
 
 
 def _random_prob_gen(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
-    r"""Random grayscale of an image or batch of images.
+    r"""Generator random probabilities for a batch of inputs.
+
+    Args:
+        batch_size (int): the number of images.
+        p (float): probability of the image being flipped or grayscaled. Default value is 0.5
 
     See :class:`~kornia.augmentation.RandomGrayscale` for details.
+    See :class:`~kornia.augmentation.RandomHorizontalFlip` for details.
+    See :class:`~kornia.augmentation.RandomVerticalFlip` for details.
     """
 
     if not isinstance(p, float):
