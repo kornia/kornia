@@ -120,11 +120,15 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
 
 
-def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
+# inpired in
+# https://github.com/kashif/ceres-solver/blob/master/include/ceres/rotation.h#L288
+
+def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
 
     Args:
         angle_axis (torch.Tensor): tensor of 3d vector of axis-angle rotations.
+        eps (float): number to assure safe division. Default: 1e-8.
 
     Returns:
         torch.Tensor: tensor of 3x3 rotation matrices.
@@ -146,40 +150,54 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
             "Input size must be a (*, 3) tensor. Got {}".format(
                 angle_axis.shape))
 
-    def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
+    num_dim: int = len(angle_axis.shape)
+    if num_dim == 1:
+        angle_axis = torch.unsqueeze(angle_axis, dim=0)
+
+    # this is batched dot product
+    #theta2 = torch.einsum('ij, ij->i', angle_axis, angle_axis).unsqueeze(1)
+    theta2 = torch.sum(angle_axis * angle_axis, dim=-1, keepdim=True)
+
+    def rot_mat(r00, r01, r02, r10, r11, r12, r20, r21, r22) -> torch.Tensor:
+        rotation_matrix: torch.Tensor = torch.cat(
+            [r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=-1)
+        return rotation_matrix.view(-1, 3, 3)
+
+    def cond_1() -> torch.Tensor:
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
         # we get a division by zero.
-        k_one = 1.0
         theta = torch.sqrt(theta2)
+        k_one = torch.ones_like(theta)
+
         wxyz = angle_axis / (theta + eps)
-        wx, wy, wz = torch.chunk(wxyz, 3, dim=1)
+        wx, wy, wz = torch.chunk(wxyz, 3, dim=-1)
+
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
 
         r00 = cos_theta + wx * wx * (k_one - cos_theta)
-        r10 = wz * sin_theta + wx * wy * (k_one - cos_theta)
-        r20 = -wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r01 = wx * wy * (k_one - cos_theta) - wz * sin_theta
+        r01 = wz * sin_theta + wx * wy * (k_one - cos_theta)
+        r02 = -wy * sin_theta + wx * wz * (k_one - cos_theta)
+        r10 = wx * wy * (k_one - cos_theta) - wz * sin_theta
         r11 = cos_theta + wy * wy * (k_one - cos_theta)
-        r21 = wx * sin_theta + wy * wz * (k_one - cos_theta)
-        r02 = wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r12 = -wx * sin_theta + wy * wz * (k_one - cos_theta)
+        r12 = wx * sin_theta + wy * wz * (k_one - cos_theta)
+        r20 = wy * sin_theta + wx * wz * (k_one - cos_theta)
+        r21 = -wx * sin_theta + wy * wz * (k_one - cos_theta)
         r22 = cos_theta + wz * wz * (k_one - cos_theta)
-        rotation_matrix = torch.cat(
-            [r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
-        return rotation_matrix.view(-1, 3, 3)
+        return rot_mat(r00, r01, r02, r10, r11, r12, r20, r21, r22)
 
-    def _compute_rotation_matrix_taylor(angle_axis):
-        rx, ry, rz = torch.chunk(angle_axis, 3, dim=1)
+    def cond_2() -> torch.Tensor:
+        rx, ry, rz = torch.chunk(angle_axis, 3, dim=-1)
         k_one = torch.ones_like(rx)
-        rotation_matrix = torch.cat(
-            [k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
-        return rotation_matrix.view(-1, 3, 3)
+        return rot_mat(k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one)
 
-    # stolen from ceres/rotation.h
+    cond_mask = (theta2 > eps).view(-1, 1, 1).expand(-1, 3, 3)
+    rotation_matrix: torch.Tensor = torch.where(cond_mask, cond_1(), cond_2())
 
-    _angle_axis = torch.unsqueeze(angle_axis, dim=1)
+    if num_dim == 1:
+        rotation_matrix = torch.squeeze(rotation_matrix, dim=0)
+    '''_angle_axis = torch.unsqueeze(angle_axis, dim=1)
     theta2 = torch.matmul(_angle_axis, _angle_axis.transpose(1, 2))
     theta2 = torch.squeeze(theta2, dim=1)
 
@@ -199,8 +217,8 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     rotation_matrix = rotation_matrix.view(1, 3, 3).repeat(batch_size, 1, 1)
     # fill output matrix with masked values
     rotation_matrix[..., :3, :3] = \
-        mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
-    return rotation_matrix  # Nx4x4
+        mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor'''
+    return rotation_matrix
 
 
 def rotation_matrix_to_angle_axis(
@@ -263,7 +281,8 @@ def rotation_matrix_to_quaternion(
             "Input size must be a (*, 3, 3) tensor. Got {}".format(
                 rotation_matrix.shape))
 
-    rotation_matrix_t = torch.transpose(rotation_matrix, -2, -1).contiguous()
+    #rotation_matrix_t = torch.transpose(rotation_matrix, -2, -1).contiguous()
+    rotation_matrix_t = rotation_matrix
 
     rotation_matrix_vec: torch.Tensor = rotation_matrix_t.view(
         *rotation_matrix.shape[:-2], 9)
@@ -271,10 +290,23 @@ def rotation_matrix_to_quaternion(
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(
         rotation_matrix_vec, chunks=9, dim=-1)
 
+    trace: torch.Tensor = m00 + m11 + m22
+
+    def safe_zero_division(numerator: torch.Tensor,
+                           denominator: torch.Tensor) -> torch.Tensor:
+        eps: float = torch.finfo(numerator.dtype).tiny  # type: ignore
+        return numerator / torch.clamp(denominator, min=eps)
+
     def quat(qx, qy, qz, qw, t):
         return 0.5 * torch.cat([qx, qy, qz, qw], dim=-1) / (torch.sqrt(t) + eps)
 
-    def cond_1():
+    #qw = torch.sqrt(1+m00+m11+m22)/2
+    #qx = (m21-m12)/(4*qw+eps) 
+    #qy = (m02-m20)/(4*qw+eps) 
+    #qz = (m10-m01)/(4*qw+eps) 
+    #return torch.cat([qx, qy, qz, qw], dim=-1)
+
+    '''def cond_1():
         t = 1. + m00 - m11 - m22
         qx = t
         qy = m01 + m10
@@ -309,7 +341,46 @@ def rotation_matrix_to_quaternion(
     where_1 = torch.where(m00 > m11, cond_1(), cond_2())
     where_2 = torch.where(m00 < -m11, cond_3(), cond_4())
 
-    quaternion: torch.Tensor = torch.where((m22 < eps), where_1, where_2)
+    quaternion: torch.Tensor = torch.where((m22 < eps), where_1, where_2)'''
+
+    def trace_positive_cond():
+        sq = torch.sqrt(trace + 1.0) * 2.  # sq = 4 * qw.
+        qw = 0.25 * sq
+        qx = safe_zero_division(m21 - m12, sq)
+        qy = safe_zero_division(m02 - m20, sq)
+        qz = safe_zero_division(m10 - m01, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
+
+    def cond_1():
+        sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.  # sq = 4 * qx.
+        qw = safe_zero_division(m21 - m12, sq)
+        qx = 0.25 * sq
+        qy = safe_zero_division(m01 + m10, sq)
+        qz = safe_zero_division(m02 + m20, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
+
+    def cond_2():
+        sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.  # sq = 4 * qy.
+        qw = safe_zero_division(m02 - m20, sq)
+        qx = safe_zero_division(m01 + m10, sq)
+        qy = 0.25 * sq
+        qz = safe_zero_division(m12 + m21, sq)
+        return torch.cat([qx, qy, qz, qw], dim=-1)
+
+    def cond_3():
+        sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.  # sq = 4 * qz.
+        qw = safe_zero_division(m10 - m01, sq)
+        qx = safe_zero_division(m02 + m20, sq)
+        qy = safe_zero_division(m12 + m21, sq)
+        qz = 0.25 * sq
+        return torch.cat([qx, qy, qz, qw], dim=-1)
+
+    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
+    where_1 = torch.where(
+        (m00 > m11) & (m00 > m22), cond_1(), where_2)
+
+    quaternion: torch.Tensor = torch.where(
+        trace > 0., trace_positive_cond(), where_1)
 
     return quaternion
 
@@ -375,10 +446,14 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
             "Input must be a tensor of shape (*, 4). Got {}".format(
                 quaternion.shape))
     # normalize the input quaternion
-    quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
+    #quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
+    if not bool(torch.norm(quaternion[..., :3]) == 1.):
+        #raise ValueError("Quaternion is not normalized")
+        quaternion = normalize_quaternion(quaternion)
 
     # unpack the normalized quaternion components
-    x, y, z, w = torch.chunk(quaternion_norm, chunks=4, dim=-1)
+    x, y, z, w = torch.chunk(quaternion, chunks=4, dim=-1)
+    #x, y, z, w = torch.chunk(quaternion_norm, chunks=4, dim=-1)
 
     # compute the actual conversion
     tx: torch.Tensor = 2.0 * x
@@ -406,7 +481,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     return matrix
 
 
-def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
+def quaternion_to_angle_axis(quaternion: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
     The quaternion should be in (x, y, z, w) format.
 
@@ -414,6 +489,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 
     Args:
         quaternion (torch.Tensor): tensor with quaternions.
+        eps (float): small number to avoid zero division. Default: 1e-8.
 
     Return:
         torch.Tensor: tensor with angle axis of rotation.
@@ -434,27 +510,40 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
         raise ValueError(
             "Input must be a tensor of shape Nx4 or 4. Got {}".format(
                 quaternion.shape))
+
+    if not bool(torch.norm(quaternion[..., :3]) == 1.):
+        #raise ValueError("Quaternion is not normalized")
+        quaternion = normalize_quaternion(quaternion)
+
     # unpack input and compute conversion
-    q1: torch.Tensor = quaternion[..., 1]
-    q2: torch.Tensor = quaternion[..., 2]
-    q3: torch.Tensor = quaternion[..., 3]
-    sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
+    #qx, qy, qz, qw = torch.chunk(quaternion, dim=-1, chunks=4)
+    #sin_squared: torch.Tensor = qx * qx + qy * qy + qz * qz
 
-    sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
-    cos_theta: torch.Tensor = quaternion[..., 0]
-    two_theta: torch.Tensor = 2.0 * torch.where(
-        cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta),
-        torch.atan2(sin_theta, cos_theta))
+    #def aaxis(ax, ay, az):
+    #    return torch.cat([ax, ay, az], dim=-1)
 
-    k_pos: torch.Tensor = two_theta / sin_theta
-    k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
-    k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
+    #def cond_1():
+    #    sin_theta = torch.sqrt(sin_squared)
+    #    k = 2.0 * torch.atan2(sin_theta, qw) / (sin_theta + eps)
+    #    return aaxis(qx * k, qy * k, qz * k)
 
-    angle_axis: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
-    angle_axis[..., 0] += q1 * k
-    angle_axis[..., 1] += q2 * k
-    angle_axis[..., 2] += q3 * k
-    return angle_axis
+    #def cond_2():
+    #    k = 2.0
+    #    return aaxis(qx * k, qy * k, qz * k)
+
+    #angle_axis: torch.Tensor = torch.where(sin_squared > eps, cond_1(), cond_2())
+    #return angle_axis
+    #import pdb;pdb.set_trace()
+    def zero_sign(x):
+        ones = torch.ones_like(x)
+        return torch.where(x > 0, ones, -ones)
+    quaternion += eps
+    xyz = quaternion[..., :3]
+    w = quaternion[..., -1:]
+    norm = torch.norm(xyz, dim=-1)
+    angle = 2. * torch.atan2(norm, torch.abs(w))
+    axis = zero_sign(w) * xyz / (norm + eps)
+    return angle * axis
 
 
 def quaternion_log_to_exp(quaternion: torch.Tensor,
@@ -535,10 +624,6 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
     return quaternion_log
 
 
-# based on:
-# https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
-
-
 def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     r"""Convert an angle axis to a quaternion.
     The quaternion vector has components in (x, y, z, w) format.
@@ -567,28 +652,29 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
         raise ValueError(
             "Input must be a tensor of shape Nx3 or 3. Got {}".format(
                 angle_axis.shape))
+
     # unpack input and compute conversion
-    a0: torch.Tensor = angle_axis[..., 0:1]
-    a1: torch.Tensor = angle_axis[..., 1:2]
-    a2: torch.Tensor = angle_axis[..., 2:3]
+    a0, a1, a2 = torch.chunk(angle_axis, dim=-1, chunks=3)
     theta_squared: torch.Tensor = a0 * a0 + a1 * a1 + a2 * a2
 
-    theta: torch.Tensor = torch.sqrt(theta_squared)
-    half_theta: torch.Tensor = theta * 0.5
+    def quat(qx, qy, qz, w):
+        return torch.cat([qx, qy, qz, w], dim=-1)
 
-    mask: torch.Tensor = theta_squared > 0.0
-    ones: torch.Tensor = torch.ones_like(half_theta)
+    def cond_1():
+        theta = torch.sqrt(theta_squared)
+        half_theta = theta * 0.5
+        k = torch.sin(half_theta) / theta
+        return quat(a0 * k, a1 * k, a2 * k, torch.cos(half_theta))
 
-    k_neg: torch.Tensor = 0.5 * ones
-    k_pos: torch.Tensor = torch.sin(half_theta) / theta
-    k: torch.Tensor = torch.where(mask, k_pos, k_neg)
-    w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
+    def cond_2():
+        k = 0.5
+        ones = torch.ones_like(a0)
+        return quat(a0 * k, a1 * k, a2 * k, ones)
 
-    quaternion: torch.Tensor = torch.zeros_like(angle_axis)
-    quaternion[..., 0:1] += a0 * k
-    quaternion[..., 1:2] += a1 * k
-    quaternion[..., 2:3] += a2 * k
-    return torch.cat([w, quaternion], dim=-1)
+    quaternion: torch.Tensor = torch.where(
+        theta_squared > 0., cond_1(), cond_2()
+    )
+    return quaternion
 
 
 # based on:

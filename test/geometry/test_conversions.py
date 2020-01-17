@@ -12,6 +12,32 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestAngleAxisToRotationMatrix:
+
+    def test_smoke(self, device):
+        angle_axis = torch.zeros(3).to(device)
+        matrix = kornia.angle_axis_to_rotation_matrix(angle_axis)
+        assert matrix.shape == (3, 3)
+
+    def test_smoke_batch(self, device):
+        angle_axis = torch.zeros(2, 3).to(device)
+        matrix = kornia.angle_axis_to_rotation_matrix(angle_axis)
+        assert matrix.shape == (2, 3, 3)
+
+    def test_back_and_forth(self, device):
+        angle_axis = torch.tensor([0., 0., kornia.pi]).to(device)
+        matrix = kornia.angle_axis_to_rotation_matrix(angle_axis)
+        angle_axis_hat = kornia.rotation_matrix_to_angle_axis(matrix)
+        assert_allclose(angle_axis, angle_axis_hat)
+
+    def test_gradcheck(self, device):
+        angle_axis = torch.rand(3).to(device)
+        angle_axis = tensor_to_gradcheck_var(angle_axis)
+        # evaluate function gradient
+        assert gradcheck(kornia.angle_axis_to_rotation_matrix, (angle_axis,),
+                         raise_exception=True)
+
+
 # based on:
 # https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
 
@@ -30,23 +56,29 @@ class TestAngleAxisToQuaternion:
 
     def test_zero_angle(self, device):
         angle_axis = torch.tensor([0., 0., 0.]).to(device)
-        expected = torch.tensor([1., 0., 0., 0.]).to(device)
+        expected = torch.tensor([0., 0., 0., 1.]).to(device)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
     def test_small_angle(self, device):
         theta = 1e-2
         angle_axis = torch.tensor([theta, 0., 0.]).to(device)
-        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
+        expected = torch.tensor([np.sin(theta / 2), 0., 0., np.cos(theta / 2)]).to(device)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
     def test_x_rotation(self, device):
         half_sqrt2 = 0.5 * np.sqrt(2)
         angle_axis = torch.tensor([kornia.pi / 2, 0., 0.]).to(device)
-        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.]).to(device)
+        expected = torch.tensor([half_sqrt2, 0., 0., half_sqrt2]).to(device)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
+
+    def test_back_and_forth(self, device):
+        angle_axis = torch.rand(4, 3).to(device)
+        quat = kornia.angle_axis_to_quaternion(angle_axis)
+        angle_axis_hat = kornia.quaternion_to_angle_axis(quat)
+        assert_allclose(angle_axis, angle_axis_hat)
 
     def test_gradcheck(self, device):
         eps = 1e-12
@@ -200,6 +232,12 @@ class TestQuaternionToRotationMatrix:
         matrix = kornia.quaternion_to_rotation_matrix(quaternion)
         assert_allclose(matrix, expected)
 
+    def test_back_and_forth(self, device):
+        quaternion = torch.tensor([0., 0., 0., 1.]).to(device)
+        matrix = kornia.quaternion_to_rotation_matrix(quaternion)
+        quaternion_back = kornia.rotation_matrix_to_quaternion(matrix)
+        assert_allclose(quaternion, quaternion_back)
+
     def test_gradcheck(self, device):
         quaternion = torch.tensor([0., 0., 0., 1.]).to(device)
         quaternion = tensor_to_gradcheck_var(quaternion)
@@ -318,29 +356,41 @@ class TestQuaternionToAngleAxis:
         assert angle_axis.shape == (batch_size, 3)
 
     def test_unit_quaternion(self, device):
-        quaternion = torch.tensor([1., 0., 0., 0.]).to(device)
+        quaternion = torch.tensor([0., 0., 0., 1.]).to(device)
         expected = torch.tensor([0., 0., 0.]).to(device)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
+    def test_x_rotation(self, device):
+        quaternion = torch.tensor([1., 0., 0., 0.]).to(device)
+        expected = torch.tensor([kornia.pi, 0., 0.]).to(device)
+        angle_axis = kornia.quaternion_to_angle_axis(quaternion)
+        assert_allclose(angle_axis, expected)
+
     def test_y_rotation(self, device):
-        quaternion = torch.tensor([0., 0., 1., 0.]).to(device)
+        quaternion = torch.tensor([0., 1., 0., 0.]).to(device)
         expected = torch.tensor([0., kornia.pi, 0.]).to(device)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
     def test_z_rotation(self, device):
-        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5]).to(device)
-        expected = torch.tensor([0., 0., kornia.pi / 3]).to(device)
+        quaternion = torch.tensor([0., 0., 1., 0.]).to(device)
+        expected = torch.tensor([0., 0., kornia.pi]).to(device)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
     def test_small_angle(self, device):
         theta = 1e-2
-        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
+        quaternion = torch.tensor([np.sin(theta / 2), 0., 0., np.cos(theta / 2)]).to(device)
         expected = torch.tensor([theta, 0., 0.]).to(device)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
+
+    def test_back_and_forth(self, device):
+        quaternion = torch.tensor([1., 0., 0., 0.]).to(device)
+        angle_axis = kornia.quaternion_to_angle_axis(quaternion)
+        quaternion_back = kornia.angle_axis_to_quaternion(angle_axis)
+        assert_allclose(quaternion, quaternion_back)
 
     def test_gradcheck(self, device):
         eps = 1e-12
