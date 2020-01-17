@@ -9,48 +9,19 @@ import pytest
 
 
 class TestRgbToRgba:
-    def test_rgb_to_rgba(self):
+    def test_smoke(self, device):
+        data = torch.rand(3, 4, 4).to(device)
+        assert kornia.rgb_to_rgba(data, 0.).shape == (4, 4, 4)
 
-        data = torch.Tensor([[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]])  # 3x2x2
-        aval = 0.4
-        expected = torch.Tensor([[[1.0000e+00, 1.0000e+00], [1.0000e+00, 1.0000e+00]],
-                                 [[2.0000e+00, 2.0000e+00], [2.0000e+00, 2.0000e+00]],
-                                 [[3.0000e+00, 3.0000e+00], [3.0000e+00, 3.0000e+00]],
-                                 [[0.4, 0.4],
-                                  [0.4, 0.4]]])  # 4x2x2
+    def test_bgr(self, device):
+        a_val: float = 1.
+        x_rgb = torch.rand(3, 4, 4).to(device)
+        x_bgr = kornia.rgb_to_bgr(x_rgb)
+        x_rgba = kornia.rgb_to_rgba(x_rgb, a_val)
+        x_rgba_new = kornia.bgr_to_rgba(x_bgr, a_val)
+        assert_allclose(x_rgba, x_rgba_new)
 
-        f = kornia.color.RgbToRgba(aval)
-        assert_allclose(f(data, aval), expected)
-
-    def test_batch_rgb_to_rgba(self):
-
-        data = torch.Tensor([[[[1., 1.], [1., 1.]],
-                              [[2., 2.], [2., 2.]],
-                              [[3., 3.], [3., 3.]]],
-                             [[[1., 1.], [1., 1.]],
-                              [[2., 2.], [2., 2.]],
-                              [[3., 3.], [3., 3.]]]])  # 2x3x2x2
-        aval = 45
-
-        expected = torch.Tensor([[[[1.0000e+00, 1.0000e+00], [1.0000e+00, 1.0000e+00]],
-                                  [[2.0000e+00, 2.0000e+00], [2.0000e+00, 2.0000e+00]],
-                                  [[3.0000e+00, 3.0000e+00], [3.0000e+00, 3.0000e+00]],
-                                  [[45., 45.], [45., 45.]]],
-                                 [[[1.0000e+00, 1.0000e+00], [1.0000e+00, 1.0000e+00]],
-                                  [[2.0000e+00, 2.0000e+00], [2.0000e+00, 2.0000e+00]],
-                                  [[3.0000e+00, 3.0000e+00], [3.0000e+00, 3.0000e+00]],
-                                  [[45., 45.], [45., 45.]]]])  # 2x4x2x2
-
-        f = kornia.color.RgbToRgba(aval)
-        out = f(data, aval)
-        assert_allclose(out, expected)
-
-        
-class TestBgrToRgb:
-
-    def test_bgr_to_rgb(self, device):
-
-        # prepare input data
+    def test_single(self, device):
         data = torch.tensor([[[1., 1.],
                               [1., 1.]],
 
@@ -59,13 +30,98 @@ class TestBgrToRgb:
 
                              [[3., 3.],
                               [3., 3.]]])  # 3x2x2
+        data = data.to(device)
 
-        expected = torch.tensor([[[3., 3.],
-                                  [3., 3.]],
+        aval: float = 0.4
+        expected = torch.tensor([[[1.0, 1.0],
+                                  [1.0, 1.0]],
 
-                                 [[2., 2.],
-                                  [2., 2.]],
-                             
+                                 [[2.0, 2.0],
+                                  [2.0, 2.0]],
+
+                                 [[3.0, 3.0],
+                                  [3.0, 3.0]],
+
+                                 [[0.4, 0.4],
+                                  [0.4, 0.4]]])  # 4x2x2
+        expected = expected.to(device)
+
+        assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
+
+    def test_batch(self, device):
+
+        data = torch.tensor([[[[1., 1.],
+                               [1., 1.]],
+
+                              [[2., 2.],
+                               [2., 2.]],
+
+                              [[3., 3.],
+                               [3., 3.]]],
+
+                             [[[1., 1.],
+                               [1., 1.]],
+
+                              [[2., 2.],
+                               [2., 2.]],
+
+                              [[3., 3.],
+                               [3., 3.]]]])  # 2x3x2x2
+        data = data.to(device)
+
+        aval: float = 45.
+
+        expected = torch.tensor([[[[1.0, 1.0],
+                                   [1.0, 1.0]],
+
+                                  [[2.0, 2.0],
+                                   [2.0, 2.0]],
+
+                                  [[3.0, 3.0],
+                                   [3.0, 3.0]],
+
+                                  [[45., 45.],
+                                   [45., 45.]]],
+
+                                 [[[1.0, 1.0],
+                                   [1.0, 1.0]],
+
+                                  [[2.0, 2.0],
+                                   [2.0, 2.0]],
+
+                                  [[3.0, 3.0],
+                                   [3.0, 3.0]],
+
+                                  [[45., 45.],
+                                   [45., 45.]]]])
+        expected = expected.to(device)
+
+        assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
+
+    def test_gradcheck(self, device):
+        data = torch.rand(1, 3, 2, 2).to(device)
+        data = utils.tensor_to_gradcheck_var(data)  # to var
+        assert gradcheck(kornia.color.RgbToRgba(1.), (data,), raise_exception=True)
+
+
+class TestBgrToRgb:
+
+    def test_back_and_forth(self, device):
+        data_bgr = torch.rand(1, 3, 3, 2).to(device)
+        data_rgb = kornia.bgr_to_rgb(data_bgr)
+        data_bgr_new = kornia.rgb_to_bgr(data_rgb)
+        assert_allclose(data_bgr, data_bgr_new)
+
+    def test_bgr_to_rgb(self, device):
+
+        data = torch.tensor([[[1., 1.], [1., 1.]],
+                             [[2., 2.], [2., 2.]],
+                             [[3., 3.], [3., 3.]]])  # 3x2x2
+
+        expected = torch.tensor([[[3., 3.], [3., 3.]],
+                                 [[2., 2.], [2., 2.]],
+                                 [[1., 1.], [1., 1.]]])  # 3x2x2
+
         # move data to the device
         data = data.to(device)
         expected = expected.to(device)
@@ -73,52 +129,16 @@ class TestBgrToRgb:
         f = kornia.color.BgrToRgb()
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
-        aval = 0.4
-        data = torch.Tensor([[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]])  # 3x2x2
-        data = utils.tensor_to_gradcheck_var(data)  # to var
-        assert gradcheck(kornia.color.RgbToRgba(aval), (data, aval), raise_exception=True)
+    def test_batch_bgr_to_rgb(self, device):
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
-        @torch.jit.script
-        def op_script(data: torch.Tensor, aval: int) -> torch.Tensor:
-            return kornia.rgb_to_rgba(data, aval)
-
-        data = torch.Tensor([[[1., 1.], [1., 1.]],
-                             [[2., 2.], [2., 2.]],
-                             [[3., 3.], [3., 3.]]])  # 3x2x2
-        aval = 0.4
-        actual = op_script(data, aval)
-        expected = kornia.rgb_to_rgba(data, aval)
-        assert_allclose(actual, expected)
-
-
-class TestBgrToRgb:
-
-    def test_bgr_to_rgb(self):
-
-        data = torch.Tensor([[[1., 1.], [1., 1.]],
-                             [[2., 2.], [2., 2.]],
-                             [[3., 3.], [3., 3.]]])  # 3x2x2
-
-        expected = torch.Tensor([[[3., 3.], [3., 3.]],
-                                 [[2., 2], [2., 2.]],
-                                 [[1., 1.], [1., 1.]]])  # 3x2x2
-
-        f = kornia.color.BgrToRgb()
-        assert_allclose(f(data), expected)
-
-    def test_batch_bgr_to_rgb(self):
-
-        data = torch.Tensor([[[[1., 1], [1., 1.]],
+        data = torch.tensor([[[[1., 1.], [1., 1.]],
                               [[2., 2.], [2., 2.]],
                               [[3., 3.], [3., 3.]]],
                              [[[1., 1.], [1., 1.]],
                               [[2., 2.], [2., 2.]],
                               [[3., 3.], [3., 3.]]]])  # 2x3x2x2
 
-        expected = torch.Tensor([[[[3., 3.], [3., 3.]],
+        expected = torch.tensor([[[[3., 3.], [3., 3.]],
                                   [[2., 2.], [2., 2.]],
                                   [[1., 1.], [1., 1.]]],
                                  [[[3., 3.], [3., 3.]],
@@ -135,7 +155,7 @@ class TestBgrToRgb:
 
     def test_gradcheck(self, device):
 
-        data = torch.Tensor([[[1., 1.], [1., 1.]],
+        data = torch.tensor([[[1., 1.], [1., 1.]],
                              [[2., 2.], [2., 2.]],
                              [[3., 3.], [3., 3.]]])  # 3x2x2
 
@@ -160,10 +180,16 @@ class TestBgrToRgb:
 
 class TestRgbToBgr:
 
+    def test_back_and_forth(self, device):
+        data_rgb = torch.rand(1, 3, 3, 2).to(device)
+        data_bgr = kornia.rgb_to_bgr(data_rgb)
+        data_rgb_new = kornia.bgr_to_rgb(data_bgr)
+        assert_allclose(data_rgb, data_rgb_new)
+
     def test_rgb_to_bgr(self, device):
 
         # prepare input data
-        data = torch.Tensor([[[1., 1.],
+        data = torch.tensor([[[1., 1.],
                               [1., 1.]],
 
                              [[2., 2.],
@@ -172,7 +198,7 @@ class TestRgbToBgr:
                              [[3., 3.],
                               [3., 3.]]])  # 3x2x2
 
-        expected = torch.Tensor([[[3., 3.],
+        expected = torch.tensor([[[3., 3.],
                                   [3., 3.]],
 
                                  [[2., 2.],
@@ -191,7 +217,7 @@ class TestRgbToBgr:
     def test_gradcheck(self, device):
 
         # prepare input data
-        data = torch.Tensor([[[1., 1.],
+        data = torch.tensor([[[1., 1.],
                               [1., 1.]],
 
                              [[2., 2.],
@@ -222,7 +248,7 @@ class TestRgbToBgr:
     def test_batch_rgb_to_bgr(self, device):
 
         # prepare input data
-        data = torch.Tensor([[[[1., 1.],
+        data = torch.tensor([[[[1., 1.],
                                [1., 1.]],
 
                               [[2., 2.],
@@ -240,7 +266,7 @@ class TestRgbToBgr:
                               [[3., 3.],
                                [3., 3.]]]])  # 2x3x2x2
 
-        expected = torch.Tensor([[[[3., 3.],
+        expected = torch.tensor([[[[3., 3.],
                                    [3., 3.]],
 
                                   [[2., 2.],

@@ -3,6 +3,7 @@ from .gray import bgr_to_grayscale, BgrToGrayscale
 from .rgb import BgrToRgb, bgr_to_rgb
 from .rgb import RgbToBgr, rgb_to_bgr
 from .rgb import RgbToRgba, rgb_to_rgba
+from .rgb import BgrToRgba, bgr_to_rgba
 from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
 from .hls import RgbToHls, rgb_to_hls
