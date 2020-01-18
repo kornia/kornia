@@ -7,6 +7,7 @@ import torch.nn as nn
 class NonMaximaSuppression2d(nn.Module):
     r"""Applies non maxima suppression to filter.
     """
+
     def __init__(self, kernel_size: Tuple[int, int]):
         super(NonMaximaSuppression2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
@@ -38,6 +39,7 @@ class NonMaximaSuppression2d(nn.Module):
 class NonMaximaSuppression3d(nn.Module):
     r"""Applies non maxima suppression to filter.
     """
+
     def __init__(self, kernel_size: Tuple[int, int, int]):
         super(NonMaximaSuppression3d, self).__init__()
         self.kernel_size: Tuple[int, int, int] = kernel_size
