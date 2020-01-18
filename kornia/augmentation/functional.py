@@ -185,7 +185,8 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     return flipped
 
 
-def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                       return_transform: bool = False) -> UnionType:
     """Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
