@@ -13,6 +13,20 @@ class TestRgbToRgba:
         data = torch.rand(3, 4, 4).to(device)
         assert kornia.rgb_to_rgba(data, 0.).shape == (4, 4, 4)
 
+    def test_back_and_forth_rgb(self, device):
+        a_val: float = 1.
+        x_rgb = torch.rand(3, 4, 4).to(device)
+        x_rgba = kornia.rgb_to_rgba(x_rgb, a_val)
+        x_rgb_new = kornia.rgba_to_rgb(x_rgba)
+        assert_allclose(x_rgb, x_rgb_new)
+
+    def test_back_and_forth_bgr(self, device):
+        a_val: float = 1.
+        x_bgr = torch.rand(3, 4, 4).to(device)
+        x_rgba = kornia.bgr_to_rgba(x_bgr, a_val)
+        x_bgr_new = kornia.rgba_to_bgr(x_rgba)
+        assert_allclose(x_bgr, x_bgr_new)
+
     def test_bgr(self, device):
         a_val: float = 1.
         x_rgb = torch.rand(3, 4, 4).to(device)

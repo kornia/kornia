@@ -24,6 +24,8 @@ from kornia.color import (
     rgb_to_bgr,
     rgb_to_rgba,
     bgr_to_rgba,
+    rgba_to_rgb,
+    rgba_to_bgr,
     rgb_to_hsv,
     hsv_to_rgb,
     rgb_to_hls,
