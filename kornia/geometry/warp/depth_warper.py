@@ -189,7 +189,8 @@ class DepthWarper(nn.Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
         """
         return F.grid_sample(patch_dst, self.warp_grid(depth_src),
-                             mode=self.mode, padding_mode=self.padding_mode)
+                             mode=self.mode, padding_mode=self.padding_mode,
+                             align_corners=True)
 
 
 # functional api
