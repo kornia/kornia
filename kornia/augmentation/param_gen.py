@@ -26,9 +26,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
     """
 
     def _check_and_bound(factor: FloatUnionType, name: str, center: float = 0.,
-                         bounds: Tuple[float, float] = (0, float('inf')),
-                         device: torch.device = torch.device('cpu'),
-                         dtype: torch.dtype = torch.float32) -> torch.Tensor:
+                         bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
         r"""Check inputs and compute the corresponding factor bounds
         """
 
@@ -67,7 +65,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
             raise TypeError(
                 f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
 
-        return factor_bound.to(device).to(dtype)
+        return factor_bound
 
     brightness_bound: torch.Tensor = _check_and_bound(
         brightness, 'brightness', bounds=(
