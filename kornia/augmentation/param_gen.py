@@ -35,7 +35,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
 
-            factor_bound = torch.tensor([center - factor, center + factor])
+            factor_bound = torch.tensor([center - factor, center + factor], dtype=torch.float32)
             factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
 
         elif (isinstance(factor, torch.Tensor) and factor.dim() == 0):
@@ -43,7 +43,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
 
-            factor_bound = torch.tensor([torch.tensor(center) - factor, torch.tensor(center) + factor])
+            factor_bound = torch.tensor([torch.tensor(center) - factor, torch.tensor(center) + factor], dtype=torch.float32)
             factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
 
         elif isinstance(factor, (tuple, list)) and len(factor) == 2:
@@ -51,7 +51,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
             if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
                 raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
 
-            factor_bound = torch.tensor(factor)
+            factor_bound = torch.tensor(factor, dtype=torch.float32)
 
         elif isinstance(factor, torch.Tensor) and factor.shape[0] == 2 and factor.dim() == 1:
 
