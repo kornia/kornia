@@ -22,6 +22,9 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
         saturation (float or tuple): Default value is 0
         hue (float or tuple): Default value is 0
 
+    Returns:
+        dict: generated parameter dictionary.
+
     See :class:`~kornia.augmentation.ColorJitter` for details.
     """
 
@@ -101,6 +104,9 @@ def _random_prob_gen(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
     Args:
         batch_size (int): the number of images.
         p (float): probability of the image being flipped or grayscaled. Default value is 0.5
+
+    Returns:
+        dict: generated parameter dictionary.
 
     See :class:`~kornia.augmentation.RandomGrayscale` for details.
     See :class:`~kornia.augmentation.RandomHorizontalFlip` for details.
