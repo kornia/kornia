@@ -89,7 +89,7 @@ class RandomHorizontalFlip(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self.get_params(batch_size, self.p)
+            params = self.get_params(batch_size, self.p)
         return super().forward(input, params)
 
 
@@ -134,7 +134,7 @@ class RandomVerticalFlip(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self.get_params(batch_size, self.p)
+            params = self.get_params(batch_size, self.p)
         return super().forward(input, params)
 
 
