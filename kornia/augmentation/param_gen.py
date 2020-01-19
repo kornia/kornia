@@ -43,7 +43,8 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
             if factor < 0:
                 raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
 
-            factor_bound = torch.tensor([torch.tensor(center) - factor, torch.tensor(center) + factor], dtype=torch.float32)
+            factor_bound = torch.tensor(
+                [torch.tensor(center) - factor, torch.tensor(center) + factor], dtype=torch.float32)
             factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
 
         elif isinstance(factor, (tuple, list)) and len(factor) == 2:
