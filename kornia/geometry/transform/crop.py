@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 
@@ -10,6 +10,9 @@ __all__ = [
     "crop_and_resize",
     "center_crop",
 ]
+
+
+UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
 
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
@@ -99,7 +102,8 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
     return patches
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
+def center_crop(tensor: torch.Tensor, size: Union[int, Tuple[int, int]],
+                return_transform: bool = False) -> UnionType:
     r"""Crops the given tensor at the center.
 
     Args:
@@ -129,6 +133,9 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     if not len(tensor.shape) in (3, 4,):
         raise ValueError("Input tensor must be in the shape of CxHxW or "
                          "BxCxHxW. Got {}".format(tensor.shape))
+
+    if isinstance(size, int):
+        size = (size, size)
 
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
@@ -186,5 +193,8 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # return in the original shape
     if is_unbatched:
         patches = torch.squeeze(patches, dim=0)
+
+    if return_transform:
+        return patches, dst_trans_src
 
     return patches

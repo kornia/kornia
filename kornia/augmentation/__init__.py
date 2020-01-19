@@ -1,6 +1,7 @@
 from kornia.augmentation.augmentations import *
 from kornia.augmentation.random_erasing import *
 from kornia.augmentation.perspective import *
+from kornia.augmentation.crop import CenterCrop
 
 __all__ = [
     "random_hflip",
@@ -15,5 +16,6 @@ __all__ = [
     "RandomVerticalFlip",
     "RandomRectangleErasing",
     "RandomGrayscale",
+    "CenterCrop",
     "ColorJitter",
 ]
