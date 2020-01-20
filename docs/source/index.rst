@@ -18,6 +18,8 @@ Kornia Documentation
    :caption: Package Reference
 
    augmentation
+   augmentation.functional
+   augmentation.param_gen
    color
    contrib
    feature
