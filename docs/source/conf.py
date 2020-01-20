@@ -9,6 +9,7 @@ import sphinx_rtd_theme
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 current_path = os.path.abspath(os.path.join(__file__, "..", "..", ".."))
+sys.path.append(current_path)
 #sys.path.append(os.path.join(root_path, "kornia"))
 #sys.path.append(os.path.join(root_path, "examples"))
 
