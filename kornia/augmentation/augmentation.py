@@ -79,6 +79,7 @@ class RandomHorizontalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
         self.p: float = p
@@ -124,6 +125,7 @@ class RandomVerticalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
         self.p: float = p
@@ -240,3 +242,33 @@ class RandomRectangleErasing(nn.Module):
             self.erase_scale_range,
             self.aspect_ratio_range
         )
+
+
+class RandomPerspective(nn.Module):
+    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+
+    Args:
+        p (float): probability of the image being perspectively transformed. Default value is 0.5
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+        input tensor.
+    """
+
+    def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False) -> None:
+        super(RandomPerspective, self).__init__()
+        self.p: float = p
+        self.distortion_scale: float = distortion_scale
+        self.return_transform: bool = return_transform
+
+    def __repr__(self) -> str:
+        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    def forward(self, input: UnionType) -> UnionType:  # type: ignore
+
+        if isinstance(input, tuple):
+            raise NotImplementedError("wait for AugmentationBase class")
+        return F.random_perspective(
+            input, distortion_scale=self.distortion_scale, p=self.p,
+            return_transform=self.return_transform)
