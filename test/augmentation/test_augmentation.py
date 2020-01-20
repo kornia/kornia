@@ -16,12 +16,12 @@ from test.common import device
 
 class TestRandomHorizontalFlip:
 
-    def smoke_test(self):
+    def smoke_test(self, device):
         f = RandomHorizontalFlip(0.5)
         repr = "RandomHorizontalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_hflip(self):
+    def test_random_hflip(self, device):
 
         f = RandomHorizontalFlip(p=1.0, return_transform=True)
         f1 = RandomHorizontalFlip(p=0., return_transform=True)
@@ -51,7 +51,7 @@ class TestRandomHorizontalFlip:
         assert (f2(input) == expected).all()
         assert (f3(input) == input).all()
 
-    def test_batch_random_hflip(self):
+    def test_batch_random_hflip(self, device):
 
         f = RandomHorizontalFlip(p=1.0, return_transform=True)
         f1 = RandomHorizontalFlip(p=0.0, return_transform=True)
@@ -82,7 +82,7 @@ class TestRandomHorizontalFlip:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
 
-    def test_sequential(self):
+    def test_sequential(self, device):
 
         f = nn.Sequential(
             RandomHorizontalFlip(1.0, return_transform=True),
@@ -109,7 +109,7 @@ class TestRandomHorizontalFlip:
         assert(f1(input)[1] == expected_transform).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
@@ -139,9 +139,9 @@ class TestRandomHorizontalFlip:
 
         assert_allclose(actual, expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        input = torch.rand((3, 3)).double()  # 3 x 3
+        input = torch.rand((3, 3))  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -150,7 +150,7 @@ class TestRandomHorizontalFlip:
 
 class TestRandomVerticalFlip:
 
-    def smoke_test(self):
+    def smoke_test(self, device):
         f = RandomVerticalFlip(0.5)
         repr = "RandomVerticalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
@@ -246,7 +246,7 @@ class TestRandomVerticalFlip:
         assert_allclose(f1(input)[1], expected_transform)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
@@ -276,9 +276,9 @@ class TestRandomVerticalFlip:
 
         assert_allclose(actual, expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        input = torch.rand((3, 3)).double()  # 3 x 3
+        input = torch.rand((3, 3))  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -287,12 +287,12 @@ class TestRandomVerticalFlip:
 
 class TestColorJitter:
 
-    def smoke_test(self):
+    def smoke_test(self, device):
         f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
         repr = "ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1, return_transform=False)"
         assert str(f) == repr
 
-    def test_color_jitter(self):
+    def test_color_jitter(self, device):
 
         f = ColorJitter()
         f1 = ColorJitter(return_transform=True)
@@ -307,7 +307,7 @@ class TestColorJitter:
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[1], expected_transform)
 
-    def test_color_jitter_batch(self):
+    def test_color_jitter_batch(self, device):
         f = ColorJitter()
         f1 = ColorJitter(return_transform=True)
 
@@ -320,7 +320,7 @@ class TestColorJitter:
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[1], expected_transform)
 
-    def test_random_brightness(self):
+    def test_random_brightness(self, device):
         torch.manual_seed(42)
         f = ColorJitter(brightness=0.2)
 
@@ -356,7 +356,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_brightness_tuple(self):
+    def test_random_brightness_tuple(self, device):
         torch.manual_seed(42)
         f = ColorJitter(brightness=(-0.2, 0.2))
 
@@ -392,7 +392,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_contrast(self):
+    def test_random_contrast(self, device):
         torch.manual_seed(42)
         f = ColorJitter(contrast=0.2)
 
@@ -428,7 +428,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
-    def test_random_contrast_list(self):
+    def test_random_contrast_list(self, device):
         torch.manual_seed(42)
         f = ColorJitter(contrast=[0.8, 1.2])
 
@@ -464,7 +464,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
-    def test_random_saturation(self):
+    def test_random_saturation(self, device):
         torch.manual_seed(42)
         f = ColorJitter(saturation=0.2)
 
@@ -508,7 +508,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_saturation_tensor(self):
+    def test_random_saturation_tensor(self, device):
         torch.manual_seed(42)
         f = ColorJitter(saturation=torch.tensor(0.2))
 
@@ -552,7 +552,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_saturation_tuple(self):
+    def test_random_saturation_tuple(self, device):
         torch.manual_seed(42)
         f = ColorJitter(saturation=(0.8, 1.2))
 
@@ -596,7 +596,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue(self):
+    def test_random_hue(self, device):
         torch.manual_seed(42)
         f = ColorJitter(hue=0.2)
 
@@ -639,7 +639,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue_list(self):
+    def test_random_hue_list(self, device):
         torch.manual_seed(42)
         f = ColorJitter(hue=[-0.2, 0.2])
 
@@ -683,7 +683,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue_tensor(self):
+    def test_random_hue_tensor(self, device):
         torch.manual_seed(42)
         f = ColorJitter(hue=torch.tensor([-0.2, 0.2]))
 
@@ -727,7 +727,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_sequential(self):
+    def test_sequential(self, device):
 
         f = nn.Sequential(
             ColorJitter(return_transform=True),
@@ -743,7 +743,7 @@ class TestColorJitter:
         assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f(input)[1], expected_transform)
 
-    def test_color_jitter_batch(self):
+    def test_color_jitter_batch(self, device):
         f = nn.Sequential(
             ColorJitter(return_transform=True),
             ColorJitter(return_transform=True),
@@ -758,9 +758,9 @@ class TestColorJitter:
         assert_allclose(f(input)[0], expected)
         assert_allclose(f(input)[1], expected_transform)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        input = torch.rand((3, 5, 5)).double()  # 3 x 3
+        input = torch.rand((3, 5, 5))  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -777,7 +777,7 @@ class TestRectangleRandomErasing:
         rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
-    def test_rectangle_erasing1(self):
+    def test_rectangle_erasing1(self, device):
         inputs = torch.ones(1, 1, 10, 10)
         rect_params = (
             torch.tensor([5]), torch.tensor([5]),
@@ -797,7 +797,7 @@ class TestRectangleRandomErasing:
         ]]])
         assert_allclose(erase_rectangles(inputs, rect_params), expected)
 
-    def test_rectangle_erasing2(self):
+    def test_rectangle_erasing2(self, device):
         inputs = torch.ones(3, 3, 3, 3)
         rect_params = (
             torch.tensor([3, 2, 1]), torch.tensor([3, 2, 1]),
@@ -843,7 +843,7 @@ class TestRectangleRandomErasing:
 
         assert_allclose(erase_rectangles(inputs, rect_params), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         erase_scale_range = (.2, .4)
@@ -853,7 +853,7 @@ class TestRectangleRandomErasing:
         )
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, dtype=torch.double)
+        input = torch.rand(batch_shape)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
             erase_rectangles,
@@ -862,7 +862,7 @@ class TestRectangleRandomErasing:
         )
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
         @torch.jit.script
         def op_script(img):
             return kornia.augmentation.random_rectangle_erase(img, (.2, .4), (.3, .5))
@@ -878,12 +878,12 @@ class TestRectangleRandomErasing:
 
 class TestRandomGrayscale:
 
-    def smoke_test(self):
+    def smoke_test(self, device):
         f = RandomGrayscale()
         repr = "RandomGrayscale(p=0.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_grayscale(self):
+    def test_random_grayscale(self, device):
 
         f = RandomGrayscale(return_transform=True)
 
@@ -1032,7 +1032,7 @@ class TestRandomGrayscale:
         img_gray = kornia.random_grayscale(data, p=0.)
         assert_allclose(img_gray, expected)
 
-    def test_random_grayscale_sequential_batch(self):
+    def test_random_grayscale_sequential_batch(self, device):
         f = nn.Sequential(
             RandomGrayscale(p=0., return_transform=True),
             RandomGrayscale(p=0., return_transform=True),
@@ -1046,9 +1046,9 @@ class TestRandomGrayscale:
         assert_allclose(f(input)[0], expected)
         assert_allclose(f(input)[1], expected_transform)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
-        input = torch.rand((3, 5, 5)).double()  # 3 x 3
+        input = torch.rand((3, 5, 5))  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -1060,12 +1060,12 @@ class TestRandomRotation:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def smoke_test(self):
+    def smoke_test(self, device):
         f = RandomRotation(degrees=45.5)
         repr = "RandomHorizontalFlip(degrees=45.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_rotation(self):
+    def test_random_rotation(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
 
@@ -1096,7 +1096,7 @@ class TestRandomRotation:
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
         assert_allclose(f1(input), expected_2, rtol=1e-6, atol=1e-4)
 
-    def test_batch_random_rotation(self):
+    def test_batch_random_rotation(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
 
@@ -1130,7 +1130,7 @@ class TestRandomRotation:
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
 
-    def test_sequential(self):
+    def test_sequential(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
 
@@ -1168,7 +1168,7 @@ class TestRandomRotation:
         assert_allclose(mat_2, expected_transform_2, rtol=1e-6, atol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
+    def test_jit(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
 
@@ -1198,11 +1198,11 @@ class TestRandomRotation:
 
         assert_allclose(actual, expected, rtol=1e-6, atol=1e-4)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3)).double()  # 3 x 3
+        input = torch.rand((3, 3))  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
