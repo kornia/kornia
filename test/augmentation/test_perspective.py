@@ -16,7 +16,7 @@ class TestPerspective:
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 
-        out_perspective = kornia.augmentation.perspective(
+        out_perspective = kornia.augmentation.functional.perspective(
             x_data, start_points, end_points, return_transform=False)
 
         assert out_perspective.shape == x_data.shape
@@ -26,7 +26,7 @@ class TestPerspective:
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 
-        out_perspective = kornia.augmentation.perspective(
+        out_perspective = kornia.augmentation.functional.perspective(
             x_data, start_points, end_points, return_transform=True)
 
         assert isinstance(out_perspective, tuple)
@@ -43,7 +43,8 @@ class TestPerspective:
 
         end_points = torch.rand(1, 4, 2).to(device)
         end_points = utils.tensor_to_gradcheck_var(end_points)  # to var
-        assert gradcheck(kornia.augmentation.perspective, (input, start_points, end_points), raise_exception=True)
+        assert gradcheck(kornia.augmentation.functional.perspective,
+                         (input, start_points, end_points), raise_exception=True)
 
 
 class TestRandomPerspective:
@@ -53,7 +54,7 @@ class TestRandomPerspective:
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
 
-        out_perspective = kornia.augmentation.random_perspective(
+        out_perspective = kornia.augmentation.functional.random_perspective(
             x_data, 0.5, 0.5, return_transform=False)
 
         assert out_perspective.shape == x_data.shape
@@ -61,7 +62,7 @@ class TestRandomPerspective:
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        out_perspective = kornia.augmentation.random_perspective(
+        out_perspective = kornia.augmentation.functional.random_perspective(
             x_data, 0.5, 0.5, return_transform=True)
 
         assert isinstance(out_perspective, tuple)
