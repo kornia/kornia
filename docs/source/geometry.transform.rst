@@ -25,6 +25,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: hflip
 .. autofunction:: vflip
 .. autofunction:: rot180
+.. autofunction:: resize
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -36,4 +37,5 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Hflip
 .. autoclass:: Vflip
 .. autoclass:: Rot180
+.. autoclass:: Resize
 
