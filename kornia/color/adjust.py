@@ -7,8 +7,8 @@ from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.geometry import pi
 
 
-def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image.
+def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Adjust color saturation of an image. Expecting input to be in hsv format already.
 
     See :class:`~kornia.color.AdjustSaturation` for details.
     """
@@ -31,17 +31,29 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
     for _ in input.shape[1:]:
         saturation_factor = torch.unsqueeze(saturation_factor, dim=-1)
 
-    # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(input)
-
     # unpack the hsv values
-    h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
+    h, s, v = torch.chunk(input, chunks=3, dim=-3)
 
     # transform the hue value and appl module
     s_out: torch.Tensor = torch.clamp(s * saturation_factor, min=0, max=1)
 
     # pack back back the corrected hue
-    x_adjusted: torch.Tensor = torch.cat([h, s_out, v], dim=-3)
+    out: torch.Tensor = torch.cat([h, s_out, v], dim=-3)
+
+    return out
+
+
+def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Adjust color saturation of an image.
+
+    See :class:`~kornia.color.AdjustSaturation` for details.
+    """
+
+    # convert the rgb image to hsv
+    x_hsv: torch.Tensor = rgb_to_hsv(input)
+
+    # perform the conversion
+    x_adjusted: torch.Tensor = adjust_saturation_raw(x_hsv, saturation_factor)
 
     # convert back to rgb
     out: torch.Tensor = hsv_to_rgb(x_adjusted)
@@ -49,8 +61,8 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
     return out
 
 
-def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image.
+def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Adjust hue of an image. Expecting input to be in hsv format already.
 
     See :class:`~kornia.color.AdjustHue` for details.
     """
@@ -73,18 +85,30 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     for _ in input.shape[1:]:
         hue_factor = torch.unsqueeze(hue_factor, dim=-1)
 
-    # convert the rgb image to hsv
-    x_hsv: torch.Tensor = rgb_to_hsv(input)
-
     # unpack the hsv values
-    h, s, v = torch.chunk(x_hsv, chunks=3, dim=-3)
+    h, s, v = torch.chunk(input, chunks=3, dim=-3)
 
     # transform the hue value and appl module
     divisor: float = 2 * pi.item()
     h_out: torch.Tensor = torch.fmod(h + hue_factor, divisor)
 
     # pack back back the corrected hue
-    x_adjusted: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
+    out: torch.Tensor = torch.cat([h_out, s, v], dim=-3)
+
+    return out
+
+
+def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+    r"""Adjust hue of an image.
+
+    See :class:`~kornia.color.AdjustHue` for details.
+    """
+
+    # convert the rgb image to hsv
+    x_hsv: torch.Tensor = rgb_to_hsv(input)
+
+    # perform the conversion
+    x_adjusted: torch.Tensor = adjust_hue_raw(x_hsv, hue_factor)
 
     # convert back to rgb
     out: torch.Tensor = hsv_to_rgb(x_adjusted)
