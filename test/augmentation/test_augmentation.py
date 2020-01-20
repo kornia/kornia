@@ -9,7 +9,7 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomRectangleErasing, RandomGrayscale
-from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
+from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
 

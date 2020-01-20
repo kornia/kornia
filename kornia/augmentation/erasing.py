@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.distributions as tdist
 
 
-class RandomRectangleErasing(nn.Module):
+'''class RandomRectangleErasing(nn.Module):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -37,7 +37,7 @@ class RandomRectangleErasing(nn.Module):
             images,
             self.erase_scale_range,
             self.aspect_ratio_range
-        )
+        )'''
 
 
 def get_random_rectangles_params(
@@ -108,7 +108,7 @@ def erase_rectangles(images, rectangle_params):
     return images * mask
 
 
-def random_rectangle_erase(
+'''def random_rectangle_erase(
         images: torch.Tensor,
         erase_scale_range: Tuple[float, float],
         aspect_ratio_range: Tuple[float, float]
@@ -144,4 +144,4 @@ def random_rectangle_erase(
         (b, ), h, w, erase_scale_range, aspect_ratio_range
     )
     images = erase_rectangles(images, rect_params)
-    return images
+    return images'''
