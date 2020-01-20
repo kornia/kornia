@@ -3,11 +3,12 @@ from typing import Tuple, List, Union, Dict
 import torch
 import torch.nn as nn
 
-import kornia.augmentation.param_gen as pg
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
-from kornia.augmentation.random_erasing import random_rectangle_erase
+
+from . import param_gen as pg
+from .erasing import erase_rectangles, get_random_rectangles_params
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -290,3 +291,42 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
         return grayscale, identity
 
     return grayscale
+
+
+def random_rectangle_erase(
+        images: torch.Tensor,
+        erase_scale_range: Tuple[float, float],
+        aspect_ratio_range: Tuple[float, float]
+) -> torch.Tensor:
+    r"""
+    Function that erases a random selected rectangle for each image in the batch, putting
+    the value to zero.
+    The rectangle will have an area equal to the original image area multiplied by a value uniformly
+    sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
+    between [aspect_ratio_range[0], aspect_ratio_range[1])
+
+    Args:
+        images (torch.Tensor): input images.
+        erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
+        aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
+    """
+    if not (isinstance(erase_scale_range[0], float) and
+            isinstance(erase_scale_range[1], float) and
+            erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
+        raise TypeError(
+            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
+        )
+    if not (isinstance(aspect_ratio_range[0], float) and
+            isinstance(aspect_ratio_range[1], float) and
+            aspect_ratio_range[0] > 0. and aspect_ratio_range[1] > 0.):
+        raise TypeError(
+            f"'aspect_ratio_range' must be a Tuple[float, float] with positive values"
+        )
+
+    images_size = images.size()
+    b, _, h, w = images_size
+    rect_params = get_random_rectangles_params(
+        (b, ), h, w, erase_scale_range, aspect_ratio_range
+    )
+    images = erase_rectangles(images, rect_params)
+    return images
