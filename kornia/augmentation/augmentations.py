@@ -16,7 +16,7 @@ class AugmentationBase(nn.Module):
         self.return_transform = return_transform
         self._apply_fcn: Callable = apply_fcn
 
-    def infer_batch_size(self, input):
+    def infer_batch_size(self, input) -> int:
         if isinstance(input, tuple):
             batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
         else:
