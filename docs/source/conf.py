@@ -1,6 +1,9 @@
 import os
 import sys
 
+import torch
+import kornia
+
 import sphinx_gallery
 import sphinx_rtd_theme
 

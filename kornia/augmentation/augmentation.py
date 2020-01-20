@@ -3,8 +3,17 @@ from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 import torch
 import torch.nn as nn
 
-import kornia.augmentation.functional as F
-import kornia.augmentation.param_gen as pg
+from . import functional as F
+from . import param_gen as pg
+
+
+__all__ = [
+    "RandomHorizontalFlip",
+    "RandomVerticalFlip",
+    "RandomRectangleErasing",
+    "RandomGrayscale",
+    "ColorJitter",
+]
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
@@ -204,3 +213,38 @@ class RandomGrayscale(AugmentationBase):
             batch_size = self.infer_batch_size(input)
             params = RandomGrayscale.get_params(batch_size, self.p)
         return super().forward(input, params)
+
+
+class RandomRectangleErasing(nn.Module):
+    r"""
+    Erases a random selected rectangle for each image in the batch, putting the value to zero.
+    The rectangle will have an area equal to the original image area multiplied by a value uniformly
+    sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
+    between [aspect_ratio_range[0], aspect_ratio_range[1])
+
+    Args:
+        erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
+        aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
+
+    Examples:
+        >>> inputs = torch.ones(1, 1, 3, 3)
+        >>> rec_er = kornia.augmentation.RandomRectangleErasing((.4, .8), (.3, 1/.3))
+        >>> rec_er(inputs)
+        tensor([[[[1., 0., 0.],
+                  [1., 0., 0.],
+                  [1., 0., 0.]]]])
+    """
+
+    def __init__(
+            self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float]
+    ) -> None:
+        super(RandomRectangleErasing, self).__init__()
+        self.erase_scale_range: Tuple[float, float] = erase_scale_range
+        self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
+
+    def forward(self, images: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return F.random_rectangle_erase(
+            images,
+            self.erase_scale_range,
+            self.aspect_ratio_range
+        )
