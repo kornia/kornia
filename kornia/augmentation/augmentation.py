@@ -7,14 +7,6 @@ from . import functional as F
 from . import param_gen as pg
 
 
-__all__ = [
-    "RandomHorizontalFlip",
-    "RandomVerticalFlip",
-    "RandomRectangleErasing",
-    "RandomGrayscale",
-    "ColorJitter",
-]
-
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
