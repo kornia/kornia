@@ -97,7 +97,7 @@ def convert_points_from_homogeneous(
     # https://github.com/opencv/opencv/pull/14411/files
     mask: torch.Tensor = torch.abs(z_vec) > eps
     scale: torch.Tensor = torch.ones_like(z_vec).masked_scatter_(
-        mask, torch.tensor(1.0) / z_vec[mask])
+        mask, torch.tensor(1.0).to(points.device) / z_vec[mask])
 
     return scale * points[..., :-1]
 
