@@ -107,9 +107,6 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
-    input = input.unsqueeze(0)
-    input = input.view((-1, (*input.shape[-3:])))
-
     flipped: torch.Tensor = input.clone()
 
     to_flip = params['batch_prob'].to(device)
