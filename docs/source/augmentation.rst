@@ -1,5 +1,5 @@
 kornia.augmentation
-------------
+-------------------
 
 .. currentmodule:: kornia.augmentation
 
