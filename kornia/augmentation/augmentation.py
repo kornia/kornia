@@ -24,6 +24,13 @@ class AugmentationBase(nn.Module):
             batch_size = input.shape[0] if len(input.shape) == 4 else 1
         return batch_size
 
+    def infer_image_shape(self, input: UnionType) -> Tuple[int, int]:
+        if isinstance(input, tuple):
+            data, _ = cast(Tuple, input)
+        else:
+            data = cast(torch.Tensor, input)
+        return data.shape[-2:]
+
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if isinstance(input, tuple):
 
@@ -244,7 +251,7 @@ class RandomRectangleErasing(nn.Module):
         )
 
 
-class RandomPerspective(nn.Module):
+class RandomPerspective(AugmentationBase):
     r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
 
     Args:
@@ -256,7 +263,7 @@ class RandomPerspective(nn.Module):
     """
 
     def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False) -> None:
-        super(RandomPerspective, self).__init__()
+        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
         self.return_transform: bool = return_transform
@@ -265,10 +272,14 @@ class RandomPerspective(nn.Module):
         repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType) -> UnionType:  # type: ignore
+    @staticmethod
+    def get_params(batch_size: int, height: int, width: int, p: float,
+                   distortion_scale: float) -> Dict[str, torch.Tensor]:
+        return pg._random_perspective_gen(batch_size, height, width, p, distortion_scale)
 
-        if isinstance(input, tuple):
-            raise NotImplementedError("wait for AugmentationBase class")
-        return F.random_perspective(
-            input, distortion_scale=self.distortion_scale, p=self.p,
-            return_transform=self.return_transform)
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, height, width, self.p, self.distortion_scale)
+        return super().forward(input, params)
