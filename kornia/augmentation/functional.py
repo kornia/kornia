@@ -4,11 +4,13 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
+from kornia.geometry.transform.crop import _crop_wrapper, _get_perspective_dst, _get_perspective_src
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
 
 from . import param_gen as pg
 from .erasing import erase_rectangles, get_random_rectangles_params
+from .utils import _reshape_input, _validate_input_shape
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -89,17 +91,7 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
         is set to ``True``
     """
 
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) != 4:
-        raise ValueError(f"Input size must have a shape of (*, C, H, W). Got {input.shape}")
+    input = _reshape_input(input)
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -146,17 +138,7 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     """
     # TODO: params validation
 
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) != 4:
-        raise ValueError(f"Input size must have a shape of (*, C, H, W). Got {input.shape}")
+    input = _reshape_input(input)
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -206,17 +188,7 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
     """
     # TODO: params validation
 
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) != 4:
-        raise ValueError(f"Input size must have a shape of (*, C, H, W). Got {input.shape}")
+    input = _reshape_input(input)
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -261,13 +233,9 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
     """
     # TODO: params validation
 
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    input = _reshape_input(input)
 
-    if len(input.shape) == 3 and input.shape[-3] == 3:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) != 4 or input.shape[-3] != 3:
+    if _validate_input_shape(input, -3, 3):
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
     if not isinstance(return_transform, bool):
@@ -327,3 +295,23 @@ def random_rectangle_erase(
     )
     images = erase_rectangles(images, rect_params)
     return images
+
+
+def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+    """
+    Args:
+        params (dict): A dict that must have {'src': torch.Tensor, 'dst': torch.Tensor}. Can be generated from
+        kornia.augmentation.param_gen._random_crop_gen
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        input tensor.
+
+    Returns:
+        torch.Tensor: The grayscaled input
+        torch.Tensor: The applied cropping matrix :math: `(*, 4, 2)` if return_transform flag
+        is set to ``True``
+    """
+
+    if return_transform:
+        return _crop_wrapper(input, params['src'], params['dst']), params['src']
+
+    return _crop_wrapper(input, params['src'], params['dst'])
