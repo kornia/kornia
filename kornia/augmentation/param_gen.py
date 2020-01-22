@@ -1,13 +1,18 @@
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Union, Dict, Optional
 
 import torch
 from torch.distributions import Uniform
 
 from kornia.geometry import pi
+from kornia.geometry.transform import get_rotation_matrix2d
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
+
+TupleInt = Tuple[int, int]
+TupleFloat = Tuple[float, float]
+UnionFloat = Union[float, TupleFloat]
 
 
 def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
@@ -169,3 +174,105 @@ def _random_perspective_gen(
     params['start_points'] = start_points
     params['end_points'] = end_points
     return params
+
+
+def _random_affine_gen(
+        batch_size: int,
+        height: int,
+        width: int,
+        degrees: UnionFloat,
+        translate: Optional[TupleFloat] = None,
+        scale: Optional[TupleFloat] = None,
+        shear: Optional[UnionFloat] = None) -> Dict[str, torch.Tensor]:
+    # check angle ranges
+    degrees_tmp: TupleFloat
+    if isinstance(degrees, float):
+        if degrees < 0.:
+            raise ValueError("If degrees is a single number, it must be positive.")
+        degrees_tmp = (-degrees, degrees)
+    else:
+        assert isinstance(degrees, (tuple, list)) and len(degrees) == 2, \
+            "degrees should be a list or tuple and it must be of length 2."
+        degrees_tmp = degrees
+
+    # check translation range
+    if translate is not None:
+        assert isinstance(translate, (tuple, list)) and len(translate) == 2, \
+            "translate should be a list or tuple and it must be of length 2."
+        for t in translate:
+            if not (0.0 <= t <= 1.0):
+                raise ValueError("translation values should be between 0 and 1")
+
+    # check scale range
+    if scale is not None:
+        assert isinstance(scale, (tuple, list)) and len(scale) == 2, \
+            "scale should be a list or tuple and it must be of length 2."
+        for s in scale:
+            if s <= 0:
+                raise ValueError("scale values should be positive")
+
+    # check shear range
+    shear_tmp: Optional[TupleFloat]
+    if shear is not None:
+        if isinstance(shear, float):
+            if shear < 0:
+                raise ValueError("If shear is a single number, it must be positive.")
+            shear_tmp = (-shear, shear)
+        else:
+            assert isinstance(shear, (tuple, list)) and len(shear) == 2, \
+                "shear should be a list or tuple and it must be of length 2."
+            shear_tmp = shear
+    else:
+        shear_tmp = shear
+
+    transform: torch.Tensor = _get_random_affine_params(
+        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp)
+    return dict(transform=transform)
+
+
+def _get_random_affine_params(
+    batch_size: int, height: int, width: int,
+    degrees: TupleFloat, translate: Optional[TupleFloat],
+    scales: Optional[TupleFloat], shears: Optional[TupleFloat],
+) -> torch.Tensor:
+    r"""Get parameters for affine transformation. The returned matrix is Bx3x3.
+
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    angle = torch.empty(batch_size).uniform_(degrees[0], degrees[1])
+
+    # compute tensor ranges
+    if scales is not None:
+        scale = torch.empty(batch_size).uniform_(scales[0], scales[1])
+    else:
+        scale = torch.ones(batch_size)
+
+    if shears is not None:
+        shear = torch.empty(batch_size).uniform_(shears[0], shears[1])
+    else:
+        shear = torch.zeros(batch_size)
+
+    if translate is not None:
+        max_dx: float = translate[0] * width
+        max_dy: float = translate[1] * height
+        translations = torch.cat([
+            torch.empty(batch_size).uniform_(-max_dx, max_dx),
+            torch.empty(batch_size).uniform_(-max_dy, max_dy),
+        ], dim=-1)
+    else:
+        translations = torch.zeros(batch_size, 2)
+
+    center: torch.Tensor = torch.tensor(
+        [width, height], dtype=torch.float32).view(1, 2) / 2
+
+    # concatenate transforms
+    transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    transform[..., 0, 1] += shear
+    transform[..., 1, 0] += shear
+
+    # pad transform to get Bx3x3
+    transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
+    transform_h[..., -1, -1] += 1.0
+    return transform_h
