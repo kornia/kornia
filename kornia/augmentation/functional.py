@@ -302,7 +302,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
 
     grayscale: torch.Tensor = input.clone()
 
-    to_gray = params['batch_prob'].to(device, dtype)
+    to_gray = params['batch_prob'].to(device)
 
     grayscale[to_gray] = rgb_to_grayscale(input[to_gray])
     if return_transform:

@@ -92,8 +92,7 @@ class TestRandomPerspective:
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
 
-    @pytest.mark.skip("Disabled since it crashes by now")
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(F.random_perspective, (input, 0.), raise_exception=True)
+        assert gradcheck(F.random_perspective, (input, 0., 1.), raise_exception=True)

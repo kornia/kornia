@@ -98,7 +98,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
     }
 
 
-def _random_prob_gen(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
+def _random_prob_gen(batch_size: int, p: float = 0.5) -> Dict[str, torch.Tensor]:
     r"""Generator random probabilities for a batch of inputs.
 
     Args:
