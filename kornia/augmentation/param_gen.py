@@ -1,9 +1,11 @@
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Union, Dict, Optional
 
+import numpy as np
 import torch
 from torch.distributions import Uniform
 
 from kornia.geometry import pi
+from kornia.geometry.transform.crop import _get_perspective_src, _get_perspective_dst
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -121,3 +123,26 @@ def _random_prob_gen(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
     batch_prob: torch.Tensor = probs < p
 
     return {'batch_prob': batch_prob}
+
+
+def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+                     resize_to: Optional[Tuple[int, int]] = None) -> Dict[str, torch.Tensor]:
+    x_diff = size[1] - input_size[1]
+    y_diff = size[0] - input_size[0]
+
+    if x_diff < 0 or y_diff < 0:
+        raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
+                         % (str(input_size), str(size)))
+
+    def _get_random_perspective_src(x_range, y_range, size):
+        x_start = np.random.randint(x_range)
+        y_start = np.random.randint(y_range)
+        return _get_perspective_src(x_start, y_start, size)
+
+    crop_src = torch.cat([ _get_random_perspective_src(x_diff, y_diff, size) for _ in range(batch_size)], dim=0)
+    if resize_to is None:
+        crop_dst = _get_perspective_dst(size)
+    else:
+        crop_dst = _get_perspective_dst(resize_to)
+
+    return {'src': crop_src, 'dst': crop_dst.repeat(batch_size, 1, 1)}
