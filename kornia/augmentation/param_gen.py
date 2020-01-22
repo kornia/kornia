@@ -116,8 +116,56 @@ def _random_prob_gen(batch_size: int, p: float = .5) -> Dict[str, torch.Tensor]:
     if not isinstance(p, float):
         raise TypeError(f"The probability should be a float number. Got {type(p)}")
 
-    probs: torch.Tensor = torch.empty(batch_size, device='cpu').uniform_(0, 1)
+    probs: torch.Tensor = Uniform(0, 1).rsample((batch_size,))
 
     batch_prob: torch.Tensor = probs < p
 
     return {'batch_prob': batch_prob}
+
+
+def _get_perspective_params(batch_size: int, width: int, height: int, distortion_scale: float
+                            ) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Get parameters for ``perspective`` for a random perspective transform.
+
+    Args:
+        batch_size (int): the tensor batch size.
+        width (int): width of the image.
+        height (int) : height of the image.
+        distortion_scale (float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+
+    Returns:
+        List containing [top-left, top-right, bottom-right, bottom-left] of the original image,
+        List containing [top-left, top-right, bottom-right, bottom-left] of the transformed image.
+        The points are in -x order.
+    """
+    start_points: torch.Tensor = torch.tensor([[
+        [0., 0],
+        [0, width - 1],
+        [height - 1, 0],
+        [height - 1, width - 1],
+    ]]).expand(batch_size, -1, -1)
+
+    # generate random offset not larger than half of the image
+    fx: float = distortion_scale * width / 2
+    fy: float = distortion_scale * height / 2
+
+    factor = torch.tensor([fy, fx]).view(-1, 1, 2)
+
+    rand_val: torch.Tensor = Uniform(0, 1).rsample((batch_size, 4, 2))
+    offset = 2 * factor - 1
+
+    end_points = start_points + offset
+
+    return start_points, end_points
+
+
+def _random_perspective_gen(
+    batch_size: int, height: int, width: int, p: float, distortion_scale: float
+) -> Dict[str, torch.Tensor]:
+    params: Dict[str, torch.Tensor] = _random_prob_gen(batch_size, p)
+    start_points, end_points = (
+        _get_perspective_params(batch_size, width, height, distortion_scale)
+    )
+    params['start_points'] = start_points
+    params['end_points'] = end_points
+    return params
