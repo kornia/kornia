@@ -5,6 +5,7 @@ from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
 import kornia
+import kornia.augmentation.functional as F
 import kornia.testing as utils  # test utils
 from test.common import device
 
@@ -13,38 +14,43 @@ class TestPerspective:
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 3, 4).to(device)
+        batch_prob = torch.rand(1) < 0.5
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 
-        out_perspective = kornia.augmentation.functional.perspective(
-            x_data, start_points, end_points, return_transform=False)
+        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
+        out_data = F.apply_perspective(x_data, params, return_transform=False)
 
-        assert out_perspective.shape == x_data.shape
+        assert out_data.shape == x_data.shape
 
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 3, 4).to(device)
+        batch_prob = torch.rand(1) < 0.5
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 
-        out_perspective = kornia.augmentation.functional.perspective(
-            x_data, start_points, end_points, return_transform=True)
+        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
+        out_data = F.apply_perspective(x_data, params, return_transform=True)
 
-        assert isinstance(out_perspective, tuple)
-        assert len(out_perspective) == 2
-        assert out_perspective[0].shape == x_data.shape
-        assert out_perspective[1].shape == (1, 3, 3)
+        assert isinstance(out_data, tuple)
+        assert len(out_data) == 2
+        assert out_data[0].shape == x_data.shape
+        assert out_data[1].shape == (1, 3, 3)
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 3, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
+
+        batch_prob = torch.rand(1) < 0.5
 
         start_points = torch.rand(1, 4, 2).to(device)
         start_points = utils.tensor_to_gradcheck_var(start_points)  # to var
 
         end_points = torch.rand(1, 4, 2).to(device)
         end_points = utils.tensor_to_gradcheck_var(end_points)  # to var
-        assert gradcheck(kornia.augmentation.functional.perspective,
-                         (input, start_points, end_points), raise_exception=True)
+
+        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
+        assert gradcheck(F.apply_perspective, (input, params,), raise_exception=True)
 
 
 class TestRandomPerspective:
@@ -90,4 +96,4 @@ class TestRandomPerspective:
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.random_perspective, (input, 0.), raise_exception=True)
+        assert gradcheck(F.random_perspective, (input, 0.), raise_exception=True)

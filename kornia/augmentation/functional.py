@@ -10,7 +10,6 @@ from kornia.color.gray import rgb_to_grayscale
 
 from . import param_gen as pg
 from .erasing import erase_rectangles, get_random_rectangles_params
-from ._perspective import _get_perspective_params
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -73,6 +72,29 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_prob_gen(batch_size, p=p)
     return apply_grayscale(input, params, return_transform)
+
+
+def random_perspective(input: torch.Tensor,
+                       distortion_scale: float = 0.5,
+                       p: float = 0.5,
+                       return_transform: bool = False) -> UnionType:
+    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
+        p (float): probability of the image being perspectively transformed. Default value is 0.5
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+        input tensor.
+    """
+    if isinstance(input, tuple):
+        batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
+    else:
+        batch_size = input.shape[0] if len(input.shape) == 4 else 1
+    height, width = input.shape[-2:]
+    params = pg._random_perspective_gen(batch_size, height, width, p, distortion_scale)
+    return apply_perspective(input, params, return_transform)
 
 
 def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
@@ -280,7 +302,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
 
     grayscale: torch.Tensor = input.clone()
 
-    to_gray = params['batch_prob'].to(device)
+    to_gray = params['batch_prob'].to(device, dtype)
 
     grayscale[to_gray] = rgb_to_grayscale(input[to_gray])
     if return_transform:
@@ -331,10 +353,9 @@ def random_rectangle_erase(
     return images
 
 
-def perspective(input: torch.Tensor,
-                start_points: torch.Tensor,
-                end_points: torch.Tensor,
-                return_transform: bool = False) -> UnionType:
+def apply_perspective(input: torch.Tensor,
+                      params: Dict[str, torch.Tensor],
+                      return_transform: bool = False) -> UnionType:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
@@ -347,86 +368,33 @@ def perspective(input: torch.Tensor,
         applied to each. Default: False.
 
     Returns:
-        torch.Tensor:  Perspectively transformed tensor.
+        torch.Tensor: Perspectively transformed tensor.
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not torch.is_tensor(start_points):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(start_points)}")
-
-    if not torch.is_tensor(end_points):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(end_points)}")
-
-    # compute the homography between the input points
-    transform: torch.Tensor = get_perspective_transform(start_points, end_points)
-
-    # apply the computed transform
-    height, width = input.shape[-2:]
-    img_warped: torch.Tensor = warp_perspective(input, transform, (height, width))
-
-    if return_transform:
-        return img_warped, transform
-
-    return img_warped
-
-
-def random_perspective(input: torch.Tensor,
-                       distortion_scale: float = 0.5,
-                       p: float = 0.5,
-                       return_transform: bool = False) -> UnionType:
-    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
-
-    Args:
-        input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
-        p (float): probability of the image being perspectively transformed. Default value is 0.5
-        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-        applied to each. Default: False.
-        input tensor.
-    """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) > 4:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
-
-    if not isinstance(p, float):
-        raise TypeError(f"The probability should be a float number. Got {type(p)}")
-
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
 
     # arrange input data
     x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
 
     batch_size, _, height, width = x_data.shape
 
-    # sample probabilities
-    probs: torch.Tensor = torch.rand(batch_size, device=x_data.device)
-    mask: torch.Tensor = probs < p
-
-    # compute points
-    start_points, end_points = (
-        _get_perspective_params(batch_size, width, height, distortion_scale)
-    )
-    start_points = start_points.to(x_data.device, x_data.dtype)
-    end_points = end_points.to(x_data.device, x_data.dtype)
-
-    # compute and apply transform
-    out_perspective: UnionType = perspective(
-        x_data, start_points, end_points, return_transform
-    )
+    # compute the homography between the input points
+    transform: torch.Tensor = get_perspective_transform(
+        params['start_points'], params['end_points']).to(device, dtype)
 
     out_data: torch.Tensor = x_data.clone()
 
+    # process valid samples
+    mask = params['batch_prob'].to(device)
+
+    # apply the computed transform
+    height, width = x_data.shape[-2:]
+    out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+
     if return_transform:
-        x_warped, transform = out_perspective  # type: ignore
-        out_data[mask] = x_warped[mask]
-        return out_data, transform
-    else:
-        x_warped = cast(torch.Tensor, out_perspective)
+        return out_data.view_as(input), transform
 
-    out_data[mask] = x_warped[mask]
-
-    return out_data
+    return out_data.view_as(input)
