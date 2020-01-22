@@ -44,7 +44,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
     scale_grid = torch.cat([scale_coords_index, dummy_x], dim=3)
 
     # Finally, interpolate the scale value
-    scale_val = F.grid_sample(
+    scale_val = F.grid_sample(  # type: ignore
         sigmas[0].log2().view(1, 1, 1, -1).expand(scale_grid.size(0), 1, 1, L),
         scale_grid, align_corners=True)
 
@@ -56,7 +56,7 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor) -> tor
 def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
     """Downsamples a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
-    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=True)
+    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=True)  # type: ignore
     return mask_octave.unsqueeze(1)
 
 

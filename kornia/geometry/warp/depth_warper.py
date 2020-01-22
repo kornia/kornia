@@ -188,7 +188,7 @@ class DepthWarper(nn.Module):
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
         """
-        return F.grid_sample(patch_dst, self.warp_grid(depth_src),
+        return F.grid_sample(patch_dst, self.warp_grid(depth_src),  # type: ignore
                              mode=self.mode, padding_mode=self.padding_mode,
                              align_corners=True)
 

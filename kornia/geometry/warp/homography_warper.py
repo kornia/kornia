@@ -107,7 +107,7 @@ class HomographyWarper(nn.Module):
                             Got patch.device: {} dst_H_src.device: {}."
                             .format(patch_src.device, dst_homo_src.device))
 
-        return F.grid_sample(patch_src, self.warp_grid(dst_homo_src),
+        return F.grid_sample(patch_src, self.warp_grid(dst_homo_src),  # type: ignore
                              mode=self.mode, padding_mode=self.padding_mode,
                              align_corners=True)
 
