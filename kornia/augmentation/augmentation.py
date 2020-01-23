@@ -72,10 +72,9 @@ class RandomHorizontalFlip(AugmentationBase):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True),
                                 kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True)
                                )
@@ -120,10 +119,9 @@ class RandomVerticalFlip(AugmentationBase):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomVerticalFlip(p=1.0, return_transform=True))
         >>> seq(input)
         (tensor([[0., 1., 1.],
@@ -161,6 +159,9 @@ class ColorJitter(AugmentationBase):
         contrast (float or tuple): Default value is 0
         saturation (float or tuple): Default value is 0
         hue (float or tuple): Default value is 0
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
     """
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
