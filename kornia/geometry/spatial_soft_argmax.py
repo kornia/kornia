@@ -416,7 +416,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
     # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
-    x_max = F.adaptive_max_pool3d(input, (1, 1, 1))
+    x_max = F.adaptive_max_pool3d(input, (d, 1, 1))
 
     # max is detached to prevent undesired backprop loops in the graph
     x_exp = ((input - x_max.detach()) / temperature).exp()
