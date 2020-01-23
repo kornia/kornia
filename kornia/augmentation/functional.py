@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
-from kornia.geometry.transform import get_perspective_transform, warp_perspective
+from kornia.geometry.transform import get_perspective_transform, warp_perspective, center_crop
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
 
@@ -465,3 +465,14 @@ def apply_affine(input: torch.Tensor,
         return out_data.view_as(input), transform
 
     return out_data.view_as(input)
+
+
+def apply_center_crop(input: torch.Tensor,
+                      params: Dict[str, torch.Tensor],
+                      return_transform: bool = False) -> UnionType:
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    size1: int = int(params['size'][0].item())
+    size2: int = int(params['size'][1].item())
+    return center_crop(input, (size1, size2), return_transform)
