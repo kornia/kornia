@@ -240,7 +240,7 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]], interpolation
     else:
         new_size = size
 
-    return torch.nn.functional.interpolate(input, size=new_size, mode=interpolation)
+    return torch.nn.functional.interpolate(input, size=new_size, mode=interpolation, align_corners=True)
 
 
 class Resize(nn.Module):
