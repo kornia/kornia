@@ -60,9 +60,10 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     hi: torch.Tensor = torch.floor(h * 6) % 6
     f: torch.Tensor = ((h * 6) % 6) - hi
-    p: torch.Tensor = v * (torch.tensor(1.) - s)
-    q: torch.Tensor = v * (torch.tensor(1.) - f * s)
-    t: torch.Tensor = v * (torch.tensor(1.) - (torch.tensor(1.) - f) * s)
+    one: torch.Tensor = torch.tensor(1.).to(image.device)
+    p: torch.Tensor = v * (one - s)
+    q: torch.Tensor = v * (one - f * s)
+    t: torch.Tensor = v * (one - (one - f) * s)
 
     out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3)
 
