@@ -345,7 +345,7 @@ class RandomAffine(AugmentationBase):
         return super().forward(input, params)
 
 
-class RandomRotation(nn.Module):
+class RandomRotation(AugmentationBase):
 
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -394,57 +394,3 @@ class RandomRotation(nn.Module):
             batch_size: int = self.infer_batch_size(input)
             params = self.get_params(batch_size, self.degrees)
         return super().forward(input, params)
-
-    def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
-
-    r""" Randomly rotate the input tensor.
-
-    See :class `~kornia.RandomRotation` for details
-
-    """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not torch.is_tensor(degrees):
-        if isinstance(degrees, float):
-            degrees = torch.tensor([-abs(degrees), abs(degrees)])  # allow negative angles as inputs
-
-        elif isinstance(degrees, (tuple, list)):
-            degrees = torch.tensor(degrees)
-
-        else:
-            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {type(degrees)}")
-
-# https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
-    degrees = cast(torch.Tensor, degrees)
-
-    if degrees.numel() != 2:
-        raise ValueError("If degrees is a sequence it must be of length 2")
-
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
-
-    device: torch.device = input.device
-    dtype: torch.dtype = input.dtype
-
-    input = input.unsqueeze(0)
-    input = input.view((-1, (*input.shape[-3:])))
-    degrees = degrees.to(device, dtype)
-
-    angles: torch.Tensor = Uniform(degrees[0], degrees[1]).rsample([input.shape[0]])
-
-    transformed: torch.Tensor = rotate(input, angles).squeeze(0)
-
-    if return_transform:
-
-        center: torch.Tensor = _compute_tensor_center(input)
-        rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
-
-        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
-        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
-        trans_mat[:, 0] = rotation_mat[:, 0]
-        trans_mat[:, 1] = rotation_mat[:, 1]
-
-        return transformed, trans_mat
-
-    return transformed
