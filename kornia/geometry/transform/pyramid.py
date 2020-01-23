@@ -65,7 +65,8 @@ class PyrDown(nn.Module):
         x_blur: torch.Tensor = filter2D(input, self.kernel, self.border_type)
 
         # downsample.
-        out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear', align_corners=False)
+        out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear',
+                                          align_corners=False)  # type: ignore
         return out
 
 
