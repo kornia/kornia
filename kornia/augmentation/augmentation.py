@@ -366,7 +366,7 @@ class CenterCrop(AugmentationBase):
             size_param = torch.tensor([size, size])
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
-	                    f"Got: {type(size)}.")
+                            f"Got: {type(size)}.")
         return dict(size=size_param)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
