@@ -9,7 +9,7 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomRectangleErasing, RandomGrayscale
-from kornia.augmentation.random_erasing import get_random_rectangles_params, erase_rectangles
+from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
 
@@ -743,7 +743,7 @@ class TestColorJitter:
         assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f(input)[1], expected_transform)
 
-    def test_color_jitter_batch(self):
+    def test_color_jitter_batch_sequential(self):
         f = nn.Sequential(
             ColorJitter(return_transform=True),
             ColorJitter(return_transform=True),
@@ -1006,7 +1006,7 @@ class TestRandomGrayscale:
         img_gray = kornia.random_grayscale(data, p=1.)
         assert_allclose(img_gray, expected)
 
-    def test_opencv_true_batch(self, device):
+    def test_opencv_false_batch(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
                               [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
                               [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
