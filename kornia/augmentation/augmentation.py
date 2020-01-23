@@ -7,6 +7,8 @@ from . import functional as F
 from . import param_gen as pg
 
 
+TupleFloat = Tuple[float, float]
+UnionFloat = Union[float, TupleFloat]
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
@@ -23,6 +25,13 @@ class AugmentationBase(nn.Module):
         else:
             batch_size = input.shape[0] if len(input.shape) == 4 else 1
         return batch_size
+
+    def infer_image_shape(self, input: UnionType) -> Tuple[int, int]:
+        if isinstance(input, tuple):
+            data, _ = cast(Tuple, input)
+        else:
+            data = cast(torch.Tensor, input)
+        return data.shape[-2:]
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if isinstance(input, tuple):
@@ -79,6 +88,7 @@ class RandomHorizontalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
         self.p: float = p
@@ -124,6 +134,7 @@ class RandomVerticalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
         self.p: float = p
@@ -240,3 +251,94 @@ class RandomRectangleErasing(nn.Module):
             self.erase_scale_range,
             self.aspect_ratio_range
         )
+
+
+class RandomPerspective(AugmentationBase):
+    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+
+    Args:
+        p (float): probability of the image being perspectively transformed. Default value is 0.5
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+        input tensor.
+    """
+
+    def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False) -> None:
+        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
+        self.p: float = p
+        self.distortion_scale: float = distortion_scale
+        self.return_transform: bool = return_transform
+
+    def __repr__(self) -> str:
+        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, height: int, width: int, p: float,
+                   distortion_scale: float) -> Dict[str, torch.Tensor]:
+        return pg._random_perspective_gen(batch_size, height, width, p, distortion_scale)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, height, width, self.p, self.distortion_scale)
+        return super().forward(input, params)
+
+
+class RandomAffine(AugmentationBase):
+    r"""Random affine transformation of the image keeping center invariant.
+        Args:
+            degrees (float or tuple): Range of degrees to select from.
+                If degrees is a number instead of sequence like (min, max), the range of degrees
+                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
+            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+                and vertical translations. For example translate=(a, b), then horizontal shift
+                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+            shear (sequence or float, optional): Range of degrees to select from.
+                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
+                will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
+                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
+                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+                Will not apply shear by default
+            return_transform (bool): if ``True`` return the matrix describing the transformation
+                applied to each. Default: False.
+            mode (str): interpolation mode to calculate output values
+                'bilinear' | 'nearest'. Default: 'bilinear'.
+            padding_mode (str): padding mode for outside grid values
+                'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+    """
+
+    def __init__(self,
+                 degrees: UnionFloat,
+                 translate: Optional[TupleFloat] = None,
+                 scale: Optional[TupleFloat] = None,
+                 shear: Optional[UnionFloat] = None,
+                 return_transform: bool = False) -> None:
+        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
+        self.degrees = degrees
+        self.translate = translate
+        self.scale = scale
+        self.shear = shear
+        self.return_transform = return_transform
+
+    @staticmethod
+    def get_params(batch_size: int,
+                   height: int,
+                   width: int,
+                   degrees: UnionFloat,
+                   translate: Optional[TupleFloat] = None,
+                   scale: Optional[TupleFloat] = None,
+                   shear: Optional[UnionFloat] = None) -> Dict[str, torch.Tensor]:
+        return pg._random_affine_gen(batch_size, height, width, degrees, translate, scale, shear)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, height, width, self.degrees, self.translate, self.scale, self.shear)
+        return super().forward(input, params)
