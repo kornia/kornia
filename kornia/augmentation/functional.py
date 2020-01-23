@@ -4,10 +4,10 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
-from kornia.geometry.transform import get_perspective_transform, warp_perspective
+from kornia.geometry.transform import get_perspective_transform, warp_perspective, rotate
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
-from kornia.geometry.transform import _compute_rotation_matrix, _compute_tensor_center
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import param_gen as pg
 from .erasing import erase_rectangles, get_random_rectangles_params
@@ -467,7 +467,6 @@ def apply_affine(input: torch.Tensor,
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
@@ -490,43 +489,22 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
-        range of degrees to select from will be (-degrees, +degrees)
+        params (dict): A dict that must have {'degrees': torch.Tensor}. Can be generated from
+                       kornia.augmentation.param_gen._random_rotation_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
     """
-    degrees = params["degrees"]
 
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if not torch.is_tensor(degrees):
-        if isinstance(degrees, float):
-            if degrees < 0:
-                raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
-            degrees = torch.tensor([-degrees, degrees])
-
-        elif isinstance(degrees, (tuple, list)):
-            degrees = torch.tensor(degrees)
-
-        else:
-            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {type(degrees)}")
-
-    degrees = cast(torch.Tensor, degrees)
-
-    if degrees.numel() != 2:
-        raise ValueError("If degrees is a sequence it must be of length 2")
-
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
     input = input.unsqueeze(0)
     input = input.view((-1, (*input.shape[-3:])))
-    angles: torch.Tensor = degrees.to(device, dtype)
+    angles: torch.Tensor = params["degrees"].to(device, dtype)
 
     transformed: torch.Tensor = rotate(input, angles).squeeze(0)
 
