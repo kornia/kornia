@@ -9,6 +9,8 @@ The classes in this section perform various data augmentation operations
 .. autoclass:: RandomVerticalFlip
 .. autoclass:: RandomRectangleErasing
 .. autoclass:: RandomGrayscale
+.. autoclass:: RandomAffine
+.. autoclass:: RanfomPerspective
 .. autoclass:: ColorJitter
 
 .. automodule:: kornia.augmentation.functional
