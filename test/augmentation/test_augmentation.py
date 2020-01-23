@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale
+    RandomRectangleErasing, RandomGrayscale, RandomRotation
 from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
@@ -1136,11 +1136,11 @@ class TestRandomRotation:
 
         f = nn.Sequential(
             RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(-10.4, return_transform=True),
+            RandomRotation(10.4, return_transform=True),
         )
         f1 = nn.Sequential(
             RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(-10.4),
+            RandomRotation(10.4),
         )
 
         input = torch.tensor([[1., 0., 0., 2.],

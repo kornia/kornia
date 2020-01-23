@@ -229,6 +229,7 @@ def _random_affine_gen(
         batch_size, height, width, degrees_tmp, translate, scale, shear_tmp)
     return dict(transform=transform)
 
+
 def _random_rotation_gen(batch_size: int, degrees: FloatUnionType) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
@@ -253,6 +254,7 @@ def _random_rotation_gen(batch_size: int, degrees: FloatUnionType) -> Dict[str, 
     params["degrees"] = Uniform(degrees[0], degrees[1]).rsample([batch_size])
 
     return params
+
 
 def _get_random_affine_params(
     batch_size: int, height: int, width: int,
