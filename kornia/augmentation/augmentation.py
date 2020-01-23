@@ -343,3 +343,33 @@ class RandomAffine(AugmentationBase):
             batch_size: int = self.infer_batch_size(input)
             params = self.get_params(batch_size, height, width, self.degrees, self.translate, self.scale, self.shear)
         return super().forward(input, params)
+
+
+class CenterCrop(AugmentationBase):
+    r"""Crops the given torch.Tensor at the center.
+    Args:
+        size (sequence or int): Desired output size of the crop. If size is an
+            int instead of sequence like (h, w), a square crop (size, size) is
+            made.
+    """
+
+    def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
+        super(CenterCrop, self).__init__(F.apply_center_crop, return_transform)
+        self.size = size
+        self.return_transform = return_transform
+
+    @staticmethod
+    def get_params(size: Union[int, Tuple[int, int]]) -> Dict[str, torch.Tensor]:
+        if isinstance(size, tuple):
+            size_param = torch.tensor([size[0], size[1]])
+        elif isinstance(size, int):
+            size_param = torch.tensor([size, size])
+        else:
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
+                            f"Got: {type(size)}.")
+        return dict(size=size_param)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            params = self.get_params(self.size)
+        return super().forward(input, params)
