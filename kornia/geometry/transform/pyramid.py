@@ -66,7 +66,7 @@ class PyrDown(nn.Module):
 
         # downsample.
         out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear',
-                                          align_corners=False)  # type: ignore
+                                          align_corners=False)
         return out
 
 
