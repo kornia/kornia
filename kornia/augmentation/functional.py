@@ -24,6 +24,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
+
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -38,6 +39,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
+
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -54,6 +56,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     See :func:`~kornia.augmentation.param_gen._random_color_jitter_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
+
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -68,6 +71,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
+
     if isinstance(input, tuple):
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
@@ -82,14 +86,10 @@ def random_perspective(input: torch.Tensor,
                        return_transform: bool = False) -> UnionType:
     r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
 
-    Args:
-        input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
-        p (float): probability of the image being perspectively transformed. Default value is 0.5
-        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the transformation
-        applied to each. Default: False.
-        input tensor.
+    See :func:`~kornia.augmentation.param_gen._random_perspective_gen` for details.
+    See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
+
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = pg._random_perspective_gen(
         batch_size, height, width, p, distortion_scale)
@@ -103,30 +103,11 @@ def random_affine(input: torch.Tensor,
                   shear: Optional[UnionFloat] = None,
                   return_transform: bool = False) -> UnionType:
     r"""Random affine transformation of the image keeping center invariant
-        Args:
-            input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
-            degrees (float or tuple): Range of degrees to select from.
-                If degrees is a number instead of sequence like (min, max), the range of degrees
-                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
-                and vertical translations. For example translate=(a, b), then horizontal shift
-                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
-                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
-            shear (sequence or float, optional): Range of degrees to select from.
-                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-                will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
-                Will not apply shear by default
-            return_transform (bool): if ``True`` return the matrix describing the transformation
-                applied to each. Default: False.
-            mode (str): interpolation mode to calculate output values
-                'bilinear' | 'nearest'. Default: 'bilinear'.
-            padding_mode (str): padding mode for outside grid values
-                'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+
+    See :func:`~kornia.augmentation.param_gen._random_affine_gen` for details.
+    See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
+
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = pg._random_affine_gen(
         batch_size, height, width, degrees, translate, scale, shear)
@@ -367,6 +348,7 @@ def random_rectangle_erase(
         erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
         aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
     """
+
     if not (isinstance(erase_scale_range[0], float) and
             isinstance(erase_scale_range[1], float) and
             erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
@@ -406,6 +388,7 @@ def apply_perspective(input: torch.Tensor,
     Returns:
         torch.Tensor: Perspectively transformed tensor.
     """
+
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -441,6 +424,31 @@ def apply_affine(input: torch.Tensor,
                  return_transform: bool = False) -> UnionType:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    r"""Random affine transformation of the image keeping center invariant
+        Args:
+            input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
+            degrees (float or tuple): Range of degrees to select from.
+                If degrees is a number instead of sequence like (min, max), the range of degrees
+                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
+            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+                and vertical translations. For example translate=(a, b), then horizontal shift
+                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+            shear (sequence or float, optional): Range of degrees to select from.
+                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
+                will be applied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
+                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
+                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+                Will not apply shear by default
+            return_transform (bool): if ``True`` return the matrix describing the transformation
+                applied to each. Default: False.
+            mode (str): interpolation mode to calculate output values
+                'bilinear' | 'nearest'. Default: 'bilinear'.
+            padding_mode (str): padding mode for outside grid values
+                'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+    """
 
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
