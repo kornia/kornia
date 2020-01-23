@@ -4,7 +4,10 @@ import sys
 if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
-from .version import __version__
+try:
+    from .version import __version__  # noqa: F401
+except ImportError:
+    pass
 
 from kornia import augmentation
 from kornia import color

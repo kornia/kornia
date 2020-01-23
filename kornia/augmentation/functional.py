@@ -1,9 +1,10 @@
-from typing import Tuple, List, Union, Dict
+from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
+from kornia.geometry.transform import get_perspective_transform, warp_perspective
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
 
@@ -11,6 +12,8 @@ from . import param_gen as pg
 from .erasing import erase_rectangles, get_random_rectangles_params
 
 
+TupleFloat = Tuple[float, float]
+UnionFloat = Union[float, TupleFloat]
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 
@@ -71,6 +74,63 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_prob_gen(batch_size, p=p)
     return apply_grayscale(input, params, return_transform)
+
+
+def random_perspective(input: torch.Tensor,
+                       distortion_scale: float = 0.5,
+                       p: float = 0.5,
+                       return_transform: bool = False) -> UnionType:
+    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
+        p (float): probability of the image being perspectively transformed. Default value is 0.5
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+        input tensor.
+    """
+    batch_size, _, height, width = input.shape
+    params: Dict[str, torch.Tensor] = pg._random_perspective_gen(
+        batch_size, height, width, p, distortion_scale)
+    return apply_perspective(input, params, return_transform)
+
+
+def random_affine(input: torch.Tensor,
+                  degrees: UnionFloat,
+                  translate: Optional[TupleFloat] = None,
+                  scale: Optional[TupleFloat] = None,
+                  shear: Optional[UnionFloat] = None,
+                  return_transform: bool = False) -> UnionType:
+    r"""Random affine transformation of the image keeping center invariant
+        Args:
+            input (torch.Tensor): Tensor to be transformed with shape (*, C, H, W).
+            degrees (float or tuple): Range of degrees to select from.
+                If degrees is a number instead of sequence like (min, max), the range of degrees
+                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
+            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+                and vertical translations. For example translate=(a, b), then horizontal shift
+                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+            shear (sequence or float, optional): Range of degrees to select from.
+                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
+                will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
+                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
+                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+                Will not apply shear by default
+            return_transform (bool): if ``True`` return the matrix describing the transformation
+                applied to each. Default: False.
+            mode (str): interpolation mode to calculate output values
+                'bilinear' | 'nearest'. Default: 'bilinear'.
+            padding_mode (str): padding mode for outside grid values
+                'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+    """
+    batch_size, _, height, width = input.shape
+    params: Dict[str, torch.Tensor] = pg._random_affine_gen(
+        batch_size, height, width, degrees, translate, scale, shear)
+    return apply_affine(input, params, return_transform)
 
 
 def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
@@ -327,3 +387,73 @@ def random_rectangle_erase(
     )
     images = erase_rectangles(images, rect_params)
     return images
+
+
+def apply_perspective(input: torch.Tensor,
+                      params: Dict[str, torch.Tensor],
+                      return_transform: bool = False) -> UnionType:
+    r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape BxCxHxW.
+        start_points (torch.Tensor): Tensor containing [top-left, top-right, bottom-right,
+        bottom-left] of the orignal image with shape Bx4x2.
+        end_points (torch.Tensor): Tensor containing [top-left, top-right, bottom-right,
+        bottom-left] of the transformed image with shape Bx4x2.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+
+    Returns:
+        torch.Tensor: Perspectively transformed tensor.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    # arrange input data
+    x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
+
+    batch_size, _, height, width = x_data.shape
+
+    # compute the homography between the input points
+    transform: torch.Tensor = get_perspective_transform(
+        params['start_points'], params['end_points']).to(device, dtype)
+
+    out_data: torch.Tensor = x_data.clone()
+
+    # process valid samples
+    mask = params['batch_prob'].to(device)
+
+    # apply the computed transform
+    height, width = x_data.shape[-2:]
+    out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+
+    if return_transform:
+        return out_data.view_as(input), transform
+
+    return out_data.view_as(input)
+
+
+def apply_affine(input: torch.Tensor,
+                 params: Dict[str, torch.Tensor],
+                 return_transform: bool = False) -> UnionType:
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    # arrange input data
+    x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
+
+    height, width = x_data.shape[-2:]
+    transform: torch.Tensor = params['transform'].to(device, dtype)
+
+    out_data: torch.Tensor = warp_perspective(x_data, transform, (height, width))
+
+    if return_transform:
+        return out_data.view_as(input), transform
+
+    return out_data.view_as(input)
