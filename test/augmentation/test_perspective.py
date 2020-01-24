@@ -109,6 +109,13 @@ class TestRandomAffine:
 
         assert out.shape == x_data.shape
 
+    def test_smoke_no_transform_batch(self, device):
+        x_data = torch.rand(2, 2, 8, 9).to(device)
+
+        out = F.random_affine(x_data, 0.)
+
+        assert out.shape == x_data.shape
+
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
