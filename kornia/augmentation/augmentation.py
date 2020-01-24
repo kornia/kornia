@@ -89,7 +89,7 @@ class RandomHorizontalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
-        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
+        super(RandomHorizontalFlip, self).__init__(F._apply_hflip, return_transform)
         self.p: float = p
 
     @staticmethod
@@ -134,7 +134,7 @@ class RandomVerticalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
-        super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
+        super(RandomVerticalFlip, self).__init__(F._apply_vflip, return_transform)
         self.p: float = p
 
     @staticmethod
@@ -166,7 +166,7 @@ class ColorJitter(AugmentationBase):
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
                  saturation: FloatUnionType = 0., hue: FloatUnionType = 0., return_transform: bool = False) -> None:
-        super(ColorJitter, self).__init__(F.apply_color_jitter, return_transform)
+        super(ColorJitter, self).__init__(F._apply_color_jitter, return_transform)
         self.brightness: FloatUnionType = brightness
         self.contrast: FloatUnionType = contrast
         self.saturation: FloatUnionType = saturation
@@ -201,7 +201,7 @@ class RandomGrayscale(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
-        super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform)
+        super(RandomGrayscale, self).__init__(F._apply_grayscale, return_transform)
         self.p = p
 
     def __repr__(self) -> str:
@@ -266,7 +266,7 @@ class RandomPerspective(AugmentationBase):
     """
 
     def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False) -> None:
-        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
+        super(RandomPerspective, self).__init__(F._apply_perspective, return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
         self.return_transform: bool = return_transform
@@ -322,7 +322,7 @@ class RandomAffine(AugmentationBase):
                  scale: Optional[TupleFloat] = None,
                  shear: Optional[UnionFloat] = None,
                  return_transform: bool = False) -> None:
-        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
+        super(RandomAffine, self).__init__(F._apply_affine, return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -356,7 +356,7 @@ class CenterCrop(AugmentationBase):
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
-        super(CenterCrop, self).__init__(F.apply_center_crop, return_transform)
+        super(CenterCrop, self).__init__(F._apply_center_crop, return_transform)
         self.size = size
         self.return_transform = return_transform
 
