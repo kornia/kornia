@@ -157,7 +157,7 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
     factor = torch.tensor([fy, fx]).view(-1, 1, 2)
 
     rand_val: torch.Tensor = Uniform(0, 1).rsample((batch_size, 4, 2))
-    offset = 2 * factor - 1
+    offset = 2 * factor * rand_val - 1
 
     end_points = start_points + offset
 
