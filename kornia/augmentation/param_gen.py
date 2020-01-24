@@ -1,4 +1,4 @@
-from typing import Tuple, List, Union, Dict, Optional
+from typing import Tuple, List, Union, Dict, Optional, cast
 
 import torch
 from torch.distributions import Uniform
@@ -228,6 +228,32 @@ def _random_affine_gen(
     transform: torch.Tensor = _get_random_affine_params(
         batch_size, height, width, degrees_tmp, translate, scale, shear_tmp)
     return dict(transform=transform)
+
+
+def _random_rotation_gen(batch_size: int, degrees: FloatUnionType) -> Dict[str, torch.Tensor]:
+
+    if not torch.is_tensor(degrees):
+        if isinstance(degrees, float):
+            if degrees < 0:
+                raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
+            degrees = torch.tensor([-degrees, degrees])
+
+        elif isinstance(degrees, (tuple, list)):
+            degrees = torch.tensor(degrees)
+
+        else:
+            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {type(degrees)}")
+
+    # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
+    degrees = cast(torch.Tensor, degrees)
+
+    if degrees.numel() != 2:
+        raise ValueError("If degrees is a sequence it must be of length 2")
+
+    params: Dict[str, torch.Tensor] = {}
+    params["degrees"] = Uniform(degrees[0], degrees[1]).rsample([batch_size])
+
+    return params
 
 
 def _get_random_affine_params(
