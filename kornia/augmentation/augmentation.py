@@ -290,6 +290,7 @@ class RandomPerspective(AugmentationBase):
 
 class RandomAffine(AugmentationBase):
     r"""Random affine transformation of the image keeping center invariant.
+
         Args:
             degrees (float or tuple): Range of degrees to select from.
                 If degrees is a number instead of sequence like (min, max), the range of degrees
@@ -308,10 +309,11 @@ class RandomAffine(AugmentationBase):
                 Will not apply shear by default
             return_transform (bool): if ``True`` return the matrix describing the transformation
                 applied to each. Default: False.
-            mode (str): interpolation mode to calculate output values
-                'bilinear' | 'nearest'. Default: 'bilinear'.
-            padding_mode (str): padding mode for outside grid values
-                'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+
+    Examples:
+        >>> input = torch.rand(2, 3, 224, 224)
+        >>> my_fcn = kornia.augmentation.RandomAffine((-15., 20.), return_transform=True)
+        >>> out, transform = my_fcn(input)  # 2x3x224x224 / 2x3x3
     """
 
     def __init__(self,
