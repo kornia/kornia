@@ -22,7 +22,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_hflip` for details.
+    See :func:`~kornia.augmentation.functional._apply_hflip` for details.
     """
 
     if isinstance(input, tuple):
@@ -30,14 +30,14 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_prob_gen(batch_size, p=p)
-    return apply_hflip(input, params, return_transform)
+    return _apply_hflip(input, params, return_transform)
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_vflip` for details.
+    See :func:`~kornia.augmentation.functional._apply_vflip` for details.
     """
 
     if isinstance(input, tuple):
@@ -45,7 +45,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_prob_gen(batch_size, p=p)
-    return apply_vflip(input, params, return_transform)
+    return _apply_vflip(input, params, return_transform)
 
 
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
@@ -54,7 +54,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.param_gen._random_color_jitter_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
+    See :func:`~kornia.augmentation.functional._apply_color_jitter` for details.
     """
 
     if isinstance(input, tuple):
@@ -62,14 +62,14 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_color_jitter_gen(batch_size, brightness, contrast, saturation, hue)
-    return apply_color_jitter(input, params, return_transform)
+    return _apply_color_jitter(input, params, return_transform)
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
+    See :func:`~kornia.augmentation.functional._apply_grayscale` for details.
     """
 
     if isinstance(input, tuple):
@@ -77,7 +77,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = pg._random_prob_gen(batch_size, p=p)
-    return apply_grayscale(input, params, return_transform)
+    return _apply_grayscale(input, params, return_transform)
 
 
 def random_perspective(input: torch.Tensor,
@@ -87,13 +87,13 @@ def random_perspective(input: torch.Tensor,
     r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
 
     See :func:`~kornia.augmentation.param_gen._random_perspective_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_perspective` for details.
+    See :func:`~kornia.augmentation.functional._apply_perspective` for details.
     """
 
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = pg._random_perspective_gen(
         batch_size, height, width, p, distortion_scale)
-    return apply_perspective(input, params, return_transform)
+    return _apply_perspective(input, params, return_transform)
 
 
 def random_affine(input: torch.Tensor,
@@ -105,16 +105,16 @@ def random_affine(input: torch.Tensor,
     r"""Random affine transformation of the image keeping center invariant
 
     See :func:`~kornia.augmentation.param_gen._random_affine_gen` for details.
-    See :func:`~kornia.augmentation.functional.apply_affine` for details.
+    See :func:`~kornia.augmentation.functional._apply_affine` for details.
     """
 
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = pg._random_affine_gen(
         batch_size, height, width, degrees, translate, scale, shear)
-    return apply_affine(input, params, return_transform)
+    return _apply_affine(input, params, return_transform)
 
 
-def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def _apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -170,7 +170,7 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     return flipped
 
 
-def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def _apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -225,8 +225,8 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     return flipped
 
 
-def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                       return_transform: bool = False) -> UnionType:
+def _apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                        return_transform: bool = False) -> UnionType:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -285,7 +285,7 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return jittered
 
 
-def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def _apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
@@ -371,9 +371,9 @@ def random_rectangle_erase(
     return images
 
 
-def apply_perspective(input: torch.Tensor,
-                      params: Dict[str, torch.Tensor],
-                      return_transform: bool = False) -> UnionType:
+def _apply_perspective(input: torch.Tensor,
+                       params: Dict[str, torch.Tensor],
+                       return_transform: bool = False) -> UnionType:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
@@ -419,9 +419,9 @@ def apply_perspective(input: torch.Tensor,
     return out_data.view_as(input)
 
 
-def apply_affine(input: torch.Tensor,
-                 params: Dict[str, torch.Tensor],
-                 return_transform: bool = False) -> UnionType:
+def _apply_affine(input: torch.Tensor,
+                  params: Dict[str, torch.Tensor],
+                  return_transform: bool = False) -> UnionType:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     r"""Random affine transformation of the image keeping center invariant
@@ -467,9 +467,9 @@ def apply_affine(input: torch.Tensor,
     return out_data.view_as(input)
 
 
-def apply_center_crop(input: torch.Tensor,
-                      params: Dict[str, torch.Tensor],
-                      return_transform: bool = False) -> UnionType:
+def _apply_center_crop(input: torch.Tensor,
+                       params: Dict[str, torch.Tensor],
+                       return_transform: bool = False) -> UnionType:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
