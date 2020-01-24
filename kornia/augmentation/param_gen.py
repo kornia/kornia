@@ -265,6 +265,7 @@ def _get_random_affine_params(
 
     center: torch.Tensor = torch.tensor(
         [width, height], dtype=torch.float32).view(1, 2) / 2
+    center = center.expand(batch_size, -1)
 
     # concatenate transforms
     transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
