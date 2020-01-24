@@ -12,6 +12,7 @@ The classes in this section perform various data augmentation operations
 .. autoclass:: RandomAffine
 .. autoclass:: RandomPerspective
 .. autoclass:: ColorJitter
+.. autoclass:: CenterCrop
 
 .. automodule:: kornia.augmentation.functional
     :members:
