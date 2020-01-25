@@ -426,9 +426,12 @@ def apply_perspective(input: torch.Tensor,
     # process valid samples
     mask = params['batch_prob'].to(device)
 
-    # apply the computed transform
-    height, width = x_data.shape[-2:]
-    out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+    # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
+
+    if bool(mask.sum() > 0):
+        # apply the computed transform
+        height, width = x_data.shape[-2:]
+        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
 
     if return_transform:
         return out_data.view_as(input), transform
