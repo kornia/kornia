@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 
@@ -99,7 +99,8 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
     return patches
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
+def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
+                return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Crops the given tensor at the center.
 
     Args:
@@ -186,5 +187,8 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int]) -> torch.Tensor:
     # return in the original shape
     if is_unbatched:
         patches = torch.squeeze(patches, dim=0)
+
+    if return_transform:
+        return patches, dst_trans_src
 
     return patches

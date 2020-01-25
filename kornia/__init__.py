@@ -4,8 +4,12 @@ import sys
 if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
-from .version import __version__
+try:
+    from .version import __version__  # noqa: F401
+except ImportError:
+    pass
 
+from kornia import augmentation
 from kornia import color
 from kornia import contrib
 from kornia import feature
@@ -13,15 +17,19 @@ from kornia import filters
 from kornia import geometry
 from kornia import losses
 from kornia import utils
-from kornia import augmentation
 
 # Exposes package functional to top level
 
+from kornia.augmentation.functional import *
 from kornia.color import (
     rgb_to_grayscale,
     bgr_to_grayscale,
     bgr_to_rgb,
     rgb_to_bgr,
+    rgb_to_rgba,
+    bgr_to_rgba,
+    rgba_to_rgb,
+    rgba_to_bgr,
     rgb_to_hsv,
     hsv_to_rgb,
     rgb_to_hls,
@@ -81,12 +89,6 @@ from kornia.utils import (
     image_to_tensor,
     save_pointcloud_ply,
     load_pointcloud_ply,
-)
-from kornia.augmentation import (
-    random_hflip,
-    random_vflip,
-    color_jitter,
-    random_grayscale,
 )
 
 from kornia.geometry import *

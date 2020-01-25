@@ -9,6 +9,35 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestResize:
+    def test_smoke(self, device):
+        inp = torch.rand(1, 3, 3, 4).to(device)
+        out = kornia.resize(inp, (3, 4))
+        assert_allclose(inp, out)
+
+    def test_upsize(self, device):
+        inp = torch.rand(1, 3, 3, 4).to(device)
+        out = kornia.resize(inp, (6, 8))
+        assert out.shape == (1, 3, 6, 8)
+
+    def test_upsize(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, (3, 1))
+        assert out.shape == (1, 3, 3, 1)
+
+    def test_one_param(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, 10)
+        assert out.shape == (1, 3, 25, 10)
+
+    def test_gradcheck(self, device):
+        # test parameters
+        new_size = 4
+        input = torch.rand(1, 2, 3, 4).to(device)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(kornia.Resize(new_size), (input, ), raise_exception=True)
+
+
 class TestRotate:
     def test_angle90(self, device):
         # prepare input data

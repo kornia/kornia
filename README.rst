@@ -75,7 +75,7 @@ Installation
 
 .. code:: bash
 
-    pip install git+https://github.com/arraiyopensource/kornia
+    pip install git+https://github.com/kornia/kornia
 
 Quick Usage
 ===========
