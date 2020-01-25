@@ -375,3 +375,54 @@ class CenterCrop(AugmentationBase):
         if params is None:
             params = self.get_params(self.size)
         return super().forward(input, params)
+
+
+class RandomRotation(AugmentationBase):
+
+    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
+    the corresponding transformation matrix that has been applied to them. In this case the module
+    will rotate the tensors and concatenate the corresponding transformation matrix to the
+    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+
+    Args:
+        degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
+        range of degrees to select from will be (-degrees, +degrees)
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+
+    Examples:
+    >>> input = torch.tensor([[[[10., 0., 0.],
+                                [0., 4.5, 4.],
+                                [0., 1., 1.]]]])
+    >>> seq = nn.Sequential(kornia.augmentation.RandomRotation(degrees=90.0, return_transform=True))
+    >>> seq(input)
+    (tensor([[[0.0000e+00, 8.8409e-02, 9.8243e+00],
+              [9.9131e-01, 4.5000e+00, 1.7524e-04],
+              [9.9121e-01, 3.9735e+00, 3.5140e-02]]]),
+    tensor([[[ 0.0088, -1.0000,  1.9911],
+             [ 1.0000,  0.0088, -0.0088],
+             [ 0.0000,  0.0000,  1.0000]]]))
+    """
+
+    def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
+        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+        self.degrees = degrees
+
+    def __repr__(self) -> str:
+        repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, degrees: FloatUnionType) -> Dict[str, torch.Tensor]:
+        return pg._random_rotation_gen(batch_size, degrees)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, self.degrees)
+        return super().forward(input, params)
