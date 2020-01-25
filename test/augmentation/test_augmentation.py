@@ -1080,6 +1080,7 @@ class TestCenterCrop:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.augmentation.CenterCrop(3), (input,), raise_exception=True)
 
+
 class TestRandomRotation:
 
     torch.manual_seed(0)  # for random reproductibility
