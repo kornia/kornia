@@ -475,8 +475,6 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
     """
-    src = params['src'].to(input.device).to(input.dtype)
-    dst = params['dst'].to(input.device).to(input.dtype)
 
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")

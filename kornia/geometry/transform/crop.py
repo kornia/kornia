@@ -73,7 +73,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [0, dst_h - 1],
     ]]).repeat(points_src.shape[0], 1, 1)
 
-    return crop_by_boxes(tensor, points_src, points_dst)
+    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
 
 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],

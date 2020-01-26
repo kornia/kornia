@@ -482,26 +482,27 @@ class RandomCrop(AugmentationBase):
                 padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]  # type:ignore
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
-        if self.pad_if_needed and input.shape[-2] < self.size[1]:
-            padding = [self.size[1] - input.shape[-2], self.size[1] - input.shape[-2], 0, 0]
+        if self.pad_if_needed and input.shape[-2] < self.size[0]:
+            padding = [0, 0, (self.size[0] - input.shape[-2]), self.size[0] - input.shape[-2]]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
-        if self.pad_if_needed and input.shape[-1] < self.size[0]:
-            padding = [0, 0, self.size[0] - input.shape[-1], self.size[0] - input.shape[-1]]
+        if self.pad_if_needed and input.shape[-1] < self.size[1]:
+            padding = [self.size[1] - input.shape[-1], self.size[1] - input.shape[-1], 0, 0]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         return input
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if isinstance(input, tuple):
-            batch_shape = input[0].shape
             input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
+            batch_shape = input[0].shape
         else:
-            batch_shape = input.shape
             input = self.precrop_padding(input)
+            batch_shape = input.shape
 
         if params is None:
             batch_size = self.infer_batch_size(input)
+            print(batch_shape)
             params = RandomCrop.get_params(batch_size, batch_shape[-2:], self.size)  # type: ignore
         return super().forward(input, params)
 
@@ -535,34 +536,9 @@ class RandomResizedCrop(AugmentationBase):
     @staticmethod
     def get_params(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
                    scale=(0.08, 1.0), ratio=(3. / 4., 4. / 3.)) -> Dict[str, torch.Tensor]:
-        target_size = RandomResizedCrop.get_aspected_size(size, scale, ratio)
+        target_size = pd._random_crop_size_gen(size, scale, ratio)
         # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
         return pg._random_crop_gen(batch_size, input_size, target_size, resize_to=size)
-
-    @staticmethod
-    def get_aspected_size(size, scale, ratio):
-        for attempt in range(10):
-            target_area = random.uniform(*scale) * size[0] * size[1]
-            log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
-            aspect_ratio = math.exp(random.uniform(*log_ratio))
-
-            w = int(round(math.sqrt(target_area * aspect_ratio)))
-            h = int(round(math.sqrt(target_area / aspect_ratio)))
-            if 0 < w < size[0] and 0 < h < size[1]:
-                return (w, h)
-
-        # Fallback to center crop
-        in_ratio = float(size[0]) / float(size[1])
-        if (in_ratio < min(ratio)):
-            w = size[0]
-            h = int(round(w / min(ratio)))
-        elif (in_ratio > max(ratio)):
-            h = size[1]
-            w = int(round(h * max(ratio)))
-        else:  # whole image
-            w = size[0]
-            h = size[1]
-        return (w, h)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
