@@ -303,3 +303,39 @@ def _get_random_affine_params(
     transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
     transform_h[..., -1, -1] += 1.0
     return transform_h
+
+
+def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+                     resize_to: Optional[Tuple[int, int]] = None) -> Dict[str, torch.Tensor]:
+    x_diff = input_size[1] - size[1]
+    y_diff = input_size[0] - size[0]
+
+    if x_diff < 0 or y_diff < 0:
+        raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
+                         % (str(input_size), str(size)))
+
+    x_start = Uniform(0, x_diff).rsample((batch_size,)).long()
+    y_start = Uniform(0, y_diff).rsample((batch_size,)).long()
+
+    crop = torch.tensor([[
+        [0, 0],
+        [0, size[1]],
+        [size[0], 0],
+        [size[0], size[1]]
+    ]]).repeat(batch_size, 1, 1)
+
+    crop_src = crop.detach()
+    crop_src[:, :, 0] += x_start.unsqueeze(dim=0).reshape(batch_size, 1)
+    crop_src[:, :, 1] += y_start.unsqueeze(dim=0).reshape(batch_size, 1)
+
+    if resize_to is None:
+        crop_dst = crop
+    else:
+        crop_dst = torch.tensor([[
+            [0, 0],
+            [0, resize_to[1]],
+            [resize_to[0], 0],
+            [resize_to[0], resize_to[1]]
+        ]]).repeat(batch_size, 1, 1)
+
+    return {'src': crop_src, 'dst': crop_dst}
