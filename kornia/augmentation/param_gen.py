@@ -157,7 +157,7 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
     factor = torch.tensor([fy, fx]).view(-1, 1, 2)
 
     rand_val: torch.Tensor = Uniform(0, 1).rsample((batch_size, 4, 2))
-    offset = 2 * factor - 1
+    offset = 2 * factor * rand_val - 1
 
     end_points = start_points + offset
 
@@ -266,31 +266,32 @@ def _get_random_affine_params(
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
     """
-    angle = torch.empty(batch_size).uniform_(degrees[0], degrees[1])
+    angle = Uniform(degrees[0], degrees[1]).rsample((batch_size,))
 
     # compute tensor ranges
     if scales is not None:
-        scale = torch.empty(batch_size).uniform_(scales[0], scales[1])
+        scale = Uniform(scales[0], scales[1]).rsample((batch_size,))
     else:
         scale = torch.ones(batch_size)
 
     if shears is not None:
-        shear = torch.empty(batch_size).uniform_(shears[0], shears[1])
+        shear = Uniform(shears[0], shears[1]).rsample((batch_size,))
     else:
         shear = torch.zeros(batch_size)
 
     if translate is not None:
         max_dx: float = translate[0] * width
         max_dy: float = translate[1] * height
-        translations = torch.cat([
-            torch.empty(batch_size).uniform_(-max_dx, max_dx),
-            torch.empty(batch_size).uniform_(-max_dy, max_dy),
+        translations = torch.stack([
+            Uniform(-max_dx, max_dx).rsample((batch_size,)),
+            Uniform(-max_dy, max_dy).rsample((batch_size,)),
         ], dim=-1)
     else:
         translations = torch.zeros(batch_size, 2)
 
     center: torch.Tensor = torch.tensor(
         [width, height], dtype=torch.float32).view(1, 2) / 2
+    center = center.expand(batch_size, -1)
 
     # concatenate transforms
     transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
