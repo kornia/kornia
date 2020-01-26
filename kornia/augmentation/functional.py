@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
+from kornia.geometry.transform import get_perspective_transform, warp_perspective, center_crop, rotate
 from kornia.geometry.transform import get_perspective_transform, warp_perspective, rotate
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
@@ -425,9 +426,12 @@ def apply_perspective(input: torch.Tensor,
     # process valid samples
     mask = params['batch_prob'].to(device)
 
-    # apply the computed transform
-    height, width = x_data.shape[-2:]
-    out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+    # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
+
+    if bool(mask.sum() > 0):
+        # apply the computed transform
+        height, width = x_data.shape[-2:]
+        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
 
     if return_transform:
         return out_data.view_as(input), transform
@@ -482,6 +486,17 @@ def apply_affine(input: torch.Tensor,
         return out_data.view_as(input), transform
 
     return out_data.view_as(input)
+
+
+def apply_center_crop(input: torch.Tensor,
+                      params: Dict[str, torch.Tensor],
+                      return_transform: bool = False) -> UnionType:
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    size1: int = int(params['size'][0].item())
+    size2: int = int(params['size'][1].item())
+    return center_crop(input, (size1, size2), return_transform)
 
 
 def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False):
