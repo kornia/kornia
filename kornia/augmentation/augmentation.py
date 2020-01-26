@@ -536,7 +536,7 @@ class RandomResizedCrop(AugmentationBase):
     @staticmethod
     def get_params(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
                    scale: Tuple[float, float] = (0.08, 1.0), ratio: Tuple[float, float] = (3. / 4., 4. / 3.)
-                   ) -> Dict[str, torch.Tensor]:  # type: ignore
+                   ) -> Dict[str, torch.Tensor]:
         target_size = pg._random_crop_size_gen(size, scale, ratio)
         # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
         return pg._random_crop_gen(batch_size, input_size, target_size, resize_to=size)
@@ -549,5 +549,5 @@ class RandomResizedCrop(AugmentationBase):
             else:
                 batch_shape = input.shape
             params = RandomResizedCrop.get_params(
-                batch_size, batch_shape[-2:], self.size, self.scale, self.ratio)  # type: ignore
+                batch_size, (batch_shape[-2], batch_shape[-1]), self.size, self.scale, self.ratio)
         return super().forward(input, params)
