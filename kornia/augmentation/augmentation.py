@@ -549,5 +549,5 @@ class RandomResizedCrop(AugmentationBase):
             else:
                 batch_shape = input.shape
             params = RandomResizedCrop.get_params(
-                batch_size, batch_shape[-2:], self.size, self.scale, self.ratio)
+                batch_size, batch_shape[-2:], self.size, self.scale, self.ratio)  # type: ignore
         return super().forward(input, params)
