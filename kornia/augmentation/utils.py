@@ -1,12 +1,13 @@
+from typing import Tuple
+
 import torch
 
 
-def _reshape_input(input: torch.Tensor) -> torch.Tensor:
+def _transform_input(input: torch.Tensor) -> torch.Tensor:
     r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
-
     Args:
         input: torch.Tensor
-    
+
     Returns:
         torch.Tensor
     """
@@ -29,14 +30,11 @@ def _reshape_input(input: torch.Tensor) -> torch.Tensor:
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:
     r"""Validate if an input has the right shape. e.g. to check if an input is channel first.
     If channel first, the second channel of an RGB input shall be fixed to 3. To verify using:
-
         _validate_input_shape(input, 2, 3)
-
     Args:
         input: torch.Tensor
         channel_index: int
         number: int
-
     Returns:
         bool
     """
