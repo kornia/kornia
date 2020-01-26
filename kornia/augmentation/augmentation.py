@@ -1,7 +1,10 @@
 from typing import Callable, Tuple, Union, List, Optional, Dict, cast
+import random
+import math
 
 import torch
 import torch.nn as nn
+from torch.nn.functional import pad
 
 from . import functional as F
 from . import param_gen as pg
@@ -11,6 +14,7 @@ TupleFloat = Tuple[float, float]
 UnionFloat = Union[float, TupleFloat]
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
+BoarderUnionType = Union[int, Tuple[int, int], Tuple[int, int, int, int]]
 
 
 class AugmentationBase(nn.Module):
@@ -425,4 +429,148 @@ class RandomRotation(AugmentationBase):
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
             params = self.get_params(batch_size, self.degrees)
+        return super().forward(input, params)
+
+
+class RandomCrop(AugmentationBase):
+    r"""Random Crop on given size.
+    Args:
+        size (tuple): Desired output size of the crop, like (h, w).
+        padding (int or sequence, optional): Optional padding on each border
+            of the image. Default is None, i.e no padding. If a sequence of length
+            4 is provided, it is used to pad left, top, right, bottom borders
+            respectively. If a sequence of length 2 is provided, it is used to
+            pad left/right, top/bottom borders, respectively.
+        pad_if_needed (boolean): It will pad the image if smaller than the
+            desired size to avoid raising an exception. Since cropping is done
+            after padding, the padding seems to be done at a random offset.
+        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
+            length 3, it is used to fill R, G, B channels respectively.
+            This value is only used when the padding_mode is constant
+        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    """
+
+    def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
+                 pad_if_needed: Optional[bool] = False, fill=0, padding_mode='constant',
+                 return_transform: bool = False) -> None:
+        super(RandomCrop, self).__init__(F.apply_crop, return_transform)
+        self.size = size
+        self.padding = padding
+        self.pad_if_needed = pad_if_needed
+        self.fill = fill
+        self.padding_mode = padding_mode
+
+    def __repr__(self) -> str:
+        repr = f"(crop_size={self.size}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+        return pg._random_crop_gen(batch_size, input_size, size)
+
+    def precrop_padding(self, input: torch.Tensor):
+
+        if self.padding is not None:
+            if isinstance(self.padding, int):
+                padding = [self.padding, self.padding, self.padding, self.padding]
+            elif isinstance(self.padding, tuple) and len(self.padding) == 2:
+                padding = [self.padding[1], self.padding[1], self.padding[0], self.padding[0]]
+            elif isinstance(self.padding, tuple) and len(self.padding) == 4:
+                padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]  # type:ignore
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        if self.pad_if_needed and input.shape[-2] < self.size[1]:
+            padding = [self.size[1] - input.shape[-2], self.size[1] - input.shape[-2], 0, 0]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        if self.pad_if_needed and input.shape[-1] < self.size[0]:
+            padding = [0, 0, self.size[0] - input.shape[-1], self.size[0] - input.shape[-1]]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        return input
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if isinstance(input, tuple):
+            batch_shape = input[0].shape
+            input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
+        else:
+            batch_shape = input.shape
+            input = self.precrop_padding(input)
+
+        if params is None:
+            batch_size = self.infer_batch_size(input)
+            params = RandomCrop.get_params(batch_size, batch_shape[-2:], self.size)  # type: ignore
+        return super().forward(input, params)
+
+
+class RandomResizedCrop(AugmentationBase):
+    r"""Random Crop on given size and resizing the cropped patch to another.
+    Args:
+        size (Tuple[int, int]): expected output size of each edge
+        scale: range of size of the origin size cropped
+        ratio: range of aspect ratio of the origin aspect ratio cropped
+        interpolation: Default: PIL.Image.BILINEAR
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    """
+
+    def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
+                 interpolation=None, return_transform: bool = False) -> None:
+        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
+        self.size = size
+        self.scale = scale
+        self.ratio = ratio
+        self.interpolation = interpolation
+        if interpolation is not None:
+            raise ValueError("Interpolation has not been implemented. Please set to None")
+
+    def __repr__(self) -> str:
+        repr = f"(size={self.size}, resize_to={self.resize_to}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+                   scale=(0.08, 1.0), ratio=(3. / 4., 4. / 3.)) -> Dict[str, torch.Tensor]:
+        target_size = RandomResizedCrop.get_aspected_size(size, scale, ratio)
+        # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
+        return pg._random_crop_gen(batch_size, input_size, target_size, resize_to=size)
+
+    @staticmethod
+    def get_aspected_size(size, scale, ratio):
+        for attempt in range(10):
+            target_area = random.uniform(*scale) * size[0] * size[1]
+            log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
+            aspect_ratio = math.exp(random.uniform(*log_ratio))
+
+            w = int(round(math.sqrt(target_area * aspect_ratio)))
+            h = int(round(math.sqrt(target_area / aspect_ratio)))
+            if 0 < w < size[0] and 0 < h < size[1]:
+                return (w, h)
+
+        # Fallback to center crop
+        in_ratio = float(size[0]) / float(size[1])
+        if (in_ratio < min(ratio)):
+            w = size[0]
+            h = int(round(w / min(ratio)))
+        elif (in_ratio > max(ratio)):
+            h = size[1]
+            w = int(round(h * max(ratio)))
+        else:  # whole image
+            w = size[0]
+            h = size[1]
+        return (w, h)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            batch_size = self.infer_batch_size(input)
+            if isinstance(input, tuple):
+                batch_shape = input[0].shape
+            else:
+                batch_shape = input.shape
+            params = RandomResizedCrop.get_params(
+                batch_size, batch_shape[-2:], self.size, self.scale, self.ratio)  # type: ignore
         return super().forward(input, params)
