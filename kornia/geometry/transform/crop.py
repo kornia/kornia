@@ -8,12 +8,13 @@ from kornia.geometry.transform.imgwarp import (
 
 __all__ = [
     "crop_and_resize",
+    "crop_by_boxes",
     "center_crop",
 ]
 
 
-def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
-                    size: Tuple[int, int]) -> torch.Tensor:
+def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
+                    return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Extracts crops from the input tensor and resizes them.
 
     Args:
@@ -64,8 +65,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
 
     # [x, y] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = boxes.to(
-        tensor.device).to(tensor.dtype)
+    points_src: torch.Tensor = boxes
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -74,29 +74,9 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor,
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).repeat(points_src.shape[0], 1, 1).to(
-        tensor.device).to(tensor.dtype)
+    ]]).repeat(points_src.shape[0], 1, 1)
 
-    # warping needs data in the shape of BCHW
-    is_unbatched: bool = tensor.ndimension() == 3
-    if is_unbatched:
-        tensor = torch.unsqueeze(tensor, dim=0)
-
-    # compute transformation between points and warp
-    dst_trans_src: torch.Tensor = get_perspective_transform(
-        points_src, points_dst)
-
-    # simulate broadcasting
-    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
-
-    patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (int(dst_h), int(dst_w)))
-
-    # return in the original shape
-    if is_unbatched:
-        patches = torch.squeeze(patches, dim=0)
-
-    return patches
+    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
 
 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
@@ -160,7 +140,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [start_y, end_x],
         [end_y, start_x],
         [end_y, end_x],
-    ]]).to(tensor.device).to(tensor.dtype)
+    ]])
 
     # [y, x] destination
     # top-left, top-right, bottom-left, bottom-right
@@ -169,8 +149,19 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [0, dst_w - 1],
         [dst_h - 1, 0],
         [dst_h - 1, dst_w - 1],
-    ]]).to(tensor.device).to(tensor.dtype)
+    ]])
 
+    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+
+
+def crop_by_boxes(tensor, src_box, dst_box,
+                  return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """A wrapper performs crop transform with bounding boxes.
+
+    """
+    print(tensor.ndimension(), tensor.ndimension() in [3, 4])
+    if tensor.ndimension() not in [3, 4]:
+        raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.ndimension() == 3
     if is_unbatched:
@@ -178,11 +169,15 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
 
     # compute transformation between points and warp
     dst_trans_src: torch.Tensor = get_perspective_transform(
-        points_src, points_dst)
-    dst_trans_src = dst_trans_src.repeat(tensor.shape[0], 1, 1)
+        src_box.to(tensor.device).to(tensor.dtype),
+        dst_box.to(tensor.device).to(tensor.dtype)
+    )
+
+    # simulate broadcasting
+    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
 
     patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (int(dst_h), int(dst_w)))
+        tensor, dst_trans_src, _infer_bounding_box(dst_box))
 
     # return in the original shape
     if is_unbatched:
@@ -192,3 +187,43 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         return patches, dst_trans_src
 
     return patches
+
+
+def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
+    r"""Auto-infer the output sizes.
+
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the
+          bounding boxes to be extracted. The tensor must have the shape
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right and bottom-left. The
+          coordinates must be in the x, y order.
+
+    Returns:
+        torch.Tensor: tensor containing the patches with shape BxN1xN2
+
+    Example:
+        >>> boxes = torch.tensor([[
+                [1., 1.],
+                [1., 2.],
+                [2., 1.],
+                [2., 2.],
+            ]])  # 1x4x2
+        >>> _infer_bounding_box(boxes)
+        (2, 2)
+    """
+
+    assert (boxes[:, 1, 1] - boxes[:, 0, 1] + 1).equal(boxes[:, 3, 1] - boxes[:, 2, 1] + 1), \
+        "Boxes must have be square, while get widths %s and %s" % \
+        (str(boxes[:, 1, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 2, 1] + 1))
+    assert (boxes[:, 2, 0] - boxes[:, 0, 0]).equal(boxes[:, 3, 0] - boxes[:, 1, 0]), \
+        "Boxes must have be square, while get heights %s and %s" % \
+        (str(boxes[:, 2, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 3, 0] - boxes[:, 1, 0] + 1))
+    assert len((boxes[:, 1, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
+        "Boxes can only have one widths, got %s" % str((boxes[:, 1, 1] - boxes[:, 0, 1] + 1).unique())
+    assert len((boxes[:, 2, 0] - boxes[:, 0, 0]).unique()) == 1, \
+        "Boxes can only have one heights, got %s" % str((boxes[:, 2, 0] - boxes[:, 0, 0] + 1).unique())
+
+    height = (boxes[:, 2, 0] - boxes[:, 0, 0]).unique().data.item()
+    width = (boxes[:, 1, 1] - boxes[:, 0, 1]).unique().data.item()
+    return (height, width)
