@@ -11,6 +11,37 @@ from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
 
+class TestBoundingBoxInferring:
+    def test_bounding_boxes_dim_inferring(self, device):
+        boxes = torch.tensor([[
+            [1., 1.],
+            [3., 1.],
+            [3., 2.],
+            [1., 2.],
+        ]])
+        expected_height = 2
+        expected_width = 3
+        h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
+        assert (h, w) == (expected_height, expected_width)
+
+    def test_bounding_boxes_dim_inferring_batch(self, device):
+        boxes = torch.tensor([[
+            [1., 1.],
+            [3., 1.],
+            [3., 2.],
+            [1., 2.],
+        ], [
+            [2., 2.],
+            [4., 2.],
+            [4., 3.],
+            [2., 3.],
+        ]])
+        expected_height = 2
+        expected_width = 3
+        h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
+        assert (h, w) == (expected_height, expected_width)
+
+
 class TestCropAndResize:
     def test_crop(self, device):
         inp = torch.tensor([[
