@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale, RandomRotation
+    RandomRectangleErasing, RandomGrayscale, RandomRotation, RandomCrop
 from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
@@ -1263,3 +1263,113 @@ class TestRandomRotation:
         input = torch.rand((3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomRotation(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+
+
+class TestRandomCrop:
+    def test_no_padding(self, device):
+        torch.manual_seed(0)
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]])
+        expected = torch.tensor([[[
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]])
+        rc = RandomCrop(size=(2, 3), padding=None)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_no_padding_batch(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+        ]]).repeat(batch_size, 1, 1, 1)
+        rc = RandomCrop(size=(2, 3), padding=None)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_1(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor([[[
+            [0., 0., 0.],
+            [0., 1., 2.]
+        ]], [[
+            [0., 0., 0.],
+            [1., 2., 0.]
+        ]]])
+        rc = RandomCrop(size=(2, 3), padding=1)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_2(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.]
+        ]], [[
+            [1., 2., 10.],
+            [4., 5., 10.]
+        ]]])
+        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_3(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor([[[
+            [8., 8., 8.],
+            [8., 0., 1.]
+        ]], [[
+            [8., 8., 8.],
+            [1., 2., 8.]
+        ]]])
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_pad_if_needed(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+        ]]).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor([[
+            [9., 9., 9.],
+            [0., 1., 2.]
+        ]]).repeat(batch_size, 1, 1, 1)
+        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
