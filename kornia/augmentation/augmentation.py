@@ -1,6 +1,4 @@
 from typing import Callable, Tuple, Union, List, Optional, Dict, cast
-import random
-import math
 
 import torch
 import torch.nn as nn
@@ -464,7 +462,8 @@ class RandomCrop(AugmentationBase):
         self.padding_mode = padding_mode
 
     def __repr__(self) -> str:
-        repr = f"(crop_size={self.size}, return_transform={self.return_transform})"
+        repr = f"RandomCrop(crop_size={self.size}, padding={self.padding}, fill={self.fill},\
+            pad_if_needed={self.pad_if_needed}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
     @staticmethod
@@ -530,13 +529,15 @@ class RandomResizedCrop(AugmentationBase):
             raise ValueError("Interpolation has not been implemented. Please set to None")
 
     def __repr__(self) -> str:
-        repr = f"(size={self.size}, resize_to={self.resize_to}, return_transform={self.return_transform})"
+        repr = f"RandomResizedCrop(size={self.size}, resize_to={self.scale}, resize_to={self.ratio}\
+            , return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
     @staticmethod
     def get_params(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
                    scale=(0.08, 1.0), ratio=(3. / 4., 4. / 3.)) -> Dict[str, torch.Tensor]:
-        target_size = pd._random_crop_size_gen(size, scale, ratio)
+        target_size = pg._random_crop_size_gen(size, scale, ratio)
+        print(target_size)
         # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
         return pg._random_crop_gen(batch_size, input_size, target_size, resize_to=size)
 
