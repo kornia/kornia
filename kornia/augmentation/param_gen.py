@@ -1,4 +1,6 @@
 from typing import Tuple, List, Union, Dict, Optional, cast
+import random
+import math
 
 import numpy as np
 import torch
@@ -350,8 +352,8 @@ def _random_crop_size_gen(size, scale, ratio):
 
         w = int(round(math.sqrt(target_area * aspect_ratio)))
         h = int(round(math.sqrt(target_area / aspect_ratio)))
-        if 0 < w < size[0] and 0 < h < size[1]:
-            return (w, h)
+        if 1 < w < size[0] and 1 < h < size[1]:
+            return (h, w)
 
     # Fallback to center crop
     in_ratio = float(size[0]) / float(size[1])
@@ -364,4 +366,4 @@ def _random_crop_size_gen(size, scale, ratio):
     else:  # whole image
         w = size[0]
         h = size[1]
-    return (w, h)
+    return (h, w)
