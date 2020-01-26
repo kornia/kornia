@@ -7,4 +7,6 @@ __all__ = [
     "RandomRectangleErasing",
     "RandomGrayscale",
     "ColorJitter",
+    "RandomCrop",
+    "RandomResizedCrop"
 ]
