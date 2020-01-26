@@ -10,9 +10,11 @@ from . import functional as F
 from . import param_gen as pg
 
 
+TupleFloat = Tuple[float, float]
+UnionFloat = Union[float, TupleFloat]
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
-Int2DBoarderUnionType = Union[int, Tuple[int, int], Tuple[int, int, int, int]]
+BoarderUnionType = Union[int, Tuple[int, int], Tuple[int, int, int, int]]
 
 
 class AugmentationBase(nn.Module):
@@ -27,6 +29,13 @@ class AugmentationBase(nn.Module):
         else:
             batch_size = input.shape[0] if len(input.shape) == 4 else 1
         return batch_size
+
+    def infer_image_shape(self, input: UnionType) -> Tuple[int, int]:
+        if isinstance(input, tuple):
+            data, _ = cast(Tuple, input)
+        else:
+            data = cast(torch.Tensor, input)
+        return data.shape[-2:]
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if isinstance(input, tuple):
@@ -67,10 +76,9 @@ class RandomHorizontalFlip(AugmentationBase):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True),
                                 kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True)
                                )
@@ -83,6 +91,7 @@ class RandomHorizontalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
         self.p: float = p
@@ -114,10 +123,9 @@ class RandomVerticalFlip(AugmentationBase):
                                       wont be concatenated
 
     Examples:
-        >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
+        >>> input = torch.tensor([[[[0., 0., 0.],
+                                    [0., 0., 0.],
+                                    [0., 1., 1.]]]])
         >>> seq = nn.Sequential(kornia.augmentation.RandomVerticalFlip(p=1.0, return_transform=True))
         >>> seq(input)
         (tensor([[0., 1., 1.],
@@ -128,6 +136,7 @@ class RandomVerticalFlip(AugmentationBase):
                  [0., 0., 1.]]]))
 
     """
+
     def __init__(self, p: float = 0.5, return_transform: bool = False) -> None:
         super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
         self.p: float = p
@@ -154,6 +163,9 @@ class ColorJitter(AugmentationBase):
         contrast (float or tuple): Default value is 0
         saturation (float or tuple): Default value is 0
         hue (float or tuple): Default value is 0
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
     """
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
@@ -246,9 +258,182 @@ class RandomRectangleErasing(nn.Module):
         )
 
 
+class RandomPerspective(AugmentationBase):
+    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+
+    Args:
+        p (float): probability of the image being perspectively transformed. Default value is 0.5
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+        applied to each. Default: False.
+        input tensor.
+    """
+
+    def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False) -> None:
+        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
+        self.p: float = p
+        self.distortion_scale: float = distortion_scale
+        self.return_transform: bool = return_transform
+
+    def __repr__(self) -> str:
+        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, height: int, width: int, p: float,
+                   distortion_scale: float) -> Dict[str, torch.Tensor]:
+        return pg._random_perspective_gen(batch_size, height, width, p, distortion_scale)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, height, width, self.p, self.distortion_scale)
+        return super().forward(input, params)
+
+
+class RandomAffine(AugmentationBase):
+    r"""Random affine transformation of the image keeping center invariant.
+
+        Args:
+            degrees (float or tuple): Range of degrees to select from.
+                If degrees is a number instead of sequence like (min, max), the range of degrees
+                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
+            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+                and vertical translations. For example translate=(a, b), then horizontal shift
+                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+            shear (sequence or float, optional): Range of degrees to select from.
+                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
+                will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
+                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
+                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+                Will not apply shear by default
+            return_transform (bool): if ``True`` return the matrix describing the transformation
+                applied to each. Default: False.
+
+    Examples:
+        >>> input = torch.rand(2, 3, 224, 224)
+        >>> my_fcn = kornia.augmentation.RandomAffine((-15., 20.), return_transform=True)
+        >>> out, transform = my_fcn(input)  # 2x3x224x224 / 2x3x3
+    """
+
+    def __init__(self,
+                 degrees: UnionFloat,
+                 translate: Optional[TupleFloat] = None,
+                 scale: Optional[TupleFloat] = None,
+                 shear: Optional[UnionFloat] = None,
+                 return_transform: bool = False) -> None:
+        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
+        self.degrees = degrees
+        self.translate = translate
+        self.scale = scale
+        self.shear = shear
+        self.return_transform = return_transform
+
+    @staticmethod
+    def get_params(batch_size: int,
+                   height: int,
+                   width: int,
+                   degrees: UnionFloat,
+                   translate: Optional[TupleFloat] = None,
+                   scale: Optional[TupleFloat] = None,
+                   shear: Optional[UnionFloat] = None) -> Dict[str, torch.Tensor]:
+        return pg._random_affine_gen(batch_size, height, width, degrees, translate, scale, shear)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, height, width, self.degrees, self.translate, self.scale, self.shear)
+        return super().forward(input, params)
+
+
+class CenterCrop(AugmentationBase):
+    r"""Crops the given torch.Tensor at the center.
+    Args:
+        size (sequence or int): Desired output size of the crop. If size is an
+            int instead of sequence like (h, w), a square crop (size, size) is
+            made.
+    """
+
+    def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
+        super(CenterCrop, self).__init__(F.apply_center_crop, return_transform)
+        self.size = size
+        self.return_transform = return_transform
+
+    @staticmethod
+    def get_params(size: Union[int, Tuple[int, int]]) -> Dict[str, torch.Tensor]:
+        if isinstance(size, tuple):
+            size_param = torch.tensor([size[0], size[1]])
+        elif isinstance(size, int):
+            size_param = torch.tensor([size, size])
+        else:
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
+                            f"Got: {type(size)}.")
+        return dict(size=size_param)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        if params is None:
+            params = self.get_params(self.size)
+        return super().forward(input, params)
+
+
+class RandomRotation(AugmentationBase):
+
+    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
+    the corresponding transformation matrix that has been applied to them. In this case the module
+    will rotate the tensors and concatenate the corresponding transformation matrix to the
+    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+
+    Args:
+        degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
+        range of degrees to select from will be (-degrees, +degrees)
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+
+    Examples:
+    >>> input = torch.tensor([[[[10., 0., 0.],
+                                [0., 4.5, 4.],
+                                [0., 1., 1.]]]])
+    >>> seq = nn.Sequential(kornia.augmentation.RandomRotation(degrees=90.0, return_transform=True))
+    >>> seq(input)
+    (tensor([[[0.0000e+00, 8.8409e-02, 9.8243e+00],
+              [9.9131e-01, 4.5000e+00, 1.7524e-04],
+              [9.9121e-01, 3.9735e+00, 3.5140e-02]]]),
+    tensor([[[ 0.0088, -1.0000,  1.9911],
+             [ 1.0000,  0.0088, -0.0088],
+             [ 0.0000,  0.0000,  1.0000]]]))
+    """
+
+    def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
+        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+        self.degrees = degrees
+
+    def __repr__(self) -> str:
+        repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
+        return self.__class__.__name__ + repr
+
+    @staticmethod
+    def get_params(batch_size: int, degrees: FloatUnionType) -> Dict[str, torch.Tensor]:
+        return pg._random_rotation_gen(batch_size, degrees)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params = self.get_params(batch_size, self.degrees)
+        return super().forward(input, params)
+
+
 class RandomCrop(AugmentationBase):
     r"""Random Crop on given size.
-
     Args:
         size (tuple): Desired output size of the crop, like (h, w).
         padding (int or sequence, optional): Optional padding on each border
@@ -268,8 +453,8 @@ class RandomCrop(AugmentationBase):
                                       wont be concatenated
     """
 
-    def __init__(self, size: Tuple[int, int], padding: Optional[Int2DBoarderUnionType] = None,
-                 pad_if_needed: Optional[bool]=False, fill=0, padding_mode='constant',
+    def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
+                 pad_if_needed: Optional[bool] = False, fill=0, padding_mode='constant',
                  return_transform: bool = False) -> None:
         super(RandomCrop, self).__init__(F.apply_crop, return_transform)
         self.size = size
@@ -323,7 +508,6 @@ class RandomCrop(AugmentationBase):
 
 class RandomResizedCrop(AugmentationBase):
     r"""Random Crop on given size and resizing the cropped patch to another.
-
     Args:
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
@@ -334,7 +518,7 @@ class RandomResizedCrop(AugmentationBase):
                                       wont be concatenated
     """
 
-    def __init__(self, size: Tuple[int, int], scale=(0.08, 1.0), ratio=(3. / 4., 4. / 3.),
+    def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
                  interpolation=None, return_transform: bool = False) -> None:
         super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
         self.size = size
@@ -388,5 +572,5 @@ class RandomResizedCrop(AugmentationBase):
             else:
                 batch_shape = input.shape
             params = RandomResizedCrop.get_params(
-                batch_size, batch_shape[-2:], self.size, self.resize_to)  # type: ignore
+                batch_size, batch_shape[-2:], self.size, self.scale, self.ratio)  # type: ignore
         return super().forward(input, params)
