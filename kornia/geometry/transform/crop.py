@@ -16,20 +16,17 @@ __all__ = [
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
                     return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Extracts crops from the input tensor and resizes them.
-
     Args:
         tensor (torch.Tensor): the reference tensor of shape BxCxHxW.
         boxes (torch.Tensor): a tensor containing the coordinates of the
           bounding boxes to be extracted. The tensor must have the shape
           of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-left and bottom-right. The
+          order: top-left, top-right, bottom-right and bottom-left. The
           coordinates must be in the x, y order.
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
-
     Returns:
         torch.Tensor: tensor containing the patches with shape BxN1xN2
-
     Example:
         >>> input = torch.tensor([[
                 [1., 2., 3., 4.],
@@ -64,19 +61,19 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
     dst_w: torch.Tensor = torch.tensor(size[1])
 
     # [x, y] origin
-    # top-left, top-right, bottom-left, bottom-right
+    # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = boxes
 
     # [x, y] destination
-    # top-left, top-right, bottom-left, bottom-right
+    # top-left, top-right, bottom-right, bottom-left
     points_dst: torch.Tensor = torch.tensor([[
         [0, 0],
-        [0, dst_w - 1],
-        [dst_h - 1, 0],
-        [dst_h - 1, dst_w - 1],
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
     ]]).repeat(points_src.shape[0], 1, 1)
 
-    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+    return crop_by_boxes(tensor, points_src, points_dst)
 
 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
@@ -125,29 +122,28 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
     src_h_half = src_h / 2
     src_w_half = src_w / 2
 
-    start_x = src_h_half - dst_h_half
-    start_y = src_w_half - dst_w_half
+    start_x = src_w_half - dst_w_half
+    start_y = src_h_half - dst_h_half
 
     end_x = start_x + dst_w - 1
     end_y = start_y + dst_h - 1
     # [y, x] origin
-    # top-left, top-right, bottom-left, bottom-right
+    # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = torch.tensor([[
-        [start_y, start_x],
-        [start_y, end_x],
-        [end_y, start_x],
-        [end_y, end_x],
+        [start_x, start_y],
+        [end_x, start_y],
+        [end_x, end_y],
+        [start_x, end_y],
     ]])
 
     # [y, x] destination
-    # top-left, top-right, bottom-left, bottom-right
+    # top-left, top-right, bottom-right, bottom-left
     points_dst: torch.Tensor = torch.tensor([[
         [0, 0],
-        [0, dst_w - 1],
-        [dst_h - 1, 0],
-        [dst_h - 1, dst_w - 1],
-    ]])
-
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
+    ]]).repeat(points_src.shape[0], 1, 1)
     return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
 
 
@@ -168,7 +164,6 @@ def crop_by_boxes(tensor, src_box, dst_box,
         src_box.to(tensor.device).to(tensor.dtype),
         dst_box.to(tensor.device).to(tensor.dtype)
     )
-
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
 
@@ -192,7 +187,7 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
         boxes (torch.Tensor): a tensor containing the coordinates of the
           bounding boxes to be extracted. The tensor must have the shape
           of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-left and bottom-right. The
+          order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
 
     Returns:
@@ -201,24 +196,24 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
     Example:
         >>> boxes = torch.tensor([[
                 [1., 1.],
-                [1., 2.],
                 [2., 1.],
                 [2., 2.],
+                [1., 2.],
             ]])  # 1x4x2
         >>> _infer_bounding_box(boxes)
         (2, 2)
     """
-    assert (boxes[:, 1, 1] - boxes[:, 0, 1] + 1).equal(boxes[:, 3, 1] - boxes[:, 2, 1] + 1), \
+    assert (boxes[:, 1, 0] - boxes[:, 0, 0] + 1).equal(boxes[:, 2, 0] - boxes[:, 3, 0] + 1), \
         "Boxes must have be square, while get widths %s and %s" % \
-        (str(boxes[:, 1, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 2, 1] + 1))
-    assert (boxes[:, 2, 0] - boxes[:, 0, 0] + 1).equal(boxes[:, 3, 0] - boxes[:, 1, 0] + 1), \
+        (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
+    assert (boxes[:, 2, 1] - boxes[:, 0, 1] + 1).equal(boxes[:, 3, 1] - boxes[:, 1, 1] + 1), \
         "Boxes must have be square, while get heights %s and %s" % \
-        (str(boxes[:, 2, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 3, 0] - boxes[:, 1, 0] + 1))
-    assert len((boxes[:, 1, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
-        "Boxes can only have one widths, got %s" % str((boxes[:, 1, 1] - boxes[:, 0, 1] + 1).unique())
-    assert len((boxes[:, 2, 0] - boxes[:, 0, 0] + 1).unique()) == 1, \
-        "Boxes can only have one heights, got %s" % str((boxes[:, 2, 0] - boxes[:, 0, 0] + 1).unique())
+        (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
+    assert len((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique()) == 1, \
+        "Boxes can only have one widths, got %s" % str((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique())
+    assert len((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
+        "Boxes can only have one heights, got %s" % str((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique())
 
-    height = (boxes[:, 2, 0] - boxes[:, 0, 0] + 1).unique().data.item()
-    width = (boxes[:, 1, 1] - boxes[:, 0, 1] + 1).unique().data.item()
+    width = int((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique().data.item())
+    height = int((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique().data.item())
     return (height, width)
