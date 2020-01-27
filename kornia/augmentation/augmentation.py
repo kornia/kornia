@@ -426,8 +426,8 @@ class RandomRotation(AugmentationBase):
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            params = self.get_params(batch_size, self.degrees)
-        return super().forward(input, params)
+            self.set_params(batch_size, self.degrees)
+        return super().forward(input, self._params)
 
 
 class RandomCrop(AugmentationBase):
