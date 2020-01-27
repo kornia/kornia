@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale, RandomRotation
+    RandomRectangleErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
 from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
@@ -31,16 +31,19 @@ class TestRandomHorizontalFlip:
         input = torch.tensor([[0., 0., 0., 0.],
                               [0., 0., 0., 0.],
                               [0., 0., 1., 2.]])  # 3 x 4
+
         input = input.to(device)
 
         expected = torch.tensor([[0., 0., 0., 0.],
                                  [0., 0., 0., 0.],
                                  [2., 1., 0., 0.]])  # 3 x 4
+
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[-1., 0., 4.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
+
         expected_transform = expected_transform.to(device)
 
         identity = torch.tensor([[1., 0., 0.],
@@ -1263,3 +1266,181 @@ class TestRandomRotation:
         input = torch.rand((3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomRotation(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+
+
+class TestRandomCrop:
+    def smoke_test(self, device):
+        f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False)
+        repr = "RandomCrop(crop_size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False,\
+            return_transform=False)"
+        assert str(f) == repr
+
+    def test_no_padding(self, device):
+        torch.manual_seed(0)
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]]).to(device)
+        expected = torch.tensor([[[
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]]).to(device)
+        rc = RandomCrop(size=(2, 3), padding=None)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_no_padding_batch(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        expected = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        rc = RandomCrop(size=(2, 3), padding=None)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_1(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        expected = torch.tensor([[[
+            [0., 0., 0.],
+            [0., 1., 2.]
+        ]], [[
+            [0., 0., 0.],
+            [1., 2., 0.]
+        ]]]).to(device)
+        rc = RandomCrop(size=(2, 3), padding=1)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_2(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        expected = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.]
+        ]], [[
+            [1., 2., 10.],
+            [4., 5., 10.]
+        ]]]).to(device)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_padding_batch_3(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        expected = torch.tensor([[[
+            [8., 8., 8.],
+            [8., 0., 1.]
+        ]], [[
+            [8., 8., 8.],
+            [1., 2., 8.]
+        ]]]).to(device)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_pad_if_needed(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        expected = torch.tensor([[
+            [9., 9., 9.],
+            [0., 1., 2.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+
+class TestRandomResizedCrop:
+    def smoke_test(self, device):
+        f = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
+        repr = "RandomResizedCrop(size=(2, 3), resize_to=(1., 1.), resize_to=(1., 1.)\
+            , return_transform=False)"
+        assert str(f) == repr
+
+    def test_no_resize(self, device):
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).to(device)
+
+        expected = torch.tensor([[[
+            [3.0000, 3.5000, 4.0000],
+            [6.0000, 6.5000, 7.0000]
+        ]]]).to(device)
+        rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
+        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert_allclose(out, expected)
+
+    def test_crop_scale_ratio(self, device):
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).to(device)
+
+        expected = torch.tensor([[[
+            [3., 4., 5.],
+            [4.5, 5.5, 6.5],
+            [6., 7., 8.]
+        ]]]).to(device)
+        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
+        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert_allclose(out, expected)
+
+    def test_crop_scale_ratio_batch(self, device):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(batch_size, 1, 1, 1).to(device)
+
+        expected = torch.tensor([[[
+            [0., 1., 2.],
+            [1.5, 2.5, 3.5],
+            [3., 4., 5.],
+        ]]]).repeat(batch_size, 1, 1, 1).to(device)
+        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
+        # It will crop a size of (2, 2) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert_allclose(out, expected)
