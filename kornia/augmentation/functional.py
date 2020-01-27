@@ -169,7 +169,7 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
 
     params = pg._random_rotation_gen(batch_size, degrees=degrees)
 
-    return apply_rotation(input, params, return_transform)
+    return _apply_rotation(input, params, return_transform)
 
 
 def _apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
@@ -466,7 +466,7 @@ def _apply_center_crop(input: torch.Tensor,
     return center_crop(input, (size1, size2), return_transform)
 
 
-def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False):
+def _apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False):
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -505,7 +505,7 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
     return transformed
 
 
-def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def _apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
     """
     Args:
         params (dict): A dict that must have {'src': torch.Tensor, 'dst': torch.Tensor}. Can be generated from
