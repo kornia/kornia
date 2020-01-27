@@ -2,7 +2,6 @@ from typing import Tuple, List, Union, Dict, Optional, cast
 import random
 import math
 
-import numpy as np
 import torch
 from torch.distributions import Uniform
 
