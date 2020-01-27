@@ -518,8 +518,4 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
         is set to ``True``
     """
     input = _transform_input(input)
-
-    if return_transform:
-        return crop_by_boxes(input, params['src'], params['dst'], return_transform=return_transform)
-
     return crop_by_boxes(input, params['src'], params['dst'], return_transform=return_transform)
