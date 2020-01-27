@@ -4,9 +4,11 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
-from kornia.geometry.transform import get_perspective_transform, warp_perspective, center_crop
+from kornia.geometry.transform import get_perspective_transform, warp_perspective, center_crop, rotate
+from kornia.geometry.transform import get_perspective_transform, warp_perspective, rotate
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import param_gen as pg
 from .erasing import erase_rectangles, get_random_rectangles_params
@@ -112,6 +114,61 @@ def random_affine(input: torch.Tensor,
     params: Dict[str, torch.Tensor] = pg._random_affine_gen(
         batch_size, height, width, degrees, translate, scale, shear)
     return _apply_affine(input, params, return_transform)
+
+
+def random_rectangle_erase(
+        images: torch.Tensor,
+        erase_scale_range: Tuple[float, float],
+        aspect_ratio_range: Tuple[float, float]
+) -> torch.Tensor:
+    r"""
+    Function that erases a random selected rectangle for each image in the batch, putting
+    the value to zero.
+    The rectangle will have an area equal to the original image area multiplied by a value uniformly
+    sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
+    between [aspect_ratio_range[0], aspect_ratio_range[1])
+
+    Args:
+        images (torch.Tensor): input images.
+        erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
+        aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
+    """
+
+    if not (isinstance(erase_scale_range[0], float) and
+            isinstance(erase_scale_range[1], float) and
+            erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
+        raise TypeError(
+            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
+        )
+    if not (isinstance(aspect_ratio_range[0], float) and
+            isinstance(aspect_ratio_range[1], float) and
+            aspect_ratio_range[0] > 0. and aspect_ratio_range[1] > 0.):
+        raise TypeError(
+            f"'aspect_ratio_range' must be a Tuple[float, float] with positive values"
+        )
+
+    images_size = images.size()
+    b, _, h, w = images_size
+    rect_params = get_random_rectangles_params(
+        (b, ), h, w, erase_scale_range, aspect_ratio_range
+    )
+    images = erase_rectangles(images, rect_params)
+    return images
+
+
+def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
+    r"""Generate params and apply operation on input tensor.
+
+    See :func:`~kornia.augmentation.param_gen._random_rotation_gen` for details.
+    See :func:`~kornia.augmentation.functional.apply_rotation` for details.
+    """
+    input_tmp: torch.Tensor = input.unsqueeze(0)
+    input_tmp = input_tmp.view(-1, *input_tmp.shape[-3:])
+    batch_size = input_tmp.shape[0]
+
+    params = pg._random_rotation_gen(batch_size, degrees=degrees)
+
+    return apply_rotation(input, params, return_transform)
 
 
 def _apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
@@ -331,46 +388,6 @@ def _apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], retur
     return grayscale
 
 
-def random_rectangle_erase(
-        images: torch.Tensor,
-        erase_scale_range: Tuple[float, float],
-        aspect_ratio_range: Tuple[float, float]
-) -> torch.Tensor:
-    r"""
-    Function that erases a random selected rectangle for each image in the batch, putting
-    the value to zero.
-    The rectangle will have an area equal to the original image area multiplied by a value uniformly
-    sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
-    between [aspect_ratio_range[0], aspect_ratio_range[1])
-
-    Args:
-        images (torch.Tensor): input images.
-        erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
-        aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
-    """
-
-    if not (isinstance(erase_scale_range[0], float) and
-            isinstance(erase_scale_range[1], float) and
-            erase_scale_range[0] > 0. and erase_scale_range[1] > 0.):
-        raise TypeError(
-            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
-        )
-    if not (isinstance(aspect_ratio_range[0], float) and
-            isinstance(aspect_ratio_range[1], float) and
-            aspect_ratio_range[0] > 0. and aspect_ratio_range[1] > 0.):
-        raise TypeError(
-            f"'aspect_ratio_range' must be a Tuple[float, float] with positive values"
-        )
-
-    images_size = images.size()
-    b, _, h, w = images_size
-    rect_params = get_random_rectangles_params(
-        (b, ), h, w, erase_scale_range, aspect_ratio_range
-    )
-    images = erase_rectangles(images, rect_params)
-    return images
-
-
 def _apply_perspective(input: torch.Tensor,
                        params: Dict[str, torch.Tensor],
                        return_transform: bool = False) -> UnionType:
@@ -409,9 +426,12 @@ def _apply_perspective(input: torch.Tensor,
     # process valid samples
     mask = params['batch_prob'].to(device)
 
-    # apply the computed transform
-    height, width = x_data.shape[-2:]
-    out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+    # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
+
+    if bool(mask.sum() > 0):
+        # apply the computed transform
+        height, width = x_data.shape[-2:]
+        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
 
     if return_transform:
         return out_data.view_as(input), transform
@@ -450,6 +470,9 @@ def _apply_affine(input: torch.Tensor,
                 'zeros' | 'border' | 'reflection'. Default: 'zeros'.
     """
 
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
@@ -476,3 +499,42 @@ def _apply_center_crop(input: torch.Tensor,
     size1: int = int(params['size'][0].item())
     size2: int = int(params['size'][1].item())
     return center_crop(input, (size1, size2), return_transform)
+
+
+def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False):
+    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+
+    Args:
+        params (dict): A dict that must have {'degrees': torch.Tensor}. Can be generated from
+                       kornia.augmentation.param_gen._random_rotation_gen
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    """
+
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    device: torch.device = input.device
+    dtype: torch.dtype = input.dtype
+
+    input = input.unsqueeze(0)
+    input = input.view((-1, (*input.shape[-3:])))
+    angles: torch.Tensor = params["degrees"].to(device, dtype)
+
+    transformed: torch.Tensor = rotate(input, angles).squeeze(0)
+
+    if return_transform:
+
+        center: torch.Tensor = _compute_tensor_center(input)
+        rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
+
+        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
+        trans_mat: torch.Tensor = torch.eye(3, device=device, dtype=dtype).repeat(input.shape[0], 1, 1)
+        trans_mat[:, 0] = rotation_mat[:, 0]
+        trans_mat[:, 1] = rotation_mat[:, 1]
+
+        return transformed, trans_mat
+
+    return transformed

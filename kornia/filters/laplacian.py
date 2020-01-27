@@ -12,7 +12,7 @@ class Laplacian(nn.Module):
     r"""Creates an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
-    it to each channel. It suports batched operation.
+    it to each channel. It supports batched operation.
 
     Arguments:
         kernel_size (int): the size of the kernel.
