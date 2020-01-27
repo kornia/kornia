@@ -1,4 +1,6 @@
 from typing import Tuple, List, Union, Dict, Optional, cast
+import random
+import math
 
 import torch
 from torch.distributions import Uniform
@@ -303,3 +305,64 @@ def _get_random_affine_params(
     transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
     transform_h[..., -1, -1] += 1.0
     return transform_h
+
+
+def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+                     resize_to: Optional[Tuple[int, int]] = None) -> Dict[str, torch.Tensor]:
+    x_diff = input_size[1] - size[1]
+    y_diff = input_size[0] - size[0]
+
+    if x_diff < 0 or y_diff < 0:
+        raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
+                         % (str(input_size), str(size)))
+
+    x_start = Uniform(0, x_diff + 1).rsample((batch_size,)).long()
+    y_start = Uniform(0, y_diff + 1).rsample((batch_size,)).long()
+
+    crop = torch.tensor([[
+        [0, 0],
+        [size[1] - 1, 0],
+        [size[1] - 1, size[0] - 1],
+        [0, size[0] - 1],
+    ]]).repeat(batch_size, 1, 1)
+
+    crop_src = crop.clone()
+    crop_src[:, :, 0] += x_start.unsqueeze(dim=0).reshape(batch_size, 1)
+    crop_src[:, :, 1] += y_start.unsqueeze(dim=0).reshape(batch_size, 1)
+
+    if resize_to is None:
+        crop_dst = crop
+    else:
+        crop_dst = torch.tensor([[
+            [0, 0],
+            [resize_to[1] - 1, 0],
+            [resize_to[1] - 1, resize_to[0] - 1],
+            [0, resize_to[0] - 1],
+        ]]).repeat(batch_size, 1, 1)
+
+    return {'src': crop_src, 'dst': crop_dst}
+
+
+def _random_crop_size_gen(size, scale, ratio):
+    for attempt in range(10):
+        target_area = random.uniform(*scale) * size[0] * size[1]
+        log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
+        aspect_ratio = math.exp(random.uniform(*log_ratio))
+
+        w = int(round(math.sqrt(target_area * aspect_ratio)))
+        h = int(round(math.sqrt(target_area / aspect_ratio)))
+        if 1 < w < size[0] and 1 < h < size[1]:
+            return (h, w)
+
+    # Fallback to center crop
+    in_ratio = float(size[0]) / float(size[1])
+    if (in_ratio < min(ratio)):
+        w = size[0]
+        h = int(round(w / min(ratio)))
+    elif (in_ratio > max(ratio)):
+        h = size[1]
+        w = int(round(h * max(ratio)))
+    else:  # whole image
+        w = size[0]
+        h = size[1]
+    return (h, w)
