@@ -31,16 +31,19 @@ class TestRandomHorizontalFlip:
         input = torch.tensor([[0., 0., 0., 0.],
                               [0., 0., 0., 0.],
                               [0., 0., 1., 2.]])  # 3 x 4
+
         input = input.to(device)
 
         expected = torch.tensor([[0., 0., 0., 0.],
                                  [0., 0., 0., 0.],
                                  [2., 1., 0., 0.]])  # 3 x 4
+
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[-1., 0., 4.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
+
         expected_transform = expected_transform.to(device)
 
         identity = torch.tensor([[1., 0., 0.],
