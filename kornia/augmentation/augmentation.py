@@ -412,21 +412,21 @@ class RandomRotation(AugmentationBase):
     def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
         super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
         self.degrees = degrees
-        self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def set_params(self, batch_size: int, degrees: FloatUnionType):
-        self._params = pg._random_rotation_gen(batch_size, degrees)
+    @staticmethod
+    def get_params(batch_size: int, degrees: FloatUnionType):
+        return pg._random_rotation_gen(batch_size, degrees)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
 
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            params = self.get_params(batch_size, self.degrees)
+            params = RandomRotation.get_params(batch_size, self.degrees)
         return super().forward(input, params)
 
 
