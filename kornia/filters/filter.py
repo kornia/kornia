@@ -80,4 +80,14 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
     b, c, hp, wp = input_pad.shape
     # convolve the tensor with the kernel
-    return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+    # CPU case
+    if input.device == torch.device('cpu'):
+        if max(width, height) >= 9:
+            return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+        else:
+            return F.conv2d(input_pad, tmp_kernel.expand(c, -1, -1, -1), groups=c, padding=0, stride=1)
+    # GPU case
+    capability_major: int = torch.cuda.get_device_capability()[0]
+    if (capability_major <= 5) and max(width, height) > 9:
+        return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+    return F.conv2d(input_pad, tmp_kernel.expand(c, -1, -1, -1), groups=c, padding=0, stride=1)
