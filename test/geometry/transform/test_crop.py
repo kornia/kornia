@@ -18,7 +18,7 @@ class TestBoundingBoxInferring:
             [3., 1.],
             [3., 2.],
             [1., 2.],
-        ]])
+        ]]).to(device)
         expected_height = 2
         expected_width = 3
         h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
@@ -35,11 +35,22 @@ class TestBoundingBoxInferring:
             [4., 2.],
             [4., 3.],
             [2., 3.],
-        ]])
+        ]]).to(device)
         expected_height = 2
         expected_width = 3
         h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
         assert (h, w) == (expected_height, expected_width)
+
+    def test_gradcheck(self, device):
+        boxes = torch.tensor([[
+            [1., 1.],
+            [3., 1.],
+            [3., 2.],
+            [1., 2.],
+        ]]).to(device)
+        boxes = utils.tensor_to_gradcheck_var(boxes)
+        assert gradcheck(kornia.kornia.geometry.transform.crop._infer_bounding_box,
+                         (boxes,), raise_exception=True)
 
 
 class TestCropAndResize:
@@ -295,3 +306,84 @@ class TestCenterCrop:
             img, (torch.tensor(crop_height), torch.tensor(crop_width)))
         expected = kornia.center_crop(img, (crop_height, crop_width))
         assert_allclose(actual, expected)
+
+
+class TestCropByBoxes:
+    def test_crop_by_boxes_no_resizing(self, device):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]]).to(device)
+
+        src = torch.tensor([[
+            [1., 1.],
+            [2., 1.],
+            [2., 2.],
+            [1., 2.],
+        ]]).to(device)  # 1x4x2
+
+        dst = torch.tensor([[
+            [0., 0.],
+            [1., 0.],
+            [1., 1.],
+            [0., 1.],
+        ]]).to(device)  # 1x4x2
+
+        expected = torch.tensor([[
+            [6., 7.],
+            [10., 11.],
+        ]]).to(device)
+
+        patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+        assert_allclose(patches, expected)
+
+    def test_crop_by_boxes_resizing(self, device):
+        inp = torch.tensor([[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]]).to(device)
+
+        src = torch.tensor([[
+            [1., 1.],
+            [2., 1.],
+            [2., 2.],
+            [1., 2.],
+        ]]).to(device)  # 1x4x2
+
+        dst = torch.tensor([[
+            [0., 0.],
+            [2., 0.],
+            [2., 1.],
+            [0., 1.],
+        ]]).to(device)  # 1x4x2
+
+        expected = torch.tensor([[
+            [6., 6.5, 7.],
+            [10., 10.5, 11.],
+        ]]).to(device)
+
+        patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst)
+        assert_allclose(patches, expected)
+
+    def test_gradcheck(self, device):
+        inp = torch.randn((1, 3, 3)).to(device)
+        src = torch.tensor([[
+            [1., 0.],
+            [2., 0.],
+            [2., 1.],
+            [1., 1.]]]).to(device)
+        dst = torch.tensor([[
+            [0., 0.],
+            [1., 0.],
+            [1., 1.],
+            [0., 1.]]]).to(device)
+
+        inp = utils.tensor_to_gradcheck_var(inp, requires_grad=True)  # to var
+
+        assert gradcheck(kornia.geometry.transform.crop_by_boxes,
+                         (inp, src, dst,),
+                         raise_exception=True)

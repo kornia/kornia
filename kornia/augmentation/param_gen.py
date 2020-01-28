@@ -2,7 +2,6 @@ from typing import Tuple, List, Union, Dict, Optional, cast
 import random
 import math
 
-import numpy as np
 import torch
 from torch.distributions import Uniform
 
@@ -344,16 +343,17 @@ def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[i
     return {'src': crop_src, 'dst': crop_dst}
 
 
-def _random_crop_size_gen(size, scale, ratio):
-    for attempt in range(10):
-        target_area = random.uniform(*scale) * size[0] * size[1]
-        log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
-        aspect_ratio = math.exp(random.uniform(*log_ratio))
+def _random_crop_size_gen(size, scale, ratio) -> Tuple[torch.Tensor, torch.Tensor]:
+    area = Uniform(scale[0] * size[0] * size[1], scale[1] * size[0] * size[1]).rsample((10,))
+    log_ratio = Uniform(math.log(ratio[0]), math.log(ratio[1])).rsample((10,))
+    aspect_ratio = torch.exp(log_ratio)
 
-        w = int(round(math.sqrt(target_area * aspect_ratio)))
-        h = int(round(math.sqrt(target_area / aspect_ratio)))
-        if 1 < w < size[0] and 1 < h < size[1]:
-            return (h, w)
+    w = torch.sqrt(area * aspect_ratio).int()
+    h = torch.sqrt(area / aspect_ratio).int()
+    # Element-wise w, h condition
+    cond = ((0 < h) * (h < size[1]) * (0 < w) * (w < size[0])).int()
+    if torch.sum(cond) > 0:
+        return (h[torch.argmax(cond)], w[torch.argmax(cond)])
 
     # Fallback to center crop
     in_ratio = float(size[0]) / float(size[1])
@@ -366,4 +366,4 @@ def _random_crop_size_gen(size, scale, ratio):
     else:  # whole image
         w = size[0]
         h = size[1]
-    return (h, w)
+    return (torch.tensor(h), torch.tensor(w))

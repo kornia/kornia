@@ -1380,6 +1380,12 @@ class TestRandomCrop:
 
         assert_allclose(out, expected)
 
+    def test_gradcheck(self, device):
+        torch.manual_seed(0)  # for random reproductibility
+        inp = torch.rand((3, 3, 3)).to(device)  # 3 x 3
+        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        assert gradcheck(RandomCrop(size=(3, 3)), (inp, ), raise_exception=True)
+
 
 class TestRandomResizedCrop:
     def smoke_test(self, device):
@@ -1397,8 +1403,8 @@ class TestRandomResizedCrop:
         ]]).to(device)
 
         expected = torch.tensor([[[
-            [3.0000, 3.5000, 4.0000],
-            [6.0000, 6.5000, 7.0000]
+            [4.0000, 4.5000, 5.0000],
+            [7.0000, 7.5000, 8.0000]
         ]]]).to(device)
         rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
@@ -1436,8 +1442,18 @@ class TestRandomResizedCrop:
             [0., 1., 2.],
             [1.5, 2.5, 3.5],
             [3., 4., 5.],
-        ]]]).repeat(batch_size, 1, 1, 1).to(device)
+        ]], [[
+            [3., 4., 5.],
+            [4.5, 5.5, 6.5],
+            [6., 7., 8.],
+        ]]]).to(device)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
+
+    def test_gradcheck(self, device):
+        torch.manual_seed(0)  # for random reproductibility
+        inp = torch.rand((1, 3, 3)).to(device)  # 3 x 3
+        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        assert gradcheck(RandomResizedCrop(size=(3, 3), scale=(1., 1.), ratio=(1., 1.)), (inp, ), raise_exception=True)
