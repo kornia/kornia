@@ -83,15 +83,7 @@ Installation
 Quick Usage
 ===========
 
-.. code:: python
-
- import torch
- import kornia
-
- x_rad = kornia.pi * torch.rand(1, 3, 3)
- x_deg = kornia.rad2deg(x_rad)
-
- torch.allclose(x_rad, kornia.deg2rad(x_deg))  # True
+.. image:: https://github.com/kornia/kornia/raw/master/docs/source/_static/img/hakuna_matata.gif
 
 Examples
 ========
