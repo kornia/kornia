@@ -79,5 +79,8 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     padding_shape: List[int] = compute_padding((height, width))
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
     b, c, hp, wp = input_pad.shape
-    # convolve the tensor with the kernel
-    return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+    # convolve the tensor with the kernel. Pick the fastest alg
+    kernel_numel: int = height * width
+    if kernel_numel > 81:
+        return F.conv2d(input_pad.reshape(b * c, 1, hp, wp), tmp_kernel, padding=0, stride=1).view(b, c, h, w)
+    return F.conv2d(input_pad, tmp_kernel.expand(c, -1, -1, -1), groups=c, padding=0, stride=1)
