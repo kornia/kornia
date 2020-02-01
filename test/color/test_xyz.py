@@ -80,9 +80,9 @@ class TestRgbToXyz:
     def test_jit(self, device):
 
         data = torch.rand((2, 3, 4, 5)).to(device)
-        xyz = kornia.color.RgbToXyz()
-        xyz_traced = torch.jit.trace(kornia.color.RgbToXyz(), data)
-        assert_allclose(xyz_traced(data), xyz(data))
+        xyz = kornia.color.rgb_to_xyz
+        xyz_jit = torch.jit.script(kornia.color.rgb_to_xyz)
+        assert_allclose(xyz_jit(data), xyz(data))
 
 
 class TestXyzToRgb:
@@ -156,6 +156,6 @@ class TestXyzToRgb:
     def test_jit(self, device):
 
         data = torch.rand((2, 3, 4, 5)).to(device)
-        xyz = kornia.color.XyzToRgb()
-        xyz_traced = torch.jit.trace(kornia.color.XyzToRgb(), data)
-        assert_allclose(xyz_traced(data), xyz(data))
+        rgb = kornia.color.xyz_to_rgb
+        rgb_jit = torch.jit.script(kornia.color.xyz_to_rgb)
+        assert_allclose(rgb_jit(data), rgb(data))
