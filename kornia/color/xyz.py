@@ -5,21 +5,23 @@ import torch.nn as nn
 
 
 class RgbToXyz(nn.Module):
-    r"""Convert image from RGB to XYZ
+    r"""Converts an image from RGB to XYZ
+
     The image data is assumed to be in the range of (0, 1).
+
     args:
         image (torch.Tensor): RGB image to be converted to XYZ.
     returns:
-        torch.tensor: XYZ version of the image.
+        torch.Tensor: XYZ version of the image.
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
-    Examples::
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> xyz = kornia.color.RgbToXyz()
         >>> output = xyz(input)  # 2x3x4x5
-    Reference::
-        [1] https://docs.opencv.org/3.4/de/d25/imgproc_color_conversions.html
+    Reference:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
     def __init__(self) -> None:
@@ -30,20 +32,21 @@ class RgbToXyz(nn.Module):
 
 
 class XyzToRgb(nn.Module):
-    r"""Convert image from XYZ to RGB
+    r"""Converts an image from XYZ to RGB
+
     args:
         image (torch.Tensor): XYZ image to be converted to RGB.
     returns:
-        torch.tensor: RGB version of the image.
+        torch.Tensor: RGB version of the image.
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
-    Examples::
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.XyzToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-    Reference::
-        [1] https://docs.opencv.org/3.4/de/d25/imgproc_color_conversions.html
+    Reference:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
     def __init__(self) -> None:
@@ -54,7 +57,7 @@ class XyzToRgb(nn.Module):
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to XYZ.
+    r"""Converts a RGB image to XYZ.
 
     See :class:`~kornia.color.RgbToXyz` for details.
 
@@ -87,7 +90,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an XYZ image to RGB.
+    r"""Converts a XYZ image to RGB.
 
     See :class:`~kornia.color.XyzToRgb` for details.
 
