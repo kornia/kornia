@@ -62,6 +62,12 @@ class TestRgbToXyz:
         data = utils.tensor_to_gradcheck_var(data)
         assert gradcheck(kornia.color.RgbToXyz(), (data,), raise_exception=True)
 
+    @pytest.mark.parametrize("input_shape", [(2, 2), (3, 3, 5, 3, 3)])
+    def test_shape(self, input_shape, device):
+        with pytest.raises(ValueError):
+            xyz = kornia.color.RgbToXyz()
+            out = xyz(torch.ones(*input_shape).to(device))
+
     def test_inverse(self, device):
         data = torch.rand(3, 4, 5).to(device)
         xyz = kornia.color.XyzToRgb()
@@ -139,6 +145,12 @@ class TestXyzToRgb:
 
         data_out = rgb(xyz(data))
         assert_allclose(data_out, data)
+
+    @pytest.mark.parametrize("input_shape", [([2, 2],), ([3, 3, 7, 3, 3],)])
+    def test_shape(self, input_shape, device):
+        with pytest.raises(ValueError):
+            rgb = kornia.color.XyzToRgb()
+            out = rgb(torch.ones(*input_shape).to(device))
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
