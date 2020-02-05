@@ -410,7 +410,7 @@ class RandomRotation(AugmentationBase):
     """
 
     def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
-        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+        super(RandomRotation, self).__init__(F._apply_rotation, return_transform)
         self.degrees = degrees
 
     def __repr__(self) -> str:
@@ -418,7 +418,7 @@ class RandomRotation(AugmentationBase):
         return self.__class__.__name__ + repr
 
     @staticmethod
-    def get_params(batch_size: int, degrees: FloatUnionType):
+    def get_params( batch_size: int, degrees: FloatUnionType):
         return pg._random_rotation_gen(batch_size, degrees)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
@@ -454,7 +454,7 @@ class RandomCrop(AugmentationBase):
     def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
                  pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode='constant',
                  return_transform: bool = False) -> None:
-        super(RandomCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomCrop, self).__init__(F._apply_crop, return_transform)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -518,7 +518,7 @@ class RandomResizedCrop(AugmentationBase):
 
     def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
                  interpolation=None, return_transform: bool = False) -> None:
-        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomResizedCrop, self).__init__(F._apply_crop, return_transform)
         self.size = size
         self.scale = scale
         self.ratio = ratio
