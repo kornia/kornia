@@ -418,7 +418,7 @@ class RandomRotation(AugmentationBase):
         return self.__class__.__name__ + repr
 
     @staticmethod
-    def get_params( batch_size: int, degrees: FloatUnionType):
+    def get_params(batch_size: int, degrees: FloatUnionType):
         return pg._random_rotation_gen(batch_size, degrees)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
