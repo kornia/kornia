@@ -538,7 +538,7 @@ class RandomResizedCrop(AugmentationBase):
         target_size = pg._random_crop_size_gen(size, scale, ratio)
         # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
         return pg._random_crop_gen(batch_size, input_size,
-                                   (target_size[0].data.item(), target_size[1].data.item()), resize_to=size)
+                                   (int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=size)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:

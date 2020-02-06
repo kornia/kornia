@@ -169,7 +169,7 @@ def crop_by_boxes(tensor, src_box, dst_box,
 
     bbox = _infer_bounding_box(dst_box)
     patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (bbox[0].int().data.item(), bbox[1].int().data.item()))
+        tensor, dst_trans_src, (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
 
     # return in the original shape
     if is_unbatched:
