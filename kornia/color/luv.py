@@ -16,8 +16,7 @@ class RgbToLuv(nn.Module):
     r"""Converts an image from RGB to Luv
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
-    color is computed using the D65 white point.
-
+    color is computed using the D65 illuminant and Observer 2.
 
     args:
         image (torch.Tensor): RGB image to be converted to Luv.
@@ -32,7 +31,9 @@ class RgbToLuv(nn.Module):
         >>> output = luv(input)  # 2x3x4x5
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
         [2] https://www.easyrgb.com/en/math.php
+
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
@@ -61,7 +62,9 @@ class LuvToRgb(nn.Module):
         >>> output = rgb(input)  # 2x3x4x5
     References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
         [2] https://www.easyrgb.com/en/math.php
+
         [3] http://www.poynton.com/ColorFAQ.html
     """
 

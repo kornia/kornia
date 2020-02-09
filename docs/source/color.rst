@@ -52,7 +52,6 @@ The functions in this section perform various color space conversions.
 .. autoclass:: XyzToRgb
 .. autoclass:: RgbToLuv
 .. autoclass:: LuvToRgb
-.. autoclass:: RgbToLuv
 .. autoclass:: Normalize
 .. autoclass:: Denormalize
 .. autoclass:: AdjustBrightness
