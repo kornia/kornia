@@ -1,4 +1,5 @@
 from typing import Tuple
+
 import torch
 import torch.nn as nn
 
@@ -20,15 +21,19 @@ class RgbToLuv(nn.Module):
 
     args:
         image (torch.Tensor): RGB image to be converted to Luv.
+
     returns:
         torch.Tensor: Luv version of the image.
+
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> luv = kornia.color.RgbToLuv()
         >>> output = luv(input)  # 2x3x4x5
+
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
@@ -51,15 +56,19 @@ class LuvToRgb(nn.Module):
 
     args:
         image (torch.Tensor): Luv image to be converted to RGB.
+
     returns:
         torch.Tensor: RGB version of the image.
+
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.LuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
@@ -84,6 +93,7 @@ def rgb_to_luv(image: torch.Tensor) -> torch.Tensor:
 
     Args:
         image (torch.Tensor): RGB image
+
     Returns:
         torch.Tensor : Luv image
     """
@@ -142,6 +152,7 @@ def luv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Args:
         image (torch.Tensor): Luv image
+
     Returns:
         torch.Tensor : RGB image
     """
