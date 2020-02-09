@@ -4,6 +4,13 @@ import torch.nn as nn
 
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
+"""
+The RGB to Luv color transformations were translated from scikit image's rgb2luv and luv2rgb
+
+https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16065b595ca9/skimage/color/colorconv.py
+
+"""
+
 
 class RgbToLuv(nn.Module):
     r"""Converts an image from RGB to Luv
