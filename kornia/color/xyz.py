@@ -112,9 +112,9 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     y: torch.Tensor = image[..., 1, :, :]
     z: torch.Tensor = image[..., 2, :, :]
 
-    r: torch.Tensor = 3.240479 * x + -1.53715 * y + -0.498535 * z
-    g: torch.Tensor = -0.969256 * x + 1.875991 * y + 0.041556 * z
-    b: torch.Tensor = 0.055648 * x + -0.204043 * y + 1.057311 * z
+    r: torch.Tensor = 3.2404813432005266 * x + -1.5371515162713185 * y + -0.4985363261688878 * z
+    g: torch.Tensor = -0.9692549499965682 * x + 1.8759900014898907 * y + 0.0415559265582928 * z
+    b: torch.Tensor = 0.0556466391351772 * x + -0.2040413383665112 * y + 1.0573110696453443 * z
 
     out: torch.Tensor = torch.stack((r, g, b), dim=-3)
 
