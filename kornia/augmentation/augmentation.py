@@ -452,7 +452,7 @@ class RandomCrop(AugmentationBase):
     """
 
     def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
-                 pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode='constant',
+                 pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
                  return_transform: bool = False) -> None:
         super(RandomCrop, self).__init__(F._apply_crop, return_transform)
         self.size = size
