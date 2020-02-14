@@ -19,6 +19,12 @@ kornia.feature
 .. autofunction:: make_upright
 .. autofunction:: scale_laf
 .. autofunction:: get_laf_scale
+.. autofunction:: get_laf_center
+.. autofunction:: get_laf_orientation
+.. autofunction:: laf_from_center_scale_ori
+.. autofunction:: laf_is_inside_image
+.. autofunction:: laf_to_three_points
+.. autofunction:: laf_from_three_points
 .. autofunction:: raise_error_if_laf_is_not_valid
 
 .. autoclass:: NonMaximaSuppression2d

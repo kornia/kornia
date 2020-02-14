@@ -9,3 +9,4 @@ kornia.geometry.linalg
 .. autofunction:: inverse_transformation
 .. autofunction:: transform_points
 .. autofunction:: transform_boxes
+.. autofunction:: perspective_transform_lafs
