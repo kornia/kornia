@@ -8,6 +8,7 @@ from typing import Tuple
 class RgbToYuv(nn.Module):
     r"""Convert image from RGB to YUV
     The image data is assumed to be in the range of (0, 1).
+
     args:
         image (torch.Tensor): RGB image to be converted to YUV.
     returns:
@@ -34,6 +35,7 @@ class RgbToYuv(nn.Module):
 def rgb_to_yuv(input: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV
     The image data is assumed to be in the range of (0, 1).
+
     Args:
         input (torch.Tensor): RGB Image to be converted to YUV.
     Returns:
@@ -59,6 +61,7 @@ def rgb_to_yuv(input: torch.Tensor) -> torch.Tensor:
 class YuvToRgb(nn.Module):
     r"""Convert image from YUV to RGB
     The image data is assumed to be in the range of (0, 1).
+
     args:
         image (torch.Tensor): YUV image to be converted to RGB.
     returns:
@@ -83,6 +86,7 @@ class YuvToRgb(nn.Module):
 def yuv_to_rgb(input: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV image to RGB
     The image data is assumed to be in the range of (0, 1).
+    
     Args:
         input (torch.Tensor): YUV Image to be converted to RGB.
     Returns:
