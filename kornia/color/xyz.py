@@ -23,7 +23,7 @@ class RgbToXyz(nn.Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> xyz = kornia.color.RgbToXyz()
         >>> output = xyz(input)  # 2x3x4x5
-        
+
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """

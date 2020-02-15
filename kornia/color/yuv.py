@@ -86,7 +86,7 @@ class YuvToRgb(nn.Module):
 def yuv_to_rgb(input: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV image to RGB
     The image data is assumed to be in the range of (0, 1).
-    
+
     Args:
         input (torch.Tensor): YUV Image to be converted to RGB.
     Returns:
