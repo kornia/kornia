@@ -4,9 +4,21 @@ from torch.nn.functional import mse_loss
 
 
 class PSNRLoss(nn.Module):
-    r"""Creates a criterion that calculates the PSNR between 2 images. Given an m x n image,
+    r"""Creates a criterion that calculates the PSNR between 2 images. Given an m x n image, the PSNR is:
+
     .. math::
-    \text{MSE}(I,T) = \frac{1}{m\,n}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1} [I(i,j) - T(i,j)]^2
+
+        \text{PSNR} = 10 \log_{10} \bigg(\frac{\text{MAX}_I^2}{MSE(I,T)}\bigg)
+
+    where
+
+    .. math::
+
+        \text{MSE}(I,T) = \frac{1}{mn}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1} [I(i,j) - T(i,j)]^2
+
+    and :math:`\text{MAX}_I` is the maximum possible input value
+    (e.g for floating point images :math:`\text{MAX}_I=1`).
+
 
     Arguments:
         max_val (float): Maximum value of input
