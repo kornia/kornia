@@ -35,7 +35,7 @@ class PSNRLoss(nn.Module):
 def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Function that computes PSNR
 
-    See :class:`~kornia.losses.PSNR` for details.
+    See :class:`~kornia.losses.PSNRLoss` for details.
     """
     if not torch.is_tensor(input) or not torch.is_tensor(target):
         raise TypeError(f"Expected 2 torch tensors but got {type(input)} and {type(target)}")
