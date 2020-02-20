@@ -307,6 +307,17 @@ def _get_random_affine_params(
     return transform_h
 
 
+def _center_crop_gen(size: Union[int, Tuple[int, int]]) -> Dict[str, torch.Tensor]:
+    if isinstance(size, tuple):
+        size_param = torch.tensor([size[0], size[1]])
+    elif isinstance(size, int):
+        size_param = torch.tensor([size, size])
+    else:
+        raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
+                        f"Got: {type(size)}.")
+    return dict(size=size_param)
+
+
 def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
                      resize_to: Optional[Tuple[int, int]] = None) -> Dict[str, torch.Tensor]:
     x_diff = input_size[1] - size[1]
