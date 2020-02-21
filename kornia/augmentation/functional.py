@@ -171,6 +171,7 @@ def _apply_rectangle_erase(input: torch.Tensor, params: Dict[str, torch.Tensor],
         # TODO: return_transform implementation
         raise NotImplementedError("Not implemented.")
     input = _transform_input(input)
+
     def draw_rectangles(mask_size, params):
         r"""
         Generate a {0, 1} mask with drawed rectangle having parameters defined by rectangle_params

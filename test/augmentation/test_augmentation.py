@@ -890,9 +890,7 @@ class TestRectangleRandomErasing:
 
                  [[1., 1., 1.],
                   [1., 1., 1.],
-                    [0., 0., 0.]]]
-            ]
-        ).to(device)
+                    [0., 0., 0.]]]]).to(device)
 
         assert_allclose(rand_rec(inputs), expected)
 

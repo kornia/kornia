@@ -38,8 +38,8 @@ class AugmentationBase(nn.Module):
             data = cast(torch.Tensor, input)
         return data.shape[-2:]
 
-    def infer_forward_validity(
-        self, params: Optional[Dict[str, torch.Tensor]] = None, random_seed: int = None) -> None:
+    def infer_forward_validity(self, params: Optional[Dict[str, torch.Tensor]] = None,
+                               random_seed: int = None) -> None:
         if params is not None and random_seed is not None:
             raise ValueError("Parameter params and random_seed cannot be co-existed. Either of them shall be None.")
 
@@ -213,8 +213,8 @@ class ColorJitter(AugmentationBase):
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params= self._param_fcn(random_seed=random_seed, batch_size=batch_size, brightness=self.brightness,
-                contrast=self.contrast, saturation=self.saturation, hue=self.hue)
+            params = self._param_fcn(random_seed=random_seed, batch_size=batch_size, brightness=self.brightness,
+                                     contrast=self.contrast, saturation=self.saturation, hue=self.hue)
         return super().forward(input, params)
 
 
@@ -267,7 +267,7 @@ class RandomRectangleErasing(AugmentationBase):
                   [1., 0., 0.]]]])
     """
 
-    def __init__(self, erase_scale_range: Tuple[float, float] = (0., 0.5), 
+    def __init__(self, erase_scale_range: Tuple[float, float] = (0., 0.5),
                  aspect_ratio_range: Tuple[float, float] = (0., 0.5), random_seed: int = None) -> None:
         super(RandomRectangleErasing, self).__init__(
             F._apply_rectangle_erase, pg._random_rectangles_gen, False, random_seed)
@@ -281,7 +281,8 @@ class RandomRectangleErasing(AugmentationBase):
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
             params = self._param_fcn(random_seed=random_seed, batch_size=batch_size, height=height, width=width,
-                erase_scale_range=self.erase_scale_range, aspect_ratio_range=self.aspect_ratio_range)
+                                     erase_scale_range=self.erase_scale_range,
+                                     aspect_ratio_range=self.aspect_ratio_range)
         return super().forward(input, params)
 
 
@@ -314,7 +315,7 @@ class RandomPerspective(AugmentationBase):
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
             params = self._param_fcn(random_seed=random_seed, batch_size=batch_size, height=height,
-                width=width, p=self.p, distortion_scale=self.distortion_scale)
+                                     width=width, p=self.p, distortion_scale=self.distortion_scale)
         return super().forward(input, params)
 
 
@@ -367,7 +368,8 @@ class RandomAffine(AugmentationBase):
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
             params = self._param_fcn(random_seed=random_seed, batch_size=batch_size, height=height,
-                width=width, degrees=self.degrees, translate=self.translate, scale=self.scale, shear=self.shear)
+                                     width=width, degrees=self.degrees, translate=self.translate,
+                                     scale=self.scale, shear=self.shear)
         return super().forward(input, params)
 
 
@@ -528,7 +530,8 @@ class RandomResizedCrop(AugmentationBase):
 
     def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
                  interpolation=None, return_transform: bool = False, random_seed: int = None) -> None:
-        super(RandomResizedCrop, self).__init__(F._apply_crop, pg._random_resized_crop_gen, return_transform, random_seed)
+        super(RandomResizedCrop, self).__init__(
+            F._apply_crop, pg._random_resized_crop_gen, return_transform, random_seed)
         self.size = size
         self.scale = scale
         self.ratio = ratio
@@ -551,7 +554,7 @@ class RandomResizedCrop(AugmentationBase):
             else:
                 batch_shape = input.shape
             params = self._param_fcn(
-                random_seed=random_seed, batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]), 
+                random_seed=random_seed, batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]),
                 scale=self.scale, ratio=self.ratio, size=self.size)
 
         return super().forward(input, params)
