@@ -130,6 +130,44 @@ def _random_prob_gen(batch_size: int, p: float = 0.5) -> Dict[str, torch.Tensor]
     return {'batch_prob': batch_prob}
 
 
+def _random_rectangles_gen(batch_size: int, height: int, width: int, erase_scale_range: Tuple[float, float],
+                           aspect_ratio_range: Tuple[float, float]) -> Dict[str, torch.Tensor]:
+    r""" The rectangle will have an area equal to the original image area multiplied by a value uniformly
+         sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
+         between [aspect_ratio_range[0], aspect_ratio_range[1])
+    """
+    images_area = height * width
+    target_areas = Uniform(
+        erase_scale_range[0], erase_scale_range[1]
+    ).sample((batch_size,)) * images_area
+    if aspect_ratio_range[0] < 1. and aspect_ratio_range[1] > 1.:
+        aspect_ratios1 = Uniform(aspect_ratio_range[0], 1).sample((batch_size,))
+        aspect_ratios2 = Uniform(1, aspect_ratio_range[1]).sample((batch_size,))
+        rand_idxs = torch.round(torch.rand((batch_size,))).bool()
+        aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
+    else:
+        aspect_ratios = Uniform(
+            aspect_ratio_range[0], aspect_ratio_range[1]
+        ).sample((batch_size,))
+    # based on target areas and aspect ratios, rectangle params are computed
+    heights = torch.min(
+        torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
+        torch.tensor(float(height))
+    ).int()
+    widths = torch.min(
+        torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
+        torch.tensor(float(width))
+    ).int()
+    xs = (torch.rand((batch_size,)) * (width - widths + 1).float()).int()
+    ys = (torch.rand((batch_size,)) * (height - heights + 1).float()).int()
+    return {
+        'widths': widths,
+        'heights': heights,
+        'xs': xs,
+        'ys': ys
+    }
+
+
 def _get_perspective_params(batch_size: int, width: int, height: int, distortion_scale: float
                             ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.

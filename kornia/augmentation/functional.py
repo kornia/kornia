@@ -153,8 +153,58 @@ def random_rectangle_erase(
     rect_params = get_random_rectangles_params(
         (b, ), h, w, erase_scale_range, aspect_ratio_range
     )
-    images = erase_rectangles(images, rect_params)
-    return images
+    return _apply_rectangle_erase(images, rect_params)
+
+
+def _apply_rectangle_erase(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                           return_transform: bool = False) -> UnionType:
+    r"""
+    Function that erases a random selected rectangle for each image in the batch, putting
+    the value to zero.
+
+    Args:
+        images (torch.Tensor): input images.
+        params (torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor):
+            rectangle_params[0] must be widths tensor
+            rectangle_params[1] must be heights tensor
+            rectangle_params[2] must be x positions tensor
+            rectangle_params[3] must be y positions tensor
+    """
+    if return_transform:
+        # TODO: return_transform implementation
+        raise NotImplementedError("Not implemented.")
+    input = _transform_input(input)
+    def draw_rectangles(mask_size, params):
+        r"""
+        Generate a {0, 1} mask with drawed rectangle having parameters defined by rectangle_params
+        and size by mask_size
+
+        Args:
+            mask_size (torch.Size or Tuple): output mask size.
+        """
+        if not (params['widths'].size() == params['heights'].size() == params['xs'].size() == params['ys'].size()):
+            raise TypeError(
+                f"''rectangle params components must have same shape"
+            )
+
+        mask = torch.zeros(mask_size, dtype=torch.float, device=input.device)
+        for i_elem in range(mask_size[0]):
+            h = params['heights'][i_elem].item()
+            w = params['widths'][i_elem].item()
+            y = params['ys'][i_elem].item()
+            x = params['xs'][i_elem].item()
+            mask[i_elem, :, y:y + h, x:x + w] = 1.
+        return mask
+    # b, _, h, w = images_size
+    # rect_params = get_random_rectangles_params(
+    #     (b, ), h, w, erase_scale_range, aspect_ratio_range
+    # )
+    mask = draw_rectangles(input.size(), params)
+    mask = 1. - mask
+    return input * mask
+
+    # images = erase_rectangles(images, rect_params)
+    # return images
 
 
 def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
@@ -163,9 +213,8 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
     See :func:`~kornia.augmentation.param_gen._random_rotation_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
-    input_tmp: torch.Tensor = input.unsqueeze(0)
-    input_tmp = input_tmp.view(-1, *input_tmp.shape[-3:])
-    batch_size = input_tmp.shape[0]
+    input = _transform_input(input)
+    batch_size = input.shape[0]
 
     params = pg._random_rotation_gen(batch_size, degrees=degrees)
 

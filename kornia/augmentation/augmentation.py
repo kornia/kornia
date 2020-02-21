@@ -89,6 +89,7 @@ class RandomHorizontalFlip(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -133,6 +134,7 @@ class RandomVerticalFlip(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -175,6 +177,7 @@ class ColorJitter(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
     """
 
     def __init__(self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0.,
@@ -209,6 +212,7 @@ class RandomGrayscale(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, random_seed: int = None) -> None:
@@ -226,7 +230,7 @@ class RandomGrayscale(AugmentationBase):
         return super().forward(input, params)
 
 
-class RandomRectangleErasing(nn.Module):
+class RandomRectangleErasing(AugmentationBase):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -246,19 +250,20 @@ class RandomRectangleErasing(nn.Module):
                   [1., 0., 0.]]]])
     """
 
-    def __init__(
-            self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float]
-    ) -> None:
-        super(RandomRectangleErasing, self).__init__()
+    def __init__(self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float],
+                 random_seed: int = None) -> None:
+        super(RandomRectangleErasing, self).__init__(
+            F._apply_rectangle_erase, pg._random_rectangles_gen, False, random_seed)
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return F.random_rectangle_erase(
-            images,
-            self.erase_scale_range,
-            self.aspect_ratio_range
-        )
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:  # type: ignore
+        if params is None:
+            height, width = self.infer_image_shape(input)
+            batch_size: int = self.infer_batch_size(input)
+            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, height=height, width=width,
+                erase_scale_range=self.erase_scale_range, aspect_ratio_range=self.aspect_ratio_range)
+        return super().forward(input, params)
 
 
 class RandomPerspective(AugmentationBase):
@@ -269,7 +274,7 @@ class RandomPerspective(AugmentationBase):
         distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
         return_transform (bool): if ``True`` return the matrix describing the transformation
         applied to each. Default: False.
-        input tensor.
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
     """
 
     def __init__(self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False,
@@ -313,6 +318,7 @@ class RandomAffine(AugmentationBase):
                 Will not apply shear by default
             return_transform (bool): if ``True`` return the matrix describing the transformation
                 applied to each. Default: False.
+            random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
 
     Examples:
         >>> input = torch.rand(2, 3, 224, 224)
@@ -350,9 +356,8 @@ class CenterCrop(AugmentationBase):
             made.
     """
 
-    def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False,
-                 random_seed: int = None) -> None:
-        super(CenterCrop, self).__init__(F._apply_center_crop, pg._center_crop_gen, return_transform, random_seed)
+    def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
+        super(CenterCrop, self).__init__(F._apply_center_crop, pg._center_crop_gen, return_transform, None)
         self.size = size
         self.return_transform = return_transform
 
@@ -377,6 +382,7 @@ class RandomRotation(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
 
     Examples:
     >>> input = torch.tensor([[[[10., 0., 0.],
@@ -427,6 +433,7 @@ class RandomCrop(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
     """
 
     def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
@@ -489,6 +496,7 @@ class RandomResizedCrop(AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
     """
 
     def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
@@ -513,10 +521,6 @@ class RandomResizedCrop(AugmentationBase):
                 batch_shape = input[0].shape
             else:
                 batch_shape = input.shape
-            # target_size = pg._random_crop_size_gen(self.size, self.scale, self.ratio)
-            # params: Dict[str, torch.Tensor] = self._param_fcn(
-            #     batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]),
-            #     size=(int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=self.size)
             params: Dict[str, torch.Tensor] = self._param_fcn(
                 batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]), scale=self.scale,
                 ratio=self.ratio, size=self.size)
