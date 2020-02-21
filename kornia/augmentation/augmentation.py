@@ -59,7 +59,8 @@ class AugmentationBase(nn.Module):
             return _params
         return f
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                random_seed: int = None) -> UnionType:  # type: ignore
         self._params: Optional[Dict[str, torch.Tensor]] = params
         if isinstance(input, tuple):
 
@@ -121,7 +122,7 @@ class RandomHorizontalFlip(AugmentationBase):
             F._apply_hflip, pg._random_prob_gen, return_transform, random_seed)
         self.p: float = p
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -166,7 +167,7 @@ class RandomVerticalFlip(AugmentationBase):
             F._apply_vflip, pg._random_prob_gen, return_transform, random_seed)
         self.p: float = p
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -208,7 +209,7 @@ class ColorJitter(AugmentationBase):
             hue={self.hue}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -237,7 +238,7 @@ class RandomGrayscale(AugmentationBase):
         repr = f"(p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -274,7 +275,7 @@ class RandomRectangleErasing(AugmentationBase):
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -308,7 +309,7 @@ class RandomPerspective(AugmentationBase):
         repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -361,7 +362,7 @@ class RandomAffine(AugmentationBase):
         self.scale = scale
         self.shear = shear
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -432,7 +433,7 @@ class RandomRotation(AugmentationBase):
         repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
@@ -499,7 +500,7 @@ class RandomCrop(AugmentationBase):
 
         return input
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if isinstance(input, tuple):
@@ -544,7 +545,7 @@ class RandomResizedCrop(AugmentationBase):
             , return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 random_seed: int = None) -> UnionType:  # type: ignore
         super().infer_forward_validity(params=params, random_seed=random_seed)
         if params is None:
