@@ -52,7 +52,7 @@ class AugmentationBase(nn.Module):
         return f
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
-        self._params: Dict[str, torch.Tensor] = params
+        self._params: Optional[Dict[str, torch.Tensor]] = params
         if isinstance(input, tuple):
 
             inp: torch.Tensor = input[0]
@@ -116,7 +116,7 @@ class RandomHorizontalFlip(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, p=self.p)
+            params = self._param_fcn(batch_size=batch_size, p=self.p)
         return super().forward(input, params)
 
 
@@ -159,7 +159,7 @@ class RandomVerticalFlip(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, p=self.p)
+            params = self._param_fcn(batch_size=batch_size, p=self.p)
         return super().forward(input, params)
 
 
@@ -199,7 +199,7 @@ class ColorJitter(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, brightness=self.brightness,
+            params= self._param_fcn(batch_size=batch_size, brightness=self.brightness,
                 contrast=self.contrast, saturation=self.saturation, hue=self.hue)
         return super().forward(input, params)
 
@@ -226,7 +226,7 @@ class RandomGrayscale(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, p=self.p)
+            params = self._param_fcn(batch_size=batch_size, p=self.p)
         return super().forward(input, params)
 
 
@@ -258,11 +258,11 @@ class RandomRectangleErasing(AugmentationBase):
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:  # type: ignore
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, height=height, width=width,
+            params = self._param_fcn(batch_size=batch_size, height=height, width=width,
                 erase_scale_range=self.erase_scale_range, aspect_ratio_range=self.aspect_ratio_range)
         return super().forward(input, params)
 
@@ -293,7 +293,7 @@ class RandomPerspective(AugmentationBase):
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, height=height, width=width,
+            params = self._param_fcn(batch_size=batch_size, height=height, width=width,
                 p=self.p, distortion_scale=self.distortion_scale)
         return super().forward(input, params)
 
@@ -344,7 +344,7 @@ class RandomAffine(AugmentationBase):
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = pg._random_affine_gen(batch_size=batch_size, height=height, width=width,
+            params = pg._random_affine_gen(batch_size=batch_size, height=height, width=width,
                 degrees=self.degrees, translate=self.translate, scale=self.scale, shear=self.shear)
         return super().forward(input, params)
 
@@ -364,7 +364,7 @@ class CenterCrop(AugmentationBase):
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            params: Dict[str, torch.Tensor] = self._param_fcn(size=self.size)
+            params = self._param_fcn(size=self.size)
         return super().forward(input, params)
 
 
@@ -411,7 +411,7 @@ class RandomRotation(AugmentationBase):
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
             batch_size: int = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(batch_size=batch_size, degrees=self.degrees)
+            params = self._param_fcn(batch_size=batch_size, degrees=self.degrees)
         return super().forward(input, params)
 
 
@@ -482,7 +482,7 @@ class RandomCrop(AugmentationBase):
             batch_shape = input.shape
         if params is None:
             batch_size = self.infer_batch_size(input)
-            params: Dict[str, torch.Tensor] = self._param_fcn(
+            params = self._param_fcn(
                 batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]), size=self.size)
         return super().forward(input, params)
 
@@ -522,7 +522,7 @@ class RandomResizedCrop(AugmentationBase):
                 batch_shape = input[0].shape
             else:
                 batch_shape = input.shape
-            params: Dict[str, torch.Tensor] = self._param_fcn(
+            params = self._param_fcn(
                 batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]), scale=self.scale,
                 ratio=self.ratio, size=self.size)
 

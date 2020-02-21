@@ -120,7 +120,7 @@ def random_rectangle_erase(
         images: torch.Tensor,
         erase_scale_range: Tuple[float, float],
         aspect_ratio_range: Tuple[float, float]
-) -> torch.Tensor:
+) -> UnionType:
     r"""
     Function that erases a random selected rectangle for each image in the batch, putting
     the value to zero.
@@ -149,7 +149,7 @@ def random_rectangle_erase(
 
     images_size = images.size()
     b, _, h, w = images_size
-    rect_params = pg._random_rectangles_gen((b, ), h, w, erase_scale_range, aspect_ratio_range)
+    rect_params = pg._random_rectangles_gen(b, h, w, erase_scale_range, aspect_ratio_range)
     return _apply_rectangle_erase(images, rect_params)
 
 

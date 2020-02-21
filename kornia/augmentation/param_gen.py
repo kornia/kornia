@@ -158,8 +158,8 @@ def _random_rectangles_gen(batch_size: int, height: int, width: int, erase_scale
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
         torch.tensor(float(width))
     ).int()
-    xs = (torch.rand((batch_size,)) * (width - widths + 1).float()).int()
-    ys = (torch.rand((batch_size,)) * (height - heights + 1).float()).int()
+    xs = (torch.rand((batch_size,)) * (torch.tensor(width) - widths + 1).float()).int()
+    ys = (torch.rand((batch_size,)) * (torch.tensor(height) - heights + 1).float()).int()
     return {
         'widths': widths,
         'heights': heights,
