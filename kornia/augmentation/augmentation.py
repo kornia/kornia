@@ -41,12 +41,13 @@ class AugmentationBase(nn.Module):
     def _param_fcn_wrapper(self, param_fcn) -> Callable:
         # Wrapper for restoring the current random status
         def f(**kwargs) -> Dict[str, torch.Tensor]:
+            _prev_rng = torch.get_rng_state()
             if self.random_seed is not None:
-                _prev_rng = torch.get_rng_state()
                 torch.manual_seed(self.random_seed)
+            else:
+                torch.seed()
             _params: Dict[str, torch.Tensor] = param_fcn(**kwargs)
-            if self.random_seed is not None:
-                torch.set_rng_state(_prev_rng)
+            torch.set_rng_state(_prev_rng)
             return _params
         return f
 
@@ -357,7 +358,7 @@ class CenterCrop(AugmentationBase):
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            params: Dict[str, torch.Tensor] = self._param_fcn(self.size)
+            params: Dict[str, torch.Tensor] = self._param_fcn(size=self.size)
         return super().forward(input, params)
 
 
@@ -492,7 +493,7 @@ class RandomResizedCrop(AugmentationBase):
 
     def __init__(self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0),
                  interpolation=None, return_transform: bool = False, random_seed: int = None) -> None:
-        super(RandomResizedCrop, self).__init__(F._apply_crop, pg._random_crop_gen, return_transform, random_seed)
+        super(RandomResizedCrop, self).__init__(F._apply_crop, pg._random_resized_crop_gen, return_transform, random_seed)
         self.size = size
         self.scale = scale
         self.ratio = ratio
@@ -512,8 +513,12 @@ class RandomResizedCrop(AugmentationBase):
                 batch_shape = input[0].shape
             else:
                 batch_shape = input.shape
-            target_size = pg._random_crop_size_gen(self.size, self.scale, self.ratio)
-            params: Dict[str, torch.Tensor] = pg._random_crop_gen(
-                batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]),
-                size=(int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=self.size)
+            # target_size = pg._random_crop_size_gen(self.size, self.scale, self.ratio)
+            # params: Dict[str, torch.Tensor] = self._param_fcn(
+            #     batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]),
+            #     size=(int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=self.size)
+            params: Dict[str, torch.Tensor] = self._param_fcn(
+                batch_size=batch_size, input_size=(batch_shape[-2], batch_shape[-1]), scale=self.scale,
+                ratio=self.ratio, size=self.size)
+
         return super().forward(input, params)

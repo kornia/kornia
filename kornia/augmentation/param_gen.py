@@ -379,3 +379,10 @@ def _random_crop_size_gen(size: Tuple[int, int], scale: Tuple[float, float],
         w = torch.tensor(size[0])
         h = torch.tensor(size[1])
     return (h, w)
+
+
+def _random_resized_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+                             scale: Tuple[float, float], ratio: Tuple[float, float]) -> Dict[str, torch.Tensor]:
+    target_size = _random_crop_size_gen(size, scale, ratio)
+    return _random_crop_gen(batch_size=batch_size, input_size=input_size,
+        size=(int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=size)

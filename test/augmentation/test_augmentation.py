@@ -335,8 +335,7 @@ class TestColorJitter:
         assert_allclose(f1(input)[1], expected_transform)
 
     def test_random_brightness(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(brightness=0.2)
+        f = ColorJitter(brightness=0.2, random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -373,8 +372,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_brightness_tuple(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(brightness=(-0.2, 0.2))
+        f = ColorJitter(brightness=(-0.2, 0.2), random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -411,8 +409,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_contrast(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(contrast=0.2)
+        f = ColorJitter(contrast=0.2, random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -449,8 +446,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_contrast_list(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(contrast=[0.8, 1.2])
+        f = ColorJitter(contrast=[0.8, 1.2], random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -486,8 +482,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_saturation(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(saturation=0.2)
+        f = ColorJitter(saturation=0.2, random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -531,8 +526,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_saturation_tensor(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(saturation=torch.tensor(0.2))
+        f = ColorJitter(saturation=torch.tensor(0.2), random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -576,8 +570,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_saturation_tuple(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(saturation=(0.8, 1.2))
+        f = ColorJitter(saturation=(0.8, 1.2), random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -621,8 +614,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_hue(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=0.2)
+        f = ColorJitter(hue=0.2, random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -665,8 +657,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_hue_list(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.2, 0.2])
+        f = ColorJitter(hue=[-0.2, 0.2], random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -710,8 +701,7 @@ class TestColorJitter:
         assert_allclose(f(input), expected)
 
     def test_random_hue_tensor(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.2, 0.2]))
+        f = ColorJitter(hue=torch.tensor([-0.2, 0.2]), random_seed=42)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -1108,8 +1098,6 @@ class TestCenterCrop:
 
 class TestRandomRotation:
 
-    torch.manual_seed(0)  # for random reproductibility
-
     def smoke_test(self, device):
         f = RandomRotation(degrees=45.5)
         repr = "RandomHorizontalFlip(degrees=45.5, return_transform=False)"
@@ -1117,10 +1105,8 @@ class TestRandomRotation:
 
     def test_random_rotation(self, device):
 
-        torch.manual_seed(0)  # for random reproductibility
-
-        f = RandomRotation(degrees=45.0, return_transform=True)
-        f1 = RandomRotation(degrees=45.0)
+        f = RandomRotation(degrees=45.0, return_transform=True, random_seed=0)
+        f1 = RandomRotation(degrees=45.0, random_seed=0)
 
         input = torch.tensor([[1., 0., 0., 2.],
                               [0., 0., 0., 0.],
@@ -1139,22 +1125,14 @@ class TestRandomRotation:
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_2 = torch.tensor([[0.1322, 0.0000, 0.7570, 0.2644],
-                                   [0.3785, 0.0000, 0.4166, 0.0000],
-                                   [0.0000, 0.6309, 1.5910, 1.2371],
-                                   [0.0000, 0.1444, 0.3177, 0.6499]])  # 1 x 4 x 4
-        expected_2 = expected_2.to(device)
-
         out, mat = f(input)
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
-        assert_allclose(f1(input), expected_2, rtol=1e-6, atol=1e-4)
+        assert_allclose(f1(input), expected, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device):
 
-        torch.manual_seed(0)  # for random reproductibility
-
-        f = RandomRotation(degrees=45.0, return_transform=True)
+        f = RandomRotation(degrees=45.0, return_transform=True, random_seed=0)
 
         input = torch.tensor([[[[1., 0., 0., 2.],
                                 [0., 0., 0., 0.],
@@ -1189,15 +1167,13 @@ class TestRandomRotation:
 
     def test_sequential(self, device):
 
-        torch.manual_seed(0)  # for random reproductibility
-
         f = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(10.4, return_transform=True),
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, random_seed=0),
+            RandomRotation(10.4, return_transform=True, random_seed=0),
         )
         f1 = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(10.4),
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, random_seed=0),
+            RandomRotation(10.4, random_seed=0),
         )
 
         input = torch.tensor([[1., 0., 0., 2.],
@@ -1206,19 +1182,19 @@ class TestRandomRotation:
                               [0., 0., 1., 2.]])  # 4 x 4
         input = input.to(device)
 
-        expected = torch.tensor([[[0.1314, 0.1050, 0.6649, 0.2628],
-                                  [0.3234, 0.0202, 0.4256, 0.1671],
-                                  [0.0525, 0.5976, 1.5199, 1.1306],
-                                  [0.0000, 0.1453, 0.3224, 0.5796]]])  # 1 x 4 x 4
+        expected = torch.tensor([[0.1801, 0.0003, 0.7372, 0.3602],
+                                 [0.3686, 0.0006, 0.3798, 0.0010],
+                                 [0.0004, 0.6595, 1.6243, 1.1732],
+                                 [0.0002, 0.1411, 0.3720, 0.7269]])  # 1 x 4 x 4
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[0.8864, 0.4629, -0.5240],
-                                            [-0.4629, 0.8864, 0.8647],
+        expected_transform = torch.tensor([[[0.9277, 0.3733, -0.4515],
+                                            [-0.3733, 0.9277, 0.6683],
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_transform_2 = torch.tensor([[[0.8381, -0.5455, 1.0610],
-                                              [0.5455, 0.8381, -0.5754],
+        expected_transform_2 = torch.tensor([[[0.9272, 0.3745, -0.4526],
+                                              [-0.3745, 0.9272, 0.6710],
                                               [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform_2 = expected_transform_2.to(device)
 
@@ -1261,11 +1237,9 @@ class TestRandomRotation:
 
     def test_gradcheck(self, device):
 
-        torch.manual_seed(0)  # for random reproductibility
-
         input = torch.rand((3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+        assert gradcheck(RandomRotation(degrees=(15.0, 15.0), random_seed=0), (input, ), raise_exception=True)
 
 
 class TestRandomCrop:
@@ -1276,7 +1250,6 @@ class TestRandomCrop:
         assert str(f) == repr
 
     def test_no_padding(self, device):
-        torch.manual_seed(0)
         inp = torch.tensor([[[
             [0., 1., 2.],
             [3., 4., 5.],
@@ -1286,13 +1259,12 @@ class TestRandomCrop:
             [3., 4., 5.],
             [6., 7., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None)
+        rc = RandomCrop(size=(2, 3), padding=None, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_no_padding_batch(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1303,13 +1275,12 @@ class TestRandomCrop:
             [0., 1., 2.],
             [3., 4., 5.],
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None)
+        rc = RandomCrop(size=(2, 3), padding=None, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_padding_batch_1(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1323,13 +1294,12 @@ class TestRandomCrop:
             [0., 0., 0.],
             [1., 2., 0.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=1)
+        rc = RandomCrop(size=(2, 3), padding=1, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_padding_batch_2(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1343,13 +1313,12 @@ class TestRandomCrop:
             [1., 2., 10.],
             [4., 5., 10.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_padding_batch_3(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1363,13 +1332,12 @@ class TestRandomCrop:
             [8., 8., 8.],
             [1., 2., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_pad_if_needed(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1378,16 +1346,15 @@ class TestRandomCrop:
             [9., 9., 9.],
             [0., 1., 2.]
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9)
+        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, random_seed=0)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_gradcheck(self, device):
-        torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3)).to(device)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop(size=(3, 3)), (inp, ), raise_exception=True)
+        assert gradcheck(RandomCrop(size=(3, 3), random_seed=0), (inp, ), raise_exception=True)
 
 
 class TestRandomResizedCrop:
@@ -1398,7 +1365,6 @@ class TestRandomResizedCrop:
         assert str(f) == repr
 
     def test_no_resize(self, device):
-        torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
@@ -1409,13 +1375,12 @@ class TestRandomResizedCrop:
             [4.0000, 4.5000, 5.0000],
             [7.0000, 7.5000, 8.0000]
         ]]]).to(device)
-        rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
+        rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0), random_seed=0)
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
 
     def test_crop_scale_ratio(self, device):
-        torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
@@ -1427,13 +1392,12 @@ class TestRandomResizedCrop:
             [4.5, 5.5, 6.5],
             [6., 7., 8.]
         ]]]).to(device)
-        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
+        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), random_seed=0)
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
 
     def test_crop_scale_ratio_batch(self, device):
-        torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -1450,13 +1414,13 @@ class TestRandomResizedCrop:
             [4.5, 5.5, 6.5],
             [6., 7., 8.],
         ]]]).to(device)
-        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
+        rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), random_seed=0)
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
 
     def test_gradcheck(self, device):
-        torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomResizedCrop(size=(3, 3), scale=(1., 1.), ratio=(1., 1.)), (inp, ), raise_exception=True)
+        assert gradcheck(RandomResizedCrop(size=(3, 3), scale=(1., 1.), ratio=(1., 1.), random_seed=0),
+                         (inp, ), raise_exception=True)
