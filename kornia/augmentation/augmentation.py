@@ -240,6 +240,7 @@ class RandomRectangleErasing(AugmentationBase):
     Args:
         erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
         aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
+        random_seed (int): Seed value for transformation. If None, a random seed will be used. Default: None.
 
     Examples:
         >>> inputs = torch.ones(1, 1, 3, 3)
@@ -250,8 +251,8 @@ class RandomRectangleErasing(AugmentationBase):
                   [1., 0., 0.]]]])
     """
 
-    def __init__(self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float],
-                 random_seed: int = None) -> None:
+    def __init__(self, erase_scale_range: Tuple[float, float] = (0., 0.5), 
+                 aspect_ratio_range: Tuple[float, float] = (0., 0.5), random_seed: int = None) -> None:
         super(RandomRectangleErasing, self).__init__(
             F._apply_rectangle_erase, pg._random_rectangles_gen, False, random_seed)
         self.erase_scale_range: Tuple[float, float] = erase_scale_range

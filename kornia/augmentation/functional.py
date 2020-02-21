@@ -11,7 +11,6 @@ from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import param_gen as pg
-from .erasing import erase_rectangles, get_random_rectangles_params
 from .utils import _transform_input, _validate_input_shape
 
 
@@ -150,9 +149,7 @@ def random_rectangle_erase(
 
     images_size = images.size()
     b, _, h, w = images_size
-    rect_params = get_random_rectangles_params(
-        (b, ), h, w, erase_scale_range, aspect_ratio_range
-    )
+    rect_params = pg._random_rectangles_gen((b, ), h, w, erase_scale_range, aspect_ratio_range)
     return _apply_rectangle_erase(images, rect_params)
 
 
@@ -195,16 +192,10 @@ def _apply_rectangle_erase(input: torch.Tensor, params: Dict[str, torch.Tensor],
             x = params['xs'][i_elem].item()
             mask[i_elem, :, y:y + h, x:x + w] = 1.
         return mask
-    # b, _, h, w = images_size
-    # rect_params = get_random_rectangles_params(
-    #     (b, ), h, w, erase_scale_range, aspect_ratio_range
-    # )
+
     mask = draw_rectangles(input.size(), params)
     mask = 1. - mask
     return input * mask
-
-    # images = erase_rectangles(images, rect_params)
-    # return images
 
 
 def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
