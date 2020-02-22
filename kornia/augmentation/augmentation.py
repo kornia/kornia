@@ -412,22 +412,22 @@ class RandomRotation(AugmentationBase):
     def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
         super(RandomRotation, self).__init__(F._apply_rotation, return_transform)
         self.degrees = degrees
-        self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def set_params(self, batch_size: int, degrees: FloatUnionType):
-        self._params = pg._random_rotation_gen(batch_size, degrees)
+    @staticmethod
+    def get_params(batch_size: int, degrees: FloatUnionType):
+        return pg._random_rotation_gen(batch_size, degrees)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
 
         if params is None:
             height, width = self.infer_image_shape(input)
             batch_size: int = self.infer_batch_size(input)
-            self.set_params(batch_size, self.degrees)
-        return super().forward(input, self._params)
+            params = RandomRotation.get_params(batch_size, self.degrees)
+        return super().forward(input, params)
 
 
 class RandomCrop(AugmentationBase):
@@ -452,7 +452,7 @@ class RandomCrop(AugmentationBase):
     """
 
     def __init__(self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None,
-                 pad_if_needed: Optional[bool] = False, fill=0, padding_mode='constant',
+                 pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
                  return_transform: bool = False) -> None:
         super(RandomCrop, self).__init__(F._apply_crop, return_transform)
         self.size = size
@@ -498,11 +498,9 @@ class RandomCrop(AugmentationBase):
         else:
             input = self.precrop_padding(input)
             batch_shape = input.shape
-
         if params is None:
             batch_size = self.infer_batch_size(input)
-            print(batch_shape)
-            params = RandomCrop.get_params(batch_size, batch_shape[-2:], self.size)  # type: ignore
+            params = RandomCrop.get_params(batch_size, (batch_shape[-2], batch_shape[-1]), self.size)
         return super().forward(input, params)
 
 
@@ -539,7 +537,8 @@ class RandomResizedCrop(AugmentationBase):
                    ) -> Dict[str, torch.Tensor]:
         target_size = pg._random_crop_size_gen(size, scale, ratio)
         # TODO: scale and aspect ratio were fixed for one batch for now. Need to be separated.
-        return pg._random_crop_gen(batch_size, input_size, target_size, resize_to=size)
+        return pg._random_crop_gen(batch_size, input_size,
+                                   (int(target_size[0].data.item()), int(target_size[1].data.item())), resize_to=size)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
