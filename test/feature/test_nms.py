@@ -91,7 +91,7 @@ class TestNMS3d:
                                     [0., 0., 0., 0., 0.],
                                     [0., 0., 0., 0., 0.],
                                     [0., 0., 0., 0., 0.],
-                                    [0., 0., 0., 0., 0.]]]]])
+                                    [0., 0., 0., 0., 0.]]]]]).to(device)
         nms = kornia.feature.NonMaximaSuppression3d((3, 3, 3)).to(device)
         scores = nms(inp)
         assert_allclose(scores, expected, atol=1e-4, rtol=1e-3)

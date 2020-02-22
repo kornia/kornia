@@ -226,6 +226,7 @@ class TestSpatialGradient3d:
                                      [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
                                      [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]]]])
 
+        expected = expected.to(device)
         edges = kornia.filters.spatial_gradient3d(inp)
         assert_allclose(edges, expected)
 
