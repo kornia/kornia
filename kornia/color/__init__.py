@@ -69,7 +69,7 @@ __all__ = [
     "RgbToXyz",
     "XyzToRgb",
     "RgbToLuv",
-    "LuvToRbg",
+    "LuvToRgb",
     "Normalize",
     "Denormalize",
     "AdjustBrightness",

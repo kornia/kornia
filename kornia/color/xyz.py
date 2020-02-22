@@ -11,15 +11,19 @@ class RgbToXyz(nn.Module):
 
     args:
         image (torch.Tensor): RGB image to be converted to XYZ.
+
     returns:
         torch.Tensor: XYZ version of the image.
+
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> xyz = kornia.color.RgbToXyz()
         >>> output = xyz(input)  # 2x3x4x5
+
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
@@ -36,15 +40,19 @@ class XyzToRgb(nn.Module):
 
     args:
         image (torch.Tensor): XYZ image to be converted to RGB.
+
     returns:
         torch.Tensor: RGB version of the image.
+
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
+
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.XyzToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """

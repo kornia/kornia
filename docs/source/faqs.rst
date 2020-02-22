@@ -29,5 +29,5 @@ Kornia relation to Other Computer Vision Projects
 
 The project mimics some of the functionalities found in OpenCV. Eventhough
 the project is backed up by the `OpenCV.org <www.opencv.org/>`_, there is no
-intention at all to merge in any form both projects. *Kornia* is ment to
+intention at all to merge in any form both projects. *Kornia* is meant to
 provide differentiable operators to train nets, while *OpenCV* scope is inference.
