@@ -16,7 +16,7 @@ from .yuv import RgbToYuv, YuvToRgb, rgb_to_yuv, yuv_to_rgb
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
 from .luv import RgbToLuv, LuvToRgb, rgb_to_luv, luv_to_rgb
 from .normalize import Normalize, normalize, Denormalize, denormalize
-from .zca import zca_whiten
+from .zca import zca_whiten_transforms, ZCAWhiten
 from .core import add_weighted, AddWeighted
 from .adjust import (
     AdjustBrightness, AdjustContrast, AdjustGamma, AdjustHue, AdjustSaturation,
@@ -45,7 +45,7 @@ __all__ = [
     "xyz_to_rgb",
     "normalize",
     "denormalize",
-    "zca_whiten",
+    "zca_whiten_transforms",
     "adjust_brightness",
     "adjust_contrast",
     "adjust_gamma",
@@ -71,7 +71,8 @@ __all__ = [
     "RgbToXyz",
     "XyzToRgb",
     "RgbToLuv",
-    "LuvToRgb",
+    "LuvToRbg",
+    "ZCAWhiten",
     "Normalize",
     "Denormalize",
     "AdjustBrightness",
