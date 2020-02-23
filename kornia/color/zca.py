@@ -32,7 +32,7 @@ class ZCAWhiten(nn.Module):
 
     """
 
-    def __init__(self, eps: float = 1e-8, biased: bool = False, compute_inv: bool =False) -> None:
+    def __init__(self, eps: float = 1e-8, biased: bool = False, compute_inv: bool = False) -> None:
 
         super(ZCAWhiten, self).__init__()
 
@@ -114,7 +114,7 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
 
     returns:
         Tuple[torch.Tensor, torch.Tensor] or Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        A tuple containing the ZCA matrix and the mean vector, and if return_inv = True, the
+        A tuple containing the ZCA matrix and the mean vector, and if compute_inv = True, the
         inverse whitening matrix is retured as well.
 
 
@@ -136,13 +136,14 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
     else:
         cov = cov / float(N - 1)
 
-    U, S, _ = torch.svd(cov)
+    eps_mat = torch.diag(torch.rand(num_features)) * eps/2
+    S, U = torch.symeig(eps_mat + .5*(cov + cov.t()), eigenvectors=True)
 
     S = S.view(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
     S_inv_root = S_inv_root
 
-    T: torch.Tensor = U.mm(S_inv_root * U.t())
+    T: torch.Tensor = U.t().mm(S_inv_root * U)
 
     if compute_inv:
         T_inv = U.t().mm(torch.sqrt(S) * U)
