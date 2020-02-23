@@ -85,17 +85,17 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
     saturation_bound: torch.Tensor = _check_and_bound(saturation, 'saturation', center=1.)
     hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-pi.item(), pi.item()))
 
-    brightness_factor = torch.FloatTensor(batch_size).uniform_(
-        brightness_bound[0], brightness_bound[1], generator=random_generator)
+    brightness_factor = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        brightness_bound[0].item(), brightness_bound[1].item(), generator=random_generator)
 
-    contrast_factor = torch.FloatTensor(batch_size).uniform_(
-        contrast_bound[0], contrast_bound[1], generator=random_generator)
+    contrast_factor = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        contrast_bound[0].item(), contrast_bound[1].item(), generator=random_generator)
 
-    hue_factor = torch.FloatTensor(batch_size).uniform_(
-        hue_bound[0], hue_bound[1], generator=random_generator)
+    hue_factor = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        hue_bound[0].item(), hue_bound[1].item(), generator=random_generator)
 
-    saturation_factor = torch.FloatTensor(batch_size).uniform_(
-        saturation_bound[0], saturation_bound[1], generator=random_generator)
+    saturation_factor = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        saturation_bound[0].item(), saturation_bound[1].item(), generator=random_generator)
 
     return {
         "brightness_factor": brightness_factor,
@@ -106,7 +106,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
 
 
 def _random_prob_gen(batch_size: int, p: float = 0.5, random_generator: Optional[torch.Generator] = None
-                    ) -> Dict[str, torch.Tensor]:
+                     ) -> Dict[str, torch.Tensor]:
     r"""Generator random probabilities for a batch of inputs.
 
     Args:
@@ -124,7 +124,7 @@ def _random_prob_gen(batch_size: int, p: float = 0.5, random_generator: Optional
     if not isinstance(p, float):
         raise TypeError(f"The probability should be a float number. Got {type(p)}")
 
-    probs: torch.Tensor = torch.FloatTensor(batch_size).uniform_(generator=random_generator)
+    probs: torch.Tensor = torch.FloatTensor(batch_size).uniform_(generator=random_generator)  # type: ignore
 
     batch_prob: torch.Tensor = probs < p
 
@@ -132,22 +132,22 @@ def _random_prob_gen(batch_size: int, p: float = 0.5, random_generator: Optional
 
 
 def _random_erasing_gen(batch_size: int, height: int, width: int, erase_scale_range: Tuple[float, float],
-                           aspect_ratio_range: Tuple[float, float], random_generator: Optional[torch.Generator]=None
-                           ) -> Dict[str, torch.Tensor]:
+                        aspect_ratio_range: Tuple[float, float], random_generator: Optional[torch.Generator] = None
+                        ) -> Dict[str, torch.Tensor]:
     r""" The rectangle will have an area equal to the original image area multiplied by a value uniformly
          sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
          between [aspect_ratio_range[0], aspect_ratio_range[1])
     """
     images_area = height * width
-    target_areas = torch.FloatTensor(batch_size).uniform_(
+    target_areas = torch.FloatTensor(batch_size).uniform_(  # type: ignore
         erase_scale_range[0], erase_scale_range[1], generator=random_generator) * images_area
     if aspect_ratio_range[0] < 1. and aspect_ratio_range[1] > 1.:
-        aspect_ratios1 = torch.FloatTensor(batch_size).uniform_(aspect_ratio_range[0], 1, generator=random_generator)
-        aspect_ratios2 = torch.FloatTensor(batch_size).uniform_(1, aspect_ratio_range[1], generator=random_generator)
-        rand_idxs = torch.round(torch.FloatTensor(batch_size).uniform_(0, 1, generator=random_generator)).bool()
+        aspect_ratios1 = torch.FloatTensor(batch_size).uniform_(aspect_ratio_range[0], 1, generator=random_generator)  # type: ignore
+        aspect_ratios2 = torch.FloatTensor(batch_size).uniform_(1, aspect_ratio_range[1], generator=random_generator)  # type: ignore
+        rand_idxs = torch.round(torch.FloatTensor(batch_size).uniform_(0, 1, generator=random_generator)).bool()  # type: ignore
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
-        aspect_ratios = torch.FloatTensor(batch_size).uniform_(
+        aspect_ratios = torch.FloatTensor(batch_size).uniform_(  # type: ignore
             aspect_ratio_range[0], aspect_ratio_range[1], generator=random_generator)
     # based on target areas and aspect ratios, rectangle params are computed
     heights = torch.min(
@@ -158,14 +158,10 @@ def _random_erasing_gen(batch_size: int, height: int, width: int, erase_scale_ra
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
         torch.tensor(float(width))
     ).int()
-    xs = (
-            torch.FloatTensor(batch_size).uniform_(0, 1, generator=random_generator)
-            * (torch.tensor(width) - widths + 1).float()
-         ).int()
-    ys = (
-            torch.FloatTensor(batch_size).uniform_(0, 1, generator=random_generator)
-            * (torch.tensor(height) - heights + 1).float()
-         ).int()
+    xs = (torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        0, 1, generator=random_generator) * (torch.tensor(width) - widths + 1).float()).int()
+    ys = (torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        0, 1, generator=random_generator) * (torch.tensor(height) - heights + 1).float()).int()
     return {
         'widths': widths,
         'heights': heights,
@@ -175,7 +171,7 @@ def _random_erasing_gen(batch_size: int, height: int, width: int, erase_scale_ra
 
 
 def _get_perspective_params(batch_size: int, width: int, height: int, distortion_scale: float,
-                            random_generator: Optional[torch.Generator]=None) -> Tuple[torch.Tensor, torch.Tensor]:
+                            random_generator: Optional[torch.Generator] = None) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
     Args:
@@ -202,7 +198,7 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
 
     factor = torch.tensor([fy, fx]).view(-1, 1, 2)
 
-    rand_val: torch.Tensor = torch.FloatTensor(batch_size, 4, 2).uniform_(0, 1, generator=random_generator)
+    rand_val: torch.Tensor = torch.FloatTensor(batch_size, 4, 2).uniform_(0, 1, generator=random_generator)  # type: ignore
     offset = 2 * factor * rand_val - 1
 
     end_points = start_points + offset
@@ -211,7 +207,7 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
 
 
 def _random_perspective_gen(batch_size: int, height: int, width: int, p: float, distortion_scale: float,
-                            random_generator: Optional[torch.Generator]=None) -> Dict[str, torch.Tensor]:
+                            random_generator: Optional[torch.Generator] = None) -> Dict[str, torch.Tensor]:
     params: Dict[str, torch.Tensor] = _random_prob_gen(batch_size, p, random_generator=random_generator)
     start_points, end_points = (
         _get_perspective_params(batch_size, width, height, distortion_scale, random_generator=random_generator)
@@ -229,7 +225,7 @@ def _random_affine_gen(
         translate: Optional[TupleFloat] = None,
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
-        random_generator: Optional[torch.Generator]=None) -> Dict[str, torch.Tensor]:
+        random_generator: Optional[torch.Generator] = None) -> Dict[str, torch.Tensor]:
     # check angle ranges
     degrees_tmp: TupleFloat
     if isinstance(degrees, float):
@@ -276,8 +272,8 @@ def _random_affine_gen(
     return dict(transform=transform)
 
 
-def _random_rotation_gen(batch_size: int, degrees: FloatUnionType, random_generator: Optional[torch.Generator]=None
-                        ) -> Dict[str, torch.Tensor]:
+def _random_rotation_gen(batch_size: int, degrees: FloatUnionType, random_generator: Optional[torch.Generator] = None
+                         ) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
         if isinstance(degrees, float):
@@ -298,13 +294,14 @@ def _random_rotation_gen(batch_size: int, degrees: FloatUnionType, random_genera
         raise ValueError("If degrees is a sequence it must be of length 2")
 
     params: Dict[str, torch.Tensor] = {}
-    params["degrees"] = torch.FloatTensor(batch_size).uniform_(degrees[0], degrees[1], generator=random_generator)
+    params["degrees"] = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+        degrees[0].item(), degrees[1].item(), generator=random_generator)
 
     return params
 
 
 def _get_random_affine_params(
-    batch_size: int, height: int, width: int,degrees: TupleFloat, translate: Optional[TupleFloat],
+    batch_size: int, height: int, width: int, degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat], random_generator: Optional[torch.Generator] = None
 ) -> torch.Tensor:
     r"""Get parameters for affine transformation. The returned matrix is Bx3x3.
@@ -312,16 +309,16 @@ def _get_random_affine_params(
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
     """
-    angle = torch.FloatTensor(batch_size).uniform_(degrees[0], degrees[1], generator=random_generator)
+    angle = torch.FloatTensor(batch_size).uniform_(degrees[0], degrees[1], generator=random_generator)  # type: ignore
 
     # compute tensor ranges
     if scales is not None:
-        scale = torch.FloatTensor(batch_size).uniform_(scales[0], scales[1], generator=random_generator)
+        scale = torch.FloatTensor(batch_size).uniform_(scales[0], scales[1], generator=random_generator)  # type: ignore
     else:
         scale = torch.ones(batch_size)
 
     if shears is not None:
-        shear = torch.FloatTensor(batch_size).uniform_(shears[0], shears[1], generator=random_generator)
+        shear = torch.FloatTensor(batch_size).uniform_(shears[0], shears[1], generator=random_generator)  # type: ignore
     else:
         shear = torch.zeros(batch_size)
 
@@ -329,8 +326,8 @@ def _get_random_affine_params(
         max_dx: float = translate[0] * width
         max_dy: float = translate[1] * height
         translations = torch.stack([
-            torch.FloatTensor(batch_size).uniform_(-max_dx, max_dx, generator=random_generator),
-            torch.FloatTensor(batch_size).uniform_(-max_dy, max_dy, generator=random_generator)
+            torch.FloatTensor(batch_size).uniform_(-max_dx, max_dx, generator=random_generator),  # type: ignore
+            torch.FloatTensor(batch_size).uniform_(-max_dy, max_dy, generator=random_generator)   # type: ignore
         ], dim=-1)
     else:
         translations = torch.zeros(batch_size, 2)
@@ -352,7 +349,7 @@ def _get_random_affine_params(
 
 
 def _center_crop_gen(size: Union[int, Tuple[int, int]], random_generator: Optional[torch.Generator] = None
-                    ) -> Dict[str, torch.Tensor]:
+                     ) -> Dict[str, torch.Tensor]:
     if isinstance(size, tuple):
         size_param = torch.tensor([size[0], size[1]])
     elif isinstance(size, int):
@@ -373,8 +370,8 @@ def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[i
         raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
                          % (str(input_size), str(size)))
 
-    x_start = torch.FloatTensor(batch_size).uniform_(0, x_diff + 1, generator=random_generator).long()
-    y_start = torch.FloatTensor(batch_size).uniform_(0, y_diff + 1, generator=random_generator).long()
+    x_start = torch.FloatTensor(batch_size).uniform_(0, x_diff + 1, generator=random_generator).long()  # type: ignore
+    y_start = torch.FloatTensor(batch_size).uniform_(0, y_diff + 1, generator=random_generator).long()  # type: ignore
 
     crop = torch.tensor([[
         [0, 0],
@@ -403,9 +400,9 @@ def _random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[i
 def _random_crop_size_gen(size: Tuple[int, int], scale: Tuple[float, float],
                           ratio: Tuple[float, float], random_generator: Optional[torch.Generator] = None
                           ) -> Tuple[torch.Tensor, torch.Tensor]:
-    area = torch.FloatTensor(10).uniform_(
+    area = torch.FloatTensor(10).uniform_(  # type: ignore
         scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], generator=random_generator)
-    log_ratio = torch.FloatTensor(10).uniform_(
+    log_ratio = torch.FloatTensor(10).uniform_(  # type: ignore
         math.log(ratio[0]), math.log(ratio[1]), generator=random_generator)
     aspect_ratio = torch.exp(log_ratio)
 
