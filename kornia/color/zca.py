@@ -16,29 +16,44 @@ class ZCAWhiten(nn.Module):
 
     args:
 
-        eps (float) : a small number used for numerial stablility.
-        biased (bool): Whether to use the biased estimate of the covariance matrix
-        compute_inv (bool): Compute the inverse transform matrix
+        eps (float) : a small number used for numerial stablility. Default=1e-7
+        biased (bool): Whether to use the biased estimate of the covariance matrix. Default=False
+        compute_inv (bool): Compute the inverse transform matrix. Default=False
+        detach_transforms (bool): Detaches gradient from ZCA fitting. Default=True
+        fit_in_forward (bool): Indicates if the zca whitening transform should be fitted in the forward
+                               always. Default = False
+
+    shape:
+        - data: :math:`(N, *)` is a batch for N-D tensors.
+        - data_whiten: :math:`(N, *)`
+
 
     Examples:
-
         >>> data = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
         >>> zca = ZCAWhiten().fit(data)
         >>> data_whiten = zca(data)
 
+    Note:
+
+        The implementation uses class:`~torch.svd` which yields NaNs in the backwards step 
+        if the sigular values are not unique.
+
     References:
 
-        [1] 
+        [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
 
     """
 
-    def __init__(self, eps: float = 1e-8, biased: bool = False, compute_inv: bool = False) -> None:
+    def __init__(self, eps: float = 1e-7, biased: bool = False, compute_inv: bool = False,
+                 detach_transforms: bool = True, fit_in_forward: bool = False) -> None:
 
         super(ZCAWhiten, self).__init__()
 
         self.eps: float = eps
         self.biased: bool = biased
         self.compute_inv: bool = compute_inv
+        self.detach_transforms: bool = detach_transforms
+        self.fit_in_forward: bool = fit_in_forward
 
     def fit(self, x: torch.Tensor): #type: ignore 
         r"""
@@ -50,16 +65,28 @@ class ZCAWhiten(nn.Module):
             x (torch.Tensor): Input data
 
         returns:
-            ZCAWhiten: returns a ZCAWhiten object instance.
+            ZCAWhiten: returns a fitted ZCAWhiten object instance.
         """
-
+    
         if self.compute_inv:
             T, T_inv, mean = zca_whiten_transforms(x, self.eps, self.biased, self.compute_inv)
             self.T_inv = T_inv
+
+            if self.detach_transforms:
+                self.T_inv = self.T_inv.detach()
+
+
         else:
             T, mean = zca_whiten_transforms(x, self.eps, self.biased, self.compute_inv)
+
+        
         self.mean: torch.Tensor = mean
         self.T: torch.Tensor = T
+
+        if self.detach_transforms:
+            self.mean = self.mean.detach()
+            self.T = self.T.detach()
+
 
         return self
 
@@ -79,21 +106,24 @@ class ZCAWhiten(nn.Module):
 
         """
 
+        if self.fit_in_forward:
+            self.fit(x)
+        
         num_features: int = reduce(lambda a, b: a * b, x.size()[1::])
 
         x_flat: torch.Tensor = torch.reshape(x, (-1, num_features))
 
         if inv_transform:
-            y: torch.Tensor = (x_flat).mm(self.T_inv.t()) + self.mean
+            y: torch.Tensor = (x_flat).mm(self.T_inv) + self.mean
         else:
-            y = (x_flat - self.mean).mm(self.T.t())
+            y = (x_flat - self.mean).mm(self.T)
 
         y = y.reshape(x.size())
 
         return y
 
 
-def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
+def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-7,
                           biased: bool = False, compute_inv: bool = False) -> Union[Tuple[torch.Tensor, torch.Tensor],
                                                                                     Tuple[torch.Tensor, torch.Tensor,
                                                                                           torch.Tensor]]:
@@ -106,7 +136,7 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
 
 
     args:
-        inp (torch.Tensor) : input data tensor
+        inp (torch.Tensor) : input data tensor 
         eps (float) : a small number used for numerial stablility.
         biased (bool): Whether to use the biased estimate of the covariance matrix
         compute_inv (bool): Whether to return the inverse transform matrix
@@ -120,6 +150,11 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
 
 
     """
+
+    if not torch.is_tensor(inp):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(inp)))
+
 
     N: int = inp.size()[0]
     num_features: int = reduce(lambda a, b: a * b, inp.size()[1::])
@@ -136,17 +171,14 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-8,
     else:
         cov = cov / float(N - 1)
 
-    eps_mat = torch.diag(torch.rand(num_features)) * eps/2
-    S, U = torch.symeig(eps_mat + .5*(cov + cov.t()), eigenvectors=True)
+    U, S,_ = torch.svd(cov)
 
     S = S.view(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
-    S_inv_root = S_inv_root
-
-    T: torch.Tensor = U.t().mm(S_inv_root * U)
+    T: torch.Tensor = (U).mm(S_inv_root * U.t())
 
     if compute_inv:
-        T_inv = U.t().mm(torch.sqrt(S) * U)
+        T_inv: torch.Tensor = (U).mm(torch.sqrt(S)* U.t())
         return T, T_inv, mean
     else:
         return T, mean
