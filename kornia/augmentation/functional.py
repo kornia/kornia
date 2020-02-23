@@ -6,7 +6,7 @@ import torch.nn as nn
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
     get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes)
-from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
+from kornia.color.adjust import adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue
 from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
@@ -334,10 +334,12 @@ def _apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor],
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
 
-    transforms = nn.ModuleList([AdjustBrightness(params['brightness_factor'].to(device)),
-                                AdjustContrast(params['contrast_factor'].to(device)),
-                                AdjustSaturation(params['saturation_factor'].to(device)),
-                                AdjustHue(params['hue_factor'].to(device))])
+    transforms = [
+        lambda img: adjust_brightness(img, params['brightness_factor'].to(device)),
+        lambda img: adjust_contrast(img, params['contrast_factor'].to(device)),
+        lambda img: adjust_saturation(img, params['saturation_factor'].to(device)),
+        lambda img: adjust_hue(img, params['hue_factor'].to(device))
+    ]
 
     jittered = input
 
