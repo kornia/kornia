@@ -167,8 +167,9 @@ def crop_by_boxes(tensor, src_box, dst_box,
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
 
+    bbox = _infer_bounding_box(dst_box)
     patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, _infer_bounding_box(dst_box))
+        tensor, dst_trans_src, (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
 
     # return in the original shape
     if is_unbatched:
@@ -180,7 +181,7 @@ def crop_by_boxes(tensor, src_box, dst_box,
     return patches
 
 
-def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
+def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes.
 
     Args:
@@ -191,7 +192,7 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
           coordinates must be in the x, y order.
 
     Returns:
-        torch.Tensor: tensor containing the patches with shape BxN1xN2
+        (torch.Tensor, torch.Tensor): tensor containing the patches with shape BxN1xN2
 
     Example:
         >>> boxes = torch.tensor([[
@@ -203,10 +204,10 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
         >>> _infer_bounding_box(boxes)
         (2, 2)
     """
-    assert (boxes[:, 1, 0] - boxes[:, 0, 0] + 1).equal(boxes[:, 2, 0] - boxes[:, 3, 0] + 1), \
+    assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
         "Boxes must have be square, while get widths %s and %s" % \
         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
-    assert (boxes[:, 2, 1] - boxes[:, 0, 1] + 1).equal(boxes[:, 3, 1] - boxes[:, 1, 1] + 1), \
+    assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
         "Boxes must have be square, while get heights %s and %s" % \
         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
     assert len((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique()) == 1, \
@@ -214,6 +215,6 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[int, int]:
     assert len((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
         "Boxes can only have one heights, got %s" % str((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique())
 
-    width = int((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique().data.item())
-    height = int((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique().data.item())
+    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)[0]
+    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)[0]
     return (height, width)
