@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
+    RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
 
 from test.common import device
 
@@ -789,12 +789,12 @@ class TestRectangleRandomErasing:
     def test_random_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
-        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
     def test_rectangle_erasing1(self, device):
         inputs = torch.ones(1, 1, 10, 10).to(device)
-        rand_rec = RandomRectangleErasing()
+        rand_rec = RandomErasing()
         rect_params = {
             "widths": torch.tensor([5]),
             "heights": torch.tensor([5]),
@@ -817,7 +817,7 @@ class TestRectangleRandomErasing:
 
     def test_rectangle_erasing2(self, device):
         inputs = torch.ones(3, 3, 3, 3).to(device)
-        rand_rec = RandomRectangleErasing()
+        rand_rec = RandomErasing()
         rect_params = {
             "widths": torch.tensor([3, 2, 1]),
             "heights": torch.tensor([3, 2, 1]),
@@ -866,7 +866,7 @@ class TestRectangleRandomErasing:
 
     def test_rectangle_erasing_class(self, device):
         inputs = torch.ones(2, 3, 3, 3).to(device)
-        rand_rec = RandomRectangleErasing(erase_scale_range=(0., 0.2), aspect_ratio_range=(0., 0.2), random_seed=0)
+        rand_rec = RandomErasing(erase_scale_range=(0., 0.2), aspect_ratio_range=(0., 0.2), random_seed=0)
         expected = torch.tensor(
             [[[[1., 1., 1.],
                [0., 0., 0.],
@@ -897,7 +897,7 @@ class TestRectangleRandomErasing:
     def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
-        rand_rec = RandomRectangleErasing()
+        rand_rec = RandomErasing()
         rect_params = {
             "widths": torch.tensor([3, 2, 1]),
             "heights": torch.tensor([3, 2, 1]),
@@ -918,11 +918,11 @@ class TestRectangleRandomErasing:
     def test_jit(self, device):
         @torch.jit.script
         def op_script(img):
-            return kornia.augmentation.random_rectangle_erase(img, (.2, .4), (.3, .5))
+            return kornia.augmentation.random_erase(img, (.2, .4), (.3, .5))
 
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        expected = RandomRectangleErasing(
+        expected = RandomErasing(
             (.2, .4), (.3, .5)
         )(img)
         actual = op_script(img)

@@ -116,7 +116,7 @@ def random_affine(input: torch.Tensor,
     return _apply_affine(input, params, return_transform)
 
 
-def random_rectangle_erase(
+def random_erase(
         images: torch.Tensor,
         erase_scale_range: Tuple[float, float],
         aspect_ratio_range: Tuple[float, float]
@@ -149,7 +149,7 @@ def random_rectangle_erase(
 
     images_size = images.size()
     b, _, h, w = images_size
-    rect_params = pg._random_rectangles_gen(b, h, w, erase_scale_range, aspect_ratio_range)
+    rect_params = pg._random_erasing_gen(b, h, w, erase_scale_range, aspect_ratio_range)
     return _apply_rectangle_erase(images, rect_params)
 
 

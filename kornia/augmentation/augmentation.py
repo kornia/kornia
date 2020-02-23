@@ -247,7 +247,7 @@ class RandomGrayscale(AugmentationBase):
         return super().forward(input, params)
 
 
-class RandomRectangleErasing(AugmentationBase):
+class RandomErasing(AugmentationBase):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -261,7 +261,7 @@ class RandomRectangleErasing(AugmentationBase):
 
     Examples:
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = kornia.augmentation.RandomRectangleErasing((.4, .8), (.3, 1/.3))
+        >>> rec_er = kornia.augmentation.RandomErasing((.4, .8), (.3, 1/.3))
         >>> rec_er(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
@@ -270,8 +270,8 @@ class RandomRectangleErasing(AugmentationBase):
 
     def __init__(self, erase_scale_range: Tuple[float, float] = (0., 0.5),
                  aspect_ratio_range: Tuple[float, float] = (0., 0.5), random_seed: int = None) -> None:
-        super(RandomRectangleErasing, self).__init__(
-            F._apply_rectangle_erase, pg._random_rectangles_gen, False, random_seed)
+        super(RandomErasing, self).__init__(
+            F._apply_rectangle_erase, pg._random_erasing_gen, False, random_seed)
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
 

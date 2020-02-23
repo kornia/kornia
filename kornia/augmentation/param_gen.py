@@ -131,7 +131,7 @@ def _random_prob_gen(batch_size: int, p: float = 0.5, random_generator: Optional
     return {'batch_prob': batch_prob}
 
 
-def _random_rectangles_gen(batch_size: int, height: int, width: int, erase_scale_range: Tuple[float, float],
+def _random_erasing_gen(batch_size: int, height: int, width: int, erase_scale_range: Tuple[float, float],
                            aspect_ratio_range: Tuple[float, float], random_generator: Optional[torch.Generator]=None
                            ) -> Dict[str, torch.Tensor]:
     r""" The rectangle will have an area equal to the original image area multiplied by a value uniformly

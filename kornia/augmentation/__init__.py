@@ -4,7 +4,7 @@ from .augmentation import *
 __all__ = [
     "RandomHorizontalFlip",
     "RandomVerticalFlip",
-    "RandomRectangleErasing",
+    "RandomErasing",
     "RandomGrayscale",
     "ColorJitter",
     "RandomRotation",
