@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 
@@ -39,3 +39,14 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
         bool
     """
     return input.shape[channel_index] == number
+
+
+def _get_rng_from_seed(random_seed: Optional[int] = None) -> Optional[torch.Generator]:
+    """ Get a local RNG by seed. If seed is not provided, then return None.
+    """
+    rng = torch.Generator()
+    if random_seed is not None:
+        rng.manual_seed(random_seed)
+    else:
+        rng = None
+    return rng

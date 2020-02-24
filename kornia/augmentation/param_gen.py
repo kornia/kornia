@@ -97,11 +97,16 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
     saturation_factor = torch.FloatTensor(batch_size).uniform_(  # type: ignore
         saturation_bound[0].item(), saturation_bound[1].item(), generator=random_generator)
 
+    if random_generator is None:
+        applying_order = torch.randperm(4)
+    else:
+        applying_order = torch.randperm(4, generator=random_generator)
     return {
         "brightness_factor": brightness_factor,
         "contrast_factor": contrast_factor,
         "hue_factor": hue_factor,
         "saturation_factor": saturation_factor,
+        "order": applying_order
     }
 
 

@@ -146,7 +146,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor(0.),
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
-            'hue_factor': torch.tensor(0.)
+            'hue_factor': torch.tensor(0.),
+            'order': torch.tensor([2, 3, 1, 0])
         }
 
         input = torch.rand(3, 5, 5)  # 3 x 5 x 5
@@ -166,7 +167,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0.] * batch_size),
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
-            'hue_factor': torch.tensor([0.] * batch_size)
+            'hue_factor': torch.tensor([0.] * batch_size),
+            'order': torch.tensor([2, 3, 1, 0])
         }
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
@@ -180,12 +182,12 @@ class TestColorJitter:
         assert_allclose(F._apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
 
     def test_random_brightness(self):
-        torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([0.1529, 0.1660]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 1, 0])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -221,12 +223,12 @@ class TestColorJitter:
         assert_allclose(F._apply_color_jitter(input, jitter_param), expected)
 
     def test_random_contrast(self):
-        torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 1, 0])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -262,12 +264,12 @@ class TestColorJitter:
         assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_saturation(self):
-        torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([0.9026, 1.1175])
+            'saturation_factor': torch.tensor([0.9026, 1.1175]),
+            'order': torch.tensor([2, 3, 1, 0])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -311,12 +313,12 @@ class TestColorJitter:
         assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_hue(self):
-        torch.manual_seed(42)
         jitter_param = {
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([-0.0438, 0.0404]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 1, 0])
         }
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
