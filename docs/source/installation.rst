@@ -23,7 +23,7 @@ To install *Kornia*, you can do it in two different ways: using the provided `Py
 
 .. code:: bash
 
-    pip install git+https://github.com/arraiyopensource/kornia
+    pip install git+https://github.com/kornia/kornia
 
 Once you succeded installing *Kornia* check you can import:
 
