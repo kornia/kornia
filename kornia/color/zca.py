@@ -51,14 +51,12 @@ class ZCAWhiten(nn.Module):
 
     """
 
-    def __init__(self, eps: float = 1e-7, biased: bool = False, compute_inv: bool = False,
-                 detach_transforms: bool = True) -> None:
+    def __init__(self, eps: float = 1e-7, biased: bool = False, detach_transforms: bool = True) -> None:
 
         super(ZCAWhiten, self).__init__()
 
         self.eps: float = eps
         self.biased: bool = biased
-        self.compute_inv: bool = compute_inv
         self.detach_transforms: bool = detach_transforms
         self.fitted = False
 
@@ -75,22 +73,16 @@ class ZCAWhiten(nn.Module):
             ZCAWhiten: returns a fitted ZCAWhiten object instance.
         """
 
-        if self.compute_inv:
-            T, T_inv, mean = zca_whiten_transforms(x, self.eps, self.biased, self.compute_inv)
-            self.T_inv = T_inv
-
-            if self.detach_transforms:
-                self.T_inv = self.T_inv.detach()
-
-        else:
-            T, mean = zca_whiten_transforms(x, self.eps, self.biased, self.compute_inv)
+        T, mean, T_inv = zca_whiten_transforms(x, self.eps, self.biased, compute_inv=True)
 
         self.mean: torch.Tensor = mean
         self.T: torch.Tensor = T
+        self.T_inv: torch.Tensor = T_inv
 
         if self.detach_transforms:
             self.mean = self.mean.detach()
             self.T = self.T.detach()
+            self.T_inv = self.T_inv.detach()
 
         self.fitted = True
 
@@ -146,8 +138,6 @@ class ZCAWhiten(nn.Module):
 
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
-        if not self.compute_inv:
-            raise RuntimeError("Tried to use inverse_transform without computing the inverse transform matrix.")
 
         num_features: int = reduce(lambda a, b: a * b, x.size()[1::])
 
@@ -180,7 +170,7 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-7,
     returns:
         Tuple[torch.Tensor, ...]:
         A tuple containing the ZCA matrix and the mean vector, and if compute_inv = True, the
-        inverse whitening matrix is retured as well.
+        inverse whitening matrix is retured as well as the final return value.
 
 
 
@@ -213,6 +203,6 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-7,
 
     if compute_inv:
         T_inv: torch.Tensor = (U).mm(torch.sqrt(S) * U.t())
-        return T, T_inv, mean
+        return T, mean, T_inv
     else:
         return T, mean

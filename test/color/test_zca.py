@@ -57,7 +57,7 @@ class TestZCA:
 
         data = torch.rand(*input_shape, dtype=torch.float32).to(device)
 
-        zca = kornia.color.ZCAWhiten(compute_inv=True).fit(data)
+        zca = kornia.color.ZCAWhiten().fit(data)
 
         data_w = zca(data)
 
