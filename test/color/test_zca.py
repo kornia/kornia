@@ -60,7 +60,7 @@ class TestZCA:
 
         data_w = zca(data)
 
-        data_hat = zca(data_w, True)
+        data_hat = zca.inverse_transform(data_w)
 
         assert_allclose(data, data_hat)
 
@@ -92,7 +92,7 @@ class TestZCA:
         assert gradcheck(zca_mu, (data,), raise_exception=True)
         assert gradcheck(zca_T_inv, (data,), raise_exception=True)
 
-    def test_grad_full_zca(self, device):
+    def test_grad_zca_with_fit(self, device):
 
         data = torch.tensor([[2, 0],
                              [0, 1],
@@ -102,8 +102,11 @@ class TestZCA:
 
         data = utils.tensor_to_gradcheck_var(data)
 
-        assert gradcheck(kornia.color.ZCAWhiten(fit_in_forward=True, detach_transforms=False),
-                         (data,), raise_exception=True)
+        def zca_fit(x):
+            zca = kornia.color.ZCAWhiten(detach_transforms=False)
+            return zca(x, include_fit=True)
+
+        assert gradcheck(zca_fit, (data,), raise_exception=True)
 
     def test_grad_detach_zca(self, device):
 
@@ -114,15 +117,23 @@ class TestZCA:
                             dtype=torch.float32).to(device)
 
         data = utils.tensor_to_gradcheck_var(data)
-        zca = kornia.color.ZCAWhiten(fit_in_forward=False, detach_transforms=True).fit(data)
+        zca = kornia.color.ZCAWhiten(detach_transforms=True).fit(data)
 
         assert gradcheck(zca,
                          (data,), raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_not_fitted(self, device):
 
-        data = torch.rand((10, 3, 4, 5)).to(device)
-        zca = kornia.color.ZCAWhiten().fit(data)
-        zca_jit = torch.jit.script(kornia.color.ZCAWhiten().fit(data))
-        assert_allclose(zca_jit(data), zca(data))
+        with pytest.raises(RuntimeError):
+            data = torch.rand(10, 2).to(device)
+
+            zca = kornia.color.ZCAWhiten()
+            zca(data)
+
+    def test_not_fitted_inv(self, device):
+
+        with pytest.raises(RuntimeError):
+            data = torch.rand(10, 2).to(device)
+
+            zca = kornia.color.ZCAWhiten()
+            zca.inverse_transform(data)

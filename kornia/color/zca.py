@@ -19,19 +19,17 @@ class ZCAWhiten(nn.Module):
         eps (float) : a small number used for numerial stablility. Default=1e-7
         biased (bool): Whether to use the biased estimate of the covariance matrix. Default=False
         compute_inv (bool): Compute the inverse transform matrix. Default=False
-        detach_transforms (bool): Detaches gradient from ZCA fitting. Default=True
-        fit_in_forward (bool): Indicates if the zca whitening transform should be fitted in the forward
-                               always. Default = False
+        detach_transforms (bool): Detaches gradient from the ZCA fitting. Default=True
 
     shape:
-        - data: :math:`(N, *)` is a batch of N-D tensors.
-        - data_whiten: :math:`(N, *)`
+        - x: :math:`(N, *)` is a batch of N-D tensors.
+        - x_whiten: :math:`(N, *)`
 
 
     Examples:
-        >>> data = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
-        >>> zca = ZCAWhiten().fit(data)
-        >>> data_whiten = zca(data)
+        >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
+        >>> zca = ZCAWhiten().fit(x)
+        >>> x_whiten = zca(data)
 
     Note:
 
@@ -45,7 +43,7 @@ class ZCAWhiten(nn.Module):
     """
 
     def __init__(self, eps: float = 1e-7, biased: bool = False, compute_inv: bool = False,
-                 detach_transforms: bool = True, fit_in_forward: bool = False) -> None:
+                 detach_transforms: bool = True) -> None:
 
         super(ZCAWhiten, self).__init__()
 
@@ -53,7 +51,7 @@ class ZCAWhiten(nn.Module):
         self.biased: bool = biased
         self.compute_inv: bool = compute_inv
         self.detach_transforms: bool = detach_transforms
-        self.fit_in_forward: bool = fit_in_forward
+        self.fitted = False
 
     def fit(self, x: torch.Tensor):  # type: ignore
         r"""
@@ -85,17 +83,19 @@ class ZCAWhiten(nn.Module):
             self.mean = self.mean.detach()
             self.T = self.T.detach()
 
+        self.fitted = True
+
         return self
 
-    def forward(self, x: torch.Tensor, inv_transform: bool = False) -> torch.Tensor:  # type: ignore
+    def forward(self, x: torch.Tensor, include_fit: bool = False) -> torch.Tensor:  # type: ignore
         r"""
 
         Applies the whitening transform to the data
 
         args:
 
-            x (torch.Tensor): input data
-            inv_transform (bool): If True, the ZCA transform is applied. Otherwise, the inverse transform is applied.
+            x (torch.Tensor): Input data
+            include_fit (bool): Indicates whether to fit the data as part of the forward pass
 
         returns:
 
@@ -103,17 +103,48 @@ class ZCAWhiten(nn.Module):
 
         """
 
-        if self.fit_in_forward:
+        if include_fit:
             self.fit(x)
+
+        if not self.fitted:
+            raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
 
         num_features: int = reduce(lambda a, b: a * b, x.size()[1::])
 
         x_flat: torch.Tensor = torch.reshape(x, (-1, num_features))
 
-        if inv_transform:
-            y: torch.Tensor = (x_flat).mm(self.T_inv) + self.mean
-        else:
-            y = (x_flat - self.mean).mm(self.T)
+        y = (x_flat - self.mean).mm(self.T)
+
+        y = y.reshape(x.size())
+
+        return y
+
+    def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
+        r"""
+
+        Applies the inverse transform to the whitened data.
+
+        args:
+            x (torch.Tensor): Whitened data
+            include_fit (bool): Indicates whether to fit the data as part of the forward pass
+
+        returns:
+            torch.Tensor: original data
+
+
+
+        """
+
+        if not self.fitted:
+            raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
+        if not self.compute_inv:
+            raise RuntimeError("Tried to use inverse_transform without computing the inverse transform matrix.")
+
+        num_features: int = reduce(lambda a, b: a * b, x.size()[1::])
+
+        x_flat: torch.Tensor = torch.reshape(x, (-1, num_features))
+
+        y: torch.Tensor = (x_flat).mm(self.T_inv) + self.mean
 
         y = y.reshape(x.size())
 
