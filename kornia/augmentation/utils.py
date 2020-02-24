@@ -46,7 +46,7 @@ def _get_rng_from_seed(random_seed: Optional[int] = None) -> Optional[torch.Gene
     """
     rng = torch.Generator()
     if random_seed is not None:
-        rng.manual_seed(random_seed)
+        rng.manual_seed(random_seed)  # type: ignore
+        return rng
     else:
-        rng = None
-    return rng
+        return None
