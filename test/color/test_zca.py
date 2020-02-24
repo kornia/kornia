@@ -155,3 +155,12 @@ class TestZCA:
         out = torch.stack([lt(data[0]), lt(data[1]), lt(data[2]), lt(data[3])], axis=0)
 
         assert_allclose(out, expected)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self, device):
+
+        data = torch.rand((10, 3, 1, 2)).to(device)
+        zca = kornia.color.ZCAWhiten().fit(data)
+        zca_jit = torch.jit.script(kornia.color.ZCAWhiten().fit(data))
+        assert_allclose(zca_jit(data), zca(data))
+
