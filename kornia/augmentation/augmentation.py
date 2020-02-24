@@ -47,14 +47,13 @@ class AugmentationBase(nn.Module):
         # Wrapper for restoring the current random status
         def f(random_seed=None, **kwargs) -> Dict[str, torch.Tensor]:
             _local_rng = torch.Generator()
-            _global_rng = torch.get_rng_state()
             # Provide a seed overriden ablity
             if random_seed is not None:
                 _local_rng.manual_seed(random_seed)  # type: ignore
             elif self.random_seed is not None:
                 _local_rng.manual_seed(self.random_seed)  # type: ignore
             else:
-                _local_rng.set_state(_global_rng)  # type: ignore
+                _local_rng = None  # type: ignore
             _params: Dict[str, torch.Tensor] = param_fcn(random_generator=_local_rng, **kwargs)
             return _params
         return f
