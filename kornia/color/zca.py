@@ -9,10 +9,19 @@ class ZCAWhiten(nn.Module):
     r"""
 
     Computes the ZCA whitening matrix transform and the mean vector and applies the transform
-    to the data. The data tensor is flattened and the mean and covariance matrix are computed
-    from the flattened data. The transformation is applied as a flattened matrix, and the output
-    is reshaped to same shape.
+    to the data. The data tensor is flattened, and the mean :math:`\mathbf{\mu}` 
+    and covariance matrix :math:`\mathbf{\Sigma}` are computed from 
+    the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
+    :math:`N` is the sample size and :math:`D` is flattened dimensionality 
+    (e.g. for a tensor with size 5x3x2x2 :math:`N = 5' :math:'D = 12`). The ZCA whitening 
+    transform is given by:
 
+    .. math::
+
+        \mathbf{X}_{\text{zca}} = (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T
+
+    where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the correpsonding
+    eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
     args:
 
