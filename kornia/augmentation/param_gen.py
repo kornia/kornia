@@ -142,9 +142,12 @@ def _random_erasing_gen(batch_size: int, height: int, width: int, erase_scale_ra
     target_areas = torch.FloatTensor(batch_size).uniform_(  # type: ignore
         erase_scale_range[0], erase_scale_range[1], generator=random_generator) * images_area
     if aspect_ratio_range[0] < 1. and aspect_ratio_range[1] > 1.:
-        aspect_ratios1 = torch.FloatTensor(batch_size).uniform_(aspect_ratio_range[0], 1, generator=random_generator)  # type: ignore
-        aspect_ratios2 = torch.FloatTensor(batch_size).uniform_(1, aspect_ratio_range[1], generator=random_generator)  # type: ignore
-        rand_idxs = torch.round(torch.FloatTensor(batch_size).uniform_(0, 1, generator=random_generator)).bool()  # type: ignore
+        aspect_ratios1 = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+            aspect_ratio_range[0], 1, generator=random_generator)
+        aspect_ratios2 = torch.FloatTensor(batch_size).uniform_(  # type: ignore
+            1, aspect_ratio_range[1], generator=random_generator)
+        rand_idxs = torch.round(torch.FloatTensor(batch_size).uniform_(  # type: ignore
+            0, 1, generator=random_generator)).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
         aspect_ratios = torch.FloatTensor(batch_size).uniform_(  # type: ignore
@@ -198,7 +201,8 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
 
     factor = torch.tensor([fy, fx]).view(-1, 1, 2)
 
-    rand_val: torch.Tensor = torch.FloatTensor(batch_size, 4, 2).uniform_(0, 1, generator=random_generator)  # type: ignore
+    rand_val: torch.Tensor = torch.FloatTensor(batch_size, 4, 2).uniform_(  # type: ignore
+        0, 1, generator=random_generator)
     offset = 2 * factor * rand_val - 1
 
     end_points = start_points + offset
