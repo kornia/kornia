@@ -9,11 +9,11 @@ class ZCAWhiten(nn.Module):
     r"""
 
     Computes the ZCA whitening matrix transform and the mean vector and applies the transform
-    to the data. The data tensor is flattened, and the mean :math:`\mathbf{\mu}` 
-    and covariance matrix :math:`\mathbf{\Sigma}` are computed from 
+    to the data. The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
+    and covariance matrix :math:`\mathbf{\Sigma}` are computed from
     the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
-    :math:`N` is the sample size and :math:`D` is flattened dimensionality 
-    (e.g. for a tensor with size 5x3x2x2 :math:`N = 5' :math:'D = 12`). The ZCA whitening 
+    :math:`N` is the sample size and :math:`D` is flattened dimensionality
+    (e.g. for a tensor with size 5x3x2x2 :math:`N = 5' :math:'D = 12`). The ZCA whitening
     transform is given by:
 
     .. math::
@@ -194,7 +194,7 @@ def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-7,
     num_features: int = reduce(lambda a, b: a * b, inp.size()[1::])
 
     mean: torch.Tensor = torch.mean(inp, dim=0, keepdim=True)
-    mean = mean.view((1, num_features))
+    mean = mean.view((num_features,))
 
     inp_center_flat: torch.Tensor = inp.view((N, num_features)) - mean
 

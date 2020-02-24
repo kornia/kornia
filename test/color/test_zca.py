@@ -7,6 +7,7 @@ import kornia.testing as utils  # test utils
 import numpy as np
 
 import torch
+from torchvision.transforms import LinearTransformation
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 from test.common import device
@@ -137,3 +138,20 @@ class TestZCA:
 
             zca = kornia.color.ZCAWhiten()
             zca.inverse_transform(data)
+
+    def test_with_linear_transform(self, device):
+        data = torch.tensor([[1, 0],
+                             [0, 1],
+                             [-1, 0],
+                             [0, -1]],
+                            dtype=torch.float32).to(device)
+        data = data.view(4, 1, 2, 1)
+        expected = math.sqrt(3 / 2) * data
+
+        T, mu = kornia.color.zca_whiten_transforms(data)
+
+        lt = LinearTransformation(T, mu)
+
+        out = torch.stack([lt(data[0]), lt(data[1]), lt(data[2]), lt(data[3])], axis=0)
+
+        assert_allclose(out, expected)
