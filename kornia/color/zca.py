@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 
-class ZCAWhiten(nn.Module):
+class ZCAWhitening(nn.Module):
     r"""
 
     Computes the ZCA whitening matrix transform and the mean vector and applies the transform
@@ -37,7 +37,7 @@ class ZCAWhiten(nn.Module):
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
-        >>> zca = ZCAWhiten().fit(x)
+        >>> zca = ZCAWhitening().fit(x)
         >>> x_whiten = zca(data)
 
     Note:
@@ -73,7 +73,7 @@ class ZCAWhiten(nn.Module):
             ZCAWhiten: returns a fitted ZCAWhiten object instance.
         """
 
-        T, mean, T_inv = zca_whiten_transforms(x, self.eps, self.biased, compute_inv=True)
+        T, mean, T_inv = zca_whitening_transforms(x, self.eps, self.biased, compute_inv=True)
 
         self.mean: torch.Tensor = mean
         self.T: torch.Tensor = T
@@ -150,14 +150,14 @@ class ZCAWhiten(nn.Module):
         return y
 
 
-def zca_whiten_transforms(inp: torch.Tensor, eps: float = 1e-7,
-                          biased: bool = False, compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
+def zca_whitening_transforms(inp: torch.Tensor, eps: float = 1e-7,
+                             biased: bool = False, compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
     r"""
 
     Computes ZCA whitening matrix and mean vector. The output could be used in
     :class:`~torchvision.transforms.LinearTransformation`.
 
-    See :class:`~kornia.color.ZCAWhiten` for details.
+    See :class:`~kornia.color.ZCAWhitening` for details.
 
 
     args:
