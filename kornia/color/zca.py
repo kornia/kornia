@@ -53,7 +53,7 @@ class ZCAWhitening(nn.Module):
 
     def __init__(self, eps: float = 1e-7, biased: bool = False, detach_transforms: bool = True) -> None:
 
-        super(ZCAWhiten, self).__init__()
+        super(ZCAWhitening, self).__init__()
 
         self.eps: float = eps
         self.biased: bool = biased
