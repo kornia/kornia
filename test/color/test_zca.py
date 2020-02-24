@@ -163,4 +163,3 @@ class TestZCA:
         zca = kornia.color.ZCAWhiten().fit(data)
         zca_jit = torch.jit.script(kornia.color.ZCAWhiten().fit(data))
         assert_allclose(zca_jit(data), zca(data))
-
