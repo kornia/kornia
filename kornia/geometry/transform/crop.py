@@ -36,9 +36,9 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
             ]])
         >>> boxes = torch.tensor([[
                 [1., 1.],
-                [1., 2.],
                 [2., 1.],
                 [2., 2.],
+                [1., 2.],
             ]])  # 1x4x2
         >>> kornia.crop_and_resize(input, boxes, (2, 2))
         tensor([[[ 6.0000,  7.0000],
