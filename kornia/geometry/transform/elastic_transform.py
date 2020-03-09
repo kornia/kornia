@@ -2,7 +2,6 @@
 """
 
 # Authors: Issam H. Laradji <issam.laradji@gmail.com>
-# License: BSD 3 clause
 
 import torch 
 import math
