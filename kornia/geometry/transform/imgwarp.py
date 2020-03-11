@@ -169,15 +169,23 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(src.shape))
-
+    B, C, H, W = src.size()
+    dsize_src = (H, W)
+    out_size = dsize
     # we generate a 3x3 transformation matrix from 2x3 affine
     M_3x3: torch.Tensor = F.pad(M, [0, 0, 0, 1, 0, 0],
                                 mode="constant", value=0)
     M_3x3[:, 2, 2] += 1.0
-
-    # launches the warper
-    h, w = src.shape[-2:]
-    return transform_warp_impl(src, M_3x3, (h, w), dsize, flags, padding_mode)
+    dst_norm_trans_src_norm: torch.Tensor = src_norm_to_dst_norm(
+        M_3x3, dsize_src, out_size)
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
+                         [B, C, out_size[0], out_size[1]],
+                         align_corners=True)
+    return F.grid_sample(src, grid,  # type: ignore
+                         align_corners=True,
+                         mode=flags,
+                         padding_mode=padding_mode)
 
 
 def get_perspective_transform(src, dst):
