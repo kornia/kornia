@@ -448,7 +448,7 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
     map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
 
     # warp ans return
-    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm)
+    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm, align_corners=True)  # type: ignore
     return tensor_warped
 
 

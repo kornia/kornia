@@ -13,6 +13,8 @@ from .hls import HlsToRgb, hls_to_rgb
 from .ycbcr import RgbToYcbcr, rgb_to_ycbcr
 from .ycbcr import YcbcrToRgb, ycbcr_to_rgb
 from .yuv import RgbToYuv, YuvToRgb, rgb_to_yuv, yuv_to_rgb
+from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
+from .luv import RgbToLuv, LuvToRgb, rgb_to_luv, luv_to_rgb
 from .normalize import Normalize, normalize, Denormalize, denormalize
 from .core import add_weighted, AddWeighted
 from .adjust import (
@@ -22,6 +24,7 @@ from .adjust import (
     adjust_brightness, adjust_contrast, adjust_gamma, adjust_hue, adjust_saturation,
     adjust_hue_raw, adjust_saturation_raw
 )
+
 
 __all__ = [
     "rgb_to_grayscale",
@@ -37,6 +40,8 @@ __all__ = [
     "ycbcr_to_rgb",
     "rgb_to_yuv",
     "yuv_to_rgb",
+    "rgb_to_xyz",
+    "xyz_to_rgb",
     "normalize",
     "denormalize",
     "adjust_brightness",
@@ -61,6 +66,10 @@ __all__ = [
     "YcbcrToRgb",
     "RgbToYuv",
     "YuvToRgb",
+    "RgbToXyz",
+    "XyzToRgb",
+    "RgbToLuv",
+    "LuvToRgb",
     "Normalize",
     "Denormalize",
     "AdjustBrightness",

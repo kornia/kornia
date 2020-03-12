@@ -19,6 +19,10 @@ The functions in this section perform various color space conversions.
 .. autofunction:: bgr_to_rgba
 .. autofunction:: rgba_to_rgb
 .. autofunction:: rgba_to_bgr
+.. autofunction:: rgb_to_xyz
+.. autofunction:: xyz_to_rgb
+.. autofunction:: rgb_to_luv
+.. autofunction:: luv_to_rgb
 .. autofunction:: normalize
 .. autofunction:: denormalize
 .. autofunction:: adjust_brightness
@@ -43,6 +47,10 @@ The functions in this section perform various color space conversions.
 .. autoclass:: BgrToRgba
 .. autoclass:: RgbaToRgb
 .. autoclass:: RgbaToBgr
+.. autoclass:: RgbToXyz
+.. autoclass:: XyzToRgb
+.. autoclass:: RgbToLuv
+.. autoclass:: LuvToRgb
 .. autoclass:: Normalize
 .. autoclass:: Denormalize
 .. autoclass:: AdjustBrightness

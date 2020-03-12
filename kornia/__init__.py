@@ -4,7 +4,10 @@ import sys
 if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
-from .version import __version__
+try:
+    from .version import __version__  # noqa: F401
+except ImportError:
+    pass
 
 from kornia import augmentation
 from kornia import color
@@ -35,6 +38,10 @@ from kornia.color import (
     hls_to_rgb,
     rgb_to_ycbcr,
     ycbcr_to_rgb,
+    rgb_to_xyz,
+    xyz_to_rgb,
+    rgb_to_luv,
+    luv_to_rgb,
     normalize,
     denormalize,
     adjust_brightness,
