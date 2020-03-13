@@ -43,7 +43,7 @@ class PatchDominantGradientOrientation(nn.Module):
         self.num_ang_bins = num_angular_bins
         self.gradient = SpatialGradient('sobel', 1)
         self.eps = eps
-        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=2, bias=False, padding_mode="circular")
+        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=1, bias=False, padding_mode="circular")
         with torch.no_grad():
             self.angular_smooth.weight[:] = torch.tensor([[[0.33, 0.34, 0.33]]])
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
