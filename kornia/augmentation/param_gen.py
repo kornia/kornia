@@ -292,7 +292,7 @@ def _get_random_affine_params(
         translations = torch.zeros(batch_size, 2)
 
     center: torch.Tensor = torch.tensor(
-        [width, height], dtype=torch.float32).view(1, 2) / 2
+        [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     # concatenate transforms
