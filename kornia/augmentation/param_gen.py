@@ -276,11 +276,6 @@ def _get_random_affine_params(
     else:
         scale = torch.ones(batch_size)
 
-    if shears is not None:
-        shear = Uniform(shears[0], shears[1]).rsample((batch_size,))
-    else:
-        shear = torch.zeros(batch_size)
-
     if translate is not None:
         max_dx: float = translate[0] * width
         max_dy: float = translate[1] * height
@@ -294,16 +289,26 @@ def _get_random_affine_params(
     center: torch.Tensor = torch.tensor(
         [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
-
+    if shears is not None:
+        shears = math.radians(shears[0]), math.radians(shears[1])
+        sx = Uniform(shears[0], shears[1]).rsample((batch_size,))
+        sy = Uniform(shears[0], shears[1]).rsample((batch_size,))
+        ones = torch.ones_like(sx)
+        zeros = torch.zeros_like(sx)
+        shear_mat = torch.stack([ones, sy, -center[:, 0] * sy,
+                                 sx, ones, -center[:, 1] * sx], dim=-1).view(-1, 2, 3)
+        shear_mat = torch.nn.functional.pad(shear_mat, [0, 0, 0, 1], value=0.)
+        shear_mat[..., -1, -1] += 1.0
+    else:
+        pass
     # concatenate transforms
     transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     transform[..., 2] += translations  # tx/ty
-    transform[..., 0, 1] += shear
-    transform[..., 1, 0] += shear
-
     # pad transform to get Bx3x3
     transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
     transform_h[..., -1, -1] += 1.0
+    if shears is not None:
+        transform_h = torch.bmm(transform_h, shear_mat)
     return transform_h
 
 
