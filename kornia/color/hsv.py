@@ -54,7 +54,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] / (2 * pi)
+    h: torch.Tensor = image[..., 0, :, :] / (2 * pi.to(image.device))
     s: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
 
@@ -159,5 +159,5 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     h = (h / 6.0) % 1.0
 
-    h = 2 * pi * h
+    h = 2 * pi.to(image.device) * h
     return torch.stack([h, s, v], dim=-3)
