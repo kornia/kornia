@@ -387,11 +387,12 @@ def get_rotation_matrix2d(
 
     # create output tensor
     batch_size: int = center.shape[0]
+    one = torch.tensor(1.).to(center.device)
     M: torch.Tensor = torch.zeros(
         batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0:2, 0:2] = scaled_rotation
-    M[..., 0, 2] = (torch.tensor(1.) - alpha) * x - beta * y
-    M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
+    M[..., 0, 2] = (one - alpha) * x - beta * y
+    M[..., 1, 2] = beta * x + (one - alpha) * y
     return M
 
 
