@@ -87,9 +87,8 @@ Examples
 
 Run our Jupyter notebooks `examples <https://github.com/arraiyopensource/kornia/tree/master/examples/>`_ to learn to use the library.
 
-
 Cite
-============
+====
 
 If you are using kornia in your research-related documents, it is recommended that you cite the paper.
 
@@ -117,3 +116,12 @@ If you are using kornia in your research-related documents, it is recommended th
 Contributing
 ============
 We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the `CONTRIBUTING <https://github.com/arraiyopensource/kornia/blob/master/CONTRIBUTING.rst>`_ notes. The participation in this open source project is subject to `Code of Conduct <https://github.com/arraiyopensource/kornia/blob/master/CODE_OF_CONDUCT.md>`_.
+
+
+Communication
+=============
+
+- **forums:** discuss implementations, research, etc. https://discuss.pytorch.org/c/vision/kornia
+- **GitHub issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc.
+- **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. `[JOIN HERE] <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_
+- for general information, please visit our website at www.kornia.org
