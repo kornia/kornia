@@ -10,6 +10,7 @@ import kornia.testing as utils  # test utils
 from test.common import device
 import kornia.augmentation.param_gen as pg
 
+
 class TestPerspective:
 
     def test_smoke_no_transform(self, device):
@@ -133,7 +134,7 @@ class TestRandomAffine:
         assert len(out) == 2
         assert out[0].shape == x_data.shape
         assert out[1].shape == (1, 3, 3)
-        
+
     def test_compose_affine_matrix_3x3(self, device):
         """ To get parameters:
         import torchvision as tv
@@ -166,21 +167,21 @@ class TestRandomAffine:
         from torch import Tensor as T
         import math
         batch_size, ch, height, width = 1, 1, 96, 96
-        angle, translations, scale, shear = 6.971339922894188, (0.0, -4.0), 0.7785685905190581, [11.823560708200617, 7.06797949691645]
-        matrix_expected = T([[ 1.27536969, 4.26828945e-01, -3.23493180e+01],
-                             [ 2.18297196e-03, 1.29424165e+00, -9.19962753e+00]])
+        angle, translations = 6.971339922894188, (0.0, -4.0)
+        scale, shear = 0.7785685905190581, [11.823560708200617, 7.06797949691645]
+        matrix_expected = T([[1.27536969, 4.26828945e-01, -3.23493180e+01],
+                             [2.18297196e-03, 1.29424165e+00, -9.19962753e+00]])
         center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
         center = center.expand(batch_size, -1)
         matrix_kornia = pg._compose_affine_matrix_3x3(
-            T(translations).view(-1,2),
+            T(translations).view(-1, 2),
             center,
             T([scale]).view(-1),
             T([angle]).view(-1),
-            T([math.radians(shear[0])]).view(-1,1),
-            T([math.radians(shear[1])]).view(-1,1))
-        matrix_kornia = matrix_kornia.inverse()[0,:2].detach().cpu()
+            T([math.radians(shear[0])]).view(-1, 1),
+            T([math.radians(shear[1])]).view(-1, 1))
+        matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
         assert_allclose(matrix_kornia, matrix_expected)
-        
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
