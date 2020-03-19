@@ -258,12 +258,46 @@ def _random_rotation_gen(batch_size: int, degrees: FloatUnionType) -> Dict[str, 
     return params
 
 
+def _compose_affine_matrix_3x3(translations: torch.Tensor,
+                               center: torch.Tensor,
+                               scale: torch.Tensor,
+                               angle: torch.Tensor,
+                               sx: Optional[torch.Tensor],
+                               sy: Optional[torch.Tensor]) -> torch.Tensor:
+    r"""Composes affine matrix Bx3x3 from the components
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    if sx is not None:
+        x, y = torch.split(center, 1, dim=-1)
+        x = x.view(-1)
+        y = y.view(-1)
+        sx_tan = torch.tan(sx)  # type: ignore
+        sy_tan = torch.tan(sy)  # type: ignore
+        zeros = torch.zeros_like(sx)  # type: ignore
+        ones = torch.ones_like(sx)  # type: ignore
+        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
+                                dim=-1).view(-1, 2, 3)
+        shear_mat = torch.nn.functional.pad(shear_mat, [0, 0, 0, 1], value=0.)
+        shear_mat[..., -1, -1] += 1.0
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
+    transform_h[..., -1, -1] += 1.0
+    if sx is not None:
+        transform_h = torch.bmm(transform_h, shear_mat)
+    return transform_h
+
+
 def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
 ) -> torch.Tensor:
-    r"""Get parameters for affine transformation. The returned matrix is Bx3x3.
+    r"""Get parameters for affine transformation random generation.
+    The returned matrix is Bx3x3.
 
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
@@ -294,21 +328,15 @@ def _get_random_affine_params(
         sx = Uniform(shears[0], shears[1]).rsample((batch_size,))
         sy = Uniform(shears[0], shears[1]).rsample((batch_size,))
         ones = torch.ones_like(sx)
-        zeros = torch.zeros_like(sx)
-        shear_mat = torch.stack([ones, sy, -center[:, 0] * sy,
-                                 sx, ones, -center[:, 1] * sx], dim=-1).view(-1, 2, 3)
-        shear_mat = torch.nn.functional.pad(shear_mat, [0, 0, 0, 1], value=0.)
-        shear_mat[..., -1, -1] += 1.0
     else:
-        pass
+        sx = sy = None
     # concatenate transforms
-    transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
-    transform[..., 2] += translations  # tx/ty
-    # pad transform to get Bx3x3
-    transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
-    transform_h[..., -1, -1] += 1.0
-    if shears is not None:
-        transform_h = torch.bmm(transform_h, shear_mat)
+    transform_h = _compose_affine_matrix_3x3(translations,
+                                             center,
+                                             scale,
+                                             angle,
+                                             sx,
+                                             sy)
     return transform_h
 
 
