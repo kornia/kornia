@@ -7,6 +7,7 @@ from torch.distributions import Uniform
 
 from kornia.geometry import pi
 from kornia.geometry.transform import get_rotation_matrix2d
+from kornia.geometry.conversions import convert_affinematrix_to_homography
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -262,12 +263,16 @@ def _compose_affine_matrix_3x3(translations: torch.Tensor,
                                center: torch.Tensor,
                                scale: torch.Tensor,
                                angle: torch.Tensor,
-                               sx: Optional[torch.Tensor],
-                               sy: Optional[torch.Tensor]) -> torch.Tensor:
+                               sx: Optional[torch.Tensor] = None,
+                               sy: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Composes affine matrix Bx3x3 from the components
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
     """
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
     if sx is not None:
         x, y = torch.split(center, 1, dim=-1)
         x = x.view(-1)
@@ -279,15 +284,8 @@ def _compose_affine_matrix_3x3(translations: torch.Tensor,
         shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
                                  -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
                                 dim=-1).view(-1, 2, 3)
-        shear_mat = torch.nn.functional.pad(shear_mat, [0, 0, 0, 1], value=0.)
-        shear_mat[..., -1, -1] += 1.0
-    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
-    transform[..., 2] += translations  # tx/ty
-    # pad transform to get Bx3x3
-    transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
-    transform_h[..., -1, -1] += 1.0
-    if sx is not None:
-        transform_h = torch.bmm(transform_h, shear_mat)
+        shear_mat = convert_affinematrix_to_homography(shear_mat)
+        transform_h = transform_h @ shear_mat
     return transform_h
 
 

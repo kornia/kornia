@@ -7,7 +7,7 @@ import kornia
 from kornia.geometry.warp.homography_warper import homography_warp
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
-    deg2rad, normalize_pixel_coordinates
+    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
 )
 
 __all__ = [
@@ -173,9 +173,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     dsize_src = (H, W)
     out_size = dsize
     # we generate a 3x3 transformation matrix from 2x3 affine
-    M_3x3: torch.Tensor = F.pad(M, [0, 0, 0, 1, 0, 0],
-                                mode="constant", value=0)
-    M_3x3[:, 2, 2] += 1.0
+    M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = src_norm_to_dst_norm(
         M_3x3, dsize_src, out_size)
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
@@ -484,11 +482,9 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     if not torch.is_tensor(matrix):
         raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
                         .format(type(matrix)))
-    if not (len(matrix.shape) == 3 or matrix.shape[-2:] == (2, 3)):
+    if not (len(matrix.shape) == 3 and matrix.shape[-2:] == (2, 3)):
         raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
                          .format(matrix.shape))
-    matrix_tmp: torch.Tensor = F.pad(matrix, [0, 0, 0, 1], "constant", 0.0)
-    matrix_tmp[..., 2, 2] += 1.0
-
+    matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
     matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
     return matrix_inv[..., :2, :3]

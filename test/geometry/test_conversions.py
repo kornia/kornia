@@ -436,6 +436,46 @@ class TestConvertPointsToHomogeneous:
         assert_allclose(actual, expected)
 
 
+class TestConvertAtoH:
+    def test_convert_points(self, device):
+        # generate input data
+        A = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+        ]).to(device).view(1, 2, 3)
+
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]).to(device).view(1, 3, 3)
+
+        # to euclidean
+        H = kornia.geometry.conversions.convert_affinematrix_to_homography(A)
+        assert_allclose(H, expected)
+
+    @pytest.mark.parametrize("batch_shape", [
+        (10, 2, 3), (16, 2, 3)])
+    def test_gradcheck(self, device, batch_shape):
+        points_h = torch.rand(batch_shape).to(device)
+
+        # evaluate function gradient
+        points_h = tensor_to_gradcheck_var(points_h)  # to var
+        assert gradcheck(kornia.convert_affinematrix_to_homography, (points_h,),
+                         raise_exception=True)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self, device):
+        op = kornia.convert_affinematrix_to_homography
+        op_script = torch.jit.script(op)
+
+        points_h = torch.zeros(1, 2, 3).to(device)
+        actual = op_script(points_h)
+        expected = op(points_h)
+
+        assert_allclose(actual, expected)
+
+
 class TestConvertPointsFromHomogeneous:
     def test_convert_points(self, device):
         # generate input data
