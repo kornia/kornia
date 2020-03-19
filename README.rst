@@ -100,10 +100,11 @@ If you are using kornia in your research-related documents, it is recommended th
     author    = {E. Riba, D. Mishkin, D. Ponsa, E. Rublee and G. Bradski}
     title     = {Kornia: an Open Source Differentiable Computer Vision Library for PyTorch},
     booktitle = {Winter Conference on Applications of Computer Vision},
-    year      = {2019},
+    year      = {2020},
     url       = {https://arxiv.org/pdf/1910.02190.pdf}
   }
-	
+
+.. code:: bash
 
   @misc{Arraiy2018,
     author    = {E. Riba, M. Fathollahi, W. Chaney, E. Rublee and G. Bradski}
