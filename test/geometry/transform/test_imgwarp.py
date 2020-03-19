@@ -404,7 +404,7 @@ class TestRemap:
 
 class TestInvertAffineTransform:
     def test_smoke(self, device):
-        matrix = torch.eye(2, 3).to(device)
+        matrix = torch.eye(2, 3).to(device)[None]
         matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix, matrix_inv)
 
@@ -434,7 +434,7 @@ class TestInvertAffineTransform:
         assert_allclose(matrix_inv, expected)
 
     def test_gradcheck(self, device):
-        matrix = torch.eye(2, 3).to(device)
+        matrix = torch.eye(2, 3).to(device)[None]
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
         assert gradcheck(kornia.invert_affine_transform, (matrix,),
                          raise_exception=True)

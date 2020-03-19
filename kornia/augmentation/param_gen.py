@@ -7,6 +7,7 @@ from torch.distributions import Uniform
 
 from kornia.geometry import pi
 from kornia.geometry.transform import get_rotation_matrix2d
+from kornia.geometry.conversions import convert_affinematrix_to_homography
 
 
 UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
@@ -258,12 +259,43 @@ def _random_rotation_gen(batch_size: int, degrees: FloatUnionType) -> Dict[str, 
     return params
 
 
+def _compose_affine_matrix_3x3(translations: torch.Tensor,
+                               center: torch.Tensor,
+                               scale: torch.Tensor,
+                               angle: torch.Tensor,
+                               sx: Optional[torch.Tensor] = None,
+                               sy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Composes affine matrix Bx3x3 from the components
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
+    if sx is not None:
+        x, y = torch.split(center, 1, dim=-1)
+        x = x.view(-1)
+        y = y.view(-1)
+        sx_tan = torch.tan(sx)  # type: ignore
+        sy_tan = torch.tan(sy)  # type: ignore
+        zeros = torch.zeros_like(sx)  # type: ignore
+        ones = torch.ones_like(sx)  # type: ignore
+        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
+                                dim=-1).view(-1, 2, 3)
+        shear_mat = convert_affinematrix_to_homography(shear_mat)
+        transform_h = transform_h @ shear_mat
+    return transform_h
+
+
 def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
 ) -> torch.Tensor:
-    r"""Get parameters for affine transformation. The returned matrix is Bx3x3.
+    r"""Get parameters for affine transformation random generation.
+    The returned matrix is Bx3x3.
 
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
@@ -276,11 +308,6 @@ def _get_random_affine_params(
     else:
         scale = torch.ones(batch_size)
 
-    if shears is not None:
-        shear = Uniform(shears[0], shears[1]).rsample((batch_size,))
-    else:
-        shear = torch.zeros(batch_size)
-
     if translate is not None:
         max_dx: float = translate[0] * width
         max_dy: float = translate[1] * height
@@ -292,18 +319,22 @@ def _get_random_affine_params(
         translations = torch.zeros(batch_size, 2)
 
     center: torch.Tensor = torch.tensor(
-        [width, height], dtype=torch.float32).view(1, 2) / 2
+        [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
-
+    if shears is not None:
+        shears = math.radians(shears[0]), math.radians(shears[1])
+        sx = Uniform(shears[0], shears[1]).rsample((batch_size,))
+        sy = Uniform(shears[0], shears[1]).rsample((batch_size,))
+        ones = torch.ones_like(sx)
+    else:
+        sx = sy = None
     # concatenate transforms
-    transform: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
-    transform[..., 2] += translations  # tx/ty
-    transform[..., 0, 1] += shear
-    transform[..., 1, 0] += shear
-
-    # pad transform to get Bx3x3
-    transform_h = torch.nn.functional.pad(transform, [0, 0, 0, 1], value=0.)
-    transform_h[..., -1, -1] += 1.0
+    transform_h = _compose_affine_matrix_3x3(translations,
+                                             center,
+                                             scale,
+                                             angle,
+                                             sx,
+                                             sy)
     return transform_h
 
 
