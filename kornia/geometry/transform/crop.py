@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.transform.imgwarp import (
-    warp_perspective, get_perspective_transform
+    warp_perspective, get_perspective_transform, warp_affine
 )
 
 __all__ = [
@@ -71,7 +71,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).repeat(points_src.shape[0], 1, 1)
+    ]], device = tensor.device).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
 
@@ -134,7 +134,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [end_x, start_y],
         [end_x, end_y],
         [start_x, end_y],
-    ]])
+    ]], device = tensor.device)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -143,7 +143,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).repeat(points_src.shape[0], 1, 1)
+    ]], device = tensor.device).expand(points_src.shape[0], -1, -1)
     return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
 
 
@@ -168,8 +168,8 @@ def crop_by_boxes(tensor, src_box, dst_box,
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
 
     bbox = _infer_bounding_box(dst_box)
-    patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
+    patches: torch.Tensor = warp_affine(
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
 
     # return in the original shape
     if is_unbatched:
