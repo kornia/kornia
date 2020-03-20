@@ -6,7 +6,10 @@ import torch.nn as nn
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
     get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes)
-from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
+from kornia.color.adjust import (
+    # TODO: Remove module-like components
+    AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue,
+    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue)
 from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
