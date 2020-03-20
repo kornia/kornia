@@ -48,7 +48,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Grayscale version of the image.
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(input)))
 

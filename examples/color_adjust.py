@@ -34,6 +34,7 @@ def imshow(input: torch.Tensor):
     out_np: np.ndarray = kornia.tensor_to_image(out)
     plt.imshow(out_np)
     plt.axis('off')
+    plt.show()
 
 #############################
 # Show original
