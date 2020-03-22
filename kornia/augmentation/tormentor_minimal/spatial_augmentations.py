@@ -1,5 +1,5 @@
-from .base_augmentation import SpatialImageAugmentation, aug_parameters, aug_statenames
-from .backgrounds import *
+from base_augmentation import SpatialImageAugmentation, aug_parameters, aug_statenames
+#from .backgrounds import *
 
 import torch
 import torch.nn.functional as F
@@ -30,7 +30,7 @@ class Scale(SpatialImageAugmentation):
     """Implementation of augmentation by scaling images.
     """
     def forward_sample(self, tensor_image):
-        tensor_image.usqueeze(dim=0)
+        tensor_image.unsqueeze(dim=0)
         if self.joint:
             scale = (torch.rand(1) * (self.max_scale - self.min_scale) + self.min_scale).item()
             result = F.interpolate(tensor_image, scale_factor=[scale, scale], mode='bilinear', align_corners=True)

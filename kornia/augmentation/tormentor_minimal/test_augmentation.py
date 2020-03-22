@@ -1,4 +1,5 @@
-import tormentor
+import  base_augmentation as tormentor
+from spatial_augmentations import *
 import torch
 import pytest
 
@@ -8,7 +9,8 @@ intermediary_cls = base_cls.__subclasses__()
 all_augmentations = []
 for cls in intermediary_cls:
     all_augmentations += cls.__subclasses__()
-
+augmentations_cls_list = all_augmentations
+augmentations_cls_list = [Rotate]
 
 epsilon = .00000001
 def all_similar(t1, t2):
@@ -16,7 +18,7 @@ def all_similar(t1, t2):
     """
     return ((t1 - t2) ** 2 > epsilon).view(-1).sum() == 0
 
-def minimum_requirement_test(augmentations_cls_list):
+def test_minimum_requirement():
     for augmentation_cls in augmentations_cls_list:
 
         # Every augmentation must define at least one of forward_batch, forward_sample
@@ -54,7 +56,7 @@ def minimum_requirement_test(augmentations_cls_list):
         augmentation_cls._state_names
 
 
-def hard_requirement_test(augmentations_cls_list):
+def test_hard_requirement():
 
     # these tests should be perceived as warnings and don't make sense for all augmentations
     for augmentation_cls in augmentations_cls_list:

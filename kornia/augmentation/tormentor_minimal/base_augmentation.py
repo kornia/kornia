@@ -69,9 +69,9 @@ class DeterministicImageAugmentation(object):
         with torch.random.fork_rng(devices=(device,)):
             torch.manual_seed(self.seed)
             if len(tensor_image.size()) == 3:
-                return self.forward_batch(tensor_image)
-            elif len(tensor_image.size()) == 4:
                 return self.forward_sample(tensor_image)
+            elif len(tensor_image.size()) == 4:
+                return self.forward_batch(tensor_image)
             else:
                 raise ValueError("Augmented tensors must be samples (3D tensors) or batches (4D tensors)")
 
