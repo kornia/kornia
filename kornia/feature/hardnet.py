@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 urls: Dict[str, str] = dict()
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
+urls["liberty_aug"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth" # noqa pylint: disable
 
 
 class HardNet(nn.Module):
@@ -58,7 +59,7 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet++'])['state_dict']
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'])['state_dict']
             self.load_state_dict(pretrained_dict, strict=True)
 
     def _normalize_input(self, x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
@@ -69,7 +70,7 @@ class HardNet(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:   # type: ignore
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
