@@ -59,10 +59,13 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'])['state_dict']
-            self.load_state_dict(pretrained_dict, strict=True)
+            pretrained_dict = torch.hub.load_state_dict_from_url(
+                urls['liberty_aug'], map_location=lambda storage, loc: storage
+            )
+            self.load_state_dict(pretrained_dict['state_dict'], strict=True)
 
-    def _normalize_input(self, x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    @staticmethod
+    def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         "Utility function that normalizes the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
