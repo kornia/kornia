@@ -596,6 +596,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0):
     dxs = A[..., 5]
     # for the Hessian
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss]).view(-1, 3, 3)
+    Hes += torch.eye(3, device=Hes.device)[None] * 1e-6
 
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
