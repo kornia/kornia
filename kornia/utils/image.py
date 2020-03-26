@@ -31,7 +31,7 @@ def image_to_tensor(image: Union[np.ndarray, Image.Image], keepdim: bool = True)
             "Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
-    tensor: torch.Tensor = torch.from_numpy(image).to(torch.float)
+    tensor: torch.Tensor = torch.from_numpy(image)
 
     if len(input_shape) == 2:
         # (H, W) -> (1, H, W)
