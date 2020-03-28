@@ -146,7 +146,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor(0.),
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
-            'hue_factor': torch.tensor(0.)
+            'hue_factor': torch.tensor(0.),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(3, 5, 5)  # 3 x 5 x 5
@@ -166,7 +167,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0.] * batch_size),
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
-            'hue_factor': torch.tensor([0.] * batch_size)
+            'hue_factor': torch.tensor([0.] * batch_size),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
@@ -185,7 +187,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0.1529, 0.1660]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -226,7 +229,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -267,7 +271,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([0.9026, 1.1175])
+            'saturation_factor': torch.tensor([0.9026, 1.1175]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -316,7 +321,8 @@ class TestColorJitter:
             'brightness_factor': torch.tensor([0., 0.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([-0.0438, 0.0404]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],

@@ -102,6 +102,7 @@ def _random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
         "contrast_factor": contrast_factor,
         "hue_factor": hue_factor,
         "saturation_factor": saturation_factor,
+        "order": torch.randperm(4)
     }
 
 

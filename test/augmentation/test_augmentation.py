@@ -258,9 +258,9 @@ class TestRandomVerticalFlip:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_allclose(f(input)[0], input)
+        assert_allclose(f(input)[0], input.squeeze())
         assert_allclose(f(input)[1], expected_transform_1)
-        assert_allclose(f1(input)[0], input)
+        assert_allclose(f1(input)[0], input.squeeze())
         assert_allclose(f1(input)[1], expected_transform)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -527,7 +527,6 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]])
         expected = expected.to(device)
-
         assert_allclose(f(input), expected)
 
     def test_random_saturation_tensor(self, device):
