@@ -130,6 +130,7 @@ class TestAffineTransformation:
         # TODO: Enable non-tuple degree params in _get_random_affine_params
         params = pg._get_random_affine_params(
             batch_size=1, height=4, width=5, degrees=[10.0, 10.0], translate=None, scales=None, shears=None)
-        out_tensor = F._apply_affine(tensor_pre_transform_wrapper(in_tensor.unsqueeze(dim=0)), {'transform': params}, False)
+        out_tensor = F._apply_affine(
+            tensor_pre_transform_wrapper(in_tensor.unsqueeze(dim=0)), {'transform': params}, False)
         out_pil = tvF.affine(in_pil, angle=10.0, translate=[0, 0], scale=0.0, shear=0)
         assert_allclose(out_tensor.squeeze(), to_tensor(out_pil), atol=1e-4, rtol=1e-5)
