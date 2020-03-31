@@ -194,6 +194,7 @@ class ScalePyramid(nn.Module):
             cur_level = pyr[-1][0].squeeze(1)
             for level_idx in range(1, self.n_levels):
                 sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
+                ksize = self.get_kernel_size(sigma)
                 cur_level = gaussian_blur2d(
                     cur_level, (ksize, ksize), (sigma, sigma))
                 cur_sigma *= self.sigma_step
