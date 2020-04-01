@@ -210,6 +210,3 @@ class BinaryFocalLossWithLogits(nn.Module):
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
         return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction, self.eps)
-
-
-
