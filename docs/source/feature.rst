@@ -33,6 +33,7 @@ kornia.feature
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: SIFTDescriptor
+.. autoclass:: HardNet
 .. autoclass:: ScaleSpaceDetector
    :members: forward
 .. autoclass:: PassLAF
