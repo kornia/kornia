@@ -152,8 +152,8 @@ def binary_focal_loss_with_logits(
                 inp.device, target.device))
 
     probs = torch.sigmoid(inp)
-    loss_tmp = -alpha * torch.pow((1. - probs), gamma) * target * torch.log(probs + eps) \
-               - (1 - alpha) * torch.pow(probs, gamma) * (1. - target) * torch.log(1. - probs + eps)
+    loss_tmp = -alpha * torch.pow((1. - probs), gamma) * target * torch.log(probs + torch.tensor(eps)) \
+               - (1 - alpha) * torch.pow(probs, gamma) * (1. - target) * torch.log(1. - probs + torch.tensor(eps))
 
     if reduction == 'none':
         loss = loss_tmp
