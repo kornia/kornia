@@ -153,7 +153,7 @@ def binary_focal_loss_with_logits(
 
     probs = torch.sigmoid(inp)
     loss_tmp = -alpha * torch.pow((1. - probs), gamma) * target * torch.log(probs + torch.tensor(eps)) \
-               - (1 - alpha) * torch.pow(probs, gamma) * (1. - target) * torch.log(1. - probs + torch.tensor(eps))
+               - (1 - alpha) * torch.pow(probs, gamma) * (1. - target) * torch.log(1. - (probs + torch.tensor(eps)))
 
     if reduction == 'none':
         loss = loss_tmp
@@ -182,6 +182,7 @@ class BinaryFocalLossWithLogits(nn.Module):
 
     Arguments:
         alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        The implementation assumes that the rare class is labeled as "1"
         gamma (float): Focusing parameter :math:`\gamma >= 0`.
         reduction (str, optional): Specifies the reduction to apply to the
          output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
