@@ -19,7 +19,7 @@ class TestPerspective:
         end_points = torch.rand(1, 4, 2).to(device)
 
         params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
-        out_data = F._apply_perspective(x_data, params, return_transform=False)
+        out_data = F.apply_perspective(x_data, params, return_transform=False)
 
         assert out_data.shape == x_data.shape
 
@@ -30,7 +30,7 @@ class TestPerspective:
         end_points = torch.rand(1, 4, 2).to(device)
 
         params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
-        out_data = F._apply_perspective(x_data, params, return_transform=True)
+        out_data = F.apply_perspective(x_data, params, return_transform=True)
 
         assert isinstance(out_data, tuple)
         assert len(out_data) == 2
@@ -50,7 +50,7 @@ class TestPerspective:
         end_points = utils.tensor_to_gradcheck_var(end_points)  # to var
 
         params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
-        assert gradcheck(F._apply_perspective, (input, params,), raise_exception=True)
+        assert gradcheck(F.apply_perspective, (input, params,), raise_exception=True)
 
 
 class TestRandomPerspective:

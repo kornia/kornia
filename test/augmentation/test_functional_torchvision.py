@@ -46,7 +46,7 @@ class TestHorizontalFlip:
         in_tensor = torch.rand((3, 4, 5))
         in_pil = to_pil(in_tensor)
         flip_param_1 = {'batch_prob': torch.tensor(True)}
-        out_tensor = F._apply_hflip(tensor_pre_transform_wrapper(in_tensor), flip_param_1)
+        out_tensor = F.apply_hflip(tensor_pre_transform_wrapper(in_tensor), flip_param_1)
         out_pil = tvF.hflip(in_pil)
         assert_allclose(out_tensor, to_tensor(out_pil), atol=1e-4, rtol=1e-5)
 
@@ -56,7 +56,7 @@ class TestVerticalFlip:
         in_tensor = torch.rand((3, 4, 5))
         in_pil = to_pil(in_tensor)
         flip_param_1 = {'batch_prob': torch.tensor(True)}
-        out_tensor = F._apply_vflip(tensor_pre_transform_wrapper(in_tensor), flip_param_1)
+        out_tensor = F.apply_vflip(tensor_pre_transform_wrapper(in_tensor), flip_param_1)
         out_pil = tvF.vflip(in_pil)
         assert_allclose(out_tensor, to_tensor(out_pil), atol=1e-4, rtol=1e-5)
 
@@ -118,7 +118,7 @@ class TestAffineTransformation:
         in_tensor = torch.rand((3, 4, 5))
         in_pil = to_pil(in_tensor)
         degrees = 10
-        out_tensor = F._apply_rotation(
+        out_tensor = F.apply_rotation(
             tensor_pre_transform_wrapper(in_tensor), {'degrees': torch.tensor(degrees)}, False)
         out_pil = tvF.rotate(in_pil, angle=degrees)
         assert_allclose(out_tensor, to_tensor(out_pil), atol=1e-4, rtol=1e-5)
@@ -130,7 +130,7 @@ class TestAffineTransformation:
         # TODO: Enable non-tuple degree params in _get_random_affine_params
         params = pg._get_random_affine_params(
             batch_size=1, height=4, width=5, degrees=[10.0, 10.0], translate=None, scales=None, shears=None)
-        out_tensor = F._apply_affine(
+        out_tensor = F.apply_affine(
             tensor_pre_transform_wrapper(in_tensor.unsqueeze(dim=0)), {'transform': params}, False)
         out_pil = tvF.affine(in_pil, angle=10.0, translate=[0, 0], scale=0.0, shear=0)
         assert_allclose(out_tensor.squeeze(), to_tensor(out_pil), atol=1e-4, rtol=1e-5)
