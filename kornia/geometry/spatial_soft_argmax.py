@@ -543,13 +543,14 @@ class SpatialSoftArgmax2d(nn.Module):
                                      self.normalized_coordinates, self.eps)
 
 
-def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0):
+def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0, eps: float = 1e-6):
     r"""Function that computes the single iteration of quadratic interpolation of of the extremum (max or min) location
     and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT
 
     Args:
         strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
                                      This is needed for mimic behavior of strict NMS in classic local features
+        eps (float): parameter to control the hessian matrix ill-condition number.
     Shape:
         - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
         - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
@@ -596,7 +597,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0):
     dxs = A[..., 5]
     # for the Hessian
     Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss]).view(-1, 3, 3)
-    Hes += torch.eye(3, device=Hes.device)[None] * 1e-6
+    Hes += torch.eye(3, device=Hes.device)[None] * eps
 
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
@@ -624,13 +625,14 @@ class ConvQuadInterp3d(nn.Module):
     """
 
     def __init__(self,
-                 strict_maxima_bonus: float = 1.0) -> None:
+                 strict_maxima_bonus: float = 1.0, eps: float = 1e-6) -> None:
         super(ConvQuadInterp3d, self).__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
+        self.eps = eps
         return
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return conv_quad_interp3d(x, self.strict_maxima_bonus)
+        return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)
