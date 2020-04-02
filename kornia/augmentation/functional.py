@@ -118,10 +118,11 @@ def random_affine(input: torch.Tensor,
 
 
 def random_rectangle_erase(
-        images: torch.Tensor,
+        input: torch.Tensor,
         erase_scale_range: Tuple[float, float],
-        aspect_ratio_range: Tuple[float, float]
-) -> torch.Tensor:
+        aspect_ratio_range: Tuple[float, float],
+        return_transform: bool = False
+) -> UnionType:
     r"""
     Function that erases a random selected rectangle for each image in the batch, putting
     the value to zero.
@@ -130,7 +131,7 @@ def random_rectangle_erase(
     between [aspect_ratio_range[0], aspect_ratio_range[1])
 
     Args:
-        images (torch.Tensor): input images.
+        input (torch.Tensor): input images.
         erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
         aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
     """
@@ -148,13 +149,12 @@ def random_rectangle_erase(
             f"'aspect_ratio_range' must be a Tuple[float, float] with positive values"
         )
 
-    images_size = images.size()
+    images_size = input.size()
     b, _, h, w = images_size
     rect_params = pg.random_rectangles_params_gen(
         b, h, w, erase_scale_range, aspect_ratio_range
     )
-    images = apply_erase_rectangles(images, rect_params)
-    return images
+    return apply_erase_rectangles(input, rect_params, return_transform=return_transform)
 
 
 def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
@@ -455,8 +455,8 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
     return out_data.view_as(input)
 
 
-def apply_center_crop(
-    input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def apply_center_crop(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                      return_transform: bool = False) -> UnionType:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -527,8 +527,8 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
     )
 
 
-def apply_erase_rectangles(
-    input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                           return_transform: bool = False) -> UnionType:
     r"""
     Generate a {0, 1} mask with drawed rectangle having parameters defined by params
     and size by input.size()
@@ -556,8 +556,7 @@ def apply_erase_rectangles(
         w = heights[i_elem].item()
         y = ys[i_elem].item()
         x = xs[i_elem].item()
-        mask[i_elem, :, y:y + h, x:x + w] = 1.
+        mask[i_elem, :, int(y):int(y + h), int(x):int(x + w)] = 1.
     if return_transform:
         raise NotImplementedError
-    return input * (1 - mask)
-    
+    return input * (torch.tensor(1.) - mask)

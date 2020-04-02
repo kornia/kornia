@@ -56,8 +56,8 @@ class TestRandomProbGen:
     def test_color_jitter_tuple_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params_tuple = random_color_jitter_gen(batch_size, brightness=(-0.2, 0.2),
-                                                       contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
+        jitter_params_tuple = random_color_jitter_gen(
+            batch_size, brightness=(-0.2, 0.2), contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
         expected_jitter_params_tuple = {
             'brightness_factor': torch.tensor([
                 0.15290771424770355, 0.1660015732049942, -0.046854496002197266, 0.18372227251529694,
