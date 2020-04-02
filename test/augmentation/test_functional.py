@@ -517,3 +517,76 @@ class TestRandomGrayscale:
         expected = data
 
         assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
+
+
+class TestRandomRectangleEarasing:
+
+    def test_rectangle_erasing1(self, device):
+        inputs = torch.ones(1, 1, 10, 10).to(device)
+        rect_params = {
+            "widths": torch.tensor([5]),
+            "heights": torch.tensor([5]),
+            "xs": torch.tensor([5]),
+            "ys": torch.tensor([5])
+        }
+        expected = torch.tensor([[[
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.]
+        ]]]).to(device)
+        assert_allclose(F.apply_erase_rectangles(inputs, rect_params), expected)
+
+    def test_rectangle_erasing2(self, device):
+        inputs = torch.ones(3, 3, 3, 3).to(device)
+        rect_params = {
+            "widths": torch.tensor([3, 2, 1]),
+            "heights": torch.tensor([3, 2, 1]),
+            "xs": torch.tensor([0, 1, 2]),
+            "ys": torch.tensor([0, 1, 2])
+        }
+        expected = torch.tensor(
+            [[[[0., 0., 0.],
+               [0., 0., 0.],
+                [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]]]]
+        ).to(device)
+
+        assert_allclose(F.apply_erase_rectangles(inputs, rect_params), expected)

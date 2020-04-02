@@ -12,7 +12,6 @@ from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import param_gen as pg
-from .erasing import erase_rectangles, get_random_rectangles_params
 from .utils import _transform_input, _validate_input_shape
 
 
@@ -25,7 +24,7 @@ FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
     r"""Generate params and apply operation on input tensor.
 
-    See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
 
@@ -33,14 +32,14 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg._random_prob_gen(batch_size, p=p)
+    params = pg.random_prob_gen(batch_size, p=p)
     return apply_hflip(input, params, return_transform)
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
     r"""Generate params and apply operation on input tensor.
 
-    See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
 
@@ -48,7 +47,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg._random_prob_gen(batch_size, p=p)
+    params = pg.random_prob_gen(batch_size, p=p)
     return apply_vflip(input, params, return_transform)
 
 
@@ -57,7 +56,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
                  hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
     r"""Generate params and apply operation on input tensor.
 
-    See :func:`~kornia.augmentation.param_gen._random_color_jitter_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_color_jitter_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
 
@@ -65,14 +64,14 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg._random_color_jitter_gen(batch_size, brightness, contrast, saturation, hue)
+    params = pg.random_color_jitter_gen(batch_size, brightness, contrast, saturation, hue)
     return apply_color_jitter(input, params, return_transform)
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
     r"""Generate params and apply operation on input tensor.
 
-    See :func:`~kornia.augmentation.param_gen._random_prob_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_prob_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
 
@@ -80,7 +79,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg._random_prob_gen(batch_size, p=p)
+    params = pg.random_prob_gen(batch_size, p=p)
     return apply_grayscale(input, params, return_transform)
 
 
@@ -90,12 +89,12 @@ def random_perspective(input: torch.Tensor,
                        return_transform: bool = False) -> UnionType:
     r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
 
-    See :func:`~kornia.augmentation.param_gen._random_perspective_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_perspective_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
 
     batch_size, _, height, width = input.shape
-    params: Dict[str, torch.Tensor] = pg._random_perspective_gen(
+    params: Dict[str, torch.Tensor] = pg.random_perspective_gen(
         batch_size, height, width, p, distortion_scale)
     return apply_perspective(input, params, return_transform)
 
@@ -108,12 +107,12 @@ def random_affine(input: torch.Tensor,
                   return_transform: bool = False) -> UnionType:
     r"""Random affine transformation of the image keeping center invariant
 
-    See :func:`~kornia.augmentation.param_gen._random_affine_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_affine_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
 
     batch_size, _, height, width = input.shape
-    params: Dict[str, torch.Tensor] = pg._random_affine_gen(
+    params: Dict[str, torch.Tensor] = pg.random_affine_gen(
         batch_size, height, width, degrees, translate, scale, shear)
     return apply_affine(input, params, return_transform)
 
@@ -151,24 +150,24 @@ def random_rectangle_erase(
 
     images_size = images.size()
     b, _, h, w = images_size
-    rect_params = get_random_rectangles_params(
-        (b, ), h, w, erase_scale_range, aspect_ratio_range
+    rect_params = pg.random_rectangles_params_gen(
+        b, h, w, erase_scale_range, aspect_ratio_range
     )
-    images = erase_rectangles(images, rect_params)
+    images = apply_erase_rectangles(images, rect_params)
     return images
 
 
 def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
     r"""Generate params and apply operation on input tensor.
 
-    See :func:`~kornia.augmentation.param_gen._random_rotation_gen` for details.
+    See :func:`~kornia.augmentation.param_gen.random_rotation_gen` for details.
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
     input_tmp: torch.Tensor = input.unsqueeze(0)
     input_tmp = input_tmp.view(-1, *input_tmp.shape[-3:])
     batch_size = input_tmp.shape[0]
 
-    params = pg._random_rotation_gen(batch_size, degrees=degrees)
+    params = pg.random_rotation_gen(batch_size, degrees=degrees)
 
     return apply_rotation(input, params, return_transform)
 
@@ -179,7 +178,7 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
 
     Args:
         params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
-        kornia.augmentation.param_gen._random_prob_gen.
+        kornia.augmentation.param_gen.random_prob_gen.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -225,7 +224,7 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
 
     Args:
         params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
-        kornia.augmentation.param_gen._random_prob_gen.
+        kornia.augmentation.param_gen.random_prob_gen.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -277,7 +276,7 @@ def apply_color_jitter(input: torch.Tensor,
             'hue_factor': torch.Tensor,
             'saturation_factor': torch.Tensor,
             'order': torch.Tensor (can be generated by torch.perm(4) by default)
-            }. Can be generated from kornia.augmentation.param_gen._random_color_jitter_gen
+            }. Can be generated from kornia.augmentation.param_gen.random_color_jitter_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -323,7 +322,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
 
     Args:
         params (dict): A dict that must have {'batch_prob': torch.Tensor}. Can be generated from
-        kornia.augmentation.param_gen._random_prob_gen
+        kornia.augmentation.param_gen.random_prob_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
 
@@ -472,7 +471,7 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
 
     Args:
         params (dict): A dict that must have {'degrees': torch.Tensor}. Can be generated from
-                       kornia.augmentation.param_gen._random_rotation_gen
+                       kornia.augmentation.param_gen.random_rotation_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -509,7 +508,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
     """
     Args:
         params (dict): A dict that must have {'src': torch.Tensor, 'dst': torch.Tensor}. Can be generated from
-        kornia.augmentation.param_gen._random_crop_gen
+        kornia.augmentation.param_gen.random_crop_gen
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
         input tensor.
     Returns:
@@ -526,3 +525,39 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
         params['dst'].to(device).to(dtype),
         return_transform=return_transform
     )
+
+
+def apply_erase_rectangles(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+    r"""
+    Generate a {0, 1} mask with drawed rectangle having parameters defined by params
+    and size by input.size()
+
+    Args:
+        input (torch.Tensor): input image.
+        params Dict[str, torch.Tensor]:
+            params['widths'] must be widths tensor
+            params['heights'] must be heights tensor
+            params['xs'] must be x positions tensor
+            params['ys'] must be y positions tensor
+    """
+    if not (params['widths'].size() == params['heights'].size() == params['xs'].size() == params['ys'].size()):
+        raise TypeError(
+            f"''rectangle params components must have same shape"
+        )
+
+    mask = torch.zeros(input.size()).type_as(input)
+    widths = params['widths']
+    heights = params['heights']
+    xs = params['xs']
+    ys = params['ys']
+    for i_elem in range(input.size()[0]):
+        h = widths[i_elem].item()
+        w = heights[i_elem].item()
+        y = ys[i_elem].item()
+        x = xs[i_elem].item()
+        mask[i_elem, :, y:y + h, x:x + w] = 1.
+    if return_transform:
+        raise NotImplementedError
+    return input * (1 - mask)
+    

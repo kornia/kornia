@@ -1,18 +1,18 @@
 import torch
 
-from kornia.augmentation.param_gen import _random_prob_gen, _random_color_jitter_gen
+from kornia.augmentation.param_gen import random_prob_gen, random_color_jitter_gen
 
 
 class TestRandomProbGen:
 
-    def test_random_prob_gen(self):
+    def testrandom_prob_gen(self):
         torch.manual_seed(42)
         batch_size = 8
 
-        halfs = _random_prob_gen(batch_size=batch_size, p=.5)
+        halfs = random_prob_gen(batch_size=batch_size, p=.5)
         expected_halfs = [False, False, True, False, True, False, True, False]
-        zeros = _random_prob_gen(batch_size=batch_size, p=0.)['batch_prob']
-        ones = _random_prob_gen(batch_size=batch_size, p=1.)['batch_prob']
+        zeros = random_prob_gen(batch_size=batch_size, p=0.)['batch_prob']
+        ones = random_prob_gen(batch_size=batch_size, p=1.)['batch_prob']
 
         assert list(halfs.keys()) == ['batch_prob'], "Redundant keys found apart from `batch_prob`"
         assert (halfs['batch_prob'] == torch.tensor(expected_halfs)).long().sum() == batch_size
@@ -22,7 +22,7 @@ class TestRandomProbGen:
     def test_color_jitter_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = _random_color_jitter_gen(batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1)
+        jitter_params = random_color_jitter_gen(batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1)
         expected_jitter_params = {
             'brightness_factor': torch.tensor([
                 0.15290771424770355, 0.1660015732049942, -0.046854496002197266, 0.18372227251529694,
@@ -56,7 +56,7 @@ class TestRandomProbGen:
     def test_color_jitter_tuple_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params_tuple = _random_color_jitter_gen(batch_size, brightness=(-0.2, 0.2),
+        jitter_params_tuple = random_color_jitter_gen(batch_size, brightness=(-0.2, 0.2),
                                                        contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
         expected_jitter_params_tuple = {
             'brightness_factor': torch.tensor([

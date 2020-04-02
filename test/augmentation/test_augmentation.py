@@ -9,7 +9,6 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomRectangleErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
-from kornia.augmentation.erasing import get_random_rectangles_params, erase_rectangles
 
 from test.common import device
 
@@ -802,86 +801,22 @@ class TestRectangleRandomErasing:
         rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
-    def test_rectangle_erasing1(self, device):
-        inputs = torch.ones(1, 1, 10, 10).to(device)
-        rect_params = (
-            torch.tensor([5]), torch.tensor([5]),
-            torch.tensor([5]), torch.tensor([5])
-        )
-        expected = torch.tensor([[[
-            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
-            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
-            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
-            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
-            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.]
-        ]]]).to(device)
-        assert_allclose(erase_rectangles(inputs, rect_params), expected)
-
-    def test_rectangle_erasing2(self, device):
-        inputs = torch.ones(3, 3, 3, 3).to(device)
-        rect_params = (
-            torch.tensor([3, 2, 1]), torch.tensor([3, 2, 1]),
-            torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2])
-        )
-        expected = torch.tensor(
-            [[[[0., 0., 0.],
-               [0., 0., 0.],
-                [0., 0., 0.]],
-
-                [[0., 0., 0.],
-                 [0., 0., 0.],
-                 [0., 0., 0.]],
-
-                [[0., 0., 0.],
-                 [0., 0., 0.],
-                 [0., 0., 0.]]],
-
-                [[[1., 1., 1.],
-                  [1., 0., 0.],
-                    [1., 0., 0.]],
-
-                 [[1., 1., 1.],
-                  [1., 0., 0.],
-                    [1., 0., 0.]],
-
-                 [[1., 1., 1.],
-                  [1., 0., 0.],
-                    [1., 0., 0.]]],
-
-                [[[1., 1., 1.],
-                  [1., 1., 1.],
-                    [1., 1., 0.]],
-
-                 [[1., 1., 1.],
-                  [1., 1., 1.],
-                    [1., 1., 0.]],
-
-                 [[1., 1., 1.],
-                  [1., 1., 1.],
-                    [1., 1., 0.]]]]
-        ).to(device)
-
-        assert_allclose(erase_rectangles(inputs, rect_params), expected)
-
     def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         erase_scale_range = (.2, .4)
         aspect_ratio_range = (.3, .5)
-        rect_params = get_random_rectangles_params(
-            (2,), 11, 7, erase_scale_range, aspect_ratio_range
+        import kornia.augmentation.param_gen as pg
+        rect_params = pg.random_rectangles_params_gen(
+            2, 11, 7, erase_scale_range, aspect_ratio_range
         )
+        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            erase_rectangles,
+            rand_rec,
             (input, rect_params),
             raise_exception=True,
         )
