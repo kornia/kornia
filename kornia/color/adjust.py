@@ -255,9 +255,9 @@ class AdjustHue(nn.Module):
 
     Args:
         input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
-        hue_factor (float): How much to shift the hue channel. Should be in [-PI, PI]. PI
-          and -PI give complete reversal of hue channel in HSV space in positive and negative
-          direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
+        hue_factor (float): How much to shift the hue channel. Should be in [-0,5, 0,5]. 0.5
+          and -0.5 give complete reversal of hue channel in HSV space in positive and negative
+          direction respectively. 0 means no shift. Therefore, both -0.5 and 0.5 will give an
           image with complementary colors while 0 gives the original image.
 
     Returns:
@@ -266,7 +266,7 @@ class AdjustHue(nn.Module):
 
     def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustHue, self).__init__()
-        self.hue_factor: Union[float, torch.Tensor] = hue_factor
+        self.hue_factor: Union[float, torch.Tensor] = hue_factor * 2 * pi
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_hue(input, self.hue_factor)
@@ -298,7 +298,8 @@ class AdjustGamma(nn.Module):
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust Contrast of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -322,15 +323,16 @@ class AdjustContrast(nn.Module):
 
 
 class AdjustBrightness(nn.Module):
-    r"""Adjust Brightness of an image.
+    r"""Adjust Brightness of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
     Args:
         input (torch.Tensor): Image/Input to be adjusted in the shape of (\*, N).
         brightness_factor (Union[float, torch.Tensor]): Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+          in the batch. 0 gives a black image, 1 does not modify the input image and 2 gives a
+          white image, while any other number modify the brightness.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -338,7 +340,7 @@ class AdjustBrightness(nn.Module):
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustBrightness, self).__init__()
-        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
+        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor - 1
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return adjust_brightness(input, self.brightness_factor)
