@@ -561,8 +561,8 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
         y = ys[i_elem].item()
         x = xs[i_elem].item()
         v = vs[i_elem].item()
-        mask[i_elem, :, int(y):int(y + h), int(x):int(x + w)] = 1.
-        values[i_elem, :, int(y):int(y + h), int(x):int(x + w)] = v
+        mask[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = 1.
+        values[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = v
     if return_transform:
         raise NotImplementedError
     return torch.where(mask == 1., values, input)

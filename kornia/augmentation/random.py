@@ -307,11 +307,6 @@ def _get_random_affine_params(
     else:
         scale = torch.ones(batch_size)
 
-    if shears is not None:
-        shear = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
-    else:
-        shear = torch.zeros(batch_size)
-
     if translate is not None:
         max_dx: float = translate[0] * width
         max_dy: float = translate[1] * height
@@ -327,8 +322,8 @@ def _get_random_affine_params(
     center = center.expand(batch_size, -1)
     if shears is not None:
         shears = math.radians(shears[0]), math.radians(shears[1])
-        sx = Uniform(shears[0], shears[1]).rsample((batch_size,))
-        sy = Uniform(shears[0], shears[1]).rsample((batch_size,))
+        sx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
         ones = torch.ones_like(sx)
     else:
         sx = sy = None
