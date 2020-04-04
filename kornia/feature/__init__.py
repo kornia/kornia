@@ -30,6 +30,7 @@ from .laf import (extract_patches_from_pyramid,
                   laf_to_three_points,
                   laf_from_three_points)
 from .siftdesc import SIFTDescriptor
+from .hardnet import HardNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
@@ -59,6 +60,7 @@ __all__ = [
     "get_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
+    "HardNet",
     "PassLAF",
     "ScaleSpaceDetector",
     "LAFAffineShapeEstimator",
