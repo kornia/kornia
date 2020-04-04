@@ -7,7 +7,7 @@ from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
     get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes, warp_affine)
 from kornia.color.adjust import (
-    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue)
+    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma)
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
@@ -588,7 +588,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
 
 def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                            return_transform: bool = False):
+                          return_transform: bool = False):
     """Wrapper for adjust_contrast for Torchvision-like param settings.
     Args:
         input (torch.Tensor): Image to be adjusted in the shape of (*, N).
@@ -625,7 +625,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
 
 def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                            return_transform: bool = False):
+                     return_transform: bool = False):
     """Wrapper for adjust_hue for Torchvision-like param settings.
 
     Args:
@@ -641,3 +641,24 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
     if return_transform:
         raise NotImplementedError
     return adjust_hue(input, params['hue_factor'].type_as(input) * 2 * pi)
+
+
+def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                       return_transform: bool = False):
+    r"""Perform gamma correction on an image.
+
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
+        gamma (float): Non negative real number, same as γ\gammaγ in the equation.
+          gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+          dark regions lighter.
+        gain (float, optional): The constant multiplier. Default 1.
+
+    Returns:
+        torch.Tensor: Adjusted image.
+    """
+    if return_transform:
+        raise NotImplementedError
+    return adjust_hue(input, params['gamma_factor'].type_as(input))
