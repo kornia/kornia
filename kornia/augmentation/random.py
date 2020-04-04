@@ -8,13 +8,12 @@ from kornia.geometry import pi
 from kornia.geometry.transform import get_rotation_matrix2d
 from kornia.augmentation.utils import _adapted_uniform
 
-
-UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
-
-TupleInt = Tuple[int, int]
-TupleFloat = Tuple[float, float]
-UnionFloat = Union[float, TupleFloat]
+from .types import (
+    TupleFloat,
+    UnionFloat,
+    UnionType,
+    FloatUnionType
+)
 
 
 def random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,

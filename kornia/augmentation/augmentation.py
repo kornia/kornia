@@ -5,14 +5,14 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from . import functional as F
-from . import param_gen as pg
-
-
-TupleFloat = Tuple[float, float]
-UnionFloat = Union[float, TupleFloat]
-UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
-BoarderUnionType = Union[int, Tuple[int, int], Tuple[int, int, int, int]]
+from . import random as pg
+from .types import (
+    TupleFloat,
+    UnionFloat,
+    UnionType,
+    FloatUnionType,
+    BoarderUnionType
+)
 
 
 class AugmentationBase(nn.Module):
@@ -36,6 +36,9 @@ class AugmentationBase(nn.Module):
         return data.shape[-2:]
 
     # TODO: To be discussed
+    # We got two different settings:
+    # get_params(self, batchsize)
+    # get_params(self, batchsize, height, width)
     # def get_params(self) -> Dict[str, torch.Tensor]:
     #     raise NotImplementedError
 

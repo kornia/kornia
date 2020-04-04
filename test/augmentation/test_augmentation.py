@@ -806,11 +806,9 @@ class TestRectangleRandomErasing:
         batch_shape = (2, 3, 11, 7)
         erase_scale_range = (.2, .4)
         aspect_ratio_range = (.3, .5)
-        import kornia.augmentation.param_gen as pg
-        rect_params = pg.random_rectangles_params_gen(
-            2, 11, 7, erase_scale_range, aspect_ratio_range
-        )
+
         rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
+        rect_params = rand_rec.get_params(2, 11, 7)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)

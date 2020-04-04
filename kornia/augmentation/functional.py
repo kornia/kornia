@@ -11,14 +11,14 @@ from kornia.color.adjust import (
 from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
-from . import param_gen as pg
+from . import random as pg
 from .utils import _transform_input, _validate_input_shape
-
-
-TupleFloat = Tuple[float, float]
-UnionFloat = Union[float, TupleFloat]
-UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
+from .types import (
+    TupleFloat,
+    UnionFloat,
+    UnionType,
+    FloatUnionType
+)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:

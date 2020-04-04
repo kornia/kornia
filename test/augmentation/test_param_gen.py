@@ -1,6 +1,6 @@
 import torch
 
-from kornia.augmentation.param_gen import random_prob_gen, random_color_jitter_gen
+from kornia.augmentation.random import random_prob_gen, random_color_jitter_gen
 
 
 class TestRandomProbGen:
