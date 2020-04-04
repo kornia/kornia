@@ -117,7 +117,7 @@ class TestAdjustHue:
                               [[.25, .25],
                                [.25, .25]]]])  # 2x3x2x2
 
-        f = kornia.color.AdjustHue(torch.tensor([-0.5, 0.5]))
+        f = kornia.color.AdjustHue(torch.tensor([-pi, pi]))
         result = f(data)
         assert_allclose(result, result.flip(0))
 
@@ -125,7 +125,7 @@ class TestAdjustHue:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.adjust_hue, (img, 1. / pi),
+        assert gradcheck(kornia.adjust_hue, (img, 2.),
                          raise_exception=True)
 
 
@@ -477,7 +477,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustBrightness(1.)
+        f = kornia.color.AdjustBrightness(0.)
         assert_allclose(f(data), expected)
 
     def test_factor_one(self, device):
@@ -494,7 +494,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = torch.ones_like(data)
 
-        f = kornia.color.AdjustBrightness(2.)
+        f = kornia.color.AdjustBrightness(1.)
         assert_allclose(f(data), expected)
 
     def test_factor_minus(self, device):
@@ -520,7 +520,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = expected.to(device)
 
-        f = kornia.color.AdjustBrightness(0.5)
+        f = kornia.color.AdjustBrightness(-0.5)
         assert_allclose(f(data), expected)
 
     def test_factor_tensor(self, device):
@@ -537,7 +537,7 @@ class TestAdjustBrightness:
                              [[.5, .5],
                               [.5, .5]]])  # 4x2x2
 
-        factor = torch.tensor([1, 1.5, 1.75, 3])
+        factor = torch.tensor([0, 0.5, 0.75, 2])
 
         data = data.to(device)
         expected = torch.ones_like(data)
@@ -584,7 +584,7 @@ class TestAdjustBrightness:
                                   [[.7, .7],
                                    [.7, .7]]]])  # 2x3x2x2
 
-        factor = torch.tensor([1.25, 1.1])
+        factor = torch.tensor([0.25, 0.1])
 
         data = data.to(device)
         expected = expected.to(device)
