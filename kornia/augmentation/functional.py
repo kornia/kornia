@@ -592,7 +592,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
     """Wrapper for adjust_contrast for Torchvision-like param settings.
     Args:
         input (torch.Tensor): Image to be adjusted in the shape of (*, N).
-        params['contrast_factor'] (Union[float, torch.Tensor]): 
+        params['contrast_factor'] (Union[float, torch.Tensor]):
           Contrast adjust factor per element in the batch.
           0 generates a compleatly black image, 1 does not modify
           the input image while any other non-negative number modify the
@@ -661,4 +661,4 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
     """
     if return_transform:
         raise NotImplementedError
-    return adjust_hue(input, params['gamma_factor'].type_as(input))
+    return adjust_gamma(input, params['gamma_factor'].type_as(input))
