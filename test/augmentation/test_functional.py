@@ -8,6 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 import kornia.augmentation.functional as F
+from kornia.geometry import pi
 from kornia.augmentation import ColorJitter
 
 from test.common import device
@@ -143,7 +144,7 @@ class TestColorJitter:
     def test_color_jitter(self):
 
         jitter_param = {
-            'brightness_factor': torch.tensor(0.),
+            'brightness_factor': torch.tensor(1.),
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
             'hue_factor': torch.tensor(0.),
@@ -164,7 +165,7 @@ class TestColorJitter:
     def test_color_jitter_batch(self):
         batch_size = 2
         jitter_param = {
-            'brightness_factor': torch.tensor([0.] * batch_size),
+            'brightness_factor': torch.tensor([1.] * batch_size),
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
             'hue_factor': torch.tensor([0.] * batch_size),
@@ -184,7 +185,7 @@ class TestColorJitter:
     def test_random_brightness(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0.1529, 0.1660]),
+            'brightness_factor': torch.tensor([1.1529, 1.1660]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
@@ -226,7 +227,7 @@ class TestColorJitter:
     def test_random_contrast(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
@@ -268,7 +269,7 @@ class TestColorJitter:
     def test_random_saturation(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([0.9026, 1.1175]),
@@ -318,9 +319,9 @@ class TestColorJitter:
     def test_random_hue(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([1., 1.]),
-            'hue_factor': torch.tensor([-0.0438, 0.0404]),
+            'hue_factor': torch.tensor([-0.0438 / 2 / pi, 0.0404 / 2 / pi]),
             'saturation_factor': torch.tensor([1., 1.]),
             'order': torch.tensor([2, 3, 0, 1])
         }

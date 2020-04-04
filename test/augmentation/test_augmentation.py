@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.geometry import pi
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
 
@@ -373,7 +374,7 @@ class TestColorJitter:
 
     def test_random_brightness_tuple(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(brightness=(-0.2, 0.2))
+        f = ColorJitter(brightness=(0.8, 1.2))
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -620,7 +621,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.2)
+        f = ColorJitter(hue=0.1 / pi)
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -664,7 +665,7 @@ class TestColorJitter:
 
     def test_random_hue_list(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.2, 0.2])
+        f = ColorJitter(hue=[-0.1 / pi, 0.1 / pi])
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -709,7 +710,7 @@ class TestColorJitter:
 
     def test_random_hue_tensor(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.2, 0.2]))
+        f = ColorJitter(hue=torch.tensor([-0.1 / pi, 0.1 / pi]))
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],

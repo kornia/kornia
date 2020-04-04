@@ -4,7 +4,6 @@ import math
 
 import torch
 
-from kornia.geometry import pi
 from kornia.geometry.transform import get_rotation_matrix2d
 from kornia.geometry.conversions import convert_affinematrix_to_homography
 from kornia.augmentation.utils import _adapted_uniform
@@ -79,11 +78,10 @@ def random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
         return factor_bound
 
     brightness_bound: torch.Tensor = _check_and_bound(
-        brightness, 'brightness', bounds=(
-            float('-inf'), float('inf')))
+        brightness, 'brightness', center=1., bounds=(0, 2))
     contrast_bound: torch.Tensor = _check_and_bound(contrast, 'contrast', center=1.)
     saturation_bound: torch.Tensor = _check_and_bound(saturation, 'saturation', center=1.)
-    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-pi.item(), pi.item()))
+    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-0.5, 0.5))
 
     brightness_factor = _adapted_uniform((batch_size,), brightness_bound[0], brightness_bound[1], same_on_batch)
 

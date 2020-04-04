@@ -39,8 +39,8 @@ class TestColorJitterGen:
         jitter_params = random_color_jitter_gen(batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1)
         expected_jitter_params = {
             'brightness_factor': torch.tensor([
-                0.15290771424770355, 0.1660015732049942, -0.046854496002197266, 0.18372227251529694,
-                -0.043820708990097046, 0.04035814106464386, -0.09737100452184677, 0.11745654046535492]),
+                1.15290772914886474609375, 1.16600155830383300781250, 0.95314550399780273437500, 1.18372225761413574218750,
+                0.956179320812225341796875, 1.04035818576812744140625, 0.90262901782989501953125, 1.11745655536651611328125]),
             'contrast_factor': torch.tensor([
                 1.2644628286361694, 0.7799115180969238, 1.260758876800537, 1.056147813796997,
                 1.2216426134109497, 1.0406291484832764, 1.1446564197540283, 0.957642674446106]),
@@ -71,11 +71,12 @@ class TestColorJitterGen:
         torch.manual_seed(42)
         batch_size = 8
         jitter_params_tuple = random_color_jitter_gen(
-            batch_size, brightness=(-0.2, 0.2), contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
+            batch_size, brightness=(0.8, 1.2), contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
+
         expected_jitter_params_tuple = {
             'brightness_factor': torch.tensor([
-                0.15290771424770355, 0.1660015732049942, -0.046854496002197266, 0.18372227251529694,
-                -0.043820708990097046, 0.04035814106464386, -0.09737100452184677, 0.11745654046535492]),
+                1.15290772914886474609375, 1.16600155830383300781250, 0.95314550399780273437500, 1.18372225761413574218750,
+                0.956179320812225341796875, 1.04035818576812744140625, 0.90262901782989501953125, 1.11745655536651611328125]),
             'contrast_factor': torch.tensor([
                 1.2644628286361694, 0.7799115180969238, 1.260758876800537, 1.056147813796997,
                 1.2216426134109497, 1.0406291484832764, 1.1446564197540283, 0.957642674446106]),
@@ -106,10 +107,9 @@ class TestColorJitterGen:
         batch_size = 8
         jitter_params = random_color_jitter_gen(
             batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1, same_on_batch=True)
-        torch.set_printoptions(precision=32)
 
         expected_res = {
-            'brightness_factor': torch.tensor([0.15290771424770355224609375] * batch_size),
+            'brightness_factor': torch.tensor([1.15290772914886474609375] * batch_size),
             'contrast_factor': torch.tensor([1.24900233745574951171875] * batch_size),
             'hue_factor': torch.tensor([-0.0234272480010986328125] * batch_size),
             'saturation_factor': torch.tensor([1.367444515228271484375] * batch_size),
