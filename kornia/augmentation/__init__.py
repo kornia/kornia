@@ -1,5 +1,15 @@
 from .augmentation import *
-
+from kornia.color.adjust import (
+    AdjustHue,
+    AdjustGamma,
+    AdjustSaturation,
+    AdjustBrightness,
+    AdjustContrast
+)
+from kornia.color.normalize import (
+    Normalize,
+    Denormalize
+)
 
 __all__ = [
     "RandomHorizontalFlip",
@@ -9,5 +19,13 @@ __all__ = [
     "ColorJitter",
     "RandomRotation",
     "RandomCrop",
-    "RandomResizedCrop"
+    "RandomResizedCrop",
+    "AdjustHue",
+    "AdjustGamma",
+    "AdjustSaturation",
+    "AdjustBrightness",
+    "AdjustContrast",
+    "Normalize",
+    "Denormalize"
+
 ]

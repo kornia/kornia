@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomRectangleErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
+    RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop
 
 from test.common import device
 
@@ -798,7 +798,7 @@ class TestRectangleRandomErasing:
     def test_random_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
-        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
 
     def test_gradcheck(self, device):
@@ -807,7 +807,7 @@ class TestRectangleRandomErasing:
         erase_scale_range = (.2, .4)
         aspect_ratio_range = (.3, .5)
 
-        rand_rec = RandomRectangleErasing(erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range)
         rect_params = rand_rec.get_params(2, 11, 7)
 
         # evaluate function gradient
@@ -827,7 +827,7 @@ class TestRectangleRandomErasing:
 
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
-        expected = RandomRectangleErasing(
+        expected = RandomErasing(
             (.2, .4), (.3, .5)
         )(img)
         actual = op_script(img)

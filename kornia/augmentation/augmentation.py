@@ -265,7 +265,6 @@ class RandomErasing(AugmentationBase):
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
         self._params: Dict[str, torch.Tensor] = {}
-        self.p = p
 
     def __repr__(self) -> str:
         repr = f"(erase_scale_range={self.erase_scale_range}, aspect_ratio_range={self.aspect_ratio_range})"
