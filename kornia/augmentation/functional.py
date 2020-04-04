@@ -5,9 +5,10 @@ import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
-    get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes)
+    get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes, warp_affine)
 from kornia.color.adjust import (
     adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue)
+from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
 from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
@@ -446,8 +447,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
 
     height, width = x_data.shape[-2:]
     transform: torch.Tensor = params['transform'].to(device, dtype)
-
-    out_data: torch.Tensor = warp_perspective(x_data, transform, (height, width))
+    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width))
 
     if return_transform:
         return out_data.view_as(input), transform
