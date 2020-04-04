@@ -5,7 +5,7 @@ from kornia.augmentation.random import random_prob_gen, random_color_jitter_gen
 
 class TestRandomProbGen:
 
-    def testrandom_prob_gen(self):
+    def test_random_prob_gen(self):
         torch.manual_seed(42)
         batch_size = 8
 
@@ -18,6 +18,20 @@ class TestRandomProbGen:
         assert (halfs['batch_prob'] == torch.tensor(expected_halfs)).long().sum() == batch_size
         assert (zeros == torch.tensor([False] * batch_size)).long().sum() == batch_size
         assert (ones == torch.tensor([True] * batch_size)).long().sum() == batch_size
+
+    def test_random_prob_gen_same_on_batch(self):
+        batch_size = 8
+
+        torch.manual_seed(42)
+        falses = random_prob_gen(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        assert (falses == torch.tensor([False] * batch_size)).long().sum() == batch_size
+
+        torch.manual_seed(0)
+        trues = random_prob_gen(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        assert (trues == torch.tensor([True] * batch_size)).long().sum() == batch_size
+
+
+class TestColorJitterGen:
 
     def test_color_jitter_gen(self):
         torch.manual_seed(42)
@@ -86,3 +100,23 @@ class TestRandomProbGen:
         assert (jitter_params_tuple['saturation_factor'] == expected_jitter_params_tuple['saturation_factor']) \
             .long().sum() == batch_size
         assert (jitter_params_tuple['order'] == expected_jitter_params_tuple['order']).long().sum() == 4
+
+    def test_random_prob_gen_same_on_batch(self):
+        torch.manual_seed(42)
+        batch_size = 8
+        jitter_params = random_color_jitter_gen(
+            batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1, same_on_batch=True)
+        torch.set_printoptions(precision=32)
+
+        expected_res = {
+            'brightness_factor': torch.tensor([0.15290771424770355224609375] * batch_size),
+            'contrast_factor': torch.tensor([1.24900233745574951171875] * batch_size),
+            'hue_factor': torch.tensor([-0.0234272480010986328125] * batch_size),
+            'saturation_factor': torch.tensor([1.367444515228271484375] * batch_size),
+            'order': torch.tensor([2, 3, 0, 1])
+        }
+        assert (jitter_params['brightness_factor'] == expected_res['brightness_factor']).long().sum() == batch_size
+        assert (jitter_params['contrast_factor'] == expected_res['contrast_factor']).long().sum() == batch_size
+        assert (jitter_params['saturation_factor'] == expected_res['saturation_factor']).long().sum() == batch_size
+        assert (jitter_params['hue_factor'] == expected_res['hue_factor']).long().sum() == batch_size
+        assert (jitter_params['order'] == expected_res['order']).long().sum() == 4
