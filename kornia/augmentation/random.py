@@ -373,7 +373,7 @@ def random_crop_size_gen(size: Tuple[int, int], scale: Tuple[float, float], rati
 def random_rectangles_params_gen(batch_size: int, height: int, width: int,
                                  erase_scale_range: Tuple[float, float],
                                  aspect_ratio_range: Tuple[float, float],
-                                 same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                                 value: float = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     images_area = height * width
     target_areas = _adapted_uniform(
         (batch_size,), erase_scale_range[0], erase_scale_range[1], same_on_batch) * images_area
@@ -401,5 +401,6 @@ def random_rectangles_params_gen(batch_size: int, height: int, width: int,
     params["heights"] = heights
     params["xs"] = xs
     params["ys"] = ys
+    params["values"] = torch.tensor([value] * batch_size)
 
     return params

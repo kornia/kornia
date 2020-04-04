@@ -540,6 +540,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
             params['heights'] must be heights tensor
             params['xs'] must be x positions tensor
             params['ys'] must be y positions tensor
+            params['values'] is the value to fill in
     """
     if not (params['widths'].size() == params['heights'].size() == params['xs'].size() == params['ys'].size()):
         raise TypeError(
@@ -547,16 +548,21 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
         )
 
     mask = torch.zeros(input.size()).type_as(input)
+    values = torch.zeros(input.size()).type_as(input)
+
     widths = params['widths']
     heights = params['heights']
     xs = params['xs']
     ys = params['ys']
+    vs = params['values']
     for i_elem in range(input.size()[0]):
         h = widths[i_elem].item()
         w = heights[i_elem].item()
         y = ys[i_elem].item()
         x = xs[i_elem].item()
+        v = vs[i_elem].item()
         mask[i_elem, :, int(y):int(y + h), int(x):int(x + w)] = 1.
+        values[i_elem, :, int(y):int(y + h), int(x):int(x + w)] = v
     if return_transform:
         raise NotImplementedError
-    return input * (torch.tensor(1.) - mask)
+    return torch.where(mask == 1., values, input)

@@ -527,7 +527,8 @@ class TestRandomRectangleEarasing:
             "widths": torch.tensor([5]),
             "heights": torch.tensor([5]),
             "xs": torch.tensor([5]),
-            "ys": torch.tensor([5])
+            "ys": torch.tensor([5]),
+            "values": torch.tensor([0.])
         }
         expected = torch.tensor([[[
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
@@ -549,7 +550,8 @@ class TestRandomRectangleEarasing:
             "widths": torch.tensor([3, 2, 1]),
             "heights": torch.tensor([3, 2, 1]),
             "xs": torch.tensor([0, 1, 2]),
-            "ys": torch.tensor([0, 1, 2])
+            "ys": torch.tensor([0, 1, 2]),
+            "values": torch.tensor([0., 0., 0.])
         }
         expected = torch.tensor(
             [[[[0., 0., 0.],
