@@ -10,6 +10,8 @@ kornia.feature
 .. autofunction:: gftt_response
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
+.. autofunction:: histogram
+.. autofunction:: histogram2d
 .. autofunction:: extract_patches_from_pyramid
 .. autofunction:: extract_patches_simple
 .. autofunction:: normalize_laf
