@@ -138,8 +138,8 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
         distortion_scale (float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
 
     Returns:
-        List containing [top-left, top-right, bottom-right, bottom-left] of the original image,
-        List containing [top-left, top-right, bottom-right, bottom-left] of the transformed image.
+        List containing [top-left, top-right, bottom-left, bottom-right] of the original image,
+        List containing [top-left, top-right, bottom-left, bottom-right] of the transformed image.
         The points are in -x order.
     """
     start_points: torch.Tensor = torch.tensor([[
@@ -153,12 +153,15 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
     fx: float = distortion_scale * width / 2
     fy: float = distortion_scale * height / 2
 
-    factor = torch.tensor([fy, fx]).view(-1, 1, 2)
+    factor = torch.tensor([[
+        [fy, fx],
+        [fy, width - fx - 1],
+        [height - fy - 1, fx],
+        [height - fy - 1, width - fx - 1],
+    ]]).expand(batch_size, -1, -1)
 
-    rand_val: torch.Tensor = _adapted_uniform((batch_size, 4, 2), 0, 1, same_on_batch)
-    offset = 2 * factor * rand_val - 1
-
-    end_points = start_points + offset
+    rand_val: torch.Tensor = _adapted_uniform((batch_size, 4, 2), 1 - distortion_scale, 1, same_on_batch)
+    end_points = factor * rand_val
 
     return start_points, end_points
 
