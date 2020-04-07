@@ -24,6 +24,8 @@ For detailed comparision, please checkout the [Colab: Kornia vs. Torchvision](ht
 .. autoclass:: CenterCrop
 .. autoclass:: RandomCrop
 .. autoclass:: RandomResizedCrop
+.. autoclass:: Normalize
+.. autoclass:: Denormalize
 
 .. automodule:: kornia.augmentation.functional
     :members:

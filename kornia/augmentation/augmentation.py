@@ -5,14 +5,15 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from . import functional as F
-from . import param_gen as pg
-
-
-TupleFloat = Tuple[float, float]
-UnionFloat = Union[float, TupleFloat]
-UnionType = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-FloatUnionType = Union[torch.Tensor, float, Tuple[float, float], List[float]]
-BoarderUnionType = Union[int, Tuple[int, int], Tuple[int, int, int, int]]
+from . import random as pg
+from .utils import _adapted_uniform
+from .types import (
+    TupleFloat,
+    UnionFloat,
+    UnionType,
+    FloatUnionType,
+    BoarderUnionType
+)
 
 
 class AugmentationBase(nn.Module):
@@ -36,6 +37,9 @@ class AugmentationBase(nn.Module):
         return data.shape[-2:]
 
     # TODO: To be discussed
+    # We got two different settings:
+    # get_params(self, batchsize)
+    # get_params(self, batchsize, height, width)
     # def get_params(self) -> Dict[str, torch.Tensor]:
     #     raise NotImplementedError
 
@@ -233,7 +237,7 @@ class RandomGrayscale(AugmentationBase):
         return super().forward(input, self._params)
 
 
-class RandomRectangleErasing(AugmentationBase):
+class RandomErasing(AugmentationBase):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -246,7 +250,7 @@ class RandomRectangleErasing(AugmentationBase):
 
     Examples:
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = kornia.augmentation.RandomRectangleErasing((.4, .8), (.3, 1/.3))
+        >>> rec_er = kornia.augmentation.RandomErasing((.4, .8), (.3, 1/.3))
         >>> rec_er(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
@@ -257,7 +261,7 @@ class RandomRectangleErasing(AugmentationBase):
             self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float]
     ) -> None:
         # TODO: return_transform is disabled for now.
-        super(RandomRectangleErasing, self).__init__(F.apply_erase_rectangles, return_transform=False)
+        super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform=False)
         self.erase_scale_range: Tuple[float, float] = erase_scale_range
         self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
         self._params: Dict[str, torch.Tensor] = {}
