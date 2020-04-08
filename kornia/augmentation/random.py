@@ -148,18 +148,19 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
     ]]).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
-    fx: float = distortion_scale * width / 2
-    fy: float = distortion_scale * height / 2
+    fx: float = distortion_scale * height / 2
+    fy: float = distortion_scale * width / 2
 
-    factor = torch.tensor([[
-        [fy, fx],
-        [fy, width - fx - 1],
-        [height - fy - 1, fx],
-        [height - fy - 1, width - fx - 1],
-    ]]).expand(batch_size, -1, -1)
+    factor = torch.tensor([fx, fy]).view(-1, 1, 2)
 
-    rand_val: torch.Tensor = _adapted_uniform((batch_size, 4, 2), 1 - distortion_scale, 1, same_on_batch)
-    end_points = factor * rand_val
+    rand_val: torch.Tensor = _adapted_uniform((batch_size, 4, 2), 0, 1, same_on_batch)
+    mat = torch.tensor([[
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1]
+    ]])
+    end_points = start_points + factor * rand_val * mat
 
     return start_points, end_points
 
