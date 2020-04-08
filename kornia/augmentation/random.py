@@ -136,8 +136,8 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
         distortion_scale (float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
 
     Returns:
-        List containing [top-left, top-right, bottom-left, bottom-right] of the original image,
-        List containing [top-left, top-right, bottom-left, bottom-right] of the transformed image.
+        List containing [top-left, top-right, bottom-right, bottom-left] of the original image,
+        List containing [top-left, top-right, bottom-right, bottom-left] of the transformed image.
         The points are in -x order.
     """
     start_points: torch.Tensor = torch.tensor([[
