@@ -75,7 +75,7 @@ def unproject_points(
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
             matrix. The tensor shape must be Bx4x4.
-        normalize (bool, optional): wether to normalize the pointcloud. This
+        normalize (bool, optional): whether to normalize the pointcloud. This
             must be set to `True` when the depth is represented as the Euclidean
             ray length from the camera position. Default is `False`.
 
