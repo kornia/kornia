@@ -10,12 +10,15 @@ from kornia.utils import create_meshgrid
 from kornia.filters import spatial_gradient
 
 
-def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
+def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     Args:
         depth (torch.Tensor): image tensor containing a depth value per pixel.
         camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
+        normalize_points (bool): whether to normalise the pointcloud. This
+            must be set to `True` when the depth is represented as the Euclidean
+            ray length from the camera position. Default is `False`.
 
     Shape:
         - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
@@ -51,7 +54,7 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tenso
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
     points_3d: torch.Tensor = unproject_points(
-        points_2d, points_depth, camera_matrix_tmp, normalize=True)  # BxHxWx3
+        points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points)  # BxHxWx3
 
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW
 
