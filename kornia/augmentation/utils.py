@@ -1,6 +1,7 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
+from torch.distributions import Uniform
 
 
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
@@ -39,3 +40,15 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
         bool
     """
     return input.shape[channel_index] == number
+
+
+def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=False):
+    r""" The uniform function that accepts 'same_on_batch'.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
+    By default, same_on_batch is set to False.
+    """
+    dist = Uniform(low, high)
+    if same_on_batch:
+        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+    else:
+        return dist.rsample(shape)
