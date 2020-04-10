@@ -77,12 +77,13 @@ def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L166
 
-def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
+def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str='bilinear') -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
     Args:
         tensor (torch.Tensor): The image tensor to be warped.
         matrix (torch.Tensor): The 2x3 affine transformation matrix.
+        mode (str): 'bilinear' | 'nearest'
 
     Returns:
         torch.Tensor: The warped image.
@@ -99,7 +100,7 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
     # warp the input tensor
     height: int = tensor.shape[-2]
     width: int = tensor.shape[-1]
-    warped: torch.Tensor = warp_affine(tensor, matrix, (height, width))
+    warped: torch.Tensor = warp_affine(tensor, matrix, (height, width), mode)
 
     # return in the original shape
     if is_unbatched:
@@ -112,7 +113,7 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor) -> torch.Tensor:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L185
 
 def rotate(tensor: torch.Tensor, angle: torch.Tensor,
-           center: Union[None, torch.Tensor] = None) -> torch.Tensor:
+           center: Union[None, torch.Tensor] = None, mode: str = 'bilinear') -> torch.Tensor:
     r"""Rotate the image anti-clockwise about the centre.
 
     See :class:`~kornia.Rotate` for details.
@@ -141,7 +142,7 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
     rotation_matrix: torch.Tensor = _compute_rotation_matrix(angle, center)
 
     # warp using the affine transform
-    return affine(tensor, rotation_matrix[..., :2, :3])
+    return affine(tensor, rotation_matrix[..., :2, :3], mode)
 
 
 def translate(tensor: torch.Tensor, translation: torch.Tensor) -> torch.Tensor:

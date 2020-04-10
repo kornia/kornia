@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
+from kornia.constants import Resample
 from . import functional as F
 from . import random as pg
-from .constants import Resample
 from .utils import _adapted_uniform
 from .types import (
     TupleFloat,
@@ -445,9 +445,11 @@ class RandomRotation(AugmentationBase):
              [ 0.0000,  0.0000,  1.0000]]]))
     """
 
-    def __init__(self, degrees: FloatUnionType = 45.0, return_transform: bool = False) -> None:
+    def __init__(self, degrees: FloatUnionType = 45.0, interpolation: Resample = Resample.BILINEAR,
+                 return_transform: bool = False) -> None:
         super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
         self.degrees = degrees
+        self.interpolation = interpolation
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
@@ -455,7 +457,7 @@ class RandomRotation(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_rotation_gen(batch_size, self.degrees, same_on_batch)
+        return pg.random_rotation_gen(batch_size, self.degrees, self.interpolation, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
 

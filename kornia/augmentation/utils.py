@@ -42,7 +42,7 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
     return input.shape[channel_index] == number
 
 
-def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=False):
+def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=False) -> torch.Tensor:
     r""" The uniform function that accepts 'same_on_batch'.
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.

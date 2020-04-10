@@ -1,8 +1,10 @@
 from typing import Tuple, List, Union, Dict, cast, Optional
+import math
 
 import torch
 import torch.nn as nn
 
+from kornia.constants import Resample
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
     get_perspective_transform,
@@ -13,7 +15,7 @@ from kornia.geometry.transform import (
     crop_by_boxes,
     warp_affine
 )
-from kornia.geometry.conversions import convert_affinematrix_to_homography
+from kornia.geometry.conversions import convert_affinematrix_to_homography, deg2rad
 from kornia.color.adjust import (
     adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma)
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
@@ -23,7 +25,6 @@ from kornia.geometry import pi
 
 from . import random as pg
 from .utils import _transform_input, _validate_input_shape
-from .constants import Resample
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -443,7 +444,8 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
 
     # concatenate transforms
     transform = _compose_affine_matrix_3x3(
-        params['translations'], params['center'], params['scale'], params['angle'], params['sx'], params['sy']
+        params['translations'], params['center'], params['scale'], params['angle'],
+        deg2rad(params['sx']), deg2rad(params['sy'])
     ).type_as(input)
 
     resample_name = Resample(params['resample'].item()).name.lower()
@@ -485,7 +487,8 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
     input = input.view((-1, (*input.shape[-3:])))
     angles: torch.Tensor = params["degrees"].type_as(input)
 
-    transformed: torch.Tensor = rotate(input, angles).squeeze(0)
+    transformed: torch.Tensor = rotate(
+        input, angles, mode=Resample(params['interpolation'].item()).name.lower()).squeeze(0)
 
     if return_transform:
 
@@ -698,6 +701,7 @@ def _compose_affine_matrix_3x3(translations: torch.Tensor,
     transform[..., 2] += translations  # tx/ty
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
+    print(sx, sy)
     if sx is not None:
         x, y = torch.split(center, 1, dim=-1)
         x = x.view(-1)

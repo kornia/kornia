@@ -4,9 +4,9 @@ import math
 
 import torch
 
+from kornia.constants import Resample
 from kornia.augmentation.utils import _adapted_uniform
 
-from .constants import Resample
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -184,7 +184,7 @@ def random_affine_gen(
         translate: Optional[TupleFloat] = None,
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
-        resample: Resample = Resample.NEAREST,
+        resample: Resample = Resample.BILINEAR,
         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     # check angle ranges
     degrees_tmp: TupleFloat
@@ -232,6 +232,7 @@ def random_affine_gen(
 
 
 def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
+                        interpolation: Resample = Resample.BILINEAR,
                         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
@@ -252,10 +253,12 @@ def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
     if degrees.numel() != 2:
         raise ValueError("If degrees is a sequence it must be of length 2")
 
-    params: Dict[str, torch.Tensor] = {}
-    params["degrees"] = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
+    degrees = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
-    return params
+    return dict(
+        degrees=degrees,
+        interpolation=torch.tensor(interpolation.value)
+    )
 
 
 def _get_random_affine_params(
@@ -263,7 +266,7 @@ def _get_random_affine_params(
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
     resample: Resample = Resample.BILINEAR, same_on_batch: bool = False
-) -> torch.Tensor:
+) -> Dict[str, torch.Tensor]:
     r"""Get parameters for affine transformation random generation.
     The returned matrix is Bx3x3.
 
@@ -292,11 +295,10 @@ def _get_random_affine_params(
         [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
     if shears is not None:
-        shears = math.radians(shears[0]), math.radians(shears[1])
         sx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
         sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
     else:
-        sx = sy = None
+        sx = sy = torch.tensor([0] * batch_size)
     return dict(
         translations=translations,
         center=center,
