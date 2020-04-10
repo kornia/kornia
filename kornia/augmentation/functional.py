@@ -1,5 +1,4 @@
 from typing import Tuple, List, Union, Dict, cast, Optional
-import math
 
 import torch
 import torch.nn as nn
@@ -701,7 +700,7 @@ def _compose_affine_matrix_3x3(translations: torch.Tensor,
     transform[..., 2] += translations  # tx/ty
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
-    print(sx, sy)
+
     if sx is not None:
         x, y = torch.split(center, 1, dim=-1)
         x = x.view(-1)

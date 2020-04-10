@@ -77,7 +77,7 @@ def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L166
 
-def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str='bilinear') -> torch.Tensor:
+def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear') -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
     Args:

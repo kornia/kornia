@@ -356,7 +356,7 @@ class RandomAffine(AugmentationBase):
                  translate: Optional[TupleFloat] = None,
                  scale: Optional[TupleFloat] = None,
                  shear: Optional[UnionFloat] = None,
-                 resample: Optional[Resample] = Resample.BILINEAR,
+                 resample: Resample = Resample.BILINEAR,
                  return_transform: bool = False) -> None:
         super(RandomAffine, self).__init__(F.apply_affine, return_transform)
         self.degrees = degrees
