@@ -186,7 +186,7 @@ def random_affine_gen(
         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     # check angle ranges
     degrees_tmp: TupleFloat
-    if isinstance(degrees, float):
+    if isinstance(degrees, float) or isinstance(degrees, int):
         if degrees < 0.:
             raise ValueError("If degrees is a single number, it must be positive.")
         degrees_tmp = (-degrees, degrees)
