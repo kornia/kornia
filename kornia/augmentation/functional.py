@@ -23,6 +23,7 @@ from kornia.geometry import pi
 
 from . import random as pg
 from .utils import _transform_input, _validate_input_shape
+from .constants import Resample
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -114,6 +115,7 @@ def random_affine(input: torch.Tensor,
                   translate: Optional[TupleFloat] = None,
                   scale: Optional[TupleFloat] = None,
                   shear: Optional[UnionFloat] = None,
+                  resample: Resample = Resample.BILINEAR,
                   return_transform: bool = False) -> UnionType:
     r"""Random affine transformation of the image keeping center invariant
 
@@ -123,7 +125,7 @@ def random_affine(input: torch.Tensor,
 
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = pg.random_affine_gen(
-        batch_size, height, width, degrees, translate, scale, shear)
+        batch_size, height, width, degrees, translate, scale, shear, resample)
     return apply_affine(input, params, return_transform)
 
 
@@ -423,6 +425,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
                 range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
                 a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
                 Will not apply shear by default
+            resample (int): Can be retrieved from Resample. 0 is NEAREST, 1 is BILINEAR.
             return_transform (bool): if ``True`` return the matrix describing the transformation
                 applied to each. Default: False.
             mode (str): interpolation mode to calculate output values
@@ -443,7 +446,9 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
         params['translations'], params['center'], params['scale'], params['angle'], params['sx'], params['sy']
     ).type_as(input)
 
-    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width))
+    resample_name = Resample(params['resample'].item()).name.lower()
+
+    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width), resample_name)
 
     if return_transform:
         return out_data.view_as(input), transform

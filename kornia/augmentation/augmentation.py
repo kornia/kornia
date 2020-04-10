@@ -6,6 +6,7 @@ from torch.nn.functional import pad
 
 from . import functional as F
 from . import random as pg
+from .constants import Resample
 from .utils import _adapted_uniform
 from .types import (
     TupleFloat,
@@ -340,6 +341,7 @@ class RandomAffine(AugmentationBase):
                 range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
                 a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
                 Will not apply shear by default
+            resample (Resample.NEAREST, Resample.BILINEAR): Default: Resample.BILINEAR
             return_transform (bool): if ``True`` return the matrix describing the transformation
                 applied to each. Default: False.
 
@@ -354,19 +356,22 @@ class RandomAffine(AugmentationBase):
                  translate: Optional[TupleFloat] = None,
                  scale: Optional[TupleFloat] = None,
                  shear: Optional[UnionFloat] = None,
+                 resample: Optional[Resample] = Resample.BILINEAR,
                  return_transform: bool = False) -> None:
         super(RandomAffine, self).__init__(F.apply_affine, return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
         self.shear = shear
+        self.resample = resample
         self.return_transform = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
     def get_params(self, batch_size: int, height: int, width: int,
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         return pg.random_affine_gen(
-            batch_size, height, width, self.degrees, self.translate, self.scale, self.shear, same_on_batch)
+            batch_size, height, width, self.degrees, self.translate, self.scale, self.shear,
+            self.resample, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:

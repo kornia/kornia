@@ -6,6 +6,7 @@ import torch
 
 from kornia.augmentation.utils import _adapted_uniform
 
+from .constants import Resample
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -183,6 +184,7 @@ def random_affine_gen(
         translate: Optional[TupleFloat] = None,
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
+        resample: Resample = Resample.NEAREST,
         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     # check angle ranges
     degrees_tmp: TupleFloat
@@ -226,7 +228,7 @@ def random_affine_gen(
         shear_tmp = shear
 
     return _get_random_affine_params(
-        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, same_on_batch)
+        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch)
 
 
 def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
@@ -260,7 +262,7 @@ def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
-    same_on_batch: bool = False
+    resample: Resample = Resample.BILINEAR, same_on_batch: bool = False
 ) -> torch.Tensor:
     r"""Get parameters for affine transformation random generation.
     The returned matrix is Bx3x3.
@@ -301,7 +303,8 @@ def _get_random_affine_params(
         scale=scale,
         angle=angle,
         sx=sx,
-        sy=sy
+        sy=sy,
+        resample=torch.tensor(resample.value)
     )
 
 
