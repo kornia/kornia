@@ -4,8 +4,6 @@ import math
 
 import torch
 
-from kornia.geometry.transform import get_rotation_matrix2d
-from kornia.geometry.conversions import convert_affinematrix_to_homography
 from kornia.augmentation.utils import _adapted_uniform
 
 from .types import (
@@ -227,9 +225,8 @@ def random_affine_gen(
     else:
         shear_tmp = shear
 
-    transform: torch.Tensor = _get_random_affine_params(
+    return _get_random_affine_params(
         batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, same_on_batch)
-    return dict(transform=transform)
 
 
 def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
@@ -257,36 +254,6 @@ def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
     params["degrees"] = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
     return params
-
-
-def _compose_affine_matrix_3x3(translations: torch.Tensor,
-                               center: torch.Tensor,
-                               scale: torch.Tensor,
-                               angle: torch.Tensor,
-                               sx: Optional[torch.Tensor] = None,
-                               sy: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Composes affine matrix Bx3x3 from the components
-    Returns:
-        torch.Tensor: params to be passed to the affine transformation.
-    """
-    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
-    transform[..., 2] += translations  # tx/ty
-    # pad transform to get Bx3x3
-    transform_h = convert_affinematrix_to_homography(transform)
-    if sx is not None:
-        x, y = torch.split(center, 1, dim=-1)
-        x = x.view(-1)
-        y = y.view(-1)
-        sx_tan = torch.tan(sx)  # type: ignore
-        sy_tan = torch.tan(sy)  # type: ignore
-        zeros = torch.zeros_like(sx)  # type: ignore
-        ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
-                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
-                                dim=-1).view(-1, 2, 3)
-        shear_mat = convert_affinematrix_to_homography(shear_mat)
-        transform_h = transform_h @ shear_mat
-    return transform_h
 
 
 def _get_random_affine_params(
@@ -326,17 +293,16 @@ def _get_random_affine_params(
         shears = math.radians(shears[0]), math.radians(shears[1])
         sx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
         sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
-        ones = torch.ones_like(sx)
     else:
         sx = sy = None
-    # concatenate transforms
-    transform_h = _compose_affine_matrix_3x3(translations,
-                                             center,
-                                             scale,
-                                             angle,
-                                             sx,
-                                             sy)
-    return transform_h
+    return dict(
+        translations=translations,
+        center=center,
+        scale=scale,
+        angle=angle,
+        sx=sx,
+        sy=sy
+    )
 
 
 def random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],

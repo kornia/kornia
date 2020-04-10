@@ -5,7 +5,15 @@ import torch.nn as nn
 
 from kornia.geometry.transform.flips import hflip, vflip
 from kornia.geometry.transform import (
-    get_perspective_transform, warp_perspective, center_crop, rotate, crop_by_boxes, warp_affine)
+    get_perspective_transform,
+    get_rotation_matrix2d,
+    warp_perspective,
+    center_crop,
+    rotate,
+    crop_by_boxes,
+    warp_affine
+)
+from kornia.geometry.conversions import convert_affinematrix_to_homography
 from kornia.color.adjust import (
     adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma)
 from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
@@ -440,14 +448,16 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
 
     input = _transform_input(input)
 
-    device: torch.device = input.device
-    dtype: torch.dtype = input.dtype
-
     # arrange input data
     x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
 
     height, width = x_data.shape[-2:]
-    transform: torch.Tensor = params['transform'].to(device, dtype)
+
+    # concatenate transforms
+    transform = _compose_affine_matrix_3x3(
+        params['translations'], params['center'], params['scale'], params['angle'], params['sx'], params['sy']
+    ).type_as(input)
+
     out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width))
 
     if return_transform:
@@ -662,3 +672,33 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
     if return_transform:
         raise NotImplementedError
     return adjust_gamma(input, params['gamma_factor'].type_as(input))
+
+
+def _compose_affine_matrix_3x3(translations: torch.Tensor,
+                               center: torch.Tensor,
+                               scale: torch.Tensor,
+                               angle: torch.Tensor,
+                               sx: Optional[torch.Tensor] = None,
+                               sy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Composes affine matrix Bx3x3 from the components
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
+    if sx is not None:
+        x, y = torch.split(center, 1, dim=-1)
+        x = x.view(-1)
+        y = y.view(-1)
+        sx_tan = torch.tan(sx)  # type: ignore
+        sy_tan = torch.tan(sy)  # type: ignore
+        zeros = torch.zeros_like(sx)  # type: ignore
+        ones = torch.ones_like(sx)  # type: ignore
+        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
+                                dim=-1).view(-1, 2, 3)
+        shear_mat = convert_affinematrix_to_homography(shear_mat)
+        transform_h = transform_h @ shear_mat
+    return transform_h
