@@ -276,7 +276,7 @@ class TestSobel:
             [0., 1.4142, 2.0, 1.4142, 0.],
         ]]]).to(device)
 
-        edges = kornia.filters.sobel(inp, normalized=False)
+        edges = kornia.filters.sobel(inp, normalized=False, eps=0.)
         assert_allclose(edges, expected)
 
     def test_noncontiguous(self, device):
