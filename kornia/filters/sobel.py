@@ -128,7 +128,7 @@ class Sobel(nn.Module):
 
     Args:
         normalized (bool): if True, L1 norm of the kernel is set to 1.
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-8.
+        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
