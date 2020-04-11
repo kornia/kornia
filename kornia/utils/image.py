@@ -1,15 +1,12 @@
-from typing import Union
-from PIL import Image
-
 import numpy as np
 import torch
 
 
-def image_to_tensor(image: Union[np.ndarray, Image.Image], keepdim: bool = True) -> torch.Tensor:
-    """Converts a numpy or PIL image to a PyTorch 4d tensor image.
+def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
+    """Converts a numpy image to a PyTorch 4d tensor image.
 
     Args:
-        image (numpy.ndarray or PIL Image): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
+        image (numpy.ndarray): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
         keepdim (bool): If ``False`` unsqueeze the input image to match the shape
             :math:`(B, H, W, C)`. Default: ``True``
@@ -19,19 +16,16 @@ def image_to_tensor(image: Union[np.ndarray, Image.Image], keepdim: bool = True)
             :math:`(C, H, W)` otherwise.
 
     """
-    if not isinstance(image, (np.ndarray, Image.Image)):
-        raise TypeError("Input type must be a numpy.ndarray or PIL Image. Got {}".format(
+    if not isinstance(image, (np.ndarray,)):
+        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(
             type(image)))
-
-    if isinstance(image, Image.Image):
-        image = np.array(image)
 
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError(
             "Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
-    tensor: torch.Tensor = torch.from_numpy(image).to(torch.float)
+    tensor: torch.Tensor = torch.from_numpy(image)
 
     if len(input_shape) == 2:
         # (H, W) -> (1, H, W)
