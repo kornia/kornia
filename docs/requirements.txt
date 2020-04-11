@@ -2,7 +2,6 @@
 -f https://download.pytorch.org/whl/torch_stable.html
 sphinx==2.1.2
 sphinx-gallery==0.4.0
-sphinx_rtd_theme==0.4.3
 sphinxcontrib-bibtex==0.4.2
 nbsphinx==0.4.2
 nbconvert==5.5.0
@@ -11,3 +10,4 @@ matplotlib==3.1.1
 opencv-python==4.1.1.26
 torch==1.3.0+cpu
 torchvision==0.4.1+cpu
+-e git://github.com/edgarriba/kornia_sphinx_theme.git
