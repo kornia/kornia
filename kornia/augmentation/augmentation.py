@@ -534,6 +534,8 @@ class RandomCrop(AugmentationBase):
         if params is None:
             batch_size = self.infer_batch_size(input)
             self._params = self.get_params(batch_size, (batch_shape[-2], batch_shape[-1]))
+        else:
+            self._params = params
         return super().forward(input, self._params)
 
 
