@@ -581,6 +581,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
     Returns:
         torch.Tensor: Adjusted image.
     """
+    input = _transform_input(input)
     transformed = adjust_brightness(input, params['brightness_factor'].type_as(input) - 1)
 
     if return_transform:
@@ -604,6 +605,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
     Returns:
         torch.Tensor: Adjusted image.
     """
+    input = _transform_input(input)
     transformed = adjust_contrast(input, params['contrast_factor'].type_as(input))
 
     if return_transform:
@@ -626,6 +628,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
     Returns:
         torch.Tensor: Adjusted image.
     """
+    input = _transform_input(input)
     transformed = adjust_saturation(input, params['saturation_factor'].type_as(input))
 
     if return_transform:
@@ -649,6 +652,7 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
     Returns:
         torch.Tensor: Adjusted image.
     """
+    input = _transform_input(input)
     transformed = adjust_hue(input, params['hue_factor'].type_as(input) * 2 * pi)
 
     if return_transform:
@@ -674,6 +678,7 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
     Returns:
         torch.Tensor: Adjusted image.
     """
+    input = _transform_input(input)
     transformed = adjust_gamma(input, params['gamma_factor'].type_as(input))
 
     if return_transform:
