@@ -209,7 +209,6 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
 
     to_flip = params['batch_prob'].to(input.device)
     flipped[to_flip] = hflip(input[to_flip])
-    flipped.squeeze_()
 
     if return_transform:
 
@@ -252,7 +251,6 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     flipped: torch.Tensor = input.clone()
     to_flip = params['batch_prob'].to(input.device)
     flipped[to_flip] = vflip(input[to_flip])
-    flipped.squeeze_()
 
     if return_transform:
 
