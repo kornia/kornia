@@ -3,6 +3,7 @@ from enum import Enum
 
 T = TypeVar('T', bound='Resample')
 
+
 class Resample(Enum):
     NEAREST = 0
     BILINEAR = 1
@@ -13,7 +14,7 @@ class Resample(Enum):
         if type(value) == str:
             return cls[value]  # type: ignore
         if type(value) == int:
-            return cls(value)
+            return cls(value)  # type: ignore
         if type(value) == cls:
             return value  # type: ignore
         raise TypeError()
