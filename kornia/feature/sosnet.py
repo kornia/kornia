@@ -2,7 +2,6 @@ from typing import Dict
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 urls: Dict[str, str] = dict()
 urls["lib"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights/sosnet-32x32-liberty.pth"
@@ -54,7 +53,7 @@ class SOSNet(nn.Module):
             nn.BatchNorm2d(128, affine=False),
         )
         self.desc_norm = nn.Sequential(
-            nn.LocalResponseNorm(2 * self.dim_desc, alpha=2 * self.dim_desc, beta=0.5, k=0)
+            nn.LocalResponseNorm(256, alpha=256, beta=0.5, k=0)
         )
         # load pretrained model
         if pretrained:
@@ -65,7 +64,7 @@ class SOSNet(nn.Module):
 
         return
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:   # type: ignore
-        descr = self.desc_norm(self.layers(input) + 1e-10)
+    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:   # type: ignore
+        descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr
