@@ -1,6 +1,7 @@
-from typing import Union
+from typing import Union, TypeVar
 from enum import Enum
 
+T = TypeVar('T', bound='Resample')
 
 class Resample(Enum):
     NEAREST = 0
@@ -8,8 +9,7 @@ class Resample(Enum):
     BICUBIC = 2
 
     @classmethod
-    def get(cls, value: Union[str, int, Resample]):  # type: ignore
-        # TODO: Cannot define return type as Resample due to py3.6, 3.7 differences
+    def get(cls, value: Union[str, int, T]) -> T:  # type: ignore
         if type(value) == str:
             return cls[value]  # type: ignore
         if type(value) == int:
