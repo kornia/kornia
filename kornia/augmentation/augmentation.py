@@ -356,14 +356,14 @@ class RandomAffine(AugmentationBase):
                  translate: Optional[TupleFloat] = None,
                  scale: Optional[TupleFloat] = None,
                  shear: Optional[UnionFloat] = None,
-                 resample: Resample = Resample.BILINEAR,
+                 resample: Union[str, int, Resample] = Resample.BILINEAR,
                  return_transform: bool = False) -> None:
         super(RandomAffine, self).__init__(F.apply_affine, return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
         self.shear = shear
-        self.resample = resample
+        self.resample = Resample.get(resample)
         self.return_transform = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
@@ -427,6 +427,7 @@ class RandomRotation(AugmentationBase):
     Args:
         degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
         range of degrees to select from will be (-degrees, +degrees)
+        resample (Resample.NEAREST, Resample.BILINEAR): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -445,11 +446,11 @@ class RandomRotation(AugmentationBase):
              [ 0.0000,  0.0000,  1.0000]]]))
     """
 
-    def __init__(self, degrees: FloatUnionType = 45.0, interpolation: Resample = Resample.BILINEAR,
+    def __init__(self, degrees: FloatUnionType = 45.0, interpolation: Union[str, int, Resample] = Resample.BILINEAR,
                  return_transform: bool = False) -> None:
         super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
         self.degrees = degrees
-        self.interpolation = interpolation
+        self.interpolation = Resample.get(interpolation)
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
@@ -550,7 +551,7 @@ class RandomResizedCrop(AugmentationBase):
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
-        interpolation: Default: PIL.Image.BILINEAR
+        interpolation: Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated

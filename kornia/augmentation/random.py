@@ -184,11 +184,11 @@ def random_affine_gen(
         translate: Optional[TupleFloat] = None,
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
-        resample: Resample = Resample.BILINEAR,
+        resample: Union[str, int, Resample] = Resample.BILINEAR,
         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     # check angle ranges
     degrees_tmp: TupleFloat
-    if isinstance(degrees, float) or isinstance(degrees, int):
+    if isinstance(degrees, (float, int,)):
         if degrees < 0.:
             raise ValueError("If degrees is a single number, it must be positive.")
         degrees_tmp = (-degrees, degrees)
@@ -232,7 +232,7 @@ def random_affine_gen(
 
 
 def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
-                        interpolation: Resample = Resample.BILINEAR,
+                        interpolation: Union[str, int, Resample] = Resample.BILINEAR,
                         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
@@ -257,7 +257,7 @@ def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
 
     return dict(
         degrees=degrees,
-        interpolation=torch.tensor(interpolation.value)
+        interpolation=torch.tensor(Resample.get(interpolation).value)
     )
 
 
@@ -265,7 +265,7 @@ def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
-    resample: Resample = Resample.BILINEAR, same_on_batch: bool = False
+    resample: Union[str, int, Resample] = Resample.BILINEAR, same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for affine transformation random generation.
     The returned matrix is Bx3x3.
@@ -306,7 +306,7 @@ def _get_random_affine_params(
         angle=angle,
         sx=sx,
         sy=sy,
-        resample=torch.tensor(resample.value)
+        resample=torch.tensor(Resample.get(resample).value)
     )
 
 

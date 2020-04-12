@@ -237,7 +237,7 @@ def get_perspective_transform(src, dst):
         raise ValueError("Inputs must have the same shape. Got {}"
                          .format(dst.shape))
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Got {}"
+        raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 
     def ax(p, q):
