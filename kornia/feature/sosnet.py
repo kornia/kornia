@@ -49,7 +49,7 @@ class SOSNet(nn.Module):
             nn.BatchNorm2d(128, affine=False),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Conv2d(128, self.dim_desc, kernel_size=8, bias=False),
+            nn.Conv2d(128, 128, kernel_size=8, bias=False),
             nn.BatchNorm2d(128, affine=False),
         )
         self.desc_norm = nn.Sequential(
