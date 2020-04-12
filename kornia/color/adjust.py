@@ -298,7 +298,8 @@ class AdjustGamma(nn.Module):
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust Contrast of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -322,7 +323,8 @@ class AdjustContrast(nn.Module):
 
 
 class AdjustBrightness(nn.Module):
-    r"""Adjust Brightness of an image.
+    r"""Adjust Brightness of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
