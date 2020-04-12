@@ -12,7 +12,8 @@ urls["hp_a"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights//
 class SOSNet(nn.Module):
     """
     128-dimensional SOSNet model definition for 32x32 patches.
-    This is based on the original code from paper "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
+    This is based on the original code from paper
+    "SOSNet:Second Order Similarity Regularization for Local Descriptor Learning".
     Args:
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
     Returns:

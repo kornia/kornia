@@ -30,4 +30,3 @@ class TestSOSNet:
         sosnet = SOSNet().to(patches.device, patches.dtype)
         assert gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4,
                          raise_exception=True, )
-
