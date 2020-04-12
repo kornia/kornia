@@ -480,12 +480,11 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    input = input.unsqueeze(0)
-    input = input.view((-1, (*input.shape[-3:])))
+    input = _transform_input(input)
     angles: torch.Tensor = params["degrees"].type_as(input)
 
     transformed: torch.Tensor = rotate(
-        input, angles, mode=Resample(params['interpolation'].item()).name.lower()).squeeze(0)
+        input, angles, mode=Resample(params['interpolation'].item()).name.lower())
 
     if return_transform:
 
