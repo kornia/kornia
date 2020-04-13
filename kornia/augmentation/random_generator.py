@@ -310,9 +310,10 @@ def _get_random_affine_params(
     )
 
 
-def random_crop_generator(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
-                          resize_to: Optional[Tuple[int, int]] = None,
-                          same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+def random_crop_generator(
+    batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int], resize_to: Optional[Tuple[int, int]] = None,
+    interpolation: Union[str, int, Resample] = Resample.BILINEAR, same_on_batch: bool = False
+) -> Dict[str, torch.Tensor]:
     x_diff = input_size[1] - size[1]
     y_diff = input_size[0] - size[0]
 
@@ -344,7 +345,7 @@ def random_crop_generator(batch_size: int, input_size: Tuple[int, int], size: Tu
             [0, resize_to[0] - 1],
         ]]).repeat(batch_size, 1, 1)
 
-    return {'src': crop_src, 'dst': crop_dst}
+    return {'src': crop_src, 'dst': crop_dst, 'interpolation': torch.tensor(Resample.get(interpolation).value)}
 
 
 def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float], ratio: Tuple[float, float],

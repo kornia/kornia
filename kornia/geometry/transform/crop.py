@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
+def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int], interpolation: str = 'bilinear',
                     return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Extracts crops from the input tensor and resizes them.
     Args:
@@ -73,10 +73,10 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [0, dst_h - 1],
     ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+    return crop_by_boxes(tensor, points_src, points_dst, interpolation, return_transform=return_transform)
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
+def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str = 'bilinear',
                 return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Crops the given tensor at the center.
 
@@ -144,10 +144,10 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
     ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
-    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+    return crop_by_boxes(tensor, points_src, points_dst, interpolation, return_transform=return_transform)
 
 
-def crop_by_boxes(tensor, src_box, dst_box,
+def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear',
                   return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """A wrapper performs crop transform with bounding boxes.
 
@@ -169,7 +169,8 @@ def crop_by_boxes(tensor, src_box, dst_box,
 
     bbox = _infer_bounding_box(dst_box)
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())),
+        flags=interpolation)
 
     # return in the original shape
     if is_unbatched:

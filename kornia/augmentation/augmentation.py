@@ -559,17 +559,16 @@ class RandomResizedCrop(AugmentationBase):
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale=(1.0, 1.0), ratio=(1.0, 1.0), interpolation=None,
-        return_transform: bool = False, same_on_batch: bool = False
+        self, size: Tuple[int, int], scale: Tuple[float, float]=(1.0, 1.0), ratio: Tuple[float, float]=(1.0, 1.0),
+        interpolation: Union[str, int, Resample] = Resample.BILINEAR, return_transform: bool = False,
+        same_on_batch: bool = False
     ) -> None:
         super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform, same_on_batch)
         self.size = size
         self.scale = scale
         self.ratio = ratio
-        self.interpolation = interpolation
+        self.interpolation = Resample.get(interpolation)
         self._params: Dict[str, torch.Tensor] = {}
-        if interpolation is not None:
-            raise ValueError("Interpolation has not been implemented. Please set to None")
 
     def __repr__(self) -> str:
         repr = f"RandomResizedCrop(size={self.size}, resize_to={self.scale}, resize_to={self.ratio}\
