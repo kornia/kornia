@@ -161,7 +161,8 @@ def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear',
         tensor = torch.unsqueeze(tensor, dim=0)
 
     # compute transformation between points and warp
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box, dst_box)
+    # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 

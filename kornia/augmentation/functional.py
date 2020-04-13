@@ -522,8 +522,8 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
 
     return crop_by_boxes(
         input,
-        params['src'].float(),
-        params['dst'].float(),
+        params['src'],
+        params['dst'],
         Resample.get(params['interpolation'].item()).name.lower(),  # type: ignore
         return_transform=return_transform
     )

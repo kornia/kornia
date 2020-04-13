@@ -463,7 +463,7 @@ class TestAffine2d:
                              [2.18297196e-03, 1.29424165e+00, -9.19962753e+00]])
         center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
         center = center.expand(batch_size, -1)
-        matrix_kornia = F._compose_affine_matrix_3x3(
+        matrix_kornia = kornia.get_affine_matrix2d(
             T(translations).view(-1, 2),
             center,
             T([scale]).view(-1),
