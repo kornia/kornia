@@ -6,7 +6,7 @@ from torch.nn.functional import pad
 
 from kornia.constants import Resample
 from . import functional as F
-from . import random as pg
+from . import random_generator as rg
 from .utils import _adapted_uniform
 from .types import (
     TupleFloat,
@@ -105,7 +105,7 @@ class RandomHorizontalFlip(AugmentationBase):
         self._params: Dict[str, torch.Tensor] = {}
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_prob_gen(batch_size, self.p, same_on_batch)
+        return rg.random_prob_generator(batch_size, self.p, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -152,7 +152,7 @@ class RandomVerticalFlip(AugmentationBase):
         self._params: Dict[str, torch.Tensor] = {}
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_prob_gen(batch_size, self.p, same_on_batch)
+        return rg.random_prob_generator(batch_size, self.p, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -195,7 +195,7 @@ class ColorJitter(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_color_jitter_gen(
+        return rg.random_color_jitter_generator(
             batch_size, self.brightness, self.contrast, self.saturation, self.hue, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
@@ -227,7 +227,7 @@ class RandomGrayscale(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_prob_gen(batch_size, self.p, same_on_batch)
+        return rg.random_prob_generator(batch_size, self.p, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -273,7 +273,7 @@ class RandomErasing(AugmentationBase):
 
     def get_params(self, batch_size: int, height: int, width: int,
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_rectangles_params_gen(
+        return rg.random_rectangles_params_generator(
             batch_size, height, width, self.erase_scale_range, self.aspect_ratio_range, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
@@ -310,7 +310,7 @@ class RandomPerspective(AugmentationBase):
 
     def get_params(self, batch_size: int, height: int, width: int,
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_perspective_gen(batch_size, height, width, self.p, self.distortion_scale, same_on_batch)
+        return rg.random_perspective_generator(batch_size, height, width, self.p, self.distortion_scale, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -369,7 +369,7 @@ class RandomAffine(AugmentationBase):
 
     def get_params(self, batch_size: int, height: int, width: int,
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_affine_gen(
+        return rg.random_affine_generator(
             batch_size, height, width, self.degrees, self.translate, self.scale, self.shear,
             self.resample, same_on_batch)
 
@@ -458,7 +458,7 @@ class RandomRotation(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_rotation_gen(batch_size, self.degrees, self.interpolation, same_on_batch)
+        return rg.random_rotation_generator(batch_size, self.degrees, self.interpolation, same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
 
@@ -509,7 +509,7 @@ class RandomCrop(AugmentationBase):
 
     def get_params(self, batch_size: int, input_size: Tuple[int, int],
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        return pg.random_crop_gen(batch_size, input_size, self.size, same_on_batch=same_on_batch)
+        return rg.random_crop_generator(batch_size, input_size, self.size, same_on_batch=same_on_batch)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
 
@@ -575,9 +575,9 @@ class RandomResizedCrop(AugmentationBase):
 
     def get_params(self, batch_size: int, input_size: Tuple[int, int],
                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-        target_size = pg.random_crop_size_gen(self.size, self.scale, self.ratio)
+        target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
         _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
-        return pg.random_crop_gen(
+        return rg.random_crop_generator(
             batch_size, input_size, _target_size, resize_to=self.size, same_on_batch=same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore

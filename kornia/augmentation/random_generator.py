@@ -15,7 +15,7 @@ from .types import (
 )
 
 
-def random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
+def random_color_jitter_generator(batch_size: int, brightness: FloatUnionType = 0.,
                             contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
                             hue: FloatUnionType = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     r"""Generator random color jiter parameters for a batch of images.
@@ -99,7 +99,7 @@ def random_color_jitter_gen(batch_size: int, brightness: FloatUnionType = 0.,
     }
 
 
-def random_prob_gen(batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+def random_prob_generator(batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     r"""Generator random probabilities for a batch of inputs.
 
     Args:
@@ -164,10 +164,10 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
     return start_points, end_points
 
 
-def random_perspective_gen(
+def random_perspective_generator(
     batch_size: int, height: int, width: int, p: float, distortion_scale: float, same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    params: Dict[str, torch.Tensor] = random_prob_gen(batch_size, p)
+    params: Dict[str, torch.Tensor] = random_prob_generator(batch_size, p)
     start_points, end_points = (
         _get_perspective_params(batch_size, width, height, distortion_scale, same_on_batch)
     )
@@ -176,7 +176,7 @@ def random_perspective_gen(
     return params
 
 
-def random_affine_gen(
+def random_affine_generator(
         batch_size: int,
         height: int,
         width: int,
@@ -231,7 +231,7 @@ def random_affine_gen(
         batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch)
 
 
-def random_rotation_gen(batch_size: int, degrees: FloatUnionType,
+def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
                         interpolation: Union[str, int, Resample] = Resample.BILINEAR,
                         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
 
@@ -310,7 +310,7 @@ def _get_random_affine_params(
     )
 
 
-def random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
+def random_crop_generator(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
                     resize_to: Optional[Tuple[int, int]] = None,
                     same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     x_diff = input_size[1] - size[1]
@@ -347,7 +347,7 @@ def random_crop_gen(batch_size: int, input_size: Tuple[int, int], size: Tuple[in
     return {'src': crop_src, 'dst': crop_dst}
 
 
-def random_crop_size_gen(size: Tuple[int, int], scale: Tuple[float, float], ratio: Tuple[float, float],
+def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float], ratio: Tuple[float, float],
                          same_on_batch: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     area = _adapted_uniform((10,), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
     log_ratio = _adapted_uniform((10,), math.log(ratio[0]), math.log(ratio[1]), same_on_batch)
@@ -374,7 +374,7 @@ def random_crop_size_gen(size: Tuple[int, int], scale: Tuple[float, float], rati
     return (h, w)
 
 
-def random_rectangles_params_gen(batch_size: int, height: int, width: int,
+def random_rectangles_params_generator(batch_size: int, height: int, width: int,
                                  erase_scale_range: Tuple[float, float],
                                  aspect_ratio_range: Tuple[float, float],
                                  value: float = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:

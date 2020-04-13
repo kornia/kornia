@@ -8,7 +8,6 @@ import kornia
 import kornia.augmentation.functional as F
 import kornia.testing as utils  # test utils
 from test.common import device
-import kornia.augmentation.random as pg
 
 
 class TestPerspective:

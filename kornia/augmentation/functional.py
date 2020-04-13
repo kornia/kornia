@@ -22,7 +22,7 @@ from kornia.color.gray import rgb_to_grayscale
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 from kornia.geometry import pi
 
-from . import random as pg
+from . import random_generator as rg
 from .utils import _transform_input, _validate_input_shape
 from .types import (
     TupleFloat,
@@ -43,7 +43,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg.random_prob_gen(batch_size, p=p)
+    params = rg.random_prob_generator(batch_size, p=p)
     return apply_hflip(input, params, return_transform)
 
 
@@ -58,7 +58,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg.random_prob_gen(batch_size, p=p)
+    params = rg.random_prob_generator(batch_size, p=p)
     return apply_vflip(input, params, return_transform)
 
 
@@ -75,7 +75,7 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg.random_color_jitter_gen(batch_size, brightness, contrast, saturation, hue)
+    params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
     return apply_color_jitter(input, params, return_transform)
 
 
@@ -90,7 +90,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
         batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
-    params = pg.random_prob_gen(batch_size, p=p)
+    params = rg.random_prob_generator(batch_size, p=p)
     return apply_grayscale(input, params, return_transform)
 
 
@@ -105,7 +105,7 @@ def random_perspective(input: torch.Tensor,
     """
 
     batch_size, _, height, width = input.shape
-    params: Dict[str, torch.Tensor] = pg.random_perspective_gen(
+    params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
         batch_size, height, width, p, distortion_scale)
     return apply_perspective(input, params, return_transform)
 
@@ -124,7 +124,7 @@ def random_affine(input: torch.Tensor,
     """
 
     batch_size, _, height, width = input.shape
-    params: Dict[str, torch.Tensor] = pg.random_affine_gen(
+    params: Dict[str, torch.Tensor] = rg.random_affine_generator(
         batch_size, height, width, degrees, translate, scale, shear, resample)
     return apply_affine(input, params, return_transform)
 
@@ -163,7 +163,7 @@ def random_rectangle_erase(
 
     images_size = input.size()
     b, _, h, w = images_size
-    rect_params = pg.random_rectangles_params_gen(
+    rect_params = rg.random_rectangles_params_generator(
         b, h, w, erase_scale_range, aspect_ratio_range
     )
     return apply_erase_rectangles(input, rect_params, return_transform=return_transform)
@@ -179,7 +179,7 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
     input_tmp = input_tmp.view(-1, *input_tmp.shape[-3:])
     batch_size = input_tmp.shape[0]
 
-    params = pg.random_rotation_gen(batch_size, degrees=degrees)
+    params = rg.random_rotation_generator(batch_size, degrees=degrees)
 
     return apply_rotation(input, params, return_transform)
 
