@@ -559,7 +559,7 @@ class RandomResizedCrop(AugmentationBase):
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale: Tuple[float, float]=(1.0, 1.0), ratio: Tuple[float, float]=(1.0, 1.0),
+        self, size: Tuple[int, int], scale: Tuple[float, float] = (1.0, 1.0), ratio: Tuple[float, float] = (1.0, 1.0),
         interpolation: Union[str, int, Resample] = Resample.BILINEAR, return_transform: bool = False,
         same_on_batch: bool = False
     ) -> None:
