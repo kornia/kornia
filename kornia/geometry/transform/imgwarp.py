@@ -18,7 +18,8 @@ __all__ = [
     "normal_transform_pixel",
     "remap",
     "invert_affine_transform",
-    "angle_to_rotation_matrix"
+    "angle_to_rotation_matrix",
+    "get_affine_matrix2d"
 ]
 
 
@@ -488,3 +489,30 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
     matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
     return matrix_inv[..., :2, :3]
+
+
+def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angle: torch.Tensor,
+                        sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Composes affine matrix Bx3x3 from the components
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
+
+    if sx is not None:
+        x, y = torch.split(center, 1, dim=-1)
+        x = x.view(-1)
+        y = y.view(-1)
+        sx_tan = torch.tan(sx)  # type: ignore
+        sy_tan = torch.tan(sy)  # type: ignore
+        zeros = torch.zeros_like(sx)  # type: ignore
+        ones = torch.ones_like(sx)  # type: ignore
+        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
+                                dim=-1).view(-1, 2, 3)
+        shear_mat = convert_affinematrix_to_homography(shear_mat)
+        transform_h = transform_h @ shear_mat
+    return transform_h

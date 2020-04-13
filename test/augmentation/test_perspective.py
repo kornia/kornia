@@ -134,54 +134,6 @@ class TestRandomAffine:
         assert out[0].shape == x_data.shape
         assert out[1].shape == (1, 3, 3)
 
-    def test_compose_affine_matrix_3x3(self, device):
-        """ To get parameters:
-        import torchvision as tv
-        from PIL import Image
-        from torch import Tensor as T
-        import math
-        import random
-        img_size = (96,96)
-        seed = 42
-        torch.manual_seed(seed)
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
-        np.random.seed(seed)  # Numpy module.
-        random.seed(seed)  # Python random module.
-        torch.manual_seed(seed)
-        tfm = tv.transforms.RandomAffine(degrees=(-25.0,25.0),
-                                        scale=(0.6, 1.4) ,
-                                        translate=(0, 0.1),
-                                        shear=(-25., 25., -20., 20.))
-        angle, translations, scale, shear = tfm.get_params(tfm.degrees, tfm.translate,
-                                                        tfm.scale, tfm.shear, img_size)
-        print (angle, translations, scale, shear)
-        output_size = img_size
-        center = (img.size[0] * 0.5 + 0.5, img.size[1] * 0.5 + 0.5)
-
-        matrix = tv.transforms.functional._get_inverse_affine_matrix(center, angle, translations, scale, shear)
-        matrix = np.array(matrix).reshape(2,3)
-        print (matrix)
-        """
-        from torch import Tensor as T
-        import math
-        batch_size, ch, height, width = 1, 1, 96, 96
-        angle, translations = 6.971339922894188, (0.0, -4.0)
-        scale, shear = 0.7785685905190581, [11.823560708200617, 7.06797949691645]
-        matrix_expected = T([[1.27536969, 4.26828945e-01, -3.23493180e+01],
-                             [2.18297196e-03, 1.29424165e+00, -9.19962753e+00]])
-        center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
-        center = center.expand(batch_size, -1)
-        matrix_kornia = F._compose_affine_matrix_3x3(
-            T(translations).view(-1, 2),
-            center,
-            T([scale]).view(-1),
-            T([angle]).view(-1),
-            T([math.radians(shear[0])]).view(-1, 1),
-            T([math.radians(shear[1])]).view(-1, 1))
-        matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
-        assert_allclose(matrix_kornia, matrix_expected)
-
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var

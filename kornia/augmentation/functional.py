@@ -3,24 +3,29 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 import torch.nn as nn
 
-from kornia.constants import Resample
-from kornia.geometry.transform.flips import hflip, vflip
-from kornia.geometry.transform import (
+from kornia.constants import Resample, PI
+from kornia.geometry import (
     get_perspective_transform,
     get_rotation_matrix2d,
+    get_affine_matrix2d,
     warp_perspective,
     center_crop,
     rotate,
     crop_by_boxes,
-    warp_affine
+    warp_affine,
+    hflip,
+    vflip,
+    deg2rad
 )
-from kornia.geometry.conversions import convert_affinematrix_to_homography, deg2rad
-from kornia.color.adjust import (
-    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma)
-from kornia.color.adjust import AdjustBrightness, AdjustContrast, AdjustSaturation, AdjustHue
-from kornia.color.gray import rgb_to_grayscale
+from kornia.color import (
+    adjust_brightness,
+    adjust_contrast,
+    adjust_saturation,
+    adjust_hue,
+    adjust_gamma,
+    rgb_to_grayscale
+)
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
-from kornia.geometry import pi
 
 from . import random_generator as rg
 from .utils import _transform_input, _validate_input_shape
@@ -440,7 +445,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
     height, width = x_data.shape[-2:]
 
     # concatenate transforms
-    transform = _compose_affine_matrix_3x3(
+    transform = get_affine_matrix2d(
         params['translations'], params['center'], params['scale'], params['angle'],
         deg2rad(params['sx']), deg2rad(params['sy'])
     ).type_as(input)
@@ -487,7 +492,7 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
         input, angles, mode=Resample(params['interpolation'].item()).name.lower())
 
     if return_transform:
-
+        # TODO: This part should be inferred from rotate directly
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
 
@@ -517,8 +522,8 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
 
     return crop_by_boxes(
         input,
-        params['src'].type_as(input),
-        params['dst'].type_as(input),
+        params['src'].float(),
+        params['dst'].float(),
         Resample.get(params['interpolation'].item()).name.lower(),  # type: ignore
         return_transform=return_transform
     )
@@ -583,7 +588,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_brightness(input, params['brightness_factor'].type_as(input) - 1)
+    transformed = adjust_brightness(input, params['brightness_factor'] - 1)
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -607,7 +612,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_contrast(input, params['contrast_factor'].type_as(input))
+    transformed = adjust_contrast(input, params['contrast_factor'])
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -630,7 +635,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_saturation(input, params['saturation_factor'].type_as(input))
+    transformed = adjust_saturation(input, params['saturation_factor'])
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -654,7 +659,7 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_hue(input, params['hue_factor'].type_as(input) * 2 * pi)
+    transformed = adjust_hue(input, params['hue_factor'] * 2 * PI)
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -680,41 +685,10 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_gamma(input, params['gamma_factor'].type_as(input))
+    transformed = adjust_gamma(input, params['gamma_factor'])
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
         return transformed, identity
 
     return transformed
-
-
-def _compose_affine_matrix_3x3(translations: torch.Tensor,
-                               center: torch.Tensor,
-                               scale: torch.Tensor,
-                               angle: torch.Tensor,
-                               sx: Optional[torch.Tensor] = None,
-                               sy: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Composes affine matrix Bx3x3 from the components
-    Returns:
-        torch.Tensor: params to be passed to the affine transformation.
-    """
-    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
-    transform[..., 2] += translations  # tx/ty
-    # pad transform to get Bx3x3
-    transform_h = convert_affinematrix_to_homography(transform)
-
-    if sx is not None:
-        x, y = torch.split(center, 1, dim=-1)
-        x = x.view(-1)
-        y = y.view(-1)
-        sx_tan = torch.tan(sx)  # type: ignore
-        sy_tan = torch.tan(sy)  # type: ignore
-        zeros = torch.zeros_like(sx)  # type: ignore
-        ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
-                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
-                                dim=-1).view(-1, 2, 3)
-        shear_mat = convert_affinematrix_to_homography(shear_mat)
-        transform_h = transform_h @ shear_mat
-    return transform_h
