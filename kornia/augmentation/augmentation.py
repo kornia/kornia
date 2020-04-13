@@ -186,7 +186,6 @@ class ColorJitter(AugmentationBase):
         self.contrast: FloatUnionType = contrast
         self.saturation: FloatUnionType = saturation
         self.hue: FloatUnionType = hue
-        self.return_transform: bool = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
@@ -301,7 +300,6 @@ class RandomPerspective(AugmentationBase):
         super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
-        self.return_transform: bool = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
@@ -364,7 +362,6 @@ class RandomAffine(AugmentationBase):
         self.scale = scale
         self.shear = shear
         self.resample = Resample.get(resample)
-        self.return_transform = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
     def get_params(self, batch_size: int, height: int, width: int,
@@ -394,7 +391,6 @@ class CenterCrop(AugmentationBase):
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
         super(CenterCrop, self).__init__(F.apply_center_crop, return_transform)
         self.size = size
-        self.return_transform = return_transform
         self._params: Dict[str, torch.Tensor] = {}
 
     def get_params(self) -> Dict[str, torch.Tensor]:
@@ -447,8 +443,8 @@ class RandomRotation(AugmentationBase):
     """
 
     def __init__(self, degrees: FloatUnionType = 45.0, interpolation: Union[str, int, Resample] = Resample.BILINEAR,
-                 return_transform: bool = False) -> None:
-        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+                 return_transform: bool = False, same_on_batch: bool = False) -> None:
+        super(RandomRotation, self).__init__(F.apply_rotation, return_transform, same_on_batch)
         self.degrees = degrees
         self.interpolation = Resample.get(interpolation)
         self._params: Dict[str, torch.Tensor] = {}

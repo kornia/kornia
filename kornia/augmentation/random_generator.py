@@ -16,8 +16,8 @@ from .types import (
 
 
 def random_color_jitter_generator(batch_size: int, brightness: FloatUnionType = 0.,
-                            contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
-                            hue: FloatUnionType = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                                  contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
+                                  hue: FloatUnionType = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     r"""Generator random color jiter parameters for a batch of images.
 
     Args:
@@ -232,8 +232,8 @@ def random_affine_generator(
 
 
 def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
-                        interpolation: Union[str, int, Resample] = Resample.BILINEAR,
-                        same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                              interpolation: Union[str, int, Resample] = Resample.BILINEAR,
+                              same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
         if isinstance(degrees, float):
@@ -311,8 +311,8 @@ def _get_random_affine_params(
 
 
 def random_crop_generator(batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int],
-                    resize_to: Optional[Tuple[int, int]] = None,
-                    same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                          resize_to: Optional[Tuple[int, int]] = None,
+                          same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     x_diff = input_size[1] - size[1]
     y_diff = input_size[0] - size[0]
 
@@ -348,7 +348,7 @@ def random_crop_generator(batch_size: int, input_size: Tuple[int, int], size: Tu
 
 
 def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float], ratio: Tuple[float, float],
-                         same_on_batch: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+                               same_on_batch: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
     area = _adapted_uniform((10,), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
     log_ratio = _adapted_uniform((10,), math.log(ratio[0]), math.log(ratio[1]), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
@@ -375,9 +375,9 @@ def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float]
 
 
 def random_rectangles_params_generator(batch_size: int, height: int, width: int,
-                                 erase_scale_range: Tuple[float, float],
-                                 aspect_ratio_range: Tuple[float, float],
-                                 value: float = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                                       erase_scale_range: Tuple[float, float],
+                                       aspect_ratio_range: Tuple[float, float],
+                                       value: float = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     images_area = height * width
     target_areas = _adapted_uniform(
         (batch_size,), erase_scale_range[0], erase_scale_range[1], same_on_batch) * images_area
