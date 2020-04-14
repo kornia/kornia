@@ -145,7 +145,8 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str 
         [0, dst_h - 1],
     ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
     return crop_by_boxes(
-        tensor, points_src.float(), points_dst.float(), interpolation, return_transform=return_transform)
+        tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation,
+        return_transform=return_transform)
 
 
 def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear',

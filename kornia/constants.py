@@ -3,7 +3,7 @@ from enum import Enum
 
 import torch
 
-PI = torch.tensor(3.14159265358979323846)
+pi = torch.tensor(3.14159265358979323846)
 T = TypeVar('T', bound='Resample')
 
 

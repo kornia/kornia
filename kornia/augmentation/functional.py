@@ -3,7 +3,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 import torch.nn as nn
 
-from kornia.constants import Resample, PI
+from kornia.constants import Resample, pi
 from kornia.geometry import (
     get_perspective_transform,
     get_rotation_matrix2d,
@@ -588,7 +588,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_brightness(input, params['brightness_factor'] - 1)
+    transformed = adjust_brightness(input, params['brightness_factor'].to(input.dtype) - 1)
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -612,7 +612,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_contrast(input, params['contrast_factor'])
+    transformed = adjust_contrast(input, params['contrast_factor'].to(input.dtype))
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -635,7 +635,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_saturation(input, params['saturation_factor'])
+    transformed = adjust_saturation(input, params['saturation_factor'].to(input.dtype))
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -659,7 +659,7 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_hue(input, params['hue_factor'] * 2 * PI)
+    transformed = adjust_hue(input, params['hue_factor'].to(input.dtype) * 2 * pi)
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
@@ -685,7 +685,7 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
-    transformed = adjust_gamma(input, params['gamma_factor'])
+    transformed = adjust_gamma(input, params['gamma_factor'].to(input.dtype))
 
     if return_transform:
         identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
