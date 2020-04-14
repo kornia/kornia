@@ -236,7 +236,7 @@ def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
                               same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
 
     if not torch.is_tensor(degrees):
-        if isinstance(degrees, float):
+        if isinstance(degrees, (float, int)):
             if degrees < 0:
                 raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
             degrees = torch.tensor([-degrees, degrees])
