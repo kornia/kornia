@@ -375,20 +375,20 @@ def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float]
     return (h, w)
 
 
-def random_rectangles_params_generator(batch_size: int, height: int, width: int,
-                                       erase_scale_range: Tuple[float, float],
-                                       aspect_ratio_range: Tuple[float, float],
+def random_rectangles_params_generator(batch_size: int, height: int, width: int, p: float,
+                                       scale: Tuple[float, float], ratio: Tuple[float, float],
                                        value: float = 0., same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    batch_prob = random_prob_generator(batch_size, p, same_on_batch)['batch_prob']
+    zeros = torch.zeros((batch_size,))
     images_area = height * width
-    target_areas = _adapted_uniform(
-        (batch_size,), erase_scale_range[0], erase_scale_range[1], same_on_batch) * images_area
-    if aspect_ratio_range[0] < 1. and aspect_ratio_range[1] > 1.:
-        aspect_ratios1 = _adapted_uniform((batch_size,), aspect_ratio_range[0], 1, same_on_batch)
-        aspect_ratios2 = _adapted_uniform((batch_size,), 1, aspect_ratio_range[1], same_on_batch)
+    target_areas = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch) * images_area
+    if ratio[0] < 1. and ratio[1] > 1.:
+        aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0], 1, same_on_batch)
+        aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1], same_on_batch)
         rand_idxs = torch.round(torch.rand((batch_size,))).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
-        aspect_ratios = _adapted_uniform((batch_size,), aspect_ratio_range[0], aspect_ratio_range[1], same_on_batch)
+        aspect_ratios = _adapted_uniform((batch_size,), ratio[0], ratio[1], same_on_batch)
     # based on target areas and aspect ratios, rectangle params are computed
     heights = torch.min(
         torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
@@ -402,8 +402,8 @@ def random_rectangles_params_generator(batch_size: int, height: int, width: int,
     ys = (torch.rand((batch_size,)) * (torch.tensor(height) - heights + 1).float()).int()
 
     params: Dict[str, torch.Tensor] = {}
-    params["widths"] = widths
-    params["heights"] = heights
+    params["widths"] = torch.where(batch_prob, widths, zeros.to(widths.dtype))
+    params["heights"] = torch.where(batch_prob, heights, zeros.to(widths.dtype))
     params["xs"] = xs
     params["ys"] = ys
     params["values"] = torch.tensor([value] * batch_size)

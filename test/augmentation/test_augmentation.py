@@ -799,8 +799,17 @@ class TestRectangleRandomErasing:
     def test_random_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
-        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).shape == batch_shape
+
+    @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
+    @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
+    @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+    def test_no_rectangle_erasing_shape(
+            self, batch_shape, erase_scale_range, aspect_ratio_range):
+        input = torch.rand(batch_shape)
+        rand_rec = RandomErasing(0., erase_scale_range, aspect_ratio_range)
+        assert rand_rec(input).equal(input)
 
     def test_gradcheck(self, device):
         # test parameters
@@ -808,7 +817,7 @@ class TestRectangleRandomErasing:
         erase_scale_range = (.2, .4)
         aspect_ratio_range = (.3, .5)
 
-        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
         rect_params = rand_rec.get_params(2, 11, 7)
 
         # evaluate function gradient
@@ -829,7 +838,7 @@ class TestRectangleRandomErasing:
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width)
         expected = RandomErasing(
-            (.2, .4), (.3, .5)
+            1.0, (.2, .4), (.3, .5)
         )(img)
         actual = op_script(img)
         assert_allclose(actual, expected)

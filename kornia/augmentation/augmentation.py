@@ -244,12 +244,13 @@ class RandomErasing(AugmentationBase):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
-    sampled between the range [erase_scale_range[0], erase_scale_range[1]) and an aspect ratio sampled
-    between [aspect_ratio_range[0], aspect_ratio_range[1])
+    sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
+    between [ratio[0], ratio[1])
 
     Args:
-        erase_scale_range (Tuple[float, float]): range of proportion of erased area against input image.
-        aspect_ratio_range (Tuple[float, float]): range of aspect ratio of erased area.
+        p (float): probability that the random erasing operation will be performed.
+        scale (Tuple[float, float]): range of proportion of erased area against input image.
+        ratio (Tuple[float, float]): range of aspect ratio of erased area.
 
     Examples:
         >>> inputs = torch.ones(1, 1, 3, 3)
@@ -261,21 +262,24 @@ class RandomErasing(AugmentationBase):
     """
 
     def __init__(
-            self, erase_scale_range: Tuple[float, float], aspect_ratio_range: Tuple[float, float],
-            return_transform: bool = False, same_on_batch: bool = False
+            self, p: float = 0.5, scale: Tuple[float, float]=(0.02, 0.33), ratio: Tuple[float, float]=(0.3, 3.3),
+            value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform, same_on_batch)
-        self.erase_scale_range: Tuple[float, float] = erase_scale_range
-        self.aspect_ratio_range: Tuple[float, float] = aspect_ratio_range
+        self.p = p
+        self.scale: Tuple[float, float] = scale
+        self.ratio: Tuple[float, float] = ratio
+        self.value: float = value
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
-        repr = f"(erase_scale_range={self.erase_scale_range}, aspect_ratio_range={self.aspect_ratio_range})"
+        repr = f"(scale={self.erase_scale_range}, ratio={self.aspect_ratio_range})"
         return self.__class__.__name__ + repr
 
     def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
         return rg.random_rectangles_params_generator(
-            batch_size, height, width, self.erase_scale_range, self.aspect_ratio_range, self.same_on_batch)
+            batch_size, height, width, p=self.p, scale=self.scale, ratio=self.ratio, value=self.value,
+            same_on_batch=self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
