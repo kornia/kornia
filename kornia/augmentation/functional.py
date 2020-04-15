@@ -399,7 +399,8 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor],
     if bool(mask.sum() > 0):
         # apply the computed transform
         height, width = x_data.shape[-2:]
-        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width))
+        resample_name = Resample(params['interpolation'].item()).name.lower()
+        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width), flags=resample_name)
 
     if return_transform:
         return out_data.view_as(input), transform

@@ -18,7 +18,8 @@ class TestPerspective:
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 
-        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points)
+        params = dict(
+            batch_prob=batch_prob, start_points=start_points, end_points=end_points, interpolation=torch.tensor(1))
         out_data = F.apply_perspective(x_data, params, return_transform=False)
 
         assert out_data.shape == x_data.shape

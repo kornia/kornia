@@ -165,7 +165,8 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
 
 
 def random_perspective_generator(
-    batch_size: int, height: int, width: int, p: float, distortion_scale: float, same_on_batch: bool = False
+    batch_size: int, height: int, width: int, p: float, distortion_scale: float,
+    interpolation: Union[str, int, Resample] = Resample.BILINEAR, same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     params: Dict[str, torch.Tensor] = random_prob_generator(batch_size, p)
     start_points, end_points = (
@@ -173,6 +174,7 @@ def random_perspective_generator(
     )
     params['start_points'] = start_points
     params['end_points'] = end_points
+    params['interpolation'] = torch.tensor(Resample.get(interpolation).value)
     return params
 
 

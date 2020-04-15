@@ -213,13 +213,13 @@ class RandomGrayscale(AugmentationBase):
     r"""Random Grayscale transformation according to a probability p value
 
     Args:
-        p (float): probability of the image to be transformed to grayscale. Default value is 0.5
+        p (float): probability of the image to be transformed to grayscale. Default value is 0.1
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
+    def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
         super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform, same_on_batch)
         self.p = p
         self._params: Dict[str, torch.Tensor] = {}
@@ -260,9 +260,9 @@ class RandomErasing(AugmentationBase):
                   [1., 0., 0.],
                   [1., 0., 0.]]]])
     """
-
+    # Note: Extra params, inplace=False in Torchvision.
     def __init__(
-            self, p: float = 0.5, scale: Tuple[float, float]=(0.02, 0.33), ratio: Tuple[float, float]=(0.3, 3.3),
+            self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform, same_on_batch)
@@ -297,18 +297,21 @@ class RandomPerspective(AugmentationBase):
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5
         distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation
         applied to each. Default: False.
         input tensor.
     """
 
     def __init__(
-        self, distortion_scale: float = 0.5, p: float = 0.5, return_transform: bool = False,
-        same_on_batch: bool = False
+        self, distortion_scale: float = 0.5, p: float = 0.5,
+        interpolation: Union[str, int, Resample] = Resample.BILINEAR,
+        return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(F.apply_perspective, return_transform, same_on_batch)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
+        self.interpolation = interpolation
         self._params: Dict[str, torch.Tensor] = {}
 
     def __repr__(self) -> str:
@@ -317,7 +320,7 @@ class RandomPerspective(AugmentationBase):
 
     def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
-            batch_size, height, width, self.p, self.distortion_scale, self.same_on_batch)
+            batch_size, height, width, self.p, self.distortion_scale, self.interpolation, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -348,7 +351,7 @@ class RandomAffine(AugmentationBase):
                 range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
                 a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
                 Will not apply shear by default
-            resample (Resample.NEAREST, Resample.BILINEAR): Default: Resample.BILINEAR
+            resample (int, str or kornia.Resample): Default: Resample.BILINEAR
             return_transform (bool): if ``True`` return the matrix describing the transformation
                 applied to each. Default: False.
 
@@ -430,7 +433,7 @@ class RandomRotation(AugmentationBase):
     Args:
         degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
         range of degrees to select from will be (-degrees, +degrees)
-        resample (Resample.NEAREST, Resample.BILINEAR): Default: Resample.BILINEAR
+        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -448,9 +451,9 @@ class RandomRotation(AugmentationBase):
              [ 1.0000,  0.0088, -0.0088],
              [ 0.0000,  0.0000,  1.0000]]]))
     """
-
+    # Note: Extra params, center=None, fill=0 in TorchVision
     def __init__(
-        self, degrees: FloatUnionType = 45.0, interpolation: Union[str, int, Resample] = Resample.BILINEAR,
+        self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(F.apply_rotation, return_transform, same_on_batch)
@@ -556,16 +559,16 @@ class RandomResizedCrop(AugmentationBase):
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
-        interpolation: Default: Resample.BILINEAR
+        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale: Tuple[float, float] = (1.0, 1.0), ratio: Tuple[float, float] = (1.0, 1.0),
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR, return_transform: bool = False,
-        same_on_batch: bool = False
+        self, size: Tuple[int, int], scale: Tuple[float, float] = (0.08, 1.0),
+        ratio: Tuple[float, float] = (1.75, 4. / 3.), interpolation: Union[str, int, Resample] = Resample.BILINEAR,
+        return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform, same_on_batch)
         self.size = size
