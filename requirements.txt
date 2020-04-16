@@ -1,6 +1,5 @@
 # core dependencies
 pytorch==1.4.0
-pillow==6.2.0
 
 # package
 setuptools==41.4.0
