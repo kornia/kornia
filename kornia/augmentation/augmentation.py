@@ -508,7 +508,8 @@ class RandomCrop(AugmentationBase):
 
     # def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_crop_generator(batch_shape[0], batch_shape[-2:], self.size, same_on_batch=self.same_on_batch)
+        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
+                                        same_on_batch=self.same_on_batch)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
@@ -580,8 +581,8 @@ class RandomResizedCrop(AugmentationBase):
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
         _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
-        return rg.random_crop_generator(
-            batch_shape[0], batch_shape[-2:], _target_size, resize_to=self.size, same_on_batch=self.same_on_batch)
+        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), _target_size,
+                                        resize_to=self.size, same_on_batch=self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
