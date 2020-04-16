@@ -7,7 +7,10 @@ from torch.nn.functional import pad
 from kornia.constants import Resample
 from . import functional as F
 from . import random_generator as rg
-from .utils import _adapted_uniform
+from .utils import (
+    _adapted_uniform,
+    _infer_batch_shape
+)
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -24,26 +27,11 @@ class AugmentationBase(nn.Module):
         self._apply_fcn: Callable = apply_fcn
         self.same_on_batch = same_on_batch
 
-    def infer_batch_size(self, input) -> int:
-        if isinstance(input, tuple):
-            batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
-        else:
-            batch_size = input.shape[0] if len(input.shape) == 4 else 1
-        return batch_size
+    def infer_batch_shape(self, input: UnionType) -> torch.Size:
+        return _infer_batch_shape(input)
 
-    def infer_image_shape(self, input: UnionType) -> Tuple[int, int]:
-        if isinstance(input, tuple):
-            data, _ = cast(Tuple, input)
-        else:
-            data = cast(torch.Tensor, input)
-        return data.shape[-2:]
-
-    # TODO: To be discussed
-    # We got two different settings:
-    # get_params(self, batchsize)
-    # get_params(self, batchsize, height, width)
-    # def get_params(self) -> Dict[str, torch.Tensor]:
-    #     raise NotImplementedError
+    def get_params(self, input_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        raise NotImplementedError
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if isinstance(input, tuple):
@@ -105,13 +93,13 @@ class RandomHorizontalFlip(AugmentationBase):
         self.p: float = p
         self._params: Dict[str, torch.Tensor] = {}
 
-    def get_params(self, batch_size: int) -> Dict[str, torch.Tensor]:
-        return rg.random_prob_generator(batch_size, self.p, self.same_on_batch)
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -152,13 +140,13 @@ class RandomVerticalFlip(AugmentationBase):
         self.p: float = p
         self._params: Dict[str, torch.Tensor] = {}
 
-    def get_params(self, batch_size: int) -> Dict[str, torch.Tensor]:
-        return rg.random_prob_generator(batch_size, self.p, self.same_on_batch)
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -196,14 +184,14 @@ class ColorJitter(AugmentationBase):
             hue={self.hue}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_color_jitter_generator(
-            batch_size, self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch)
+            batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -228,13 +216,13 @@ class RandomGrayscale(AugmentationBase):
         repr = f"(p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int) -> Dict[str, torch.Tensor]:
-        return rg.random_prob_generator(batch_size, self.p, self.same_on_batch)
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -276,16 +264,16 @@ class RandomErasing(AugmentationBase):
         repr = f"(scale={self.erase_scale_range}, ratio={self.aspect_ratio_range})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rectangles_params_generator(
-            batch_size, height, width, p=self.p, scale=self.scale, ratio=self.ratio, value=self.value,
-            same_on_batch=self.same_on_batch)
+            batch_shape[0], batch_shape[-2], batch_shape[-1], p=self.p, scale=self.scale, ratio=self.ratio,
+            value=self.value, same_on_batch=self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            height, width = self.infer_image_shape(input)
-            batch_size: int = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size, height, width)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -318,15 +306,16 @@ class RandomPerspective(AugmentationBase):
         repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
-            batch_size, height, width, self.p, self.distortion_scale, self.interpolation, self.same_on_batch)
+            batch_shape[0], batch_shape[-2], batch_shape[-1], self.p, self.distortion_scale,
+            self.interpolation, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            height, width = self.infer_image_shape(input)
-            batch_size: int = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size, height, width)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -374,16 +363,16 @@ class RandomAffine(AugmentationBase):
         self.resample = Resample.get(resample)
         self._params: Dict[str, torch.Tensor] = {}
 
-    def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator(
-            batch_size, height, width, self.degrees, self.translate, self.scale, self.shear,
+            batch_shape[0], batch_shape[-2], batch_shape[-1], self.degrees, self.translate, self.scale, self.shear,
             self.resample, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            height, width = self.infer_image_shape(input)
-            batch_size: int = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size, height, width)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -403,7 +392,8 @@ class CenterCrop(AugmentationBase):
         self.size = size
         self._params: Dict[str, torch.Tensor] = {}
 
-    def get_params(self) -> Dict[str, torch.Tensor]:
+    # def get_params(self) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         if isinstance(self.size, tuple):
             size_param = torch.tensor([self.size[0], self.size[1]])
         elif isinstance(self.size, int):
@@ -415,7 +405,8 @@ class CenterCrop(AugmentationBase):
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            self._params = self.get_params()
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -465,14 +456,13 @@ class RandomRotation(AugmentationBase):
         repr = f"(degrees={self.degrees}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator(batch_size, self.degrees, self.interpolation, self.same_on_batch)
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.interpolation, self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
-
         if params is None:
-            batch_size: int = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size)
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)
@@ -516,11 +506,11 @@ class RandomCrop(AugmentationBase):
             pad_if_needed={self.pad_if_needed}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
-        return rg.random_crop_generator(batch_size, input_size, self.size, same_on_batch=self.same_on_batch)
+    # def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_crop_generator(batch_shape[0], batch_shape[-2:], self.size, same_on_batch=self.same_on_batch)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
-
         if self.padding is not None:
             if isinstance(self.padding, int):
                 padding = [self.padding, self.padding, self.padding, self.padding]
@@ -539,17 +529,21 @@ class RandomCrop(AugmentationBase):
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         return input
-
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+    
+    def auto_padding(self, input: UnionType) -> UnionType:
         if isinstance(input, tuple):
             input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
-            batch_shape = input[0].shape
         else:
             input = self.precrop_padding(input)
-            batch_shape = input.shape
+        return input
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        input = self.auto_padding(input)
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            self._params = self.get_params(batch_size, (batch_shape[-2], batch_shape[-1]))
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
+        else:
+            self._params = params
         return super().forward(input, self._params)
 
 
@@ -582,20 +576,17 @@ class RandomResizedCrop(AugmentationBase):
             , return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+    # def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
         _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
         return rg.random_crop_generator(
-            batch_size, input_size, _target_size, resize_to=self.size, same_on_batch=self.same_on_batch)
+            batch_shape[0], batch_shape[-2:], _target_size, resize_to=self.size, same_on_batch=self.same_on_batch)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
-            batch_size = self.infer_batch_size(input)
-            if isinstance(input, tuple):
-                batch_shape = input[0].shape
-            else:
-                batch_shape = input.shape
-            self._params = self.get_params(batch_size, (batch_shape[-2], batch_shape[-1]))
+            batch_shape = self.infer_batch_shape(input)
+            self._params = self.get_params(batch_shape)
         else:
             self._params = params
         return super().forward(input, self._params)

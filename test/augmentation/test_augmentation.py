@@ -818,7 +818,7 @@ class TestRectangleRandomErasing:
         aspect_ratio_range = (.3, .5)
 
         rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
-        rect_params = rand_rec.get_params(2, 11, 7)
+        rect_params = rand_rec.get_params(batch_shape)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)

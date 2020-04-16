@@ -2,6 +2,17 @@ from typing import Tuple, Union
 
 import torch
 from torch.distributions import Uniform
+from .types import UnionType
+
+
+def _infer_batch_shape(input: UnionType) -> torch.Size:
+    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
+    """
+    if isinstance(input, tuple):
+        tensor = _transform_input(input[0])
+    else:
+        tensor = _transform_input(input)
+    return tensor.shape
 
 
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
