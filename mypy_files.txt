@@ -11,9 +11,8 @@ kornia/filters/laplacian.py
 kornia/filters/median.py
 kornia/filters/sobel.py
 kornia/augmentation/augmentation.py
-kornia/augmentation/erasing.py
 kornia/augmentation/functional.py
-kornia/augmentation/param_gen.py
+kornia/augmentation/random.py
 kornia/augmentation/utils.py
 kornia/geometry/conversions.py
 kornia/geometry/linalg.py
