@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
@@ -37,6 +37,16 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
         input = input.unsqueeze(0)
 
     return input
+
+
+def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    Args:
+        input: torch.Tensor
+        accepted_dtypes: List. e.g. [torch.float32, torch.float64]
+    """
+    if not input.dtype in accepted_dtypes:
+        raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:

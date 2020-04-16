@@ -27,7 +27,7 @@ from kornia.color import (
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
-from .utils import _transform_input, _validate_input_shape
+from .utils import _transform_input, _validate_input_shape, _validate_input_dtype
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -202,6 +202,7 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     """
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -245,6 +246,7 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     # TODO: params validation
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -293,6 +295,7 @@ def apply_color_jitter(input: torch.Tensor,
     # TODO: params validation
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     if not isinstance(return_transform, bool):
         raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
@@ -336,6 +339,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
     # TODO: params validation
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     if _validate_input_shape(input, 2, 3):
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
@@ -375,6 +379,7 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor],
     """
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     # arrange input data
     x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
@@ -435,6 +440,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
     """
 
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     # arrange input data
     x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
@@ -468,11 +474,8 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
     """
-
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
     transformed: torch.Tensor = rotate(
@@ -506,6 +509,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
         is set to ``True``
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return crop_by_boxes(
         input,
@@ -535,6 +539,9 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
         raise TypeError(
             f"''rectangle params components must have same shape"
         )
+
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     mask = torch.zeros(input.size()).type_as(input)
     values = torch.zeros(input.size()).type_as(input)
@@ -575,6 +582,8 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     transformed = adjust_brightness(input, params['brightness_factor'].to(input.dtype) - 1)
 
     if return_transform:
@@ -599,6 +608,8 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     transformed = adjust_contrast(input, params['contrast_factor'].to(input.dtype))
 
     if return_transform:
@@ -622,6 +633,8 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     transformed = adjust_saturation(input, params['saturation_factor'].to(input.dtype))
 
     if return_transform:
@@ -646,6 +659,8 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     transformed = adjust_hue(input, params['hue_factor'].to(input.dtype) * 2 * pi)
 
     if return_transform:
@@ -672,6 +687,8 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image.
     """
     input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     transformed = adjust_gamma(input, params['gamma_factor'].to(input.dtype))
 
     if return_transform:
