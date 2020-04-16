@@ -45,7 +45,7 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         input: torch.Tensor
         accepted_dtypes: List. e.g. [torch.float32, torch.float64]
     """
-    if not input.dtype in accepted_dtypes:
+    if input.dtype not in accepted_dtypes:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
