@@ -264,7 +264,6 @@ class RandomErasing(AugmentationBase):
         repr = f"(scale={self.erase_scale_range}, ratio={self.aspect_ratio_range})"
         return self.__class__.__name__ + repr
 
-    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rectangles_params_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], p=self.p, scale=self.scale, ratio=self.ratio,
@@ -306,7 +305,6 @@ class RandomPerspective(AugmentationBase):
         repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.p, self.distortion_scale,
@@ -388,20 +386,19 @@ class CenterCrop(AugmentationBase):
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
-        super(CenterCrop, self).__init__(F.apply_center_crop, return_transform, True)
+        super(CenterCrop, self).__init__(F.apply_crop, return_transform, True)
         self.size = size
         self._params: Dict[str, torch.Tensor] = {}
 
-    # def get_params(self) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         if isinstance(self.size, tuple):
-            size_param = torch.tensor([self.size[0], self.size[1]])
+            size_param = (self.size[0], self.size[1])
         elif isinstance(self.size, int):
-            size_param = torch.tensor([self.size, self.size])
+            size_param = (self.size, self.size)
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
                             f"Got: {type(self.size)}.")
-        return dict(size=size_param)
+        return rg.center_crop_params_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], size_param)
 
     def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
         if params is None:
@@ -506,7 +503,6 @@ class RandomCrop(AugmentationBase):
             pad_if_needed={self.pad_if_needed}, return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    # def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
                                         same_on_batch=self.same_on_batch)
@@ -577,7 +573,6 @@ class RandomResizedCrop(AugmentationBase):
             , return_transform={self.return_transform})"
         return self.__class__.__name__ + repr
 
-    # def get_params(self, batch_size: int, input_size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
     def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
         _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))

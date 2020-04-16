@@ -411,3 +411,45 @@ def random_rectangles_params_generator(batch_size: int, height: int, width: int,
     params["values"] = torch.tensor([value] * batch_size)
 
     return params
+
+
+def center_crop_params_generator(batch_size: int, height: int, width: int, 
+                                 size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+
+    if not isinstance(size, (tuple, list,)) and len(size) == 2:
+        raise ValueError("Input size must be a tuple/list of length 2. Got {}"
+                         .format(size))
+
+    # unpack input sizes
+    dst_h, dst_w = size
+    src_h, src_w = height, width
+
+    # compute start/end offsets
+    dst_h_half = dst_h / 2
+    dst_w_half = dst_w / 2
+    src_h_half = src_h / 2
+    src_w_half = src_w / 2
+
+    start_x = src_w_half - dst_w_half
+    start_y = src_h_half - dst_h_half
+
+    end_x = start_x + dst_w - 1
+    end_y = start_y + dst_h - 1
+    # [y, x] origin
+    # top-left, top-right, bottom-right, bottom-left
+    points_src: torch.Tensor = torch.tensor([[
+        [start_x, start_y],
+        [end_x, start_y],
+        [end_x, end_y],
+        [start_x, end_y],
+    ]])
+
+    # [y, x] destination
+    # top-left, top-right, bottom-right, bottom-left
+    points_dst: torch.Tensor = torch.tensor([[
+        [0, 0],
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
+    ]]).expand(points_src.shape[0], -1, -1)
+    return {'src': points_src, 'dst': points_dst, 'interpolation': torch.tensor(Resample.BILINEAR.value)}
