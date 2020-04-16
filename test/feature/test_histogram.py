@@ -26,8 +26,18 @@ class TestHistogram:
         inp = torch.ones(8, 32, device=device)
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         bins = torch.linspace(0, 255, 128).to(device)
+        bins = utils.tensor_to_gradcheck_var(bins)
+        bandwidth = torch.Tensor(np.array(1.0))
+        bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
+        
+        assert gradcheck(histogram, (inp, bins, bandwidth), raise_exception=True)
+    
+    def test_uniform_dist(self, device):
+        input1 = torch.linspace(0,255,10).unsqueeze(0).to(device)
 
-        assert gradcheck(histogram, (inp, bins, 1), raise_exception=True)
+        pdf = histogram(input1, torch.linspace(0,255,10).to(device), torch.Tensor(np.array(2*0.4**2)))
+        ans = torch.ones((1,10))*0.1
+        assert((ans.cpu() == pdf.cpu()).all())
 
 
 class TestHistogram2d:
@@ -51,5 +61,21 @@ class TestHistogram2d:
         inp1 = utils.tensor_to_gradcheck_var(inp1)  # to var
         inp2 = utils.tensor_to_gradcheck_var(inp2)  # to var
         bins = torch.linspace(0, 255, 64).to(device)
+        bins = utils.tensor_to_gradcheck_var(bins)
+        bandwidth = torch.Tensor(np.array(1.0))
+        bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
 
-        assert gradcheck(histogram2d, (inp1, inp2, bins, 1), raise_exception=True)
+        assert gradcheck(histogram2d, (inp1, inp2, bins, bandwidth), raise_exception=True)
+
+    def test_uniform_dist(self, device):
+        input1 = torch.linspace(0,255,10).unsqueeze(0).to(device)
+	    input2 = torch.linspace(0,255,10).unsqueeze(0).to(device)
+
+        joint_pdf = histogram2d(
+            input1, 
+            input2, 
+            torch.linspace(0,255,10).to(device), 
+            torch.Tensor(np.array(2*0.4**2)))
+        
+        ans = torch.eye(10).unsqueeze(0)*0.1
+	    assert((ans.cpu() == joint_pdf.cpu()).all())
