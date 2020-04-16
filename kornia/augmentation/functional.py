@@ -9,7 +9,6 @@ from kornia.geometry import (
     get_rotation_matrix2d,
     get_affine_matrix2d,
     warp_perspective,
-    center_crop,
     rotate,
     crop_by_boxes,
     warp_affine,
