@@ -482,7 +482,7 @@ class RandomCrop(AugmentationBase):
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         return input
-    
+
     def auto_padding(self, input: UnionType) -> UnionType:
         if isinstance(input, tuple):
             input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
@@ -510,7 +510,7 @@ class RandomResizedCrop(AugmentationBase):
 
     def __init__(
         self, size: Tuple[int, int], scale: Tuple[float, float] = (0.08, 1.0),
-        ratio: Tuple[float, float] = (1.75, 4. / 3.), 
+        ratio: Tuple[float, float] = (1.75, 4. / 3.),
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:

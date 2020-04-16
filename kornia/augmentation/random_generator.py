@@ -413,7 +413,7 @@ def random_rectangles_params_generator(batch_size: int, height: int, width: int,
     return params
 
 
-def center_crop_params_generator(batch_size: int, height: int, width: int, 
+def center_crop_params_generator(batch_size: int, height: int, width: int,
                                  size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
 
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
