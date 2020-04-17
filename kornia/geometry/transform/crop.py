@@ -153,6 +153,9 @@ def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear',
                   return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """A wrapper performs crop transform with bounding boxes.
 
+    Note:
+        If the src_box is smaller than dst_box, the following error will be thrown.
+        RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
     if tensor.ndimension() not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))

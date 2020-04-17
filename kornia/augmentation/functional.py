@@ -341,7 +341,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    if _validate_input_shape(input, 2, 3):
+    if not _validate_input_shape(input, 1, 3):
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
     if not isinstance(return_transform, bool):

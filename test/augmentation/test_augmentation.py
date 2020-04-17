@@ -93,6 +93,12 @@ class TestRandomHorizontalFlip:
         assert (f1(input)[0] == input).all()
         assert (f1(input)[1] == identity).all()
 
+    def test_same_on_batch(self, device):
+        f = RandomHorizontalFlip(p=0.5, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
     def test_sequential(self, device):
 
         f = nn.Sequential(
@@ -235,6 +241,12 @@ class TestRandomVerticalFlip:
         assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], identity)
 
+    def test_same_on_batch(self, device):
+        f = RandomVerticalFlip(p=0.5, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
     def test_sequential(self, device):
 
         f = nn.Sequential(
@@ -333,6 +345,12 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f1(input)[1], expected_transform)
+
+    def test_same_on_batch(self, device):
+        f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
 
     def test_random_brightness(self, device):
         torch.manual_seed(42)
@@ -811,6 +829,16 @@ class TestRectangleRandomErasing:
         rand_rec = RandomErasing(0., erase_scale_range, aspect_ratio_range)
         assert rand_rec(input).equal(input)
 
+    @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
+    @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
+    @pytest.mark.parametrize("shape", [(3, 11, 7)])
+    def test_same_on_batch(self, shape, erase_scale_range, aspect_ratio_range):
+        f = RandomErasing(0.5, erase_scale_range, aspect_ratio_range, same_on_batch=True)
+        input = torch.rand(shape).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        res = f(input)
+        print(f._params)
+        assert (res[0] == res[1]).all()
+
     def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
@@ -861,6 +889,12 @@ class TestRandomGrayscale:
         expected_transform = expected_transform.to(device)
 
         assert_allclose(f(input)[1], expected_transform)
+
+    def test_same_on_batch(self, device):
+        f = RandomGrayscale(p=0.5, same_on_batch=True)
+        input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
 
     def test_opencv_true(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
@@ -1129,6 +1163,12 @@ class TestRandomRotation:
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
 
+    def test_same_on_batch(self, device):
+        f = RandomRotation(degrees=40, same_on_batch=True)
+        input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
     def test_sequential(self, device):
 
         torch.manual_seed(0)  # for random reproductibility
@@ -1250,6 +1290,12 @@ class TestRandomCrop:
 
         assert_allclose(out, expected)
 
+    def test_same_on_batch(self, device):
+        f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True)
+        input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
     def test_padding_batch_1(self, device):
         torch.manual_seed(0)
         batch_size = 2
@@ -1355,6 +1401,16 @@ class TestRandomResizedCrop:
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
+
+    def test_same_on_batch(self, device):
+        f = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0), same_on_batch=True)
+        input = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]).repeat(2, 1, 1, 1).to(device)
+        res = f(input)
+        assert (res[0] == res[1]).all()
 
     def test_crop_scale_ratio(self, device):
         torch.manual_seed(0)

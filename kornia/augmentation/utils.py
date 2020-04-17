@@ -52,7 +52,7 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:
     r"""Validate if an input has the right shape. e.g. to check if an input is channel first.
     If channel first, the second channel of an RGB input shall be fixed to 3. To verify using:
-        _validate_input_shape(input, 2, 3)
+        _validate_input_shape(input, 1, 3)
     Args:
         input: torch.Tensor
         channel_index: int

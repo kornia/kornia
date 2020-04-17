@@ -278,10 +278,10 @@ def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
         if isinstance(degrees, (float, int)):
             if degrees < 0:
                 raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
-            degrees = torch.tensor([-degrees, degrees])
+            degrees = torch.tensor([-degrees, degrees]).to(torch.float32)
 
         elif isinstance(degrees, (tuple, list)):
-            degrees = torch.tensor(degrees)
+            degrees = torch.tensor(degrees).to(torch.float32)
 
         else:
             raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {type(degrees)}")
@@ -465,8 +465,8 @@ def random_rectangles_params_generator(batch_size: int, height: int, width: int,
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.)),
         torch.tensor(float(width))
     ).int()
-    xs = (torch.rand((batch_size,)) * (torch.tensor(width) - widths + 1).float()).int()
-    ys = (torch.rand((batch_size,)) * (torch.tensor(height) - heights + 1).float()).int()
+    xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(width) - widths + 1).float()).int()
+    ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(height) - heights + 1).float()).int()
 
     params: Dict[str, torch.Tensor] = {}
     params["widths"] = torch.where(batch_prob, widths, zeros.to(widths.dtype))
