@@ -1,13 +1,21 @@
 from .augmentation import *
-
+from kornia.color.normalize import (
+    Normalize,
+    Denormalize
+)
 
 __all__ = [
+    "RandomAffine",
+    "RandomCrop",
+    "RandomErasing",
+    "RandomGrayscale",
     "RandomHorizontalFlip",
     "RandomVerticalFlip",
-    "RandomRectangleErasing",
-    "RandomGrayscale",
-    "ColorJitter",
+    "RandomPerspective",
+    "RandomResizedCrop",
     "RandomRotation",
-    "RandomCrop",
-    "RandomResizedCrop"
+    "CenterCrop",
+    "ColorJitter",
+    "Normalize",
+    "Denormalize"
 ]

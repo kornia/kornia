@@ -6,10 +6,10 @@ import torch.nn.functional as F
 import math
 from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import SpatialGradient
-from kornia.geometry import pi, angle_to_rotation_matrix
+from kornia.constants import pi
 from kornia.feature import (extract_patches_from_pyramid, make_upright,
                             normalize_laf, raise_error_if_laf_is_not_valid)
-from kornia.geometry import rad2deg
+from kornia.geometry import rad2deg, angle_to_rotation_matrix
 
 
 class PassLAF(nn.Module):

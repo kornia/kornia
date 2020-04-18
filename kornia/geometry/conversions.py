@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.constants import pi
+
 __all__ = [
     # functional api
-    "pi",
     "rad2deg",
     "deg2rad",
     "convert_points_from_homogeneous",
@@ -24,11 +25,6 @@ __all__ = [
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
 ]
-
-
-"""Constant with number pi
-"""
-pi = torch.tensor(3.14159265358979323846)
 
 
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
