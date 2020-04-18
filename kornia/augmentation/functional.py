@@ -119,7 +119,7 @@ def random_affine(input: torch.Tensor,
                   translate: Optional[TupleFloat] = None,
                   scale: Optional[TupleFloat] = None,
                   shear: Optional[UnionFloat] = None,
-                  resample: [str, int, Resample] = Resample.BILINEAR.name,
+                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
                   return_transform: bool = False) -> UnionType:
     r"""Random affine transformation of the image keeping center invariant
 
