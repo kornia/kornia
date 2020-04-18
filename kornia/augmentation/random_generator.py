@@ -191,7 +191,7 @@ def random_affine_generator(
         translate: Optional[TupleFloat] = None,
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
-        resample: Union[str, int, Resample] = Resample.BILINEAR,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
@@ -304,7 +304,7 @@ def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
-    resample: Union[str, int, Resample] = Resample.BILINEAR, same_on_batch: bool = False
+    resample: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```affine``` transformation random affine transform.
     The returned matrix is Bx3x3.
