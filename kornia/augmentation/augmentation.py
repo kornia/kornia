@@ -21,11 +21,10 @@ from .types import (
 
 
 class AugmentationBase(nn.Module):
-    def __init__(self, apply_fcn: Callable, return_transform: bool = False, same_on_batch: bool = False) -> None:
+    def __init__(self, apply_fcn: Callable, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
         self._apply_fcn: Callable = apply_fcn
-        self.same_on_batch = same_on_batch
         self._params: Dict[str, torch.Tensor] = {}
 
     def infer_batch_shape(self, input: UnionType) -> torch.Size:
@@ -97,8 +96,9 @@ class RandomHorizontalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform, same_on_batch)
+        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
         self.p: float = p
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
@@ -140,8 +140,9 @@ class RandomVerticalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform, same_on_batch)
+        super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
         self.p: float = p
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
@@ -172,11 +173,12 @@ class ColorJitter(AugmentationBase):
         self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
         hue: FloatUnionType = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(ColorJitter, self).__init__(F.apply_color_jitter, return_transform, same_on_batch)
+        super(ColorJitter, self).__init__(F.apply_color_jitter, return_transform)
         self.brightness: FloatUnionType = brightness
         self.contrast: FloatUnionType = contrast
         self.saturation: FloatUnionType = saturation
         self.hue: FloatUnionType = hue
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation},\
@@ -200,8 +202,9 @@ class RandomGrayscale(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform, same_on_batch)
+        super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform)
         self.p = p
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
@@ -237,11 +240,12 @@ class RandomErasing(AugmentationBase):
             self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform, same_on_batch)
+        super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform)
         self.p = p
         self.scale: Tuple[float, float] = scale
         self.ratio: Tuple[float, float] = ratio
         self.value: float = value
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(scale={self.scale}, ratio={self.ratio}, value={self.value}, "
@@ -268,13 +272,14 @@ class RandomPerspective(AugmentationBase):
 
     def __init__(
         self, distortion_scale: float = 0.5, p: float = 0.5,
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR,
+        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform, same_on_batch)
+        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
         self.interpolation: Resample = Resample.get(interpolation)
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, interpolation={self.interpolation.name}, "
@@ -319,15 +324,16 @@ class RandomAffine(AugmentationBase):
 
     def __init__(
         self, degrees: UnionFloat, translate: Optional[TupleFloat] = None, scale: Optional[TupleFloat] = None,
-        shear: Optional[UnionFloat] = None, resample: Union[str, int, Resample] = Resample.BILINEAR,
+        shear: Optional[UnionFloat] = None, resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomAffine, self).__init__(F.apply_affine, return_transform, same_on_batch)
+        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
         self.shear = shear
         self.resample: Resample = Resample.get(resample)
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
@@ -353,7 +359,7 @@ class CenterCrop(AugmentationBase):
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
-        super(CenterCrop, self).__init__(F.apply_crop, return_transform, True)
+        super(CenterCrop, self).__init__(F.apply_crop, return_transform)
         self.size = size
 
     def __repr__(self) -> str:
@@ -407,9 +413,10 @@ class RandomRotation(AugmentationBase):
         self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomRotation, self).__init__(F.apply_rotation, return_transform, same_on_batch)
+        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
         self.degrees = degrees
         self.interpolation: Resample = Resample.get(interpolation)
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, "
@@ -446,12 +453,13 @@ class RandomCrop(AugmentationBase):
         self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None, pad_if_needed: Optional[bool] = False,
         fill: int = 0, padding_mode: str = 'constant', return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomCrop, self).__init__(F.apply_crop, return_transform, same_on_batch)
+        super(RandomCrop, self).__init__(F.apply_crop, return_transform)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(crop_size={self.size}, padding={self.padding}, fill={self.fill}, "
@@ -514,11 +522,12 @@ class RandomResizedCrop(AugmentationBase):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform, same_on_batch)
+        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
         self.size = size
         self.scale = scale
         self.ratio = ratio
         self.interpolation: Resample = Resample.get(interpolation)
+        self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         repr = f"(size={self.size}, resize_to={self.scale}, resize_to={self.ratio}, "

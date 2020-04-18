@@ -11,7 +11,7 @@ Kornia provides Torchvision-like augmentation APIs while may not reproduce Torch
 - AdjustBrightness
 - RandomRectangleErasing
 
-For detailed comparision, please checkout the [Colab: Kornia vs. Torchvision](https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS).
+For detailed comparision, please checkout the For detailed comparision, please checkout the `Colab: Kornia vs. Torchvision<https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WdzZqaStjVzZ1U0hHOHphQkgvcGFCZ1RlUzJvPQ>`.
 
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomVerticalFlip
