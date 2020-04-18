@@ -8,7 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 import kornia.augmentation.functional as F
-from kornia.geometry import pi
+from kornia.constants import pi
 from kornia.augmentation import ColorJitter
 
 from test.common import device
