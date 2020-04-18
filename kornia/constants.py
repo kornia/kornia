@@ -15,7 +15,7 @@ class Resample(Enum):
     @classmethod
     def get(cls, value: Union[str, int, T]) -> T:  # type: ignore
         if type(value) == str:
-            return cls[value]  # type: ignore
+            return cls[value.upper()]  # type: ignore
         if type(value) == int:
             return cls(value)  # type: ignore
         if type(value) == cls:
