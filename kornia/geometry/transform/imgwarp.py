@@ -38,6 +38,28 @@ def normal_transform_pixel(height, width):
 
 def src_norm_to_dst_norm(dst_pix_trans_src_pix: torch.Tensor,
                          dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix (torch.Tensor): homography from source to destiantion to be
+          normalized. :math:`(B, 3, 3)`
+        dsize_src (tuple): size of the source image (height, width).
+        dsize_src (tuple): size of the destination image (height, width).
+
+    Returns:
+        Tensor: the normalized homography.
+
+    Shape:
+        - Output: :math:`(B, 3, 3)`
+    """
+    if not torch.is_tensor(dst_pix_trans_src_pix):
+        raise TypeError("Input dst_pix_trans_src_pix type is not a torch.Tensor. Got {}"
+                        .format(type(dst_pix_trans_src_pix)))
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
+        raise ValueError("Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}"
+                         .format(dst_pix_trans_src_pix.shape))
+
     # source and destination sizes
     src_h, src_w = dsize_src
     dst_h, dst_w = dsize_dst
@@ -116,7 +138,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
 
     # launches the warper
     h, w = src.shape[-2:]
@@ -168,7 +190,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
     B, C, H, W = src.size()
     dsize_src = (H, W)
     out_size = dsize
@@ -237,7 +259,7 @@ def get_perspective_transform(src, dst):
         raise ValueError("Inputs must have the same shape. Got {}"
                          .format(dst.shape))
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Got {}"
+        raise ValueError("Inputs must have same batch size dimension. Got {} and {}"
                          .format(src.shape, dst.shape))
 
     def ax(p, q):
@@ -380,7 +402,7 @@ def get_rotation_matrix2d(
         raise ValueError("Input scale must be a B tensor. Got {}"
                          .format(scale.shape))
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Got {}"
+        raise ValueError("Inputs must have same batch size dimension. Got {}, {} and {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
     scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
