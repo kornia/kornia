@@ -97,4 +97,4 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.geometry import pi
+from kornia.constants import pi
