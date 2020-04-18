@@ -35,7 +35,6 @@ from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
-from .histogram import histogram, histogram2d
 
 __all__ = [
     "nms2d",
@@ -50,8 +49,6 @@ __all__ = [
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
-    "histogram",
-    "histogram2d"
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",
