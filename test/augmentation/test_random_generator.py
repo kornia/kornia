@@ -1,6 +1,6 @@
 import torch
 
-from kornia.augmentation.random import random_prob_gen, random_color_jitter_gen
+from kornia.augmentation.random_generator import random_prob_generator, random_color_jitter_generator
 
 
 class TestRandomProbGen:
@@ -9,10 +9,10 @@ class TestRandomProbGen:
         torch.manual_seed(42)
         batch_size = 8
 
-        halfs = random_prob_gen(batch_size=batch_size, p=.5)
+        halfs = random_prob_generator(batch_size=batch_size, p=.5)
         expected_halfs = [False, False, True, False, True, False, True, False]
-        zeros = random_prob_gen(batch_size=batch_size, p=0.)['batch_prob']
-        ones = random_prob_gen(batch_size=batch_size, p=1.)['batch_prob']
+        zeros = random_prob_generator(batch_size=batch_size, p=0.)['batch_prob']
+        ones = random_prob_generator(batch_size=batch_size, p=1.)['batch_prob']
 
         assert list(halfs.keys()) == ['batch_prob'], "Redundant keys found apart from `batch_prob`"
         assert (halfs['batch_prob'] == torch.tensor(expected_halfs)).long().sum() == batch_size
@@ -23,11 +23,11 @@ class TestRandomProbGen:
         batch_size = 8
 
         torch.manual_seed(42)
-        falses = random_prob_gen(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        falses = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
         assert (falses == torch.tensor([False] * batch_size)).long().sum() == batch_size
 
         torch.manual_seed(0)
-        trues = random_prob_gen(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        trues = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
         assert (trues == torch.tensor([True] * batch_size)).long().sum() == batch_size
 
 
@@ -36,7 +36,7 @@ class TestColorJitterGen:
     def test_color_jitter_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_gen(batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1)
+        jitter_params = random_color_jitter_generator(batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1)
         expected_jitter_params = {
             'brightness_factor': torch.tensor([
                 1.15290772914886474609375, 1.16600155830383300781250, 0.95314550399780273437500,
@@ -71,7 +71,7 @@ class TestColorJitterGen:
     def test_color_jitter_tuple_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params_tuple = random_color_jitter_gen(
+        jitter_params_tuple = random_color_jitter_generator(
             batch_size, brightness=(0.8, 1.2), contrast=(0.7, 1.3), saturation=(0.6, 1.4), hue=(-0.1, 0.1))
 
         expected_jitter_params_tuple = {
@@ -107,7 +107,7 @@ class TestColorJitterGen:
     def test_random_prob_gen_same_on_batch(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_gen(
+        jitter_params = random_color_jitter_generator(
             batch_size, brightness=0.2, contrast=0.3, saturation=0.4, hue=0.1, same_on_batch=True)
 
         expected_res = {
