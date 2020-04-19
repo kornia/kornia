@@ -440,7 +440,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2×3 matrix of the same type as M.
 
     Args:
-        matrix (torch.Tensor): original affine transform. The tensor musth be
+        matrix (torch.Tensor): original affine transform. The tensor must be
           in the shape of (B, 2, 3).
 
     Return:
