@@ -27,14 +27,58 @@ class TestHomographyWarper:
         patch_dst = warper(patch_src, dst_homo_src)
         assert_allclose(patch_src, patch_dst)
 
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_normalize_homography_identity(self, batch_size, device):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = utils.create_eye_batch(batch_size=batch_size, eye_size=3).to(device)
+
+        res = torch.tensor([[[0.5, 0.0, -1.0],
+                             [0.0, 2.0, -1.0],
+                             [0.0, 0.0, 1.0]]])
+        assert (kornia.normal_transform_pixel(height, width) == res).all()
+
+        norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
+        assert (norm_homo == dst_homo_src).all()
+
+        norm_homo = kornia.normalize_homography(dst_homo_src,
+                                                (height, width),
+                                                (height, width))
+        assert (norm_homo == dst_homo_src).all()
+
+        # change output scale
+        norm_homo = kornia.normalize_homography(dst_homo_src,
+                                                (height, width),
+                                                (height * 2, width // 2))
+        res = torch.tensor([[[4.0, 0.0, 3.0],
+                             [0.0, 1 / 3, -2 / 3],
+                             [0.0, 0.0, 1.0]]]).to(device)
+        assert_allclose(norm_homo, res)
+
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    def test_normalize_homography_general(self, batch_size, device):
+        # create input data
+        height, width = 2, 5
+        dst_homo_src = torch.eye(3).to(device)
+        dst_homo_src[..., 0, 0] = 0.5
+        dst_homo_src[..., 1, 1] = 2.0
+        dst_homo_src[..., 0, 2] = 1.0
+        dst_homo_src[..., 1, 2] = 2.0
+        dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
+
+        norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
+        res = torch.tensor([[[0.5, 0.0, 0.0],
+                             [0.0, 2.0, 5.0],
+                             [0.0, 0.0, 1.0]]]).to(device)
+        assert (norm_homo == res).all()
+
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [
         (4, 5), (2, 6), (4, 3), (5, 7), ])
-    def test_warp_grid_translation(self, shape, offset):
+    def test_warp_grid_translation(self, shape, offset, device):
         # create input data
         height, width = shape
-        patch_src = torch.rand(1, 1, height, width)
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
 
         # instantiate warper
@@ -45,9 +89,9 @@ class TestHomographyWarper:
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
         assert_allclose(
-            warper.grid[..., 0] + offset, flow[..., 0])
+            warper.grid[..., 0].to(device) + offset, flow[..., 0])
         assert_allclose(
-            warper.grid[..., 1], flow[..., 1])
+            warper.grid[..., 1].to(device), flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7), ])
@@ -141,6 +185,11 @@ class TestHomographyWarper:
             # transform the points from dst to ref
             patch_dst = warper(patch_src, dst_homo_src_i)
             patch_dst_to_src = warper(patch_dst, torch.inverse(dst_homo_src_i))
+
+            # same transform precomputing the grid
+            warper.precompute_warp_grid(torch.inverse(dst_homo_src_i))
+            patch_dst_to_src_precomputed = warper(patch_dst)
+            assert (patch_dst_to_src_precomputed == patch_dst_to_src).all()
 
             # projected should be equal as initial
             error = utils.compute_patch_error(
