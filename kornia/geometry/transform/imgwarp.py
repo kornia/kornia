@@ -3,8 +3,11 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-import kornia
-import kornia.geometry.warp.homography_warper as warper
+from kornia.geometry.conversions import deg2rad
+from kornia.geometry.warp import (
+    normalize_homography, homography_warp
+)
+
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
     deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
@@ -27,11 +30,11 @@ def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
                         grid_mode: str, padding_mode: str) -> torch.Tensor:
     """Compute the transform in normalized cooridnates and perform the warping.
     """
-    dst_norm_trans_src_norm: torch.Tensor = warper.normalize_homography(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    return warper.homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode)
+    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode)
 
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
@@ -139,7 +142,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     out_size = dsize
     # we generate a 3x3 transformation matrix from 2x3 affine
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
-    dst_norm_trans_src_norm: torch.Tensor = warper.normalize_homography(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, dsize_src, out_size)
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
@@ -272,7 +275,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
     """
-    ang_rad = kornia.deg2rad(angle)
+    ang_rad = deg2rad(angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
