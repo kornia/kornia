@@ -31,6 +31,8 @@ The functions in this section perform various color space conversions.
 .. autofunction:: adjust_hue
 .. autofunction:: adjust_gamma
 .. autofunction:: add_weighted
+.. autofunction:: histogram
+.. autofunction:: histogram2d
 
 .. autoclass:: AddWeighted
 .. autoclass:: RgbToGrayscale

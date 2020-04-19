@@ -31,6 +31,7 @@ class HardNet(nn.Module):
         >>> hardnet = kornia.feature.HardNet()
         >>> descs = hardnet(input) # 16x128
     """
+
     def __init__(self, pretrained: bool = False) -> None:
         super(HardNet, self).__init__()
         self.features = nn.Sequential(
