@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 class HsvToRgb(nn.Module):

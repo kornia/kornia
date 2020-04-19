@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
