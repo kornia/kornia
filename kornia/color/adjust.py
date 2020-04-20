@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
@@ -298,7 +298,8 @@ class AdjustGamma(nn.Module):
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image.
+    r"""Adjust Contrast of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
@@ -322,7 +323,8 @@ class AdjustContrast(nn.Module):
 
 
 class AdjustBrightness(nn.Module):
-    r"""Adjust Brightness of an image.
+    r"""Adjust Brightness of an image. This implementation aligns OpenCV, not PIL. Hence,
+    the output differs from TorchVision.
 
     The input image is expected to be in the range of [0, 1].
 
