@@ -2,7 +2,10 @@ from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
-from .types import UnionType
+from .types import (
+    FloatUnionType,
+    UnionType
+)
 
 
 def _infer_batch_shape(input: UnionType) -> torch.Size:
@@ -73,3 +76,40 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
         return dist.rsample((1, *shape[1:])).repeat(shape[0])
     else:
         return dist.rsample(shape)
+
+
+def _check_and_bound(factor: FloatUnionType, name: str, center: float = 0.,
+                     bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
+    r"""Check inputs and compute the corresponding factor bounds
+    """
+    factor_bound: torch.Tensor
+    if not isinstance(factor, torch.Tensor):
+        factor = torch.tensor(factor, dtype=torch.float32)
+
+    if factor.dim() == 0:
+        _center = torch.tensor(center, dtype=torch.float32)
+
+        if factor < 0:
+            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor.item()}")
+
+        factor_bound = torch.tensor([_center - factor, _center + factor], dtype=torch.float32)
+        # Should be something other than clamp
+        # Currently, single value factor will not out of scope as long as the user provided it.
+        factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
+
+    elif factor.shape[0] == 2 and factor.dim() == 1:
+
+        if not bounds[0] <= factor[0] or not bounds[1] >= factor[1]:
+            raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor}.")
+
+        if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
+            raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
+
+        factor_bound = factor
+
+    else:
+
+        raise TypeError(
+            f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
+
+    return factor_bound
