@@ -12,7 +12,7 @@ kornia/filters/median.py
 kornia/filters/sobel.py
 kornia/augmentation/augmentation.py
 kornia/augmentation/functional.py
-kornia/augmentation/random.py
+kornia/augmentation/random_generator.py
 kornia/augmentation/utils.py
 kornia/geometry/conversions.py
 kornia/geometry/linalg.py

@@ -18,6 +18,7 @@ from .luv import RgbToLuv, LuvToRgb, rgb_to_luv, luv_to_rgb
 from .normalize import Normalize, normalize, Denormalize, denormalize
 from .zca import zca_whitening_transforms, ZCAWhitening
 from .core import add_weighted, AddWeighted
+from .histogram import histogram, histogram2d
 from .adjust import (
     AdjustBrightness, AdjustContrast, AdjustGamma, AdjustHue, AdjustSaturation,
 )
@@ -46,6 +47,8 @@ __all__ = [
     "normalize",
     "denormalize",
     "zca_whitening_transforms",
+    "histogram",
+    "histogram2d",
     "adjust_brightness",
     "adjust_contrast",
     "adjust_gamma",
