@@ -21,11 +21,13 @@ from .types import (
 
 
 class AugmentationBase(nn.Module):
-    def __init__(self, apply_fcn: Callable, return_transform: bool = False) -> None:
+    def __init__(self, apply_fcn: Callable, transform_fcn: Optional[Callable] = None, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
-        self.return_transform = return_transform
         self._apply_fcn: Callable = apply_fcn
+        self._transform_fcn: Optional[Callable] = transform_fcn
         self._params: Dict[str, torch.Tensor] = {}
+        self.transformation_matrix: Optional[torch.Tensor] = None
+        self.return_transform = return_transform
 
     def infer_batch_shape(self, input: UnionType) -> torch.Size:
         return _infer_batch_shape(input)
@@ -33,7 +35,14 @@ class AugmentationBase(nn.Module):
     def get_params(self, input_shape: torch.Size) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+    def compute_transformation_matrix(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        if self._transform_fcn is None:
+            raise ValueError("transform_fcn is not provided. No transformation will be returned.")
+        else:
+            return self._transform_fcn(input, self._params)
+
+    def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:
         if params is None:
             batch_shape = self.infer_batch_shape(input)
             self._params = self.get_params(batch_shape)
@@ -41,25 +50,18 @@ class AugmentationBase(nn.Module):
             self._params = params
 
         if isinstance(input, tuple):
-
-            inp: torch.Tensor = input[0]
-            prev_trans: torch.Tensor = input[1]
-
+            output = self._apply_fcn(input[0], self._params)
+            transformation_matrix = self.compute_transformation_matrix(input[0], self._params)
             if self.return_transform:
+                return output, input[1] @ transformation_matrix
+            else:
+                return output, input[1]
 
-                out = self._apply_fcn(inp, self._params, return_transform=True)
-                img: torch.Tensor = out[0]
-                trans_mat: torch.Tensor = out[1]
-
-                return img, prev_trans @ trans_mat
-
-            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
-            img = cast(torch.Tensor, self._apply_fcn(inp, self._params, return_transform=False))
-
-            # Transform image but pass along the previous transformation
-            return img, prev_trans
-
-        return self._apply_fcn(input, self._params, return_transform=self.return_transform)
+        output = self._apply_fcn(input, self._params)
+        if self.return_transform:
+            transformation_matrix = self.compute_transformation_matrix(input, self._params)
+            return output, transformation_matrix
+        return output
 
 
 class RandomHorizontalFlip(AugmentationBase):
@@ -96,7 +98,7 @@ class RandomHorizontalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
+        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, F.compute_hflip_transformation, return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
 
@@ -140,7 +142,7 @@ class RandomVerticalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
+        super(RandomVerticalFlip, self).__init__(F.apply_vflip, F.compute_vflip_transformation, return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
 
@@ -173,7 +175,7 @@ class ColorJitter(AugmentationBase):
         self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
         hue: FloatUnionType = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(ColorJitter, self).__init__(F.apply_color_jitter, return_transform)
+        super(ColorJitter, self).__init__(F.apply_color_jitter, F.compute_intensity_transformation, return_transform)
         self.brightness: FloatUnionType = brightness
         self.contrast: FloatUnionType = contrast
         self.saturation: FloatUnionType = saturation
@@ -202,7 +204,7 @@ class RandomGrayscale(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform)
+        super(RandomGrayscale, self).__init__(F.apply_grayscale, F.compute_intensity_transformation, return_transform)
         self.p = p
         self.same_on_batch = same_on_batch
 
@@ -240,7 +242,7 @@ class RandomErasing(AugmentationBase):
             self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform)
+        super(RandomErasing, self).__init__(F.apply_erase_rectangles, F.compute_intensity_transformation, return_transform)
         self.p = p
         self.scale: Tuple[float, float] = scale
         self.ratio: Tuple[float, float] = ratio
@@ -275,7 +277,7 @@ class RandomPerspective(AugmentationBase):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
+        super(RandomPerspective, self).__init__(F.apply_perspective, F.compute_perspective_transformation, return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
         self.interpolation: Resample = Resample.get(interpolation)
@@ -327,7 +329,7 @@ class RandomAffine(AugmentationBase):
         shear: Optional[UnionFloat] = None, resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
+        super(RandomAffine, self).__init__(F.apply_affine, F.compute_affine_transformation, return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -359,7 +361,7 @@ class CenterCrop(AugmentationBase):
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
-        super(CenterCrop, self).__init__(F.apply_crop, return_transform)
+        super(CenterCrop, self).__init__(F.apply_crop, F.compute_crop_transformation, return_transform)
         self.size = size
 
     def __repr__(self) -> str:
@@ -413,7 +415,7 @@ class RandomRotation(AugmentationBase):
         self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+        super(RandomRotation, self).__init__(F.apply_rotation, F.compute_rotate_tranformation, return_transform)
         self.degrees = degrees
         self.interpolation: Resample = Resample.get(interpolation)
         self.same_on_batch = same_on_batch
@@ -453,7 +455,7 @@ class RandomCrop(AugmentationBase):
         self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None, pad_if_needed: Optional[bool] = False,
         fill: int = 0, padding_mode: str = 'constant', return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomCrop, self).__init__(F.apply_crop, F.compute_crop_transformation, return_transform)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -491,15 +493,8 @@ class RandomCrop(AugmentationBase):
 
         return input
 
-    def auto_padding(self, input: UnionType) -> UnionType:
-        if isinstance(input, tuple):
-            input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
-        else:
-            input = self.precrop_padding(input)
-        return input
-
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
-        input = self.auto_padding(input)
+    def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+        input = self.precrop_padding(input)
         return super().forward(input, params)
 
 
@@ -522,7 +517,7 @@ class RandomResizedCrop(AugmentationBase):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomResizedCrop, self).__init__(F.apply_crop, F.compute_crop_transformation, return_transform)
         self.size = size
         self.scale = scale
         self.ratio = ratio

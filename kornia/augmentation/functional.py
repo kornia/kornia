@@ -48,7 +48,10 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = rg.random_prob_generator(batch_size, p=p)
-    return apply_hflip(input, params, return_transform)
+    output = apply_hflip(input, params)
+    if return_transform:
+        return output, compute_hflip_transformation(input, params)
+    return output
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
@@ -63,7 +66,10 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = rg.random_prob_generator(batch_size, p=p)
-    return apply_vflip(input, params, return_transform)
+    output = apply_vflip(input, params)
+    if return_transform:
+        return output, compute_vflip_transformation(input, params)
+    return output
 
 
 def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
@@ -80,7 +86,10 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
-    return apply_color_jitter(input, params, return_transform)
+    output = apply_color_jitter(input, params)
+    if return_transform:
+        return output, compute_intensity_transformation(input, params)
+    return output
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
@@ -95,7 +104,11 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     else:
         batch_size = input.shape[0] if len(input.shape) == 4 else 1
     params = rg.random_prob_generator(batch_size, p=p)
-    return apply_grayscale(input, params, return_transform)
+
+    output = apply_grayscale(input, params)
+    if return_transform:
+        return output, compute_intensity_transformation(input, params)
+    return output
 
 
 def random_perspective(input: torch.Tensor,
@@ -111,7 +124,11 @@ def random_perspective(input: torch.Tensor,
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
         batch_size, height, width, p, distortion_scale)
-    return apply_perspective(input, params, return_transform)
+    output = apply_perspective(input, params)
+    if return_transform:
+        transform = compute_perspective_transformation(input, params)
+        return output, transform
+    return output
 
 
 def random_affine(input: torch.Tensor,
@@ -130,7 +147,11 @@ def random_affine(input: torch.Tensor,
     batch_size, _, height, width = input.shape
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
         batch_size, height, width, degrees, translate, scale, shear, resample)
-    return apply_affine(input, params, return_transform)
+    output = apply_affine(input, params)
+    if return_transform:
+        transform = compute_affine_transformation(input, params)
+        return output, transform
+    return output
 
 
 def random_rectangle_erase(
@@ -164,10 +185,13 @@ def random_rectangle_erase(
 
     images_size = input.size()
     b, _, h, w = images_size
-    rect_params = rg.random_rectangles_params_generator(
+    params = rg.random_rectangles_params_generator(
         b, h, w, p, scale, ratio
     )
-    return apply_erase_rectangles(input, rect_params, return_transform=return_transform)
+    output = apply_erase_rectangles(input, params)
+    if return_transform:
+        return output, compute_intensity_transformation(input, params)
+    return output
 
 
 def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
@@ -182,10 +206,13 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
 
     params = rg.random_rotation_generator(batch_size, degrees=degrees)
 
-    return apply_rotation(input, params, return_transform)
+    output = apply_rotation(input, params)
+    if return_transform:
+        return output, compute_rotate_tranformation(input, params)
+    return output
 
 
-def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -204,31 +231,30 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
-
     flipped: torch.Tensor = input.clone()
 
     to_flip = params['batch_prob'].to(input.device)
     flipped[to_flip] = hflip(input[to_flip])
 
-    if return_transform:
-
-        trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-
-        w: int = input.shape[-1]
-        flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
-                                               [0, 1, 0],
-                                               [0, 0, 1]])
-
-        trans_mat[to_flip] = flip_mat.type_as(input)
-
-        return flipped, trans_mat
-
     return flipped
 
 
-def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    to_flip = params['batch_prob'].to(input.device)
+    trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+    w: int = input.shape[-1]
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
+                                            [0, 1, 0],
+                                            [0, 0, 1]])
+    trans_mat[to_flip] = flip_mat.type_as(input)
+
+    return trans_mat
+
+
+
+def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -248,31 +274,30 @@ def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tra
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
-
     flipped: torch.Tensor = input.clone()
     to_flip = params['batch_prob'].to(input.device)
     flipped[to_flip] = vflip(input[to_flip])
 
-    if return_transform:
-
-        trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-
-        h: int = input.shape[-2]
-        flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                               [0, -1, h],
-                                               [0, 0, 1]])
-
-        trans_mat[to_flip] = flip_mat.type_as(input)
-
-        return flipped, trans_mat
-
     return flipped
 
 
-def apply_color_jitter(input: torch.Tensor,
-                       params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    to_flip = params['batch_prob'].to(input.device)
+    trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+
+    h: int = input.shape[-2]
+    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
+                                            [0, -1, h],
+                                            [0, 0, 1]])
+
+    trans_mat[to_flip] = flip_mat.type_as(input)
+
+    return trans_mat
+
+
+def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -297,9 +322,6 @@ def apply_color_jitter(input: torch.Tensor,
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
-
     transforms = [
         lambda img: apply_adjust_brightness(img, params),
         lambda img: apply_adjust_contrast(img, params),
@@ -312,16 +334,17 @@ def apply_color_jitter(input: torch.Tensor,
         t = transforms[idx]
         jittered = t(jittered)
 
-    if return_transform:
-
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-
-        return jittered, identity
-
     return jittered
 
 
-def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+    return identity
+
+
+def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> UnionType:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
@@ -344,25 +367,16 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor], return
     if not _validate_input_shape(input, 1, 3):
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
-    if not isinstance(return_transform, bool):
-        raise TypeError(f"The return_transform flag must be a bool. Got {type(return_transform)}")
-
     grayscale: torch.Tensor = input.clone()
 
     to_gray = params['batch_prob'].to(input.device)
 
     grayscale[to_gray] = rgb_to_grayscale(input[to_gray])
-    if return_transform:
-
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-
-        return grayscale, identity
 
     return grayscale
 
 
-def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                      return_transform: bool = False) -> UnionType:
+def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
@@ -387,8 +401,7 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor],
     _, _, height, width = x_data.shape
 
     # compute the homography between the input points
-    transform: torch.Tensor = get_perspective_transform(
-        params['start_points'], params['end_points']).type_as(input)
+    transform = compute_perspective_transformation(input, params)
 
     out_data: torch.Tensor = x_data.clone()
 
@@ -403,13 +416,18 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor],
         resample_name = Resample(params['interpolation'].item()).name.lower()
         out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width), flags=resample_name)
 
-    if return_transform:
-        return out_data.view_as(input), transform
-
     return out_data.view_as(input)
 
 
-def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    transform: torch.Tensor = get_perspective_transform(
+        params['start_points'], params['end_points']).type_as(input)
+    return transform
+
+
+def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
     r"""Random affine transformation of the image keeping center invariant
@@ -448,22 +466,26 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tr
     height, width = x_data.shape[-2:]
 
     # concatenate transforms
-    transform = get_affine_matrix2d(
-        params['translations'], params['center'], params['scale'], params['angle'],
-        deg2rad(params['sx']), deg2rad(params['sy'])
-    ).type_as(input)
+    transform = compute_affine_transformation(input, params)
 
     resample_name = Resample(params['resample'].item()).name.lower()
 
     out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width), resample_name)
 
-    if return_transform:
-        return out_data.view_as(input), transform
-
     return out_data.view_as(input)
 
 
-def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False):
+def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    transform = get_affine_matrix2d(
+        params['translations'], params['center'], params['scale'], params['angle'],
+        deg2rad(params['sx']), deg2rad(params['sy'])
+    ).type_as(input)
+    return transform
+
+
+def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -481,22 +503,27 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], return_
     transformed: torch.Tensor = rotate(
         input, angles, mode=Resample(params['interpolation'].item()).name.lower())
 
-    if return_transform:
-        # TODO: This part should be inferred from rotate directly
-        center: torch.Tensor = _compute_tensor_center(input)
-        rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
-
-        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
-        trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        trans_mat[:, 0] = rotation_mat[:, 0]
-        trans_mat[:, 1] = rotation_mat[:, 1]
-
-        return transformed, trans_mat
-
     return transformed
 
 
-def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_transform: bool = False) -> UnionType:
+def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    angles: torch.Tensor = params["degrees"].type_as(input)
+
+    # TODO: This part should be inferred from rotate directly
+    center: torch.Tensor = _compute_tensor_center(input)
+    rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
+
+    # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
+    trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+    trans_mat[:, 0] = rotation_mat[:, 0]
+    trans_mat[:, 1] = rotation_mat[:, 1]
+
+    return trans_mat
+
+
+def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """
     Args:
         params (dict): A dict that must have {'src': torch.Tensor, 'dst': torch.Tensor}. Can be generated from
@@ -516,12 +543,18 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], return_tran
         params['src'],
         params['dst'],
         Resample.get(params['interpolation'].item()).name.lower(),  # type: ignore
-        return_transform=return_transform
     )
 
 
-def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                           return_transform: bool = False) -> UnionType:
+def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    transform: torch.Tensor = get_perspective_transform(params['src'].to(input.dtype), params['dst'].to(input.dtype))
+    transform = transform.expand(input.shape[0], -1, -1).type_as(input)
+    return transform
+
+
+def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""
     Generate a {0, 1} mask with drawed rectangle having parameters defined by params
     and size by input.size()
@@ -561,15 +594,10 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor],
         values[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = v
     transformed = torch.where(mask == 1., values, input)
 
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
-
     return transformed
 
 
-def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                            return_transform: bool = False) -> UnionType:
+def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """ Wrapper for adjust_brightness for Torchvision-like param settings.
 
     Args:
@@ -586,15 +614,10 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
     transformed = adjust_brightness(input, params['brightness_factor'].to(input.dtype) - 1)
 
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
-
     return transformed
 
 
-def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                          return_transform: bool = False):
+def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Wrapper for adjust_contrast for Torchvision-like param settings.
     Args:
         input (torch.Tensor): Image to be adjusted in the shape of (*, N).
@@ -612,15 +635,10 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor],
 
     transformed = adjust_contrast(input, params['contrast_factor'].to(input.dtype))
 
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
-
     return transformed
 
 
-def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                            return_transform: bool = False):
+def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Wrapper for adjust_saturation for Torchvision-like param settings.
 
     Args:
@@ -637,15 +655,10 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
     transformed = adjust_saturation(input, params['saturation_factor'].to(input.dtype))
 
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
-
     return transformed
 
 
-def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                     return_transform: bool = False):
+def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Wrapper for adjust_hue for Torchvision-like param settings.
 
     Args:
@@ -663,15 +676,10 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor],
 
     transformed = adjust_hue(input, params['hue_factor'].to(input.dtype) * 2 * pi)
 
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
-
     return transformed
 
 
-def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                       return_transform: bool = False):
+def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -690,9 +698,5 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor],
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_gamma(input, params['gamma_factor'].to(input.dtype))
-
-    if return_transform:
-        identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
-        return transformed, identity
 
     return transformed
