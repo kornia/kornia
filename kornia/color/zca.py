@@ -150,8 +150,7 @@ class ZCAWhitening(nn.Module):
         return y
 
 
-def zca_whitening_transforms(inp: torch.Tensor, eps: float = 1e-7,
-                             biased: bool = False, compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
+def zca_mean(inp: torch.Tensor, eps: float = 1e-7, biased: bool = False, compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
     r"""
 
     Computes ZCA whitening matrix and mean vector. The output could be used in
@@ -204,5 +203,5 @@ def zca_whitening_transforms(inp: torch.Tensor, eps: float = 1e-7,
     if compute_inv:
         T_inv: torch.Tensor = (U).mm(torch.sqrt(S) * U.t())
         return T, mean, T_inv
-    else:
-        return T, mean
+    
+    return T, mean

@@ -23,7 +23,7 @@ The functions in this section perform various color space conversions.
 .. autofunction:: xyz_to_rgb
 .. autofunction:: rgb_to_luv
 .. autofunction:: luv_to_rgb
-.. autofunction:: zca_whitening_transforms
+.. autofunction:: zca_mean
 .. autofunction:: normalize
 .. autofunction:: denormalize
 .. autofunction:: adjust_brightness
