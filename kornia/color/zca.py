@@ -73,7 +73,7 @@ class ZCAWhitening(nn.Module):
             ZCAWhiten: returns a fitted ZCAWhiten object instance.
         """
 
-        T, mean, T_inv = zca_whitening_transforms(x, self.eps, self.biased, compute_inv=True)
+        T, mean, T_inv = zca_mean(x, self.eps, self.biased, compute_inv=True)
 
         self.mean: torch.Tensor = mean
         self.T: torch.Tensor = T
