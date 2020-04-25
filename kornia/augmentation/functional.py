@@ -406,8 +406,10 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     mask = params['batch_prob'].to(input.device)
 
     # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
+    # TODO: this if statement is super weird and sum here is not the propeer way to check
+    # it's valid. In addition, 'interpolation' shouldn't be a reason to get into the branch.
 
-    if bool(mask.sum() > 0):
+    if bool(mask.sum() > 0) and ('interpolation' in params):
         # apply the computed transform
         height, width = x_data.shape[-2:]
         resample_name = Resample(params['interpolation'].item()).name.lower()
