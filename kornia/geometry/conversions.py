@@ -2,13 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.constants import pi
+
 __all__ = [
     # functional api
-    "pi",
     "rad2deg",
     "deg2rad",
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
+    "convert_affinematrix_to_homography",
     "angle_axis_to_rotation_matrix",
     "angle_axis_to_quaternion",
     "rotation_matrix_to_angle_axis",
@@ -23,11 +25,6 @@ __all__ = [
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
 ]
-
-
-"""Constant with number pi
-"""
-pi = torch.tensor(3.14159265358979323846)
 
 
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
@@ -117,6 +114,25 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
             points.shape))
 
     return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
+
+
+def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
+    r"""Function that converts batch of affine matrices from [Bx2x3] to [Bx3x3].
+
+    Examples::
+
+        >>> input = torch.rand(2, 2, 3)  # Bx2x3
+        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx3x3
+    """
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(A)))
+    if not (len(A.shape) == 3 and A.shape[-2:] == (2, 3)):
+        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
+                         .format(A.shape))
+    H: torch.Tensor = torch.nn.functional.pad(A, [0, 0, 0, 1], "constant", value=0.)
+    H[..., -1, -1] += 1.0
+    return H
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:

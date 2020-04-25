@@ -15,6 +15,7 @@ from kornia import contrib
 from kornia import feature
 from kornia import filters
 from kornia import geometry
+from kornia import jit
 from kornia import losses
 from kornia import utils
 
@@ -96,4 +97,4 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.geometry import pi
+from kornia.constants import pi

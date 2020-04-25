@@ -25,6 +25,9 @@ build-docs: FORCE
 
 install: FORCE
 	python setup.py install
+	
+benchmark: 
+	for f in test/performance/*.py  ; do python -utt $${f}; done
 
 uninstall: FORCE
 	pip uninstall kornia

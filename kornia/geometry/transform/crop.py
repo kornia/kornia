@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.transform.imgwarp import (
-    warp_perspective, get_perspective_transform
+    warp_perspective, get_perspective_transform, warp_affine
 )
 
 __all__ = [
@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
+def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int], interpolation: str = 'bilinear',
                     return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Extracts crops from the input tensor and resizes them.
     Args:
@@ -71,12 +71,12 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).repeat(points_src.shape[0], 1, 1)
+    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+    return crop_by_boxes(tensor, points_src, points_dst, interpolation, return_transform=return_transform)
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
+def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str = 'bilinear',
                 return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Crops the given tensor at the center.
 
@@ -134,7 +134,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [end_x, start_y],
         [end_x, end_y],
         [start_x, end_y],
-    ]])
+    ]], device=tensor.device)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -143,14 +143,19 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).repeat(points_src.shape[0], 1, 1)
-    return crop_by_boxes(tensor, points_src, points_dst, return_transform=return_transform)
+    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
+    return crop_by_boxes(
+        tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation,
+        return_transform=return_transform)
 
 
-def crop_by_boxes(tensor, src_box, dst_box,
+def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear',
                   return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """A wrapper performs crop transform with bounding boxes.
 
+    Note:
+        If the src_box is smaller than dst_box, the following error will be thrown.
+        RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
     if tensor.ndimension() not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
@@ -160,16 +165,15 @@ def crop_by_boxes(tensor, src_box, dst_box,
         tensor = torch.unsqueeze(tensor, dim=0)
 
     # compute transformation between points and warp
-    dst_trans_src: torch.Tensor = get_perspective_transform(
-        src_box.to(tensor.device).to(tensor.dtype),
-        dst_box.to(tensor.device).to(tensor.dtype)
-    )
+    # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
     # simulate broadcasting
-    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
+    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = _infer_bounding_box(dst_box)
-    patches: torch.Tensor = warp_perspective(
-        tensor, dst_trans_src, (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())))
+    patches: torch.Tensor = warp_affine(
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())),
+        flags=interpolation)
 
     # return in the original shape
     if is_unbatched:

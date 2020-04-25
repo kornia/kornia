@@ -8,6 +8,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 import kornia.augmentation.functional as F
+from kornia.constants import pi
 from kornia.augmentation import ColorJitter
 
 from test.common import device
@@ -35,12 +36,12 @@ class TestHorizontalFlipFn:
                                  [0., 1., 0.],
                                  [0., 0., 1.]])  # 3 x 3
 
-        assert (F._apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F._apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F._apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F._apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
-        assert (F._apply_hflip(input, params=flip_param_0, return_transform=False) == input).all()
-        assert (F._apply_hflip(input, params=flip_param_1, return_transform=False) == expected).all()
+        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
+        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
+        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
+        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_hflip(input, params=flip_param_0, return_transform=False) == input).all()
+        assert (F.apply_hflip(input, params=flip_param_1, return_transform=False) == expected).all()
 
     def test_batch_random_hflip(self):
         batch_size = 5
@@ -68,10 +69,10 @@ class TestHorizontalFlipFn:
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F._apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F._apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F._apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F._apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
+        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
+        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
+        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
 
 
 class TestVerticalFlipFn:
@@ -98,12 +99,12 @@ class TestVerticalFlipFn:
                                  [0., 1., 0.],
                                  [0., 0., 1.]])  # 3 x 3
 
-        assert (F._apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F._apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F._apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F._apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
-        assert (F._apply_vflip(input, params=flip_param_0, return_transform=False) == input).all()
-        assert (F._apply_vflip(input, params=flip_param_1, return_transform=False) == expected).all()
+        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
+        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
+        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
+        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_vflip(input, params=flip_param_0, return_transform=False) == input).all()
+        assert (F.apply_vflip(input, params=flip_param_1, return_transform=False) == expected).all()
 
     def test_batch_random_vflip(self, device):
         batch_size = 5
@@ -132,10 +133,10 @@ class TestVerticalFlipFn:
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F._apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F._apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F._apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F._apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
+        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
+        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
+        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
 
 
 class TestColorJitter:
@@ -143,10 +144,11 @@ class TestColorJitter:
     def test_color_jitter(self):
 
         jitter_param = {
-            'brightness_factor': torch.tensor(0.),
+            'brightness_factor': torch.tensor(1.),
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
-            'hue_factor': torch.tensor(0.)
+            'hue_factor': torch.tensor(0.),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(3, 5, 5)  # 3 x 5 x 5
@@ -155,18 +157,19 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F._apply_color_jitter(
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(
             input, jitter_param, return_transform=True)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F._apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
 
     def test_color_jitter_batch(self):
         batch_size = 2
         jitter_param = {
-            'brightness_factor': torch.tensor([0.] * batch_size),
+            'brightness_factor': torch.tensor([1.] * batch_size),
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
-            'hue_factor': torch.tensor([0.] * batch_size)
+            'hue_factor': torch.tensor([0.] * batch_size),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
@@ -174,18 +177,19 @@ class TestColorJitter:
 
         expected_transform = torch.eye(3).unsqueeze(0).expand((batch_size, 3, 3))  # 2 x 3 x 3
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F._apply_color_jitter(
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(
             input, jitter_param, return_transform=True)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F._apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
 
     def test_random_brightness(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0.1529, 0.1660]),
+            'brightness_factor': torch.tensor([1.1529, 1.1660]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -218,15 +222,16 @@ class TestColorJitter:
                                    [0.7660, 0.6660, 0.5660],
                                    [0.8660, 0.9660, 1.0000]]]])  # 1 x 1 x 3 x 3
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected)
 
     def test_random_contrast(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -259,15 +264,16 @@ class TestColorJitter:
                                    [0.7102, 0.5919, 0.4735],
                                    [0.8286, 0.9470, 1.0000]]]])
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_saturation(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
-            'saturation_factor': torch.tensor([0.9026, 1.1175])
+            'saturation_factor': torch.tensor([0.9026, 1.1175]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -308,15 +314,16 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]])
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_hue(self):
         torch.manual_seed(42)
         jitter_param = {
-            'brightness_factor': torch.tensor([0., 0.]),
+            'brightness_factor': torch.tensor([1., 1.]),
             'contrast_factor': torch.tensor([1., 1.]),
-            'hue_factor': torch.tensor([-0.0438, 0.0404]),
-            'saturation_factor': torch.tensor([1., 1.])
+            'hue_factor': torch.tensor([-0.0438 / 2 / pi, 0.0404 / 2 / pi]),
+            'saturation_factor': torch.tensor([1., 1.]),
+            'order': torch.tensor([2, 3, 0, 1])
         }
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -355,7 +362,7 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]])
 
-        assert_allclose(F._apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
 
 class TestRandomGrayscale:
@@ -369,8 +376,8 @@ class TestRandomGrayscale:
 
         expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
 
-        assert_allclose(F._apply_grayscale(input, grayscale_params_0, return_transform=True)[1], expected_transform)
-        assert_allclose(F._apply_grayscale(input, grayscale_params_1, return_transform=True)[1], expected_transform)
+        assert_allclose(F.apply_grayscale(input, grayscale_params_0, return_transform=True)[1], expected_transform)
+        assert_allclose(F.apply_grayscale(input, grayscale_params_1, return_transform=True)[1], expected_transform)
 
     def test_opencv_true(self, device):
         grayscale_params = {'batch_prob': torch.tensor([True])}
@@ -412,7 +419,7 @@ class TestRandomGrayscale:
                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
         expected = expected.to(device)
 
-        assert_allclose(F._apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
 
     def test_opencv_false(self, device):
         grayscale_params = {'batch_prob': torch.tensor([False])}
@@ -437,7 +444,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        assert_allclose(F._apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
 
     def test_opencv_true_batch(self, device):
         batch_size = 4
@@ -483,7 +490,7 @@ class TestRandomGrayscale:
         expected = expected.to(device)
         expected = expected.unsqueeze(0).repeat(batch_size, 1, 1, 1)
 
-        assert_allclose(F._apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
 
     def test_opencv_false_batch(self, device):
         batch_size = 4
@@ -510,4 +517,79 @@ class TestRandomGrayscale:
 
         expected = data
 
-        assert_allclose(F._apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
+
+
+class TestRandomRectangleEarasing:
+
+    def test_rectangle_erasing1(self, device):
+        inputs = torch.ones(1, 1, 10, 10).to(device)
+        rect_params = {
+            "widths": torch.tensor([5]),
+            "heights": torch.tensor([5]),
+            "xs": torch.tensor([5]),
+            "ys": torch.tensor([5]),
+            "values": torch.tensor([0.])
+        }
+        expected = torch.tensor([[[
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.],
+            [1., 1., 1., 1., 1., 0., 0., 0., 0., 0.]
+        ]]]).to(device)
+        assert_allclose(F.apply_erase_rectangles(inputs, rect_params), expected)
+
+    def test_rectangle_erasing2(self, device):
+        inputs = torch.ones(3, 3, 3, 3).to(device)
+        rect_params = {
+            "widths": torch.tensor([3, 2, 1]),
+            "heights": torch.tensor([3, 2, 1]),
+            "xs": torch.tensor([0, 1, 2]),
+            "ys": torch.tensor([0, 1, 2]),
+            "values": torch.tensor([0., 0., 0.])
+        }
+        expected = torch.tensor(
+            [[[[0., 0., 0.],
+               [0., 0., 0.],
+                [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]],
+
+                [[0., 0., 0.],
+                 [0., 0., 0.],
+                 [0., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 0., 0.],
+                    [1., 0., 0.]]],
+
+                [[[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]],
+
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                    [1., 1., 0.]]]]
+        ).to(device)
+
+        assert_allclose(F.apply_erase_rectangles(inputs, rect_params), expected)
