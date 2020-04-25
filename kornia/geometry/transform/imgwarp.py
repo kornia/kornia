@@ -3,8 +3,11 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.geometry.warp.homography_warper import homography_warp
+from kornia.geometry.conversions import deg2rad
+from kornia.geometry.warp import (
+    normalize_homography, homography_warp
+)
+
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
     deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
@@ -15,7 +18,6 @@ __all__ = [
     "warp_affine",
     "get_perspective_transform",
     "get_rotation_matrix2d",
-    "normal_transform_pixel",
     "remap",
     "invert_affine_transform",
     "angle_to_rotation_matrix",
@@ -23,47 +25,12 @@ __all__ = [
 ]
 
 
-def normal_transform_pixel(height, width):
-
-    tr_mat = torch.Tensor([[1.0, 0.0, -1.0],
-                           [0.0, 1.0, -1.0],
-                           [0.0, 0.0, 1.0]])  # 1x3x3
-
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
-
-    tr_mat = tr_mat.unsqueeze(0)
-
-    return tr_mat
-
-
-def src_norm_to_dst_norm(dst_pix_trans_src_pix: torch.Tensor,
-                         dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]) -> torch.Tensor:
-    # source and destination sizes
-    src_h, src_w = dsize_src
-    dst_h, dst_w = dsize_dst
-    # the devices and types
-    device: torch.device = dst_pix_trans_src_pix.device
-    dtype: torch.dtype = dst_pix_trans_src_pix.dtype
-    # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
-        src_h, src_w).to(device, dtype)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
-        dst_h, dst_w).to(device, dtype)
-    # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = (
-        dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
-    )
-    return dst_norm_trans_src_norm
-
-
 def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
                         dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
                         grid_mode: str, padding_mode: str) -> torch.Tensor:
     """Compute the transform in normalized cooridnates and perform the warping.
     """
-    dst_norm_trans_src_norm: torch.Tensor = src_norm_to_dst_norm(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
@@ -117,7 +84,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
 
     # launches the warper
     h, w = src.shape[-2:]
@@ -169,13 +136,13 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
     B, C, H, W = src.size()
     dsize_src = (H, W)
     out_size = dsize
     # we generate a 3x3 transformation matrix from 2x3 affine
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
-    dst_norm_trans_src_norm: torch.Tensor = src_norm_to_dst_norm(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, dsize_src, out_size)
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
@@ -293,8 +260,7 @@ def get_perspective_transform(src, dst):
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
-    """
-    Creates a rotation matrix out of angles in degrees
+    r"""Create a rotation matrix out of angles in degrees.
     Args:
         angle: (torch.Tensor): tensor of angles in degrees, any shape.
 
@@ -309,7 +275,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
     """
-    ang_rad = kornia.deg2rad(angle)
+    ang_rad = deg2rad(angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
@@ -474,7 +440,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2×3 matrix of the same type as M.
 
     Args:
-        matrix (torch.Tensor): original affine transform. The tensor musth be
+        matrix (torch.Tensor): original affine transform. The tensor must be
           in the shape of (B, 2, 3).
 
     Return:
