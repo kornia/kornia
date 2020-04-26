@@ -28,20 +28,8 @@ class TestHorizontalFlipFn:
                                  [0., 0., 0., 0.],
                                  [2., 1., 0., 0.]])  # 3 x 4
 
-        expected_transform = torch.tensor([[-1., 0., 4.],
-                                           [0., 1., 0.],
-                                           [0., 0., 1.]])  # 3 x 3
-
-        identity = torch.tensor([[1., 0., 0.],
-                                 [0., 1., 0.],
-                                 [0., 0., 1.]])  # 3 x 3
-
-        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
-        assert (F.apply_hflip(input, params=flip_param_0, return_transform=False) == input).all()
-        assert (F.apply_hflip(input, params=flip_param_1, return_transform=False) == expected).all()
+        assert (F.apply_hflip(input, params=flip_param_0) == input).all()
+        assert (F.apply_hflip(input, params=flip_param_1) == expected).all()
 
     def test_batch_random_hflip(self):
         batch_size = 5
@@ -56,23 +44,11 @@ class TestHorizontalFlipFn:
                                    [0., 0., 0.],
                                    [1., 1., 0.]]]])  # 1 x 1 x 3 x 3
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
-                                            [0., 1., 0.],
-                                            [0., 0., 1.]]])  # 1 x 3 x 3
-
-        identity = torch.tensor([[[1., 0., 0.],
-                                  [0., 1., 0.],
-                                  [0., 0., 1.]]])  # 1 x 3 x 3
-
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected = expected.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
-        expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
-        identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F.apply_hflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F.apply_hflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_hflip(input, params=flip_param_0) == input).all()
+        assert (F.apply_hflip(input, params=flip_param_1) == expected).all()
 
 
 class TestVerticalFlipFn:
@@ -91,20 +67,8 @@ class TestVerticalFlipFn:
                                  [0., 0., 0.],
                                  [0., 0., 0.]])  # 3 x 3
 
-        expected_transform = torch.tensor([[1., 0., 0.],
-                                           [0., -1., 3.],
-                                           [0., 0., 1.]])  # 3 x 3
-
-        identity = torch.tensor([[1., 0., 0.],
-                                 [0., 1., 0.],
-                                 [0., 0., 1.]])  # 3 x 3
-
-        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
-        assert (F.apply_vflip(input, params=flip_param_0, return_transform=False) == input).all()
-        assert (F.apply_vflip(input, params=flip_param_1, return_transform=False) == expected).all()
+        assert (F.apply_vflip(input, params=flip_param_0) == input).all()
+        assert (F.apply_vflip(input, params=flip_param_1) == expected).all()
 
     def test_batch_random_vflip(self, device):
         batch_size = 5
@@ -120,23 +84,11 @@ class TestVerticalFlipFn:
                                    [0., 0., 0.],
                                    [0., 0., 0.]]]])  # 1 x 1 x 3 x 3
 
-        expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
-                                            [0., 0., 1.]]])  # 1 x 3 x 3
-
-        identity = torch.tensor([[[1., 0., 0.],
-                                  [0., 1., 0.],
-                                  [0., 0., 1.]]])  # 1 x 3 x 3
-
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected = expected.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
-        expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
-        identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[0] == input).all()
-        assert (F.apply_vflip(input, params=flip_param_0, return_transform=True)[1] == identity).all()
-        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[0] == expected).all()
-        assert (F.apply_vflip(input, params=flip_param_1, return_transform=True)[1] == expected_transform).all()
+        assert (F.apply_vflip(input, params=flip_param_0) == input).all()
+        assert (F.apply_vflip(input, params=flip_param_1) == expected).all()
 
 
 class TestColorJitter:
@@ -155,12 +107,7 @@ class TestColorJitter:
 
         expected = input
 
-        expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
-
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F.apply_color_jitter(
-            input, jitter_param, return_transform=True)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F.apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
 
     def test_color_jitter_batch(self):
         batch_size = 2
@@ -175,12 +122,7 @@ class TestColorJitter:
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
         expected = input
 
-        expected_transform = torch.eye(3).unsqueeze(0).expand((batch_size, 3, 3))  # 2 x 3 x 3
-
         assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F.apply_color_jitter(
-            input, jitter_param, return_transform=True)[0], expected, atol=1e-4, rtol=1e-5)
-        assert_allclose(F.apply_color_jitter(input, jitter_param, return_transform=True)[1], expected_transform)
 
     def test_random_brightness(self):
         torch.manual_seed(42)
@@ -366,18 +308,6 @@ class TestColorJitter:
 
 
 class TestRandomGrayscale:
-
-    def test_random_grayscale_return_transform(self):
-
-        grayscale_params_0 = {'batch_prob': torch.tensor([True])}
-        grayscale_params_1 = {'batch_prob': torch.tensor([False])}
-
-        input = torch.rand(3, 5, 5)  # 3 x 5 x 5
-
-        expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
-
-        assert_allclose(F.apply_grayscale(input, grayscale_params_0, return_transform=True)[1], expected_transform)
-        assert_allclose(F.apply_grayscale(input, grayscale_params_1, return_transform=True)[1], expected_transform)
 
     def test_opencv_true(self, device):
         grayscale_params = {'batch_prob': torch.tensor([True])}
