@@ -86,4 +86,3 @@ Modules
 .. autoclass:: AdjustHue
 .. autoclass:: AdjustGamma
 .. autoclass:: AddWeighted
-
