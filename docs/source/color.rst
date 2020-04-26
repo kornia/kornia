@@ -1,5 +1,5 @@
 kornia.color
-------------
+============
 
 .. currentmodule:: kornia.color
 
