@@ -16,9 +16,9 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.2.3'
+version = '0.3.0'
 pytorch = 'torch>=1.0.0, <=1.4.0'
-############################
+#################################
 
 sha = 'Unknown'
 package_name = 'kornia'
