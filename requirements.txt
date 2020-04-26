@@ -1,5 +1,6 @@
 # core dependencies
 pytorch==1.4.0
+cudatoolkit==10.1.243
 
 # package
 setuptools==41.4.0
