@@ -246,12 +246,11 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
-                                            [0, 1, 0],
-                                            [0, 0, 1]])
+                                          [0, 1, 0],
+                                          [0, 0, 1]])
     trans_mat[to_flip] = flip_mat.type_as(input)
 
     return trans_mat
-
 
 
 def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -289,8 +288,8 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                            [0, -1, h],
-                                            [0, 0, 1]])
+                                          [0, -1, h],
+                                          [0, 0, 1]])
 
     trans_mat[to_flip] = flip_mat.type_as(input)
 

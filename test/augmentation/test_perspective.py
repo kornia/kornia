@@ -36,7 +36,12 @@ class TestPerspective:
         end_points = torch.rand(1, 4, 2).to(device)
         end_points = utils.tensor_to_gradcheck_var(end_points)  # to var
 
-        params = dict(batch_prob=batch_prob, start_points=start_points, end_points=end_points, interpolation=torch.tensor(1))
+        params = dict(
+            batch_prob=batch_prob,
+            start_points=start_points,
+            end_points=end_points,
+            interpolation=torch.tensor(1)
+        )
         assert gradcheck(F.apply_perspective, (input, params,), raise_exception=True)
 
 
