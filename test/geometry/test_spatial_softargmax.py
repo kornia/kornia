@@ -502,8 +502,6 @@ class TestConvQuadInterp3d:
         assert val.shape == (2, 3, 3, 4, 4)
 
     def test_gradcheck(self, device):
-        if "cuda" in str(device):
-            pytest.skip("Extremely unstable using cuda device.")
         input = torch.rand(1, 2, 3, 5, 5).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.geometry.ConvQuadInterp3d(),
