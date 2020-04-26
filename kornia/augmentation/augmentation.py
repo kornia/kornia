@@ -37,8 +37,8 @@ class AugmentationBase(nn.Module):
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
-                return_transform: Optional[bool] = None) -> UnionType:
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -550,13 +550,13 @@ class RandomCrop(AugmentationBase):
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_crop(input, params)
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
         if type(input) == tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:
             input = self.precrop_padding(input)  # type:ignore
-        return super().forward(input, params)
+        return super().forward(input, params, return_transform)
 
 
 class RandomResizedCrop(AugmentationBase):
