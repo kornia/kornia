@@ -344,7 +344,7 @@ def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torc
     return identity
 
 
-def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> UnionType:
+def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
@@ -356,8 +356,6 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> Uni
 
     Returns:
         torch.Tensor: The grayscaled input
-        torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)` if return_transform flag
-        is set to ``True``
     """
     # TODO: params validation
 
