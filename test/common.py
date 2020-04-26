@@ -25,6 +25,7 @@ def get_test_dtypes() -> Dict[str, torch.device]:
         dict(str, torch.dtype): list with dtype names.
     """
     dtypes: Dict[str, torch.dtype] = {}
+    dtypes["float16"] = torch.float16
     dtypes["float32"] = torch.float32
     dtypes["float64"] = torch.float64
     return dtypes
