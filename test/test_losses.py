@@ -208,7 +208,7 @@ class TestSSIMLoss:
 
     def test_gradcheck(self, device):
         # input data
-        window_size = 5
+        window_size = 3
         img1 = torch.rand(1, 1, 10, 16).to(device)
         img2 = torch.rand(1, 1, 10, 16).to(device)
 
