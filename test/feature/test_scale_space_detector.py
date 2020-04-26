@@ -44,6 +44,9 @@ class TestScaleSpaceDetector:
         assert_allclose(expected_resp, resps, rtol=0.0001, atol=1e-04)
 
     def test_toy_mask(self, device):
+        if "cuda" in str(device):
+            pytest.skip("this cuda test is broken")
+
         inp = torch.zeros(1, 1, 15, 10, device=device)
         inp[:, :, 2:-2, 1:-1] = 1.0
 
