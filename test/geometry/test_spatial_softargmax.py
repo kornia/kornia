@@ -219,7 +219,9 @@ class TestDSNT:
         expected_loss1 = torch.as_tensor([[0.0, 1.0]]).to(device)
         assert_allclose(loss1, expected_loss1)
 
-        target_hm = kornia.geometry.dsnt.render_gaussian_2d(target, std, input.shape[-2:])
+        target_hm = kornia.geometry.dsnt.render_gaussian_2d(
+            target, std, input.shape[-2:]).contiguous()
+
         loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction='none')
         expected_loss2 = torch.as_tensor([[0.0087, 0.0818]]).to(device)
         assert_allclose(loss2, expected_loss2, rtol=0, atol=1e-3)
@@ -500,8 +502,6 @@ class TestConvQuadInterp3d:
         assert val.shape == (2, 3, 3, 4, 4)
 
     def test_gradcheck(self, device):
-        if "cuda" in str(device):
-            pytest.skip("Extremely unstable using cuda device.")
         input = torch.rand(1, 2, 3, 5, 5).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.geometry.ConvQuadInterp3d(),
