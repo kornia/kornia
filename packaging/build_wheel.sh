@@ -12,6 +12,7 @@ rm -rf kornia/
 git clone https://github.com/kornia/kornia.git
 
 cd /tmp/kornia
+git checkout v$KORNIA_BUILD_VERSION
 python3 setup.py clean
 python3 setup.py bdist_wheel
 
