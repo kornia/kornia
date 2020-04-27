@@ -4,7 +4,8 @@ import torch
 from torch.distributions import Uniform
 from .types import (
     FloatUnionType,
-    UnionType
+    UnionType,
+    UnionShape
 )
 
 
@@ -50,6 +51,21 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
     """
     if input.dtype not in accepted_dtypes:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
+
+
+def _validate_shape(shape: UnionShape, required_shapes: List[str] = ["BCHW"]) -> None:
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    Args:
+        input: torch.Tensor
+        required_shapes: List. e.g. ["BCHW", "BCDHW"]
+    """
+    passed = False
+    for required_shape in required_shapes:
+        if len(shape) == len(required_shape):
+            passed = True
+            break
+    if not passed:
+        raise TypeError(f"Expected input shape in {required_shape}. Got {shape}.")
 
 
 def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:

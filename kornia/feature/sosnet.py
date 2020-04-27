@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 
 urls: Dict[str, str] = dict()
-urls["lib"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights/sosnet-32x32-liberty.pth"
-urls["hp_a"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights//sosnet-32x32-hpatches_a.pth"
+urls["lib"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights/sosnet_32x32_liberty.pth"
+urls["hp_a"] = "https://github.com/yuruntian/SOSNet/tree/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
 
 
 class SOSNet(nn.Module):

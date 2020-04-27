@@ -21,45 +21,45 @@ from .types import (
 
 
 class AugmentationBase(nn.Module):
-    def __init__(self, apply_fcn: Callable, return_transform: bool = False) -> None:
+    def __init__(self, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
-        self._apply_fcn: Callable = apply_fcn
-        self._params: Dict[str, torch.Tensor] = {}
 
     def infer_batch_shape(self, input: UnionType) -> torch.Size:
         return _infer_batch_shape(input)
 
-    def get_params(self, input_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, input_shape: torch.Size) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
+        if return_transform is None:
+            return_transform = self.return_transform
         if params is None:
             batch_shape = self.infer_batch_shape(input)
-            self._params = self.get_params(batch_shape)
+            self._params = self.generate_parameters(batch_shape)
         else:
             self._params = params
 
         if isinstance(input, tuple):
+            output = self.apply_transform(input[0], self._params)
+            transformation_matrix = self.compute_transformation(input[0], self._params)
+            if return_transform:
+                return output, input[1] @ transformation_matrix
+            else:
+                return output, input[1]
 
-            inp: torch.Tensor = input[0]
-            prev_trans: torch.Tensor = input[1]
-
-            if self.return_transform:
-
-                out = self._apply_fcn(inp, self._params, return_transform=True)
-                img: torch.Tensor = out[0]
-                trans_mat: torch.Tensor = out[1]
-
-                return img, prev_trans @ trans_mat
-
-            # https://mypy.readthedocs.io/en/latest/casts.html cast the return type to please mypy gods
-            img = cast(torch.Tensor, self._apply_fcn(inp, self._params, return_transform=False))
-
-            # Transform image but pass along the previous transformation
-            return img, prev_trans
-
-        return self._apply_fcn(input, self._params, return_transform=self.return_transform)
+        output = self.apply_transform(input, self._params)
+        if return_transform:
+            transformation_matrix = self.compute_transformation(input, self._params)
+            return output, transformation_matrix
+        return output
 
 
 class RandomHorizontalFlip(AugmentationBase):
@@ -96,7 +96,7 @@ class RandomHorizontalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip, self).__init__(F.apply_hflip, return_transform)
+        super(RandomHorizontalFlip, self).__init__(return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
 
@@ -104,8 +104,14 @@ class RandomHorizontalFlip(AugmentationBase):
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_hflip_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_hflip(input, params)
 
 
 class RandomVerticalFlip(AugmentationBase):
@@ -140,7 +146,7 @@ class RandomVerticalFlip(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomVerticalFlip, self).__init__(F.apply_vflip, return_transform)
+        super(RandomVerticalFlip, self).__init__(return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
 
@@ -148,8 +154,14 @@ class RandomVerticalFlip(AugmentationBase):
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_vflip_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_vflip(input, params)
 
 
 class ColorJitter(AugmentationBase):
@@ -173,7 +185,7 @@ class ColorJitter(AugmentationBase):
         self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
         hue: FloatUnionType = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(ColorJitter, self).__init__(F.apply_color_jitter, return_transform)
+        super(ColorJitter, self).__init__(return_transform)
         self.brightness: FloatUnionType = brightness
         self.contrast: FloatUnionType = contrast
         self.saturation: FloatUnionType = saturation
@@ -185,9 +197,15 @@ class ColorJitter(AugmentationBase):
             hue={self.hue}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_color_jitter_generator(
             batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_color_jitter(input, params)
 
 
 class RandomGrayscale(AugmentationBase):
@@ -202,7 +220,7 @@ class RandomGrayscale(AugmentationBase):
     """
 
     def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomGrayscale, self).__init__(F.apply_grayscale, return_transform)
+        super(RandomGrayscale, self).__init__(return_transform)
         self.p = p
         self.same_on_batch = same_on_batch
 
@@ -210,8 +228,14 @@ class RandomGrayscale(AugmentationBase):
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_grayscale(input, params)
 
 
 class RandomErasing(AugmentationBase):
@@ -241,7 +265,7 @@ class RandomErasing(AugmentationBase):
             self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomErasing, self).__init__(F.apply_erase_rectangles, return_transform)
+        super(RandomErasing, self).__init__(return_transform)
         self.p = p
         self.scale: Tuple[float, float] = scale
         self.ratio: Tuple[float, float] = ratio
@@ -253,10 +277,16 @@ class RandomErasing(AugmentationBase):
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rectangles_params_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], p=self.p, scale=self.scale, ratio=self.ratio,
             value=self.value, same_on_batch=self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_erase_rectangles(input, params)
 
 
 class RandomPerspective(AugmentationBase):
@@ -276,7 +306,7 @@ class RandomPerspective(AugmentationBase):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomPerspective, self).__init__(F.apply_perspective, return_transform)
+        super(RandomPerspective, self).__init__(return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
         self.interpolation: Resample = Resample.get(interpolation)
@@ -287,10 +317,16 @@ class RandomPerspective(AugmentationBase):
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.p, self.distortion_scale,
             self.interpolation, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_perspective_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_perspective(input, params)
 
 
 class RandomAffine(AugmentationBase):
@@ -328,7 +364,7 @@ class RandomAffine(AugmentationBase):
         shear: Optional[UnionFloat] = None, resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomAffine, self).__init__(F.apply_affine, return_transform)
+        super(RandomAffine, self).__init__(return_transform)
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -341,11 +377,16 @@ class RandomAffine(AugmentationBase):
         f"resample={self.resample.name}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch}"
         return self.__class__.__name__ + repr
 
-    # def get_params(self, batch_size: int, height: int, width: int) -> Dict[str, torch.Tensor]:
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.degrees, self.translate, self.scale, self.shear,
             self.resample, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_affine_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_affine(input, params)
 
 
 class CenterCrop(AugmentationBase):
@@ -360,14 +401,14 @@ class CenterCrop(AugmentationBase):
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
-        super(CenterCrop, self).__init__(F.apply_crop, return_transform)
+        super(CenterCrop, self).__init__(return_transform)
         self.size = size
 
     def __repr__(self) -> str:
         repr = f"(size={self.size}, return_transform={self.return_transform}"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         if isinstance(self.size, tuple):
             size_param = (self.size[0], self.size[1])
         elif isinstance(self.size, int):
@@ -376,6 +417,12 @@ class CenterCrop(AugmentationBase):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
                             f"Got: {type(self.size)}.")
         return rg.center_crop_params_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], size_param)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_crop_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_crop(input, params)
 
 
 class RandomRotation(AugmentationBase):
@@ -415,7 +462,7 @@ class RandomRotation(AugmentationBase):
         self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomRotation, self).__init__(F.apply_rotation, return_transform)
+        super(RandomRotation, self).__init__(return_transform)
         self.degrees = degrees
         self.interpolation: Resample = Resample.get(interpolation)
         self.same_on_batch = same_on_batch
@@ -425,8 +472,14 @@ class RandomRotation(AugmentationBase):
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rotation_generator(batch_shape[0], self.degrees, self.interpolation, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_rotate_tranformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_rotation(input, params)
 
 
 class RandomCrop(AugmentationBase):
@@ -455,7 +508,7 @@ class RandomCrop(AugmentationBase):
         self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None, pad_if_needed: Optional[bool] = False,
         fill: int = 0, padding_mode: str = 'constant', return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomCrop, self).__init__(return_transform)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -469,7 +522,7 @@ class RandomCrop(AugmentationBase):
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
                                         same_on_batch=self.same_on_batch)
 
@@ -493,16 +546,19 @@ class RandomCrop(AugmentationBase):
 
         return input
 
-    def auto_padding(self, input: UnionType) -> UnionType:
-        if isinstance(input, tuple):
-            input = (self.precrop_padding(input[0]), self.precrop_padding(input[1]))
-        else:
-            input = self.precrop_padding(input)
-        return input
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_crop_transformation(input, params)
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None) -> UnionType:  # type: ignore
-        input = self.auto_padding(input)
-        return super().forward(input, params)
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_crop(input, params)
+
+    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
+        if type(input) == tuple:
+            input = (self.precrop_padding(input[0]), input[1])
+        else:
+            input = self.precrop_padding(input)  # type:ignore
+        return super().forward(input, params, return_transform)
 
 
 class RandomResizedCrop(AugmentationBase):
@@ -524,7 +580,7 @@ class RandomResizedCrop(AugmentationBase):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
-        super(RandomResizedCrop, self).__init__(F.apply_crop, return_transform)
+        super(RandomResizedCrop, self).__init__(return_transform)
         self.size = size
         self.scale = scale
         self.ratio = ratio
@@ -537,8 +593,14 @@ class RandomResizedCrop(AugmentationBase):
         f"same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
-    def get_params(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
         _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), _target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_crop_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_crop(input, params)
