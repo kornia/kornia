@@ -46,6 +46,7 @@ from kornia.color import (
     normalize,
     denormalize,
     zca_mean,
+    zca_whiten,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 from functools import reduce
 
 import torch
@@ -76,13 +76,13 @@ class ZCAWhitening(nn.Module):
         T, mean, T_inv = zca_mean(x, self.eps, self.biased, compute_inv=True)
 
         self.mean: torch.Tensor = mean
-        self.T: torch.Tensor = T
-        self.T_inv: torch.Tensor = T_inv
+        self.transform: torch.Tensor = T
+        self.transform_inv: torch.Tensor = T_inv
 
         if self.detach_transforms:
             self.mean = self.mean.detach()
-            self.T = self.T.detach()
-            self.T_inv = self.T_inv.detach()
+            self.transform = self.transform.detach()
+            self.transform_inv = self.transform_inv.detach()
 
         self.fitted = True
 
@@ -110,13 +110,7 @@ class ZCAWhitening(nn.Module):
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
 
-        num_features: int = reduce(lambda a, b: a * b, x.size()[1::])
-
-        x_flat: torch.Tensor = torch.reshape(x, (-1, num_features))
-
-        y = (x_flat - self.mean).mm(self.T)
-
-        y = y.reshape(x.size())
+        y = zca_whiten(x, self.mean, self.transform)
 
         return y
 
@@ -143,18 +137,20 @@ class ZCAWhitening(nn.Module):
 
         x_flat: torch.Tensor = torch.reshape(x, (-1, num_features))
 
-        y: torch.Tensor = (x_flat).mm(self.T_inv) + self.mean
+        y: torch.Tensor = (x_flat).mm(self.transform_inv) + self.mean
 
         y = y.reshape(x.size())
 
         return y
 
 
-def zca_mean(inp: torch.Tensor, eps: float = 1e-7, biased: bool = False, compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
+def zca_mean(inp: torch.Tensor, eps: float = 1e-7, biased: bool = False,
+             compute_inv: bool = False) -> Tuple[torch.Tensor, ...]:
     r"""
 
     Computes ZCA whitening matrix and mean vector. The output could be used in
-    :class:`~torchvision.transforms.LinearTransformation`.
+    :class:`~torchvision.transforms.LinearTransformation` or with
+    :method:`~kornia.color.zca_whiten`.
 
     See :class:`~kornia.color.ZCAWhitening` for details.
 
@@ -171,7 +167,10 @@ def zca_mean(inp: torch.Tensor, eps: float = 1e-7, biased: bool = False, compute
         A tuple containing the ZCA matrix and the mean vector, and if compute_inv = True, the
         inverse whitening matrix is retured as well as the final return value.
 
-
+    Examples:
+        >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
+        >>> transform, mean = zca_mean(x) # Returns transformation matrix and data mean
+        >>> transform, mean, transform_inv = zca(x, compute_inv = True) # Returns the inverse transform as well.
 
     """
 
@@ -203,5 +202,42 @@ def zca_mean(inp: torch.Tensor, eps: float = 1e-7, biased: bool = False, compute
     if compute_inv:
         T_inv: torch.Tensor = (U).mm(torch.sqrt(S) * U.t())
         return T, mean, T_inv
-    
+
     return T, mean
+
+
+def zca_whiten(input: torch.Tensor, mean: torch.Tensor,
+               transform: torch.Tensor) -> torch.Tensor:
+    r"""
+
+    Applies and optionally computes the ZCA whitening transform.
+
+    See :class:`~kornia.color.ZCAWhitening` for details.
+
+    args:
+        input (torch.Tensor): Input data
+        mean (torch.Tensor): A tensor containing the mean of the data. If None, this will be computed.
+        transform (torch.Tensor): A tensor containing the CA transformation matrix. If None, this will be computed.
+
+    returns:
+        (torch.Tensor) : Whiten Input data
+
+    Examples:
+        >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
+        >>> transform, mean = zca_whiten(x)
+        >>> transform, mean, transform_inv = zca(x, mean, transform)
+
+    """
+
+    if mean is None and transform is None:
+        transform, mean = zca_mean(input)
+
+    num_features: int = reduce(lambda a, b: a * b, input.size()[1::])
+
+    inp_flat: torch.Tensor = torch.reshape(input, (-1, num_features))
+
+    y = (inp_flat - mean).mm(transform)
+
+    y = y.reshape(input.size())
+
+    return y

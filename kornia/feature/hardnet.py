@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 urls: Dict[str, str] = dict()
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
-urls["liberty_aug"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth" # noqa pylint: disable
+urls["liberty_aug"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"  # noqa pylint: disable
 
 
 class HardNet(nn.Module):
@@ -31,6 +31,7 @@ class HardNet(nn.Module):
         >>> hardnet = kornia.feature.HardNet()
         >>> descs = hardnet(input) # 16x128
     """
+
     def __init__(self, pretrained: bool = False) -> None:
         super(HardNet, self).__init__()
         self.features = nn.Sequential(

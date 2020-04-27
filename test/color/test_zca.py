@@ -45,7 +45,7 @@ class TestZCA:
 
         zca = kornia.color.ZCAWhitening(biased=biased, eps=eps).fit(data)
 
-        assert_allclose(zca.T, T_expected)
+        assert_allclose(zca.transform, T_expected)
 
     @pytest.mark.parametrize("input_shape", [(10, 2, 2, 2), (10, 4), (15, 3, 1, 3)])
     def test_identity(self, input_shape, device):
@@ -81,13 +81,13 @@ class TestZCA:
         data = utils.tensor_to_gradcheck_var(data)
 
         def zca_T(x):
-            return kornia.color.zca_whitening_transforms(x)[0]
+            return kornia.color.zca_mean(x)[0]
 
         def zca_mu(x):
-            return kornia.color.zca_whitening_transforms(x)[1]
+            return kornia.color.zca_mean(x)[1]
 
         def zca_T_inv(x):
-            return kornia.color.zca_whitening_transforms(x, compute_inv=True)[2]
+            return kornia.color.zca_mean(x, compute_inv=True)[2]
 
         assert gradcheck(zca_T, (data,), raise_exception=True)
         assert gradcheck(zca_mu, (data,), raise_exception=True)
@@ -148,7 +148,7 @@ class TestZCA:
         data = data.view(4, 1, 2, 1)
         expected = math.sqrt(3 / 2) * data
 
-        T, mu = kornia.color.zca_whitening_transforms(data)
+        T, mu = kornia.color.zca_mean(data)
 
         lt = LinearTransformation(T, mu)
 

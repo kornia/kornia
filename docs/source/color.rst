@@ -24,6 +24,7 @@ The functions in this section perform various color space conversions.
 .. autofunction:: rgb_to_luv
 .. autofunction:: luv_to_rgb
 .. autofunction:: zca_mean
+.. autofunction:: zca_whiten
 .. autofunction:: normalize
 .. autofunction:: denormalize
 .. autofunction:: adjust_brightness
