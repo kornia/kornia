@@ -311,12 +311,10 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    w = float(w)
-    h = float(h)
-    min_size = min(h, w)
+    min_size: float = 1. * min(h, w)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) * min_size
-    coef[0, 0, 0, 2] = w
-    coef[0, 0, 1, 2] = h
+    coef[0, 0, 0, 2] = float(w)
+    coef[0, 0, 1, 2] = float(h)
     return coef.expand_as(LAF) * LAF
 
 
@@ -343,9 +341,7 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    w = float(w)
-    h = float(h)
-    min_size = min(h, w)
+    min_size: float = 1. * min(h, w)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) / min_size
     coef[0, 0, 0, 2] = 1.0 / w
     coef[0, 0, 1, 2] = 1.0 / h
