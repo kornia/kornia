@@ -16,8 +16,8 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.3.0'
-pytorch = 'torch>=1.0.0, <=1.4.0'
+version = '0.3.1'
+
 #################################
 
 sha = 'Unknown'
@@ -74,6 +74,16 @@ class clean(distutils.command.clean.clean):
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
 
+pytorch_dep = 'torch'
+if os.getenv('PYTORCH_VERSION'):
+    pytorch_dep += "==" + os.getenv('PYTORCH_VERSION')
+
+requirements = [
+    'numpy',
+    pytorch_dep,
+]
+
+
 if __name__ == '__main__':
     write_version_file()
     setup(
@@ -96,9 +106,7 @@ if __name__ == '__main__':
 	packages=find_packages(exclude=('docs', 'test', 'examples',)),
 
 	zip_safe=True,
-	install_requires=[
-            pytorch,
-        ],
+	install_requires=requirements,
         classifiers=[
             'Intended Audience :: Developers',
             'Intended Audience :: Education',

@@ -5,7 +5,7 @@ import numpy as np
 
 import kornia
 from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
-from test.common import device
+from test.common import device, dtype
 
 import torch
 from torch.autograd import gradcheck
@@ -34,17 +34,17 @@ class TestAngleAxisToQuaternion:
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
-    def test_small_angle(self, device):
+    def test_small_angle(self, device, dtype):
         theta = 1e-2
-        angle_axis = torch.tensor([theta, 0., 0.]).to(device)
-        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
+        angle_axis = torch.tensor([theta, 0., 0.]).to(device, dtype)
+        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device, dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
-    def test_x_rotation(self, device):
+    def test_x_rotation(self, device, dtype):
         half_sqrt2 = 0.5 * np.sqrt(2)
-        angle_axis = torch.tensor([kornia.pi / 2, 0., 0.]).to(device)
-        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.]).to(device)
+        angle_axis = torch.tensor([kornia.pi / 2, 0., 0.]).to(device, dtype)
+        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.]).to(device, dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
@@ -307,16 +307,16 @@ class TestQuaternionToAngleAxis:
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
-    def test_z_rotation(self, device):
-        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5]).to(device)
-        expected = torch.tensor([0., 0., kornia.pi / 3]).to(device)
+    def test_z_rotation(self, device, dtype):
+        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5]).to(device, dtype)
+        expected = torch.tensor([0., 0., kornia.pi / 3]).to(device, dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
-    def test_small_angle(self, device):
+    def test_small_angle(self, device, dtype):
         theta = 1e-2
-        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
-        expected = torch.tensor([theta, 0., 0.]).to(device)
+        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device, dtype)
+        expected = torch.tensor([theta, 0., 0.]).to(device, dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 

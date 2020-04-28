@@ -1,7 +1,8 @@
 #!/bin/bash -ex
 
 ## NOTE: define KORNIA_BUILD_VERSION each release
-## KORNIA_BUILD_VERSION=0.1.4
+## KORNIA_BUILD_VERSION=0.3.0
+## PYTORCH_VERSION=1.5.0
 
 export OUT_DIR="/tmp/remote"
 
@@ -11,6 +12,7 @@ rm -rf kornia/
 git clone https://github.com/kornia/kornia.git
 
 cd /tmp/kornia
+git checkout v$KORNIA_BUILD_VERSION
 python3 setup.py clean
 python3 setup.py bdist_wheel
 
