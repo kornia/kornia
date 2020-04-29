@@ -222,11 +222,24 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         raise TypeError(
             "ellipse shape should be must be [BxNx5]. "
             "Got {}".format(ells.size()))
+    # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
+    # ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
+    #                       torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
+    # out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
 
-    ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
-                           torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
-    out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
-    out = torch.cat([out, ells[..., :2].view(B, N, 2, 1)], dim=3)
+    # We will calculate 2x2 matrix square root via special case formula
+    # https://en.wikipedia.org/wiki/Square_root_of_a_matrix
+    # "The Cholesky factorization provides another particular example of square root
+    #  which should not be confused with the unique non-negative square root."
+    # https://en.wikipedia.org/wiki/Square_root_of_a_2_by_2_matrix
+    # M = (A 0; C D)
+    # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
+    a11 = ells[..., 2:3].abs().sqrt()
+    a12 = torch.zeros_like(a11)
+    a22 = ells[..., 4:5].abs().sqrt()
+    a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
+    A = torch.stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
+    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 
 
@@ -311,10 +324,12 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    min_size: float = 1. * min(h, w)
+    wf = float(w)
+    hf = float(h)
+    min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) * min_size
-    coef[0, 0, 0, 2] = float(w)
-    coef[0, 0, 1, 2] = float(h)
+    coef[0, 0, 0, 2] = wf
+    coef[0, 0, 1, 2] = hf
     return coef.expand_as(LAF) * LAF
 
 
@@ -341,10 +356,12 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    min_size: float = 1. * min(h, w)
+    wf: float = float(w)
+    hf: float = float(h)
+    min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) / min_size
-    coef[0, 0, 0, 2] = 1.0 / w
-    coef[0, 0, 1, 2] = 1.0 / h
+    coef[0, 0, 0, 2] = 1.0 / wf
+    coef[0, 0, 1, 2] = 1.0 / hf
     return coef.expand_as(LAF) * LAF
 
 
