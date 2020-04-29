@@ -35,7 +35,7 @@ class DepthWarper(nn.Module):
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
            'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False. See
+        align_corners(bool): interpolation flag. Default: True. See
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
@@ -44,7 +44,7 @@ class DepthWarper(nn.Module):
                  height: int, width: int,
                  mode: str = 'bilinear',
                  padding_mode: str = 'zeros',
-                 align_corners: bool = False):
+                 align_corners: bool = True):
         super(DepthWarper, self).__init__()
         # constructor members
         self.width: int = width
@@ -204,7 +204,7 @@ def depth_warp(pinhole_dst: PinholeCamera,
                depth_src: torch.Tensor,
                patch_dst: torch.Tensor,
                height: int, width: int,
-               align_corners: bool = False):
+               align_corners: bool = True):
     r"""Function that warps a tensor from destination frame to reference
     given the depth in the reference frame.
 

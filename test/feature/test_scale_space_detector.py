@@ -40,8 +40,8 @@ class TestScaleSpaceDetector:
         lafs, resps = det(inp)
         expected_laf = torch.tensor([[[[6.0543, 0.0000, 16.0], [0.0, 6.0543, 16.0]]]], device=device)
         expected_resp = torch.tensor([[0.0804]], device=device)
-        assert_allclose(expected_laf, lafs, rtol=0.0001, atol=1e-04)
-        assert_allclose(expected_resp, resps, rtol=0.0001, atol=1e-04)
+        assert_allclose(expected_laf, lafs, rtol=0.001, atol=1e-03)
+        assert_allclose(expected_resp, resps, rtol=0.001, atol=1e-03)
 
     def test_toy_mask(self, device):
         if "cuda" in str(device):
@@ -61,8 +61,8 @@ class TestScaleSpaceDetector:
         expected_laf = torch.tensor([[[[6.0478, 0.0000, 4.9978],
                                        [0.0000, 6.0478, 4.9993]]]], device=device)
         expected_resp = torch.tensor([[0.0]], device=device)
-        assert_allclose(expected_laf, lafs)
-        assert_allclose(expected_resp, resps)
+        assert_allclose(expected_laf, lafs, rtol=0.001, atol=1e-03)
+        assert_allclose(expected_resp, resps, rtol=0.001, atol=1e-03)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 31, 21

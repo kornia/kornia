@@ -173,4 +173,4 @@ def warp_frame_depth(
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(
         points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm, align_corners=False)  # type: ignore
+    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)  # type: ignore
