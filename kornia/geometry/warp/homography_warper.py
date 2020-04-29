@@ -33,6 +33,8 @@ class HomographyWarper(nn.Module):
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         normalized_coordinates (bool): wether to use a grid with
           normalized coordinates.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
     def __init__(
@@ -41,14 +43,15 @@ class HomographyWarper(nn.Module):
             width: int,
             mode: str = 'bilinear',
             padding_mode: str = 'zeros',
-            normalized_coordinates: bool = True) -> None:
+            normalized_coordinates: bool = True,
+            align_corners: bool = False) -> None:
         super(HomographyWarper, self).__init__()
         self.width: int = width
         self.height: int = height
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.normalized_coordinates: bool = normalized_coordinates
-
+        self.align_corners: bool = align_corners
         # create base grid to compute the flow
         self.grid: torch.Tensor = create_meshgrid(
             height, width, normalized_coordinates=normalized_coordinates)
@@ -148,7 +151,7 @@ class HomographyWarper(nn.Module):
 
         return F.grid_sample(patch_src, warped_grid,  # type: ignore
                              mode=self.mode, padding_mode=self.padding_mode,
-                             align_corners=True)
+                             align_corners=self.align_corners)
 
 
 # functional api
@@ -156,7 +159,8 @@ def homography_warp(patch_src: torch.Tensor,
                     src_homo_dst: torch.Tensor,
                     dsize: Tuple[int, int],
                     mode: str = 'bilinear',
-                    padding_mode: str = 'zeros') -> torch.Tensor:
+                    padding_mode: str = 'zeros',
+                    align_corners: bool = False) -> torch.Tensor:
     r"""Function that warps image patchs or tensors by homographies.
 
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
@@ -173,7 +177,8 @@ def homography_warp(patch_src: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     Return:
         torch.Tensor: Patch sampled at locations from source to destination.
 
@@ -183,7 +188,7 @@ def homography_warp(patch_src: torch.Tensor,
         >>> output = kornia.homography_warp(input, homography, (32, 32))
     """
     height, width = dsize
-    warper = HomographyWarper(height, width, mode, padding_mode)
+    warper = HomographyWarper(height, width, mode, padding_mode, align_corners=align_corners)
     return warper(patch_src, src_homo_dst)
 
 

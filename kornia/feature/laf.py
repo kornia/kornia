@@ -374,7 +374,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3),  # type: ignore
-                         [B * N, ch, PS, PS], align_corners=True)
+                         [B * N, ch, PS, PS], align_corners=False)
     grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w) - 1.0
     grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h) - 1.0
     return grid
@@ -408,7 +408,7 @@ def extract_patches_simple(img: torch.Tensor,
     for i in range(B):
         grid = generate_patch_grid_from_normalized_LAF(img[i:i + 1], nlaf[i:i + 1], PS).to(img.device)
         out.append(F.grid_sample(img[i:i + 1].expand(grid.size(0), ch, h, w), grid,  # type: ignore
-                                 padding_mode="border", align_corners=True))
+                                 padding_mode="border", align_corners=False))
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
@@ -453,7 +453,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 nlaf[i:i + 1, scale_mask, :, :],
                 PS)
             patches = F.grid_sample(cur_img[i:i + 1].expand(grid.size(0), ch, h, w), grid,  # type: ignore
-                                    padding_mode="border", align_corners=True)
+                                    padding_mode="border", align_corners=False)
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
