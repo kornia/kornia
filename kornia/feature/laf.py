@@ -115,6 +115,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
             if dim is not int:
                 continue
             if var.size(i) != dim:
+                raise TypeError(
                 "{} shape should be must be [{}]. "
                 "Got {}".format(var_name, str(req_shape), var.size())
     unscaled_laf: torch.Tensor = torch.cat([kornia.angle_to_rotation_matrix(ori.squeeze(-1)),
