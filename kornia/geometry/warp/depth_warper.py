@@ -35,13 +35,16 @@ class DepthWarper(nn.Module):
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
            'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool): interpolation flag. Default: True. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
     def __init__(self,
                  pinhole_dst: PinholeCamera,
                  height: int, width: int,
                  mode: str = 'bilinear',
-                 padding_mode: str = 'zeros'):
+                 padding_mode: str = 'zeros',
+                 align_corners: bool = True):
         super(DepthWarper, self).__init__()
         # constructor members
         self.width: int = width
@@ -49,6 +52,7 @@ class DepthWarper(nn.Module):
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.eps = 1e-6
+        self.align_corners: bool = align_corners
 
         # state members
         self._pinhole_dst: PinholeCamera = pinhole_dst
@@ -190,7 +194,7 @@ class DepthWarper(nn.Module):
         """
         return F.grid_sample(patch_dst, self.warp_grid(depth_src),  # type: ignore
                              mode=self.mode, padding_mode=self.padding_mode,
-                             align_corners=True)
+                             align_corners=self.align_corners)
 
 
 # functional api
@@ -199,7 +203,8 @@ def depth_warp(pinhole_dst: PinholeCamera,
                pinhole_src: PinholeCamera,
                depth_src: torch.Tensor,
                patch_dst: torch.Tensor,
-               height: int, width: int):
+               height: int, width: int,
+               align_corners: bool = True):
     r"""Function that warps a tensor from destination frame to reference
     given the depth in the reference frame.
 
@@ -215,6 +220,6 @@ def depth_warp(pinhole_dst: PinholeCamera,
         >>> image_src = kornia.depth_warp(pinhole_dst, pinhole_src,
         >>>     depth_src, image_dst, height, width)  # NxCxHxW
     """
-    warper = DepthWarper(pinhole_dst, height, width)
+    warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     warper.compute_projection_matrix(pinhole_src)
     return warper(depth_src, patch_dst)

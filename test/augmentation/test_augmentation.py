@@ -1268,7 +1268,7 @@ class TestRandomCrop:
             [3., 4., 5.],
             [6., 7., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None)
+        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1285,13 +1285,13 @@ class TestRandomCrop:
             [0., 1., 2.],
             [3., 4., 5.],
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None)
+        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_same_on_batch(self, device):
-        f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True)
+        f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True, align_corners=True)
         input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
@@ -1311,7 +1311,7 @@ class TestRandomCrop:
             [0., 0., 0.],
             [1., 2., 0.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=1)
+        rc = RandomCrop(size=(2, 3), padding=1, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1331,7 +1331,7 @@ class TestRandomCrop:
             [1., 2., 10.],
             [4., 5., 10.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1351,7 +1351,7 @@ class TestRandomCrop:
             [8., 8., 8.],
             [1., 2., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1366,7 +1366,7 @@ class TestRandomCrop:
             [9., 9., 9.],
             [0., 1., 2.]
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9)
+        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1393,10 +1393,9 @@ class TestRandomResizedCrop:
             [6., 7., 8.]
         ]]).to(device)
 
-        expected = torch.tensor([[[
-            [4.0000, 4.5000, 5.0000],
-            [7.0000, 7.5000, 8.0000]
-        ]]]).to(device)
+        expected = torch.tensor(
+            [[[[5.3750, 5.8750, 4.5938],
+               [6.3437, 6.7812, 5.2500]]]]).to(device)
         rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
@@ -1420,11 +1419,10 @@ class TestRandomResizedCrop:
             [6., 7., 8.]
         ]]).to(device)
 
-        expected = torch.tensor([[[
-            [3., 4., 5.],
-            [4.5, 5.5, 6.5],
-            [6., 7., 8.]
-        ]]]).to(device)
+        expected = torch.tensor(
+            [[[[3.7500, 4.7500, 5.7500],
+             [5.2500, 6.2500, 7.2500],
+             [4.5000, 5.2500, 6.0000]]]]).to(device)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
@@ -1439,15 +1437,13 @@ class TestRandomResizedCrop:
             [6., 7., 8.]
         ]]).repeat(batch_size, 1, 1, 1).to(device)
 
-        expected = torch.tensor([[[
-            [0., 1., 2.],
-            [1.5, 2.5, 3.5],
-            [3., 4., 5.],
-        ]], [[
-            [3., 4., 5.],
-            [4.5, 5.5, 6.5],
-            [6., 7., 8.],
-        ]]]).to(device)
+        expected = torch. tensor(
+            [[[[0.0000, 0.7500, 1.5000],
+               [0.7500, 1.7500, 2.7500],
+               [2.2500, 3.2500, 4.2500]]],
+             [[[3.7500, 4.7500, 5.7500],
+               [5.2500, 6.2500, 7.2500],
+               [4.5000, 5.2500, 6.0000]]]]).to(device)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)

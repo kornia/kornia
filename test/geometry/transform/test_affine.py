@@ -1,5 +1,4 @@
 import pytest
-
 import kornia as kornia
 import kornia.testing as utils  # test utils
 from test.common import device
@@ -55,7 +54,7 @@ class TestRotate:
         ]]).to(device)
         # prepare transformation
         angle = torch.tensor([90.]).to(device)
-        transform = kornia.Rotate(angle)
+        transform = kornia.Rotate(angle, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_angle90_batch2(self, device):
@@ -79,7 +78,7 @@ class TestRotate:
         ]]]).to(device)
         # prepare transformation
         angle = torch.tensor([90., -90.]).to(device)
-        transform = kornia.Rotate(angle)
+        transform = kornia.Rotate(angle, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_angle90_batch2_broadcast(self, device):
@@ -103,7 +102,7 @@ class TestRotate:
         ]]]).to(device)
         # prepare transformation
         angle = torch.tensor([90.]).to(device)
-        transform = kornia.Rotate(angle)
+        transform = kornia.Rotate(angle, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self, device):
@@ -145,7 +144,7 @@ class TestTranslate:
         ]]).to(device)
         # prepare transformation
         translation = torch.tensor([[1., 0.]]).to(device)
-        transform = kornia.Translate(translation)
+        transform = kornia.Translate(translation, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_dxdy_batch(self, device):
@@ -169,7 +168,7 @@ class TestTranslate:
         ]]]).to(device)
         # prepare transformation
         translation = torch.tensor([[1., 0.], [1., 1.]]).to(device)
-        transform = kornia.Translate(translation)
+        transform = kornia.Translate(translation, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_dxdy_batch_broadcast(self, device):
@@ -193,7 +192,7 @@ class TestTranslate:
         ]]]).to(device)
         # prepare transformation
         translation = torch.tensor([[1., 0.]]).to(device)
-        transform = kornia.Translate(translation)
+        transform = kornia.Translate(translation, align_corners=True)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self, device):
@@ -322,12 +321,11 @@ class TestShear:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.]
         ]]).to(device)
-        expected = torch.tensor([[
-            [1., 1., 1., 1.],
-            [.5, 1., 1., 1.],
-            [0., 1., 1., 1.],
-            [0., .5, 1., 1.]
-        ]]).to(device)
+        expected = torch.tensor(
+            [[[0.75, 1., 1., 1.],
+              [0.25, 1., 1., 1.],
+              [0., 0.75, 1., 1.],
+              [0., 0.25, 1., 1.]]]).to(device)
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]]).to(device)
@@ -342,12 +340,11 @@ class TestShear:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.]
         ]]).to(device)
-        expected = torch.tensor([[
-            [1., .5, 0., 0.],
-            [1., 1., 1., .5],
-            [1., 1., 1., 1.],
-            [1., 1., 1., 1.]
-        ]]).to(device)
+        expected = torch.tensor(
+            [[[0.75, 0.25, 0., 0.],
+              [1., 1., 0.75, 0.25],
+              [1., 1., 1., 1.],
+              [1., 1., 1., 1.]]]).to(device)
 
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]]).to(device)
@@ -363,17 +360,15 @@ class TestShear:
             [1., 1., 1., 1.]
         ]]).repeat(2, 1, 1, 1).to(device)
 
-        expected = torch.tensor([[[
-            [1., 1., 1., 1.],
-            [.5, 1., 1., 1.],
-            [0., 1., 1., 1.],
-            [0., .5, 1., 1.]
-        ]], [[
-            [1., .5, 0., 0.],
-            [1., 1., 1., .5],
-            [1., 1., 1., 1.],
-            [1., 1., 1., 1.]
-        ]]]).to(device)
+        expected = torch.tensor(
+            [[[[0.75, 1., 1., 1.],
+               [0.25, 1., 1., 1.],
+               [0., 0.75, 1., 1.],
+               [0., 0.25, 1., 1.]]],
+             [[[0.75, 0.25, 0., 0.],
+               [1., 1., 0.75, 0.25],
+               [1., 1., 1., 1.],
+               [1., 1., 1., 1.]]]]).to(device)
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]]).to(device)
@@ -390,11 +385,10 @@ class TestShear:
         ]]).repeat(2, 1, 1, 1).to(device)
 
         expected = torch.tensor([[[
-            [1., 1., 1., 1.],
-            [.5, 1., 1., 1.],
-            [0., 1., 1., 1.],
-            [0., .5, 1., 1.]
-        ]]]).to(device)
+            [0.75, 1., 1., 1.],
+            [0.25, 1., 1., 1.],
+            [0., 0.75, 1., 1.],
+            [0., 0.25, 1., 1.]]]]).to(device)
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]]).to(device)
@@ -458,7 +452,7 @@ class TestAffine2d:
         import math
         batch_size, ch, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)
-        scale, shear = 0.7785685905190581, [11.823560708200617, 7.06797949691645]
+        scale, shear = 0.7785685905190581, [11.8235607082617, 7.06797949691645]
         matrix_expected = T([[1.27536969, 4.26828945e-01, -3.23493180e+01],
                              [2.18297196e-03, 1.29424165e+00, -9.19962753e+00]])
         center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
