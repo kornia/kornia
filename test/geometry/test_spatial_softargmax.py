@@ -74,57 +74,54 @@ class TestSpatialSoftArgmax2d:
         m = kornia.SpatialSoftArgmax2d()
         assert m(input).shape == (2, 1, 2)
 
-    @pytest.mark.skip()
-    def test_top_left(self, device):
+    def test_top_left_normalized(self, device):
         input = torch.zeros(1, 1, 2, 3).to(device)
-        input[..., 0, 0] = 10.
+        input[..., 0, 0] = 1e16
 
-        coord = kornia.spatial_soft_argmax2d(input, True)
+        coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=True)
         assert_allclose(coord[..., 0].item(), -1.0)
         assert_allclose(coord[..., 1].item(), -1.0)
 
-    def test_top_left_normalized(self, device):
+    def test_top_left(self, device):
         input = torch.zeros(1, 1, 2, 3).to(device)
-        input[..., 0, 0] = 10.
+        input[..., 0, 0] = 1e16
 
-        coord = kornia.spatial_soft_argmax2d(input, False)
+        coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=False)
         assert_allclose(coord[..., 0].item(), 0.0)
         assert_allclose(coord[..., 1].item(), 0.0)
 
-    @pytest.mark.skip()
-    def test_bottom_right(self, device):
+    def test_bottom_right_normalized(self, device):
         input = torch.zeros(1, 1, 2, 3).to(device)
-        input[..., -1, 1] = 10.
+        input[..., -1, -1] = 1e16
 
-        coord = kornia.spatial_soft_argmax2d(input, True)
+        coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=True)
         assert_allclose(coord[..., 0].item(), 1.0)
         assert_allclose(coord[..., 1].item(), 1.0)
 
-    @pytest.mark.skip()
-    def test_bottom_right_normalized(self, device):
+    def test_bottom_right(self, device):
         input = torch.zeros(1, 1, 2, 3).to(device)
-        input[..., -1, 1] = 10.
+        input[..., -1, -1] = 1e16
 
-        coord = kornia.spatial_soft_argmax2d(input, False)
+        coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=False)
         assert_allclose(coord[..., 0].item(), 2.0)
         assert_allclose(coord[..., 1].item(), 1.0)
 
     def test_batch2_n2(self, device):
         input = torch.zeros(2, 2, 2, 3).to(device)
-        input[0, 0, 0, 0] = 10.  # top-left
-        input[0, 1, 0, -1] = 10.  # top-right
-        input[1, 0, -1, 0] = 10.  # bottom-left
-        input[1, 1, -1, -1] = 10.  # bottom-right
+        input[0, 0, 0, 0] = 1e16  # top-left
+        input[0, 1, 0, -1] = 1e16  # top-right
+        input[1, 0, -1, 0] = 1e16  # bottom-left
+        input[1, 1, -1, -1] = 1e16  # bottom-right
 
         coord = kornia.spatial_soft_argmax2d(input)
-        assert_allclose(coord[0, 0, 0].item(), -1.0, rtol=1e-3, atol=1e-3)  # top-left
-        assert_allclose(coord[0, 0, 1].item(), -1.0, rtol=1e-3, atol=1e-3)
-        assert_allclose(coord[0, 1, 0].item(), 1.0, rtol=1e-3, atol=1e-3)  # top-right
-        assert_allclose(coord[0, 1, 1].item(), -1.0, rtol=1e-3, atol=1e-3)
-        assert_allclose(coord[1, 0, 0].item(), -1.0, rtol=1e-3, atol=1e-3)  # bottom-left
-        assert_allclose(coord[1, 0, 1].item(), 1.0, rtol=1e-3, atol=1e-3)
-        assert_allclose(coord[1, 1, 0].item(), 1.0, rtol=1e-3, atol=1e-3)  # bottom-right
-        assert_allclose(coord[1, 1, 1].item(), 1.0, rtol=1e-3, atol=1e-3)
+        assert_allclose(coord[0, 0, 0].item(), -1.0)  # top-left
+        assert_allclose(coord[0, 0, 1].item(), -1.0)
+        assert_allclose(coord[0, 1, 0].item(), 1.0)  # top-right
+        assert_allclose(coord[0, 1, 1].item(), -1.0)
+        assert_allclose(coord[1, 0, 0].item(), -1.0)  # bottom-left
+        assert_allclose(coord[1, 0, 1].item(), 1.0)
+        assert_allclose(coord[1, 1, 0].item(), 1.0)  # bottom-right
+        assert_allclose(coord[1, 1, 1].item(), 1.0)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):

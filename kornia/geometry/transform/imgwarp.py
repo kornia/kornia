@@ -27,18 +27,20 @@ __all__ = [
 
 def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
                         dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
-                        grid_mode: str, padding_mode: str) -> torch.Tensor:
+                        grid_mode: str, padding_mode: str,
+                        align_corners: bool) -> torch.Tensor:
     """Compute the transform in normalized cooridnates and perform the warping.
     """
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode)
+    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode, align_corners)
 
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
-                     flags: str = 'bilinear', border_mode: str = 'zeros') -> torch.Tensor:
+                     flags: str = 'bilinear', border_mode: str = 'zeros',
+                     align_corners: bool = False) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
@@ -58,6 +60,8 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
           'bilinear' | 'nearest'. Default: 'bilinear'.
         border_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         Tensor: the warped input image.
@@ -88,12 +92,13 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 
     # launches the warper
     h, w = src.shape[-2:]
-    return transform_warp_impl(src, M, (h, w), dsize, flags, border_mode)
+    return transform_warp_impl(src, M, (h, w), dsize, flags, border_mode, align_corners)
 
 
 def warp_affine(src: torch.Tensor, M: torch.Tensor,
                 dsize: Tuple[int, int], flags: str = 'bilinear',
-                padding_mode: str = 'zeros') -> torch.Tensor:
+                padding_mode: str = 'zeros',
+                align_corners: bool = False) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
     The function warp_affine transforms the source tensor using
@@ -111,6 +116,8 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool): mode for grid_generation. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
 
     Returns:
         torch.Tensor: the warped tensor.
@@ -147,9 +154,9 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
                          [B, C, out_size[0], out_size[1]],
-                         align_corners=True)
+                         align_corners=align_corners)
     return F.grid_sample(src, grid,  # type: ignore
-                         align_corners=True,
+                         align_corners=align_corners,
                          mode=flags,
                          padding_mode=padding_mode)
 
@@ -370,7 +377,8 @@ def get_rotation_matrix2d(
 
 
 def remap(tensor: torch.Tensor, map_x: torch.Tensor,
-          map_y: torch.Tensor) -> torch.Tensor:
+          map_y: torch.Tensor,
+          align_corners: bool = False) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
     The function remap transforms the source tensor using the specified map:
@@ -385,6 +393,8 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
           The tensor must be in the shape of (B, H, W).
         map_y (torch.Tensor): the flow in the y-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         torch.Tensor: the warped tensor.
@@ -421,7 +431,7 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
     map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
 
     # warp ans return
-    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm, align_corners=True)  # type: ignore
+    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm, align_corners=align_corners)  # type: ignore
     return tensor_warped
 
 

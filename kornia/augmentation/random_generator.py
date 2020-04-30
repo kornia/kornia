@@ -114,7 +114,8 @@ def _get_perspective_params(batch_size: int, width: int, height: int, distortion
 
 def random_perspective_generator(
     batch_size: int, height: int, width: int, p: float, distortion_scale: float,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False
+    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False,
+    align_corners: bool = False,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
@@ -126,6 +127,9 @@ def random_perspective_generator(
         distortion_scale (float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+
 
     Returns:
         List containing [top-left, top-right, bottom-right, bottom-left] of the original image,
@@ -139,6 +143,7 @@ def random_perspective_generator(
     params['start_points'] = start_points
     params['end_points'] = end_points
     params['interpolation'] = torch.tensor(Resample.get(interpolation).value)
+    params['align_corners'] = align_corners  # type: ignore
     return params
 
 
@@ -151,7 +156,8 @@ def random_affine_generator(
         scale: Optional[TupleFloat] = None,
         shear: Optional[UnionFloat] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        same_on_batch: bool = False,
+        align_corners: bool = False) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
         Args:
@@ -175,6 +181,9 @@ def random_affine_generator(
                 Will not apply shear by default
             resample (int, str or kornia.Resample): Default: Resample.BILINEAR
             same_on_batch (bool): apply the same transformation across the batch. Default: False
+            align_corners(bool): interpolation flag. Default: False.See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+
     """
     # check angle ranges
     degrees_tmp: TupleFloat
@@ -218,12 +227,13 @@ def random_affine_generator(
         shear_tmp = shear
 
     return _get_random_affine_params(
-        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch)
+        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch, align_corners)
 
 
 def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
                               interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
-                              same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+                              same_on_batch: bool = False,
+                              align_corners: bool = False) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:
@@ -232,6 +242,7 @@ def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
         range of degrees to select from will be (-degrees, +degrees)
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners (bool): interpolation flag. Default: False.
     """
     if not torch.is_tensor(degrees):
         if isinstance(degrees, (float, int)):
@@ -253,17 +264,18 @@ def random_rotation_generator(batch_size: int, degrees: FloatUnionType,
 
     degrees = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
-    return dict(
+    return dict(  # type: ignore
         degrees=degrees,
-        interpolation=torch.tensor(Resample.get(interpolation).value)
-    )
+        interpolation=torch.tensor(Resample.get(interpolation).value),
+        align_corners=align_corners)
 
 
 def _get_random_affine_params(
     batch_size: int, height: int, width: int,
     degrees: TupleFloat, translate: Optional[TupleFloat],
     scales: Optional[TupleFloat], shears: Optional[TupleFloat],
-    resample: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False
+    resample: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False,
+    align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```affine``` transformation random affine transform.
     The returned matrix is Bx3x3.
@@ -297,20 +309,22 @@ def _get_random_affine_params(
         sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
     else:
         sx = sy = torch.tensor([0] * batch_size)
-    return dict(
+    return dict(  # type: ignore
         translations=translations,
         center=center,
         scale=scale,
         angle=angle,
         sx=sx,
         sy=sy,
-        resample=torch.tensor(Resample.get(resample).value)
+        resample=torch.tensor(Resample.get(resample).value),
+        align_corners=align_corners
     )
 
 
 def random_crop_generator(
     batch_size: int, input_size: Tuple[int, int], size: Tuple[int, int], resize_to: Optional[Tuple[int, int]] = None,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False
+    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name, same_on_batch: bool = False,
+    align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
     Args:
@@ -320,7 +334,8 @@ def random_crop_generator(
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-    """
+        align_corners (bool): interpolation flag. Default: False.
+     """
     x_diff = input_size[1] - size[1]
     y_diff = input_size[0] - size[0]
 
@@ -352,7 +367,9 @@ def random_crop_generator(
             [0, resize_to[0] - 1],
         ]]).repeat(batch_size, 1, 1)
 
-    return {'src': crop_src, 'dst': crop_dst, 'interpolation': torch.tensor(Resample.get(interpolation).value)}
+    return {'src': crop_src, 'dst': crop_dst,  # type: ignore
+            'interpolation': torch.tensor(Resample.get(interpolation).value),
+            'align_corners': align_corners}
 
 
 def random_crop_size_generator(size: Tuple[int, int], scale: Tuple[float, float], ratio: Tuple[float, float],
@@ -438,7 +455,8 @@ def random_rectangles_params_generator(batch_size: int, height: int, width: int,
 
 
 def center_crop_params_generator(batch_size: int, height: int, width: int,
-                                 size: Tuple[int, int]) -> Dict[str, torch.Tensor]:
+                                 size: Tuple[int, int],
+                                 align_corners: bool = False) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
         Args:
             batch_size (int): the tensor batch size.
@@ -483,4 +501,5 @@ def center_crop_params_generator(batch_size: int, height: int, width: int,
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
     ]]).expand(points_src.shape[0], -1, -1)
-    return {'src': points_src, 'dst': points_dst, 'interpolation': torch.tensor(Resample.BILINEAR.value)}
+    return {'src': points_src, 'dst': points_dst,  # type: ignore
+            'interpolation': torch.tensor(Resample.BILINEAR.value), 'align_corners': align_corners}

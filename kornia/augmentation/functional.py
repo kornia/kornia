@@ -413,8 +413,10 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
         # apply the computed transform
         height, width = x_data.shape[-2:]
         resample_name = Resample(params['interpolation'].item()).name.lower()
-        out_data[mask] = warp_perspective(x_data[mask], transform[mask], (height, width), flags=resample_name)
-
+        out_data[mask] = warp_perspective(x_data[mask], transform[mask],  # type: ignore
+                                          (height, width),
+                                          flags=resample_name,
+                                          align_corners=params['align_corners'])
     return out_data.view_as(input)
 
 
@@ -469,8 +471,9 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
 
     resample_name = Resample(params['resample'].item()).name.lower()
 
-    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :], (height, width), resample_name)
-
+    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],  # type: ignore
+                                         (height, width), resample_name,
+                                         align_corners=params['align_corners'])
     return out_data.view_as(input)
 
 
@@ -499,8 +502,9 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
-    transformed: torch.Tensor = rotate(
-        input, angles, mode=Resample(params['interpolation'].item()).name.lower())
+    transformed: torch.Tensor = rotate(  # type: ignore
+        input, angles, mode=Resample(params['interpolation'].item()).name.lower(),
+        align_corners=params['align_corners'])
 
     return transformed
 
@@ -537,12 +541,12 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Te
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    return crop_by_boxes(
+    return crop_by_boxes(  # type: ignore
         input,
         params['src'],
         params['dst'],
         Resample.get(params['interpolation'].item()).name.lower(),  # type: ignore
-    )
+        align_corners=params['align_corners'])
 
 
 def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
@@ -592,7 +596,6 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
         mask[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = 1.
         values[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = v
     transformed = torch.where(mask == 1., values, input)
-
     return transformed
 
 
