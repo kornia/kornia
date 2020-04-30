@@ -14,7 +14,7 @@ __all__ = [
 
 
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
-                    interpolation: str = 'bilinear') -> torch.Tensor:
+                    interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
     r"""Extracts crops from the input tensor and resizes them.
     Args:
         tensor (torch.Tensor): the reference tensor of shape BxCxHxW.
@@ -25,6 +25,8 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
           coordinates must be in the x, y order.
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
+        align_corners (bool): mode for grid_generation. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
         torch.Tensor: tensor containing the patches with shape BxN1xN2
     Example:
@@ -73,10 +75,12 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [0, dst_h - 1],
     ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(tensor, points_src, points_dst, interpolation)
+    return crop_by_boxes(tensor, points_src, points_dst, interpolation, align_corners)
 
 
-def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str = 'bilinear') -> torch.Tensor:
+def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
+                interpolation: str = 'bilinear',
+                align_corners: bool = True) -> torch.Tensor:
     r"""Crops the given tensor at the center.
 
     Args:
@@ -84,7 +88,8 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str 
           (B, C, H, W).
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
-
+        align_corners (bool): mode for grid_generation. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
         torch.Tensor: the output tensor with patches.
 
@@ -143,10 +148,16 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int], interpolation: str 
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
     ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
-    return crop_by_boxes(tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation)
+    return crop_by_boxes(tensor,
+                         points_src.to(tensor.dtype),
+                         points_dst.to(tensor.dtype),
+                         interpolation,
+                         align_corners)
 
 
-def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear') -> torch.Tensor:
+def crop_by_boxes(tensor, src_box, dst_box,
+                  interpolation: str = 'bilinear',
+                  align_corners: bool = False) -> torch.Tensor:
     """A wrapper performs crop transform with bounding boxes.
 
     Note:
@@ -169,7 +180,7 @@ def crop_by_boxes(tensor, src_box, dst_box, interpolation: str = 'bilinear') -> 
     bbox = _infer_bounding_box(dst_box)
     patches: torch.Tensor = warp_affine(
         tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())),
-        flags=interpolation)
+        flags=interpolation, align_corners=align_corners)
 
     # return in the original shape
     if is_unbatched:
