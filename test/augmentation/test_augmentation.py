@@ -1421,8 +1421,8 @@ class TestRandomResizedCrop:
 
         expected = torch.tensor(
             [[[[3.7500, 4.7500, 5.7500],
-             [5.2500, 6.2500, 7.2500],
-             [4.5000, 5.2500, 6.0000]]]]).to(device)
+               [5.2500, 6.2500, 7.2500],
+               [4.5000, 5.2500, 6.0000]]]]).to(device)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
