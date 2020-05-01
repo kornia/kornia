@@ -196,7 +196,7 @@ intersphinx_mapping = {
     'torch': ('http://pytorch.org/docs/master/', None),
 }
 
-examples_dir = os.path.join(current_path, "examples")
+examples_dir = os.path.join(current_path, "tutorials")
 sphinx_gallery_conf = {
      'doc_module': 'kornia',
      'examples_dirs': [examples_dir],   # path to your example scripts
