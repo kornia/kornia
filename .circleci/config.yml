@@ -45,6 +45,13 @@ jobs:
         environment:
           - PYTHON_VERSION: "3.7"
 
+  python_3_8:
+    <<: *common
+    docker:
+      - image: circleci/python:3.8.0
+        environment:
+          - PYTHON_VERSION: "3.8"
+
 workflows:
   version: 2
   test:
