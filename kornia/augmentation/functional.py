@@ -246,8 +246,8 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
-                                          [0, 1, 0],
-                                          [0, 0, 1]])
+                                           [0, 1, 0],
+                                           [0, 0, 1]])
     trans_mat[to_flip] = flip_mat.type_as(input)
 
     return trans_mat
@@ -288,8 +288,8 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                          [0, -1, h],
-                                          [0, 0, 1]])
+                                           [0, -1, h],
+                                           [0, 0, 1]])
 
     trans_mat[to_flip] = flip_mat.type_as(input)
 
@@ -398,12 +398,12 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     _, _, height, width = x_data.shape
 
     # compute the homography between the input points
-    transform = compute_perspective_transformation(input, params)
+    transform: torch.Tensor = compute_perspective_transformation(input, params)
 
     out_data: torch.Tensor = x_data.clone()
 
     # process valid samples
-    mask = params['batch_prob'].to(input.device)
+    mask: torch.Tensor = params['batch_prob'].to(input.device)
 
     # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
     # TODO: this if statement is super weird and sum here is not the propeer way to check
@@ -412,11 +412,13 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     if bool(mask.sum() > 0) and ('interpolation' in params):
         # apply the computed transform
         height, width = x_data.shape[-2:]
-        resample_name = Resample(params['interpolation'].item()).name.lower()
-        out_data[mask] = warp_perspective(x_data[mask], transform[mask],  # type: ignore
-                                          (height, width),
-                                          flags=resample_name,
-                                          align_corners=params['align_corners'])
+        resample_name: str = Resample(params['interpolation'].item()).name.lower()
+        align_corners: bool = cast(bool, params['align_corners'].item())
+
+        out_data[mask] = warp_perspective(
+            x_data[mask], transform[mask], (height, width),
+            flags=resample_name, align_corners=align_corners)
+
     return out_data.view_as(input)
 
 
@@ -467,13 +469,14 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
     height, width = x_data.shape[-2:]
 
     # concatenate transforms
-    transform = compute_affine_transformation(input, params)
+    transform: torch.Tensor = compute_affine_transformation(input, params)
 
-    resample_name = Resample(params['resample'].item()).name.lower()
+    resample_name: str = Resample(params['resample'].item()).name.lower()
+    align_corners: bool = cast(bool, params['align_corners'].item())
 
-    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],  # type: ignore
+    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],
                                          (height, width), resample_name,
-                                         align_corners=params['align_corners'])
+                                         align_corners=align_corners)
     return out_data.view_as(input)
 
 
@@ -502,9 +505,10 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
-    transformed: torch.Tensor = rotate(  # type: ignore
-        input, angles, mode=Resample(params['interpolation'].item()).name.lower(),
-        align_corners=params['align_corners'])
+    resample_mode: str = Resample(params['interpolation'].item()).name.lower()
+    align_corners: bool = cast(bool, params['align_corners'].item())
+
+    transformed: torch.Tensor = rotate(input, angles, mode=resample_mode, align_corners=align_corners)
 
     return transformed
 
@@ -541,12 +545,11 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Te
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    return crop_by_boxes(  # type: ignore
-        input,
-        params['src'],
-        params['dst'],
-        Resample.get(params['interpolation'].item()).name.lower(),  # type: ignore
-        align_corners=params['align_corners'])
+    resample_mode: str = Resample.get(params['interpolation'].item()).name.lower()  # type: ignore
+    align_corners: bool = cast(bool, params['align_corners'].item())
+
+    return crop_by_boxes(
+        input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
 def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
