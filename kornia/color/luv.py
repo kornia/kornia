@@ -86,13 +86,14 @@ class LuvToRgb(nn.Module):
         return luv_to_rgb(image)
 
 
-def rgb_to_luv(image: torch.Tensor) -> torch.Tensor:
+def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a RGB image to Luv.
 
     See :class:`~kornia.color.RgbToLuv` for details.
 
     Args:
         image (torch.Tensor): RGB image
+        eps (float): for numerically stability when dividing. Default: 1e-8.
 
     Returns:
         torch.Tensor : Luv image
@@ -127,8 +128,6 @@ def rgb_to_luv(image: torch.Tensor) -> torch.Tensor:
                                   116. * torch.pow(y, 1. / 3.) - 16.,
                                   903.3 * y)
 
-    eps: float = torch.finfo(torch.float64).eps  # For numerical stability
-
     # Compute reference white point
     xyz_ref_white: Tuple[float, float, float] = (.95047, 1., 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
@@ -145,13 +144,14 @@ def rgb_to_luv(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def luv_to_rgb(image: torch.Tensor) -> torch.Tensor:
+def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a Luv image to RGB.
 
     See :class:`~kornia.color.LuvToRgb` for details.
 
     Args:
         image (torch.Tensor): Luv image
+        eps (float): for numerically stability when dividing. Default: 1e-8.
 
     Returns:
         torch.Tensor : RGB image
@@ -175,8 +175,6 @@ def luv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     xyz_ref_white: Tuple[float, float, float] = (0.95047, 1., 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
-
-    eps: float = torch.finfo(torch.float64).eps  # For numerical stability when dividing
 
     a: torch.Tensor = u_w + u / (13 * L + eps)
     d: torch.Tensor = v_w + v / (13 * L + eps)

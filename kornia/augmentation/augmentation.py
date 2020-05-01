@@ -262,6 +262,7 @@ class RandomErasing(AugmentationBase):
                   [1., 0., 0.]]]])
     """
     # Note: Extra params, inplace=False in Torchvision.
+
     def __init__(
             self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
@@ -462,6 +463,7 @@ class RandomRotation(AugmentationBase):
              [ 0.0000,  0.0000,  1.0000]]]))
     """
     # Note: Extra params, center=None, fill=0 in TorchVision
+
     def __init__(
         self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
