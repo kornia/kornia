@@ -25,6 +25,7 @@ class SOSNet(nn.Module):
         >>> sosnet = kornia.feature.SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
+
     def __init__(self, pretrained: bool = False) -> None:
         super(SOSNet, self).__init__()
 
