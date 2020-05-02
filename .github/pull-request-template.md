@@ -20,7 +20,7 @@ If there are any questions regarding code style or other conventions check out o
 [summary](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst).
 
 - [ ] Did you discuss the functionality or any breaking changes before ?
-- [ ] *Pass all tests*: did you test in local ? `make test`
+- [ ] **Pass all tests**: did you test in local ? `make test`
 - [ ] Unittests: did you add tests for your new functionality ?
 - [ ] Documentations: did you build documentation ? `make build-docs`
 - [ ] Implementation: is your code well commented and follow conventions ? `make lint`
@@ -30,17 +30,21 @@ If there are any questions regarding code style or other conventions check out o
 ### KorniaTeam
 <details>
   <summary>KorniaTeam workflow</summary>
+  
   - [ ] Assign correct label
   - [ ] Assign PR to a reviewer
   - [ ] Does this PR close an Issue? (add `closes #IssueNumber` at the bottom if 
         not already in description)
+
 </details>
 
 ### Reviewer
 <details>
   <summary>Reviewer workflow</summary>
+
   - [ ] Do all tests pass? (Unittests, Typing, Linting, Documentation, Environment)
   - [ ] Does the implementation follow `kornia` design conventions?
   - [ ] Is the documentation complete enough ?
   - [ ] Are the tests covering simple and corner cases ?
+ 
 </details>
