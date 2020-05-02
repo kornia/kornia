@@ -191,13 +191,13 @@ class TestDSNT:
             torch.tensor([[[2.0, 0.0]]]),
         ),
     ])
-    def test_spatial_softargmax_2d(self, device, input, expected_norm, expected_px):
+    def test_spatial_expectation_2d(self, device, input, expected_norm, expected_px):
         input = input.to(device)
         expected_norm = expected_norm.to(device)
         expected_px = expected_px.to(device)
-        actual_norm = kornia.geometry.dsnt.spatial_softargmax_2d(input, True)
+        actual_norm = kornia.geometry.dsnt.spatial_expectation_2d(input, True)
         assert_allclose(actual_norm, expected_norm)
-        actual_px = kornia.geometry.dsnt.spatial_softargmax_2d(input, False)
+        actual_px = kornia.geometry.dsnt.spatial_expectation_2d(input, False)
         assert_allclose(actual_px, expected_px)
 
     def test_end_to_end(self, device):
@@ -208,7 +208,7 @@ class TestDSNT:
         hm = kornia.geometry.dsnt.spatial_softmax_2d(input)
         assert_allclose(hm.sum(-1).sum(-1), torch.tensor(1.0).to(device))
 
-        pred = kornia.geometry.dsnt.spatial_softargmax_2d(hm)
+        pred = kornia.geometry.dsnt.spatial_expectation_2d(hm)
         assert_allclose(pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]]).to(device))
 
         loss1 = mse_loss(pred, target, size_average=None, reduce=None,
@@ -232,7 +232,7 @@ class TestDSNT:
                temperature: torch.Tensor, normalized_coordinates: bool,
                std: torch.Tensor) -> torch.Tensor:
             hm = kornia.geometry.dsnt.spatial_softmax_2d(input, temperature)
-            pred = kornia.geometry.dsnt.spatial_softargmax_2d(hm, normalized_coordinates)
+            pred = kornia.geometry.dsnt.spatial_expectation_2d(hm, normalized_coordinates)
             size = (input.shape[-2], input.shape[-1])
             target_hm = kornia.geometry.dsnt.render_gaussian_2d(target, std, size,
                                                                 normalized_coordinates)

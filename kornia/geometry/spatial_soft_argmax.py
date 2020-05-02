@@ -512,8 +512,7 @@ def spatial_soft_argmax2d(
         tensor([[[1.0000, 1.0000]]])
     """
     input_soft: torch.Tensor = dsnt.spatial_softmax_2d(input, temperature)
-    output: torch.Tensor = dsnt.spatial_softargmax_2d(input_soft,
-                                                      normalized_coordinates)
+    output: torch.Tensor = dsnt.spatial_expectation_2d(input_soft, normalized_coordinates)
     return output
 
 

@@ -16,13 +16,13 @@ kornia.geometry
 Coordinates Subpixel
 --------------------
 
-.. autofunction:: spatial_softmax_2d
-.. autofunction:: spatial_softargmax_2d
-.. autofunction:: render_gaussian_2d
+.. autofunction:: spatial_soft_argmax2d
 .. autofunction:: conv_soft_argmax2d
 .. autofunction:: conv_soft_argmax3d
 .. autofunction:: conv_quad_interp3d
 .. autofunction:: spatial_softmax_2d
+.. autofunction:: spatial_expectation_2d
+.. autofunction:: render_gaussian_2d
 
 Module
 ------

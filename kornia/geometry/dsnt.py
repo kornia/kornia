@@ -51,21 +51,21 @@ def spatial_softmax_2d(
     return x_soft.view(batch_size, channels, height, width)
 
 
-def spatial_softargmax_2d(
+def spatial_expectation_2d(
         input: torch.Tensor,
         normalized_coordinates: bool = True,
 ) -> torch.Tensor:
-    r"""Computes the 2D soft-argmax of a given input heatmap.
+    r"""Computes the expectation of coordinate values using spatial probabilities.
 
     The input heatmap is assumed to represent a valid spatial probability
     distribution, which can be achieved using
     :class:`~kornia.contrib.dsnt.spatial_softmax_2d`.
 
-    Returns the index of the maximum 2D coordinates of the given heatmap.
+    Returns the expected value of the 2D coordinates.
     The output order of the coordinates is (x, y).
 
     Arguments:
-        input (torch.Tensor): the input tensor.
+        input (torch.Tensor): the input tensor representing dense spatial probabilities.
         normalized_coordinates (bool): whether to return the
           coordinates normalized in the range of [-1, 1]. Otherwise,
           it will return the coordinates in the range of the input shape.
@@ -80,7 +80,7 @@ def spatial_softargmax_2d(
             [0., 0., 0.],
             [0., 0., 0.],
             [0., 1., 0.]]]])
-        >>> coords = spatial_softargmax_2d(heatmaps, False)
+        >>> coords = spatial_expectation_2d(heatmaps, False)
         tensor([[[1.0000, 2.0000]]])
     """
     _validate_batched_image_tensor_input(input)
