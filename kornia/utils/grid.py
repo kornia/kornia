@@ -3,6 +3,7 @@ from typing import Optional
 import torch
 
 
+@torch.jit.ignore
 def create_meshgrid(
         height: int,
         width: int,

@@ -12,6 +12,7 @@ from torch import finfo  # type: ignore
 from kornia.utils.grid import create_meshgrid
 
 
+@torch.jit.ignore
 def _validate_batched_image_tensor_input(tensor):
     if not torch.is_tensor(tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -88,9 +89,8 @@ def spatial_expectation_2d(
     batch_size, channels, height, width = input.shape
 
     # Create coordinates grid.
-    grid: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates)
-    grid = grid.to(device=input.device, dtype=input.dtype)
+    grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates, input.device)
+    grid = grid.to(input.dtype)
 
     pos_x: torch.Tensor = grid[..., 0].reshape(-1)
     pos_y: torch.Tensor = grid[..., 1].reshape(-1)
