@@ -42,11 +42,8 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
-
-    if isinstance(input, tuple):
-        batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
-    else:
-        batch_size = input.shape[0] if len(input.shape) == 4 else 1
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
     output = apply_hflip(input, params)
     if return_transform:
@@ -60,11 +57,8 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
-
-    if isinstance(input, tuple):
-        batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
-    else:
-        batch_size = input.shape[0] if len(input.shape) == 4 else 1
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
     output = apply_vflip(input, params)
     if return_transform:
@@ -80,11 +74,8 @@ def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
     See :func:`~kornia.augmentation.random_generator.random_color_jitter_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
-
-    if isinstance(input, tuple):
-        batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
-    else:
-        batch_size = input.shape[0] if len(input.shape) == 4 else 1
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
     params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
     output = apply_color_jitter(input, params)
     if return_transform:
@@ -98,11 +89,8 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
-
-    if isinstance(input, tuple):
-        batch_size = input[0].shape[0] if len(input[0].shape) == 4 else 1
-    else:
-        batch_size = input.shape[0] if len(input.shape) == 4 else 1
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
 
     output = apply_grayscale(input, params)
@@ -121,7 +109,8 @@ def random_perspective(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
 
-    batch_size, _, height, width = input.shape
+    input = _transform_input(input)
+    batch_size, _, height, width = input.size()
     params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
         batch_size, height, width, p, distortion_scale)
     output = apply_perspective(input, params)
@@ -144,7 +133,8 @@ def random_affine(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
 
-    batch_size, _, height, width = input.shape
+    input = _transform_input(input)
+    batch_size, _, height, width = input.size()
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
         batch_size, height, width, degrees, translate, scale, shear, resample)
     output = apply_affine(input, params)
@@ -176,18 +166,8 @@ def random_rectangle_erase(
     See :func:`~kornia.augmentation.random_generator.random_rectangles_params_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_erase_rectangles` for details.
     """
-
-    if not (isinstance(scale[0], float) and isinstance(scale[1], float) and scale[0] > 0. and scale[1] > 0.):
-        raise TypeError(
-            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
-        )
-    if not (isinstance(ratio[0], float) and isinstance(ratio[1], float) and ratio[0] > 0. and ratio[1] > 0.):
-        raise TypeError(
-            f"'ratio' must be a Tuple[float, float] with positive values"
-        )
-
-    images_size = input.size()
-    b, _, h, w = images_size
+    input = _transform_input(input)
+    b, _, h, w = input.size()
     params = rg.random_rectangles_params_generator(
         b, h, w, p, scale, ratio
     )
@@ -203,12 +183,9 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
     See :func:`~kornia.augmentation.random_generator.random_rotation_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
-    input_tmp: torch.Tensor = input.unsqueeze(0)
-    input_tmp = input_tmp.view(-1, *input_tmp.shape[-3:])
-    batch_size = input_tmp.shape[0]
-
+    input = _transform_input(input)
+    batch_size, _, _, _ = input.size()
     params = rg.random_rotation_generator(batch_size, degrees=degrees)
-
     output = apply_rotation(input, params)
     if return_transform:
         return output, compute_rotate_tranformation(input, params)
@@ -466,8 +443,7 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform: torch.Tensor = get_perspective_transform(
         params['start_points'], params['end_points']).type_as(input)
-    mask = params['batch_prob'].to(input.device)
-    return transform[mask]
+    return transform
 
 
 def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
