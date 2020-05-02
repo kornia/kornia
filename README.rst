@@ -6,6 +6,9 @@
 
 --------------------------------------------------------------------------------
 
+.. image:: https://img.shields.io/badge/License-Apache%202.0-blue.svg
+    :target: https://opensource.org/licenses/Apache-2.0
+
 .. image:: https://circleci.com/gh/kornia/kornia/tree/master.svg?style=svg
     :target: https://circleci.com/gh/kornia/kornia/tree/master
 
