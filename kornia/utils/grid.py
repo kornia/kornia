@@ -3,11 +3,10 @@ from typing import Optional
 import torch
 
 
-@torch.jit.ignore
 def create_meshgrid(
         height: int,
         width: int,
-        normalized_coordinates: Optional[bool] = True,
+        normalized_coordinates: bool = True,
         device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
@@ -19,7 +18,7 @@ def create_meshgrid(
     Args:
         height (int): the image height (rows).
         width (int): the image width (cols).
-        normalized_coordinates (Optional[bool]): whether to normalize
+        normalized_coordinates (bool): whether to normalize
           coordinates in the range [-1, 1] in order to be consistent with the
           PyTorch function grid_sample.
 
@@ -45,7 +44,7 @@ def create_meshgrid3d(
         depth: int,
         height: int,
         width: int,
-        normalized_coordinates: Optional[bool] = True,
+        normalized_coordinates: bool = True,
         device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
@@ -58,7 +57,7 @@ def create_meshgrid3d(
         depth (int): the image depth (channels).
         height (int): the image height (rows).
         width (int): the image width (cols).
-        normalized_coordinates (Optional[bool]): wether to normalize
+        normalized_coordinates (bool): whether to normalize
           coordinates in the range [-1, 1] in order to be consistent with the
           PyTorch function grid_sample.
 
