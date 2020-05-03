@@ -3,18 +3,16 @@ operations, as described in the paper "Numerical Coordinate Regression with
 Convolutional Neural Networks" by Nibali et al.
 """
 
-from typing import Any, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
-from torch import finfo  # type: ignore
 
 from kornia.utils.grid import create_meshgrid
 
 
-@torch.jit.ignore
 def _validate_batched_image_tensor_input(tensor):
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
     if not len(tensor.shape) == 4:
@@ -109,8 +107,8 @@ def spatial_expectation_2d(
 def _safe_zero_division(
         numerator: torch.Tensor,
         denominator: torch.Tensor,
+        eps: float = 1e-32,
 ) -> torch.Tensor:
-    eps: float = finfo(numerator.dtype).tiny
     return numerator / torch.clamp(denominator, min=eps)
 
 
@@ -138,17 +136,13 @@ def render_gaussian_2d(
         - `std`: :math:`(*, 2)`. Should be able to be broadcast with `mean`.
         - Output: :math:`(*, H, W)`
     """
-    mean_dtype: Any = mean.dtype
-    if not mean_dtype.is_floating_point:
-        raise TypeError("Expected `mean` to have floating point values. Got {}"
-                        .format(mean.dtype))
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")
     height, width = size
 
     # Create coordinates grid.
-    grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates)
-    grid = grid.to(device=mean.device, dtype=mean.dtype)
+    grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates, mean.device)
+    grid = grid.to(mean.dtype)
     pos_x: torch.Tensor = grid[..., 0].view(height, width)
     pos_y: torch.Tensor = grid[..., 1].view(height, width)
 

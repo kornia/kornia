@@ -30,6 +30,14 @@ class TestRenderGaussian2d:
         actual = kornia.geometry.dsnt.render_gaussian_2d(mean, std, (5, 5), True)
         assert_allclose(actual, gaussian, rtol=0, atol=1e-4)
 
+    def test_jit(self, device, dtype):
+        mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
+        std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
+        args = (mean, std, (5, 5), True)
+        op = kornia.geometry.dsnt.render_gaussian_2d
+        op_jit = kornia.jit.render_gaussian_2d
+        assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+
     def test_jit_trace(self, device, dtype):
         def op(mean, std):
             return kornia.geometry.dsnt.render_gaussian_2d(mean, std, (5, 5), True)
@@ -80,7 +88,7 @@ class TestSpatialExpectation2d:
         input, expected_norm, expected_px = request.param
         return input.to(device, dtype), expected_norm.to(device, dtype), expected_px.to(device, dtype)
 
-    def test_forward(self, example, device, dtype):
+    def test_forward(self, example):
         input, expected_norm, expected_px = example
         actual_norm = kornia.geometry.dsnt.spatial_expectation_2d(input, True)
         assert_allclose(actual_norm, expected_norm)
