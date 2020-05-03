@@ -20,9 +20,9 @@ Coordinates Subpixel
 .. autofunction:: conv_soft_argmax2d
 .. autofunction:: conv_soft_argmax3d
 .. autofunction:: conv_quad_interp3d
-.. autofunction:: spatial_softmax_2d
-.. autofunction:: spatial_expectation_2d
-.. autofunction:: render_gaussian_2d
+.. autofunction:: spatial_softmax2d
+.. autofunction:: spatial_expectation2d
+.. autofunction:: render_gaussian2d
 
 Module
 ------

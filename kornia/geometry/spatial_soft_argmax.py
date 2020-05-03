@@ -511,8 +511,8 @@ def spatial_soft_argmax2d(
         >>> coords = kornia.spatial_soft_argmax2d(input, False)
         tensor([[[1.0000, 1.0000]]])
     """
-    input_soft: torch.Tensor = dsnt.spatial_softmax_2d(input, temperature)
-    output: torch.Tensor = dsnt.spatial_expectation_2d(input_soft, normalized_coordinates)
+    input_soft: torch.Tensor = dsnt.spatial_softmax2d(input, temperature)
+    output: torch.Tensor = dsnt.spatial_expectation2d(input_soft, normalized_coordinates)
     return output
 
 

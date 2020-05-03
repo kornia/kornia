@@ -6,6 +6,6 @@ import kornia as K
 rgb_to_grayscale = torch.jit.script(K.color.rgb_to_grayscale)
 
 spatial_soft_argmax2d = torch.jit.script(K.geometry.spatial_soft_argmax2d)
-spatial_softmax_2d = torch.jit.script(K.geometry.dsnt.spatial_softmax_2d)
-spatial_expectation_2d = torch.jit.script(K.geometry.dsnt.spatial_expectation_2d)
-render_gaussian_2d = torch.jit.script(K.geometry.dsnt.render_gaussian_2d)
+spatial_softmax2d = torch.jit.script(K.geometry.dsnt.spatial_softmax2d)
+spatial_expectation2d = torch.jit.script(K.geometry.dsnt.spatial_expectation2d)
+render_gaussian2d = torch.jit.script(K.geometry.dsnt.render_gaussian2d)

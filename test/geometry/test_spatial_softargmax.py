@@ -134,10 +134,10 @@ class TestSpatialSoftArgmax2d:
         target = torch.as_tensor([[[0.0, 0.0], [1.0, 1.0]]]).to(device)
         std = torch.tensor([1.0, 1.0]).to(device)
 
-        hm = kornia.geometry.dsnt.spatial_softmax_2d(input)
+        hm = kornia.geometry.dsnt.spatial_softmax2d(input)
         assert_allclose(hm.sum(-1).sum(-1), torch.tensor(1.0).to(device))
 
-        pred = kornia.geometry.dsnt.spatial_expectation_2d(hm)
+        pred = kornia.geometry.dsnt.spatial_expectation2d(hm)
         assert_allclose(pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]]).to(device))
 
         loss1 = mse_loss(pred, target, size_average=None, reduce=None,
@@ -145,7 +145,7 @@ class TestSpatialSoftArgmax2d:
         expected_loss1 = torch.as_tensor([[0.0, 1.0]]).to(device)
         assert_allclose(loss1, expected_loss1)
 
-        target_hm = kornia.geometry.dsnt.render_gaussian_2d(
+        target_hm = kornia.geometry.dsnt.render_gaussian2d(
             target, std, input.shape[-2:]).contiguous()
 
         loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction='none')

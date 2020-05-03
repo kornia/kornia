@@ -20,7 +20,7 @@ def _validate_batched_image_tensor_input(tensor):
                          .format(tensor.shape))
 
 
-def spatial_softmax_2d(
+def spatial_softmax2d(
         input: torch.Tensor,
         temperature: torch.Tensor = torch.tensor(1.0),
 ) -> torch.Tensor:
@@ -50,7 +50,7 @@ def spatial_softmax_2d(
     return x_soft.view(batch_size, channels, height, width)
 
 
-def spatial_expectation_2d(
+def spatial_expectation2d(
         input: torch.Tensor,
         normalized_coordinates: bool = True,
 ) -> torch.Tensor:
@@ -58,7 +58,7 @@ def spatial_expectation_2d(
 
     The input heatmap is assumed to represent a valid spatial probability
     distribution, which can be achieved using
-    :class:`~kornia.contrib.dsnt.spatial_softmax_2d`.
+    :class:`~kornia.geometry.dsnt.spatial_softmax2d`.
 
     Returns the expected value of the 2D coordinates.
     The output order of the coordinates is (x, y).
@@ -112,7 +112,7 @@ def _safe_zero_division(
     return numerator / torch.clamp(denominator, min=eps)
 
 
-def render_gaussian_2d(
+def render_gaussian2d(
         mean: torch.Tensor,
         std: torch.Tensor,
         size: Tuple[int, int],
