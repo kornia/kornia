@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from kornia.constants import Resample
+from kornia.constants import Resample, BorderType
 from kornia.augmentation.utils import (
     _adapted_uniform,
     _check_and_bound
@@ -569,3 +569,34 @@ def center_crop_params_generator(
                 dst=points_dst,
                 interpolation=torch.tensor(Resample.BILINEAR.value),
                 align_corners=torch.tensor(align_corners))
+
+
+def motion_blur_param_generator(
+    batch_size: int,
+    ksize: Union[int ,Tuple[int, int]],
+    angle: UnionFloat,
+    direction: UnionFloat,
+    border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+    same_on_batch = True
+) -> Dict[str, torch.Tensor]:
+
+    angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
+    direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0.)
+
+    if isinstance(ksize, int):
+        ksize_factor = torch.tensor([ksize] * batch_size)
+    else:
+        ksize_factor = _adapted_uniform(
+            (batch_size,), ksize[0], ksize[1], same_on_batch)
+
+    angle_factor = _adapted_uniform(
+        (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)
+
+    direction_factor = _adapted_uniform(
+        (batch_size,), direction_bound[0], direction_bound[1], same_on_batch)
+
+    # TODO: Enable batch mode
+    return dict(ksize_factor=ksize_factor[0],
+                angle_factor=angle_factor[0],
+                direction_factor=direction_factor[0],
+                border_type=torch.tensor(BorderType.get(border_type).value))

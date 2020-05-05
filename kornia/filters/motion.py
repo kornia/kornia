@@ -41,24 +41,15 @@ class MotionBlur(nn.Module):
         self.ksize = ksize
         self.angle: float = angle
         self.direction: float = direction
-        assert border_type in ["constant", "reflect", "replicate", "circular"]
         self.border_type: str = border_type
-        self.kernel: torch.Tensor = torch.unsqueeze(
-            get_motion_kernel2d(self.ksize, self.angle, self.direction),
-            dim=0
-        )
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__} (ksize={self.ksize}, ' \
                f'angle={self.angle}, direction={self.direction})'
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return filter2D(x, self.kernel, self.border_type)
+        return filter2D(x, self.kernel, self.angle, self.direction, self.border_type)
 
-
-######################
-# functional interface
-######################
 
 def motion_blur(
     input: torch.Tensor,
@@ -72,4 +63,7 @@ def motion_blur(
 
     See :class:`~kornia.filters.MotionBlur` for details.
     """
-    return MotionBlur(ksize, angle, direction, border_type)(input)
+    assert border_type in ["constant", "reflect", "replicate", "circular"]
+    kernel: torch.Tensor = torch.unsqueeze(
+        get_motion_kernel2d(ksize, angle, direction), dim=0)
+    return filter2D(input, kernel, border_type)

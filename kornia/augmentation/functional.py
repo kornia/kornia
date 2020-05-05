@@ -3,7 +3,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 import torch.nn as nn
 
-from kornia.constants import Resample, pi
+from kornia.constants import Resample, BorderType, pi
 from kornia.geometry import (
     get_perspective_transform,
     get_rotation_matrix2d,
@@ -24,6 +24,7 @@ from kornia.color import (
     adjust_gamma,
     rgb_to_grayscale
 )
+from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
@@ -704,4 +705,14 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
 
     transformed = adjust_gamma(input, params['gamma_factor'].to(input.dtype))
 
+    return transformed
+
+
+def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    transformed = motion_blur(
+        input, params['ksize_factor'].item(), params['angle_factor'].item(), params['direction_factor'].item(),
+        BorderType(params['border_type'].item()).name.lower())
     return transformed
