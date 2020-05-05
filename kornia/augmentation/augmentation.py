@@ -80,16 +80,14 @@ class RandomHorizontalFlip(AugmentationBase):
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
-                                    [0., 0., 0.],
-                                    [0., 1., 1.]]]])
-        >>> seq = nn.Sequential(kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True),
-                                kornia.augmentation.RandomHorizontalFlip(p=1.0, return_transform=True)
-                               )
+        ...                         [0., 0., 0.],
+        ...                         [0., 1., 1.]]]])
+        >>> seq = nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True),
+        ...                     RandomHorizontalFlip(p=1.0, return_transform=True))
         >>> seq(input)
-        (tensor([[0., 0., 0.],
-                 [0., 0., 0.],
-                 [0., 1., 1.]]),
-        tensor([[[1., 0., 0.],
+        (tensor([[[[0., 0., 0.],
+                  [0., 0., 0.],
+                  [0., 1., 1.]]]]), tensor([[[1., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 1.]]]))
 
@@ -134,16 +132,15 @@ class RandomVerticalFlip(AugmentationBase):
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
-                                    [0., 0., 0.],
-                                    [0., 1., 1.]]]])
-        >>> seq = nn.Sequential(kornia.augmentation.RandomVerticalFlip(p=1.0, return_transform=True))
+        ...                         [0., 0., 0.],
+        ...                         [0., 1., 1.]]]])
+        >>> seq = RandomVerticalFlip(p=1.0, return_transform=True)
         >>> seq(input)
-        (tensor([[0., 1., 1.],
-                 [0., 0., 0.],
-                 [0., 0., 0.]]),
-        tensor([[[1., 0., 0.],
-                 [0., -1., 3.],
-                 [0., 0., 1.]]]))
+        (tensor([[[[0., 1., 1.],
+                  [0., 0., 0.],
+                  [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
+                 [ 0., -1.,  3.],
+                 [ 0.,  0.,  1.]]]))
 
     """
 
@@ -182,20 +179,21 @@ class ColorJitter(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
+        >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 3, 3, 3)
-        >>> aug = kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1)
+        >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1)
         >>> aug(inputs)
-        tensor([[[[0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409]],
-
-                [[0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409]],
-
-                [[0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409],
-                [0.9409, 0.9409, 0.9409]]]])
+        tensor([[[[0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993]],
+        <BLANKLINE>
+                 [[0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993]],
+        <BLANKLINE>
+                 [[0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993],
+                  [0.9993, 0.9993, 0.9993]]]])
     """
 
     def __init__(
@@ -236,12 +234,21 @@ class RandomGrayscale(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
-        >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = kornia.augmentation.RandomErasing((.4, .8), (.3, 1/.3))
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.randn((1, 3, 3, 3))
+        >>> rec_er = RandomGrayscale(p=1.0)
         >>> rec_er(inputs)
-        tensor([[[[1., 0., 0.],
-                  [1., 0., 0.],
-                  [1., 0., 0.]]]])
+        tensor([[[[-1.1344, -0.1330,  0.1517],
+                  [-0.0791,  0.6711, -0.1413],
+                  [-0.1717, -0.9023,  0.0819]],
+        <BLANKLINE>
+                 [[-1.1344, -0.1330,  0.1517],
+                  [-0.0791,  0.6711, -0.1413],
+                  [-0.1717, -0.9023,  0.0819]],
+        <BLANKLINE>
+                 [[-1.1344, -0.1330,  0.1517],
+                  [-0.0791,  0.6711, -0.1413],
+                  [-0.1717, -0.9023,  0.0819]]]])
     """
 
     def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
@@ -277,8 +284,9 @@ class RandomErasing(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
+        >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = kornia.augmentation.RandomErasing((.4, .8), (.3, 1/.3))
+        >>> rec_er = RandomErasing(1.0, (.4, .8), (.3, 1/.3))
         >>> rec_er(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
@@ -326,16 +334,15 @@ class RandomPerspective(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
-        >>> inputs = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0)
-        >>> inputs
-        tensor([[[[1., 0., 0.],
-                [0., 1., 0.],
-                [0., 0., 1.]]]])
-        >>> aug = kornia.augmentation.RandomPerspective(0.5, 1.0)
+        >>> rng = torch.manual_seed(0)
+        >>> inputs= torch.tensor([[[[1., 0., 0.],
+        ...                         [0., 1., 0.],
+        ...                         [0., 0., 1.]]]])
+        >>> aug = RandomPerspective(0.5, 1.0)
         >>> aug(inputs)
-        tensor([[[[0.0000, 0.0000, 0.0000],
-                [0.0000, 0.3698, 0.0000],
-                [0.0000, 0.0000, 0.0000]]]])
+        tensor([[[[0.0000, 0.2289, 0.0000],
+                  [0.0000, 0.4800, 0.0000],
+                  [0.0000, 0.0000, 0.0000]]]])
     """
 
     def __init__(
@@ -393,9 +400,15 @@ class RandomAffine(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
-        >>> input = torch.rand(2, 3, 224, 224)
-        >>> my_fcn = kornia.augmentation.RandomAffine((-15., 20.), return_transform=True)
-        >>> out, transform = my_fcn(input)  # 2x3x224x224 / 2x3x3
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 3, 3)
+        >>> aug = RandomAffine((-15., 20.), return_transform=True)
+        >>> aug(input)
+        (tensor([[[[0.3961, 0.7310, 0.1574],
+                  [0.1781, 0.3074, 0.5648],
+                  [0.4804, 0.8379, 0.4234]]]]), tensor([[[ 0.9923, -0.1241,  0.1319],
+                 [ 0.1241,  0.9923, -0.1164],
+                 [ 0.0000,  0.0000,  1.0000]]]))
     """
 
     def __init__(
@@ -441,14 +454,12 @@ class CenterCrop(AugmentationBase):
             applied to each. Default: False.
 
     Examples:
+        >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3)
-        tensor([[[[ 0.0471,  0.0875,  0.5029],
-                [-0.4189, -0.2116, -0.4319],
-                [-1.4689,  0.1703, -0.3891]]]])
-        >>> aug = kornia.augmentation.CenterCrop(2)
+        >>> aug = CenterCrop(2)
         >>> aug(inputs)
-        tensor([[[[-0.1537, -0.0926],
-                [-0.3475, -0.1987]]]])
+        tensor([[[[-0.1425, -1.1266],
+                  [-0.0373, -0.6562]]]])
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], return_transform: bool = False) -> None:
@@ -496,17 +507,19 @@ class RandomRotation(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
-        >>> input = torch.tensor([[[[10., 0., 0.],
-                                    [0., 4.5, 4.],
-                                    [0., 1., 1.]]]])
-        >>> seq = nn.Sequential(kornia.augmentation.RandomRotation(degrees=90.0, return_transform=True))
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.tensor([[1., 0., 0., 2.],
+        ...                       [0., 0., 0., 0.],
+        ...                       [0., 1., 2., 0.],
+        ...                       [0., 0., 1., 2.]])
+        >>> seq = RandomRotation(degrees=45.0, return_transform=True)
         >>> seq(input)
-        (tensor([[[0.0000e+00, 8.8409e-02, 9.8243e+00],
-                [9.9131e-01, 4.5000e+00, 1.7524e-04],
-                [9.9121e-01, 3.9735e+00, 3.5140e-02]]]),
-        tensor([[[ 0.0088, -1.0000,  1.9911],
-                [ 1.0000,  0.0088, -0.0088],
-                [ 0.0000,  0.0000,  1.0000]]]))
+        (tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
+                  [0.0000, 0.0029, 0.0000, 0.0176],
+                  [0.0029, 1.0000, 1.9883, 0.0000],
+                  [0.0000, 0.0088, 1.0117, 1.9649]]]]), tensor([[[ 1.0000, -0.0059,  0.0088],
+                 [ 0.0059,  1.0000, -0.0088],
+                 [ 0.0000,  0.0000,  1.0000]]]))
     """
     # Note: Extra params, center=None, fill=0 in TorchVision
 
@@ -559,14 +572,12 @@ class RandomCrop(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
+        >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3)
-        tensor([[[[ 0.0471,  0.0875,  0.5029],
-            [-0.4189, -0.2116, -0.4319],
-            [-1.4689,  0.1703, -0.3891]]]])
-        >>> aug = kornia.augmentation.RandomCrop((2, 2))
+        >>> aug = RandomCrop((2, 2))
         >>> aug(inputs)
-        tensor([[[[-0.7110, -0.3475],
-                [-1.1246, -0.3888]]]])
+        tensor([[[[-0.6562, -1.0009],
+                  [ 0.2223, -0.5507]]]])
     """
 
     def __init__(
@@ -642,14 +653,15 @@ class RandomResizedCrop(AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Example:
-        >>> inputs = torch.randn(1, 1, 3, 3)
-        tensor([[[[ 0.0471,  0.0875,  0.5029],
-            [-0.4189, -0.2116, -0.4319],
-            [-1.4689,  0.1703, -0.3891]]]])
-        >>> aug = kornia.augmentation.RandomResizedCrop((2, 2), (1.0, 1.0), (1.0, 1.0))
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.tensor([[[0., 1., 2.],
+        ...                         [3., 4., 5.],
+        ...                         [6., 7., 8.]]])
+        >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         >>> aug(inputs)
-        tensor([[[[-0.1987, -0.3638],
-                [-0.0345, -0.2979]]]])
+        tensor([[[[3.7500, 4.7500, 5.7500],
+                  [5.2500, 6.2500, 7.2500],
+                  [4.5000, 5.2500, 6.0000]]]])
     """
 
     def __init__(
