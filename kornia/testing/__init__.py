@@ -45,3 +45,10 @@ def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
+
+
+def check_is_tensor(obj):
+    """Checks whether the supplied object is a tensor.
+    """
+    if not isinstance(obj, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(obj)))

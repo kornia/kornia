@@ -18,7 +18,7 @@ def get_test_devices() -> Dict[str, torch.device]:
     return devices
 
 
-def get_test_dtypes() -> Dict[str, torch.device]:
+def get_test_dtypes() -> Dict[str, torch.dtype]:
     """Creates a dictionary with the dtypes the source code.
 
     Return:
@@ -44,6 +44,6 @@ def device(request) -> torch.device:
 
 
 @pytest.fixture()
-def dtype(request) -> torch.device:
+def dtype(request) -> torch.dtype:
     _dtype_name: str = request.config.getoption('--dtypetest')
     return TEST_DTYPES[_dtype_name]
