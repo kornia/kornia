@@ -8,13 +8,12 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
+from kornia.testing import check_is_tensor
 from kornia.utils.grid import create_meshgrid
 
 
 def _validate_batched_image_tensor_input(tensor):
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(tensor)))
+    check_is_tensor(tensor)
     if not len(tensor.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(tensor.shape))
