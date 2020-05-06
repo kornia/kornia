@@ -64,7 +64,7 @@ class BoxBlur(nn.Module):
 
 
 # functiona api
-# TODO: In terms of functional API, there should not be any initialization of an nn.Module. 
+# TODO: In terms of functional API, there should not be any initialization of an nn.Module.
 #       This logic is reversed.
 
 def box_blur(input: torch.Tensor,

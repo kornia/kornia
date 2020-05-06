@@ -573,11 +573,11 @@ def center_crop_params_generator(
 
 def motion_blur_param_generator(
     batch_size: int,
-    ksize: Union[int ,Tuple[int, int]],
+    ksize: Union[int, Tuple[int, int]],
     angle: UnionFloat,
     direction: UnionFloat,
     border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-    same_on_batch = True
+    same_on_batch: bool = True
 ) -> Dict[str, torch.Tensor]:
 
     angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
