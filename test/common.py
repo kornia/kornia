@@ -38,12 +38,10 @@ TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
 
 
 @pytest.fixture()
-def device(request) -> torch.device:
-    _device_type: str = request.config.getoption('--typetest')
-    return TEST_DEVICES[_device_type]
+def device(device_type) -> torch.device:
+    return TEST_DEVICES[device_type]
 
 
 @pytest.fixture()
-def dtype(request) -> torch.dtype:
-    _dtype_name: str = request.config.getoption('--dtypetest')
-    return TEST_DTYPES[_dtype_name]
+def dtype(dtype_name) -> torch.dtype:
+    return TEST_DTYPES[dtype_name]
