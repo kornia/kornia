@@ -635,16 +635,22 @@ class RandomMotionBlur(AugmentationBase):
             If float, it will generate the value from (-direction, direction).
             If Tuple[int, int], it will randomly generate the value from the range.
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
-            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: Resample.CONSTANT.
+            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     Examples::
-        >>> input = torch.rand(2, 4, 5, 7)
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
-        >>> output = motion_blur(input)  # 2x4x5x7
+        >>> motion_blur(input)
+        tensor([[[[0.2724, 0.5235, 0.3796, 0.2433, 0.2210],
+                  [0.3233, 0.5494, 0.5746, 0.5407, 0.3910],
+                  [0.2101, 0.3865, 0.3072, 0.2510, 0.1902],
+                  [0.2973, 0.6174, 0.6530, 0.4360, 0.2797],
+                  [0.3804, 0.6217, 0.5535, 0.4855, 0.4249]]]])
     """
 
     def __init__(

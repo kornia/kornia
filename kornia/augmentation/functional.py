@@ -709,6 +709,25 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
 
 
 def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Perform motion blur on an image
+
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
+        params (Dict[str, torch.Tensor]):
+            ksize_factor (torch.Tensor): motion kernel width and height (odd and positive).
+            angle_factor (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
+            direction_factor (torch.Tensor): forward/backward direction of the motion blur.
+                Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+                while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+                uniformly (but still angled) motion blur.
+            border_type (torch.Tensor): the padding mode to be applied before convolving.
+                CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+
+    Returns:
+        torch.Tensor: Adjusted image.
+    """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
