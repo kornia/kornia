@@ -655,20 +655,23 @@ class RandomMotionBlur(AugmentationBase):
 
     def __init__(
             self, ksize: Union[int, Tuple[int, int]], angle: UnionFloat, direction: UnionFloat,
-            border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name
+            border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            return_transform: bool = False
     ) -> None:
-        super(RandomMotionBlur, self).__init__()
+        super(RandomMotionBlur, self).__init__(return_transform)
         self.ksize = ksize
         self.angle: float = angle
         self.direction: float = direction
         self.border_type: BorderType = BorderType.get(border_type)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__} (ksize={self.ksize}, ' \
-               f'angle={self.angle}, direction={self.direction})'
+        return f'{self.__class__.__name__} (ksize={self.ksize}, angle={self.angle}, '\
+            f'direction={self.direction}, border_type={self.border_type.name.lower()}, '\
+            f'return_transform={self.return_transform})'
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.motion_blur_param_generator(batch_shape[0], self.ksize, self.angle, self.direction, self.border_type)
+        # TODO: Enable batch mode
+        return rg.motion_blur_param_generator(1, self.ksize, self.angle, self.direction, self.border_type)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input, params)

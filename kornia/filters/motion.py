@@ -48,7 +48,7 @@ class MotionBlur(nn.Module):
                f'angle={self.angle}, direction={self.direction})'
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return filter2D(x, self.kernel, self.angle, self.direction, self.border_type)
+        return motion_blur(x, self.ksize, self.angle, self.direction, self.border_type)
 
 
 def motion_blur(

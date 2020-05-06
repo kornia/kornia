@@ -581,10 +581,10 @@ def motion_blur_param_generator(
 ) -> Dict[str, torch.Tensor]:
 
     angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
-    direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0.)
+    direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0., bounds=(-1, 1))
 
     if isinstance(ksize, int):
-        ksize_factor = torch.tensor([ksize // 2] * batch_size).int() * 2 + 1
+        ksize_factor = torch.tensor([ksize] * batch_size)
     else:
         ksize_factor = _adapted_uniform(
             (batch_size,), ksize[0] // 2, ksize[1] // 2, same_on_batch).int() * 2 + 1
@@ -595,8 +595,7 @@ def motion_blur_param_generator(
     direction_factor = _adapted_uniform(
         (batch_size,), direction_bound[0], direction_bound[1], same_on_batch)
 
-    # TODO: Enable batch mode
-    return dict(ksize_factor=ksize_factor[0],
-                angle_factor=angle_factor[0],
-                direction_factor=direction_factor[0],
+    return dict(ksize_factor=ksize_factor,
+                angle_factor=angle_factor,
+                direction_factor=direction_factor,
                 border_type=torch.tensor(BorderType.get(border_type).value))

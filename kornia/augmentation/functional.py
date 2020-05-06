@@ -732,6 +732,6 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = motion_blur(
-        input, params['ksize_factor'].item(), params['angle_factor'].item(), params['direction_factor'].item(),
-        BorderType(params['border_type'].item()).name.lower())
+        input, params['ksize_factor'].item(), params['angle_factor'].item(),
+        params['direction_factor'].item(), BorderType(params['border_type'].item()).name.lower())
     return transformed
