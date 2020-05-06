@@ -584,10 +584,10 @@ def motion_blur_param_generator(
     direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0.)
 
     if isinstance(ksize, int):
-        ksize_factor = torch.tensor([ksize] * batch_size)
+        ksize_factor = torch.tensor([ksize // 2] * batch_size).int() * 2 + 1
     else:
         ksize_factor = _adapted_uniform(
-            (batch_size,), ksize[0], ksize[1], same_on_batch)
+            (batch_size,), ksize[0] // 2, ksize[1] // 2, same_on_batch).int() * 2 + 1
 
     angle_factor = _adapted_uniform(
         (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)
