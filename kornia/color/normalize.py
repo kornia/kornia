@@ -1,12 +1,15 @@
+"""Module containing functionals for intensity normalisation."""
+
+from typing import Union
+
 import torch
 import torch.nn as nn
-from typing import Union
 
 
 class Normalize(nn.Module):
-    r"""Normalize a tensor image or a batch of tensor images
-    with mean and standard deviation. Input must be a tensor of shape (C, H, W)
-    or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Normalize a tensor image or a batch of tensor images with mean and standard deviation.
+
+    Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
     this transform will normalize each channel of the input ``torch.Tensor``
@@ -15,8 +18,8 @@ class Normalize(nn.Module):
     Args:
         mean (torch.Tensor or float): Mean for each channel.
         std (torch.Tensor or float): Standard deviations for each channel.
-    """
 
+    """
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
         super(Normalize, self).__init__()
@@ -25,6 +28,15 @@ class Normalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        """Normalises an input tensor by the mean and standard deviation.
+
+        Args:
+            input: image tensor of size (*, H, W).
+
+        Returns:
+            normalised tensor with same size as input (*, H, W).
+
+        """
         return normalize(input, self.mean, self.std)
 
     def __repr__(self):
@@ -44,10 +56,10 @@ def normalize(
         mean (torch.Tensor or float): Mean for each channel.
         std (torch.Tensor or float): Standard deviations for each channel.
 
-        Returns:
-            torch.Tensor: The normalised image tensor.
-    """
+    Returns:
+        torch.Tensor: The normalised image tensor.
 
+    """
     if isinstance(mean, float):
         mean = torch.tensor([mean])  # prevent 0 sized tensors
 
@@ -84,8 +96,9 @@ def normalize(
 
 
 class Denormalize(nn.Module):
-    r"""Denormalize a tensor image or a batch of tensor images
-    . Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    r"""Denormalize a tensor image or a batch of tensor images.
+
+    Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Given mean: ``(M1,...,Mn)`` and std: ``(S1,..,Sn)`` for ``n`` channels,
     this transform will denormalize each channel of the input ``torch.Tensor``
@@ -94,8 +107,8 @@ class Denormalize(nn.Module):
     Args:
         mean (torch.Tensor or float): Mean for each channel.
         std (torch.Tensor or float): Standard deviations for each channel.
-    """
 
+    """
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
         super(Denormalize, self).__init__()
@@ -104,6 +117,15 @@ class Denormalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        """Denormalises an input tensor by the mean and standard deviation.
+
+        Args:
+            input: image tensor of size (*, H, W).
+
+        Returns:
+            normalised tensor with same size as input (*, H, W).
+
+        """
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self):
@@ -123,10 +145,10 @@ def denormalize(
         mean (torch.Tensor or float): Mean for each channel.
         std (torch.Tensor or float): Standard deviations for each channel.
 
-        Returns:
-            torch.Tensor: The normalised image tensor.
-    """
+    Returns:
+        torch.Tensor: The normalised image tensor.
 
+    """
     if isinstance(mean, float):
         mean = torch.tensor([mean])  # prevent 0 sized tensors
 

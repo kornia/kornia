@@ -14,6 +14,7 @@ pytest-flake8
 pytest-cov
 pytest-mypy
 autopep8
+pydocstyle
 
 # docs
 sphinx

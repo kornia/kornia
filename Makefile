@@ -20,6 +20,9 @@ mypy: FORCE
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
+docstyle: FORCE
+	pydocstyle kornia/
+
 build-docs: FORCE
 	cd docs; make clean html
 
@@ -34,5 +37,3 @@ benchmark: FORCE
 
 uninstall: FORCE
 	pip uninstall kornia
-
-FORCE:
