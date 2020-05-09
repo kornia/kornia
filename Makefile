@@ -21,7 +21,7 @@ autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
 build-docs: FORCE
-	python verify.py --check build-docs
+	cd docs; make clean html
 
 install: FORCE
 	python setup.py install
