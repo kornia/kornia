@@ -1,9 +1,6 @@
 # core dependencies
 pytorch==1.5.0
 
-# package
-setuptools>=41.4.0
-
 # utils
 torchvision==0.6.0
 opencv
@@ -15,9 +12,8 @@ matplotlib
 pytest>=5.1.2
 pytest-flake8
 pytest-cov
+pytest-mypy
 autopep8
-mypy
-mypy_extensions
 
 # docs
 sphinx
