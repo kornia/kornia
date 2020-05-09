@@ -12,7 +12,7 @@ PSs = [224, 32]
 
 
 def test_performance_speed(device, dtype):
-    if not torch.cuda.is_available():
+    if device.type != 'cuda' or not torch.cuda.is_available():
         pytest.skip("Cuda not available in system,")
 
     print("Benchmarking warp_affine")
