@@ -25,8 +25,10 @@ This is the base class for creating a new transform. The user only needs to over
 Create your own transformation:
 
 .. code-block:: python
+	from kornia.augmentation import AugmentationBase
 
-	class MyRandomTransform(nn.Module):
+
+	class MyRandomTransform(AugmentationBase):
 		def __init__(self, return_transform: bool = False) -> None:
 			super(MyRandomTransform, self).__init__(return_transform)
 
@@ -54,6 +56,58 @@ Create your own transformation:
 
 Module
 ------
+
+Kornia augmentation implementations can be easily used in a TorchVision style using `nn.Sequential`.
+
+.. code-block:: python
+	import kornia.augmentation as K
+	import torch.nn as nn
+
+	transform = nn.Sequential(
+		K.RandomAffine(360),
+		K.ColorJitter(0.2, 0.3, 0.2, 0.3)
+	)
+
+Kornia augmentation implementations have two additional parameters compare to TorchVision, `return_transform` and `same_on_batch`. The former provides the ability of undoing one geometry transformation while the latter can be used to control the randomness for a batched transformation. To enable those behaviour, you may simply set the flags to True.
+
+.. code-block:: python
+	import kornia.augmentation as K
+
+
+	class MyAugmentationPipeline(nn.Module):
+		def __init__(self) -> None:
+			super(MyAugmentationPipeline, self).__init__()
+			self.aff = K.RandomAffine(360, return_transform=True, same_on_batch=True)
+			self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3, same_on_batch=True)
+
+		def forward(self, input):
+			input, transform = self.aff(input)
+			input, transform = self.jit((input, transform))
+			return input, transform
+
+Example for semantic segmentation using low-level randomness control:
+
+.. code-block:: python
+	import kornia.augmentation as K
+
+
+	class MyAugmentationPipeline(nn.Module):
+		def __init__(self) -> None:
+			super(MyAugmentationPipeline, self).__init__()
+			self.aff = K.RandomAffine(360)
+			self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3)
+
+		def forward(self, input, mask):
+			assert input.shape == mask.shape, 
+				f"Input shape should be consistent with mask shape, while got {input.shape}, {mask.shape}" 
+			aff_params = self.aff.generate_parameters(input.shape)
+			input = self.aff(input, aff_params)
+			mask = self.aff(mask, aff_params)
+			
+			jit_params = self.jit.generate_parameters(input.shape)
+			input = self.jit(input, jit_params)
+			mask = self.jit(mask, jit_params)
+			return input, mask
 
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomVerticalFlip
