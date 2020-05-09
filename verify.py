@@ -11,6 +11,7 @@ from subprocess import run
 from subprocess import CalledProcessError
 import sys
 
+
 def main(checks):
     try:
         print("Verifying with " + str(checks))
@@ -39,7 +40,7 @@ def main(checks):
         sys.exit(1)
 
 if __name__ == "__main__":
-    checks = ['lint', 'mypy', 'build-docs', 'check-docs',]
+    checks = ['lint', 'mypy', 'build-docs', 'check-docs']
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--checks', type=str, required=False, nargs='+', choices=checks)

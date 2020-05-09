@@ -3,16 +3,16 @@
 test: mypy lint build-docs test-all
 
 test-all: FORCE
-	pytest -v --device cpu,cuda --dtype float16,float32,float64 --cov=kornia test/
+	pytest -v --device cpu,cuda --dtype float16,float32,float64 --cov=kornia test/ --flake8
 
 test-cpu: FORCE
-	pytest -v --device cpu --dtype float32,float64 --cov=kornia test/
+	pytest -v --device cpu --dtype float32,float64 --cov=kornia test/ --flake8
 
 test-cuda: FORCE
-	pytest -v --device cuda --dtype float16,float32,float64 --cov=kornia test/
+	pytest -v --device cuda --dtype float16,float32,float64 --cov=kornia test/ --flake8
 
 lint: FORCE
-	python verify.py --check lint
+	pytest -v --flake8 -m flake8
 
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
