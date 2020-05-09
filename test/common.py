@@ -38,10 +38,14 @@ TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
 
 
 @pytest.fixture()
-def device(device_type) -> torch.device:
-    return TEST_DEVICES[device_type]
+def device(device_name) -> torch.device:
+    if device_name not in TEST_DEVICES:
+        pytest.skip(f"Unsupported device type: {device_name}")
+    return TEST_DEVICES[device_name]
 
 
 @pytest.fixture()
-def dtype(dtype_name) -> torch.dtype:
+def dtype(device, dtype_name) -> torch.dtype:
+    if device.type == 'cpu' and dtype_name == 'float16':
+        pytest.skip(f"Unsupported device cpu and dtype float16.")
     return TEST_DTYPES[dtype_name]

@@ -1,15 +1,18 @@
-.PHONY: test test-cpu test-gpu lint mypy build-docs install uninstall FORCE
+.PHONY: test test-cpu test-cuda lint mypy build-docs install uninstall FORCE
 
-test: mypy lint test-cpu
+test: mypy lint build-docs test-all
+
+test-all: FORCE
+	pytest -v --device cpu,cuda --dtype float16,float32,float64
 
 test-cpu: FORCE
-	pytest --typetest cpu -v
+	pytest -v --device cpu --dtype float32,float64
 
 test-cpu-cov: FORCE
-	pytest --typetest cpu -v --cov=kornia test
+	pytest -v --device cpu --dtype float32 --cov=kornia test
 
-test-gpu: FORCE
-	pytest --typetest cuda -v
+test-cuda: FORCE
+	pytest -v --device cuda --dtype float16,float32,float64
 
 lint: FORCE
 	python verify.py --check lint
@@ -26,7 +29,10 @@ build-docs: FORCE
 install: FORCE
 	python setup.py install
 	
-benchmark: 
+install-dev: FORCE
+	python setup.py develop
+
+benchmark: FORCE
 	for f in test/performance/*.py  ; do python -utt $${f}; done
 
 uninstall: FORCE
