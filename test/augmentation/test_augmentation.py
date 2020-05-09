@@ -1092,7 +1092,7 @@ class TestRandomRotation:
         assert str(f) == repr
 
     def test_random_rotation(self, device):
-
+        # This is included in doctest
         torch.manual_seed(0)  # for random reproductibility
 
         f = RandomRotation(degrees=45.0, return_transform=True)
@@ -1412,6 +1412,7 @@ class TestRandomResizedCrop:
         assert (res[0] == res[1]).all()
 
     def test_crop_scale_ratio(self, device):
+        # This is included in doctest
         torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
