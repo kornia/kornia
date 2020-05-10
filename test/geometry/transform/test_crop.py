@@ -284,7 +284,7 @@ class TestCenterCrop:
     def test_jit_trace(self, device):
         @torch.jit.script
         def op_script(input: torch.Tensor,
-                      size: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+                      size: Tuple[int, int]) -> torch.Tensor:
             return kornia.center_crop(input, size)
         # 1. Trace op
         batch_size, channels, height, width = 1, 2, 5, 4
