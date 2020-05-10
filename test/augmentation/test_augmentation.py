@@ -1,3 +1,5 @@
+from typing import Union, Tuple
+
 import pytest
 import torch
 import torch.nn as nn
@@ -131,7 +133,7 @@ class TestRandomHorizontalFlip:
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
         @torch.jit.script
-        def op_script(data: torch.Tensor) -> torch.Tensor:
+        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
             return kornia.random_hflip(data)
 
@@ -278,8 +280,7 @@ class TestRandomVerticalFlip:
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
         @torch.jit.script
-        def op_script(data: torch.Tensor) -> torch.Tensor:
-
+        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
             return kornia.random_vflip(data)
 
         input = torch.tensor([[0., 0., 0.],
@@ -1092,7 +1093,7 @@ class TestRandomRotation:
         assert str(f) == repr
 
     def test_random_rotation(self, device):
-
+        # This is included in doctest
         torch.manual_seed(0)  # for random reproductibility
 
         f = RandomRotation(degrees=45.0, return_transform=True)
@@ -1216,8 +1217,7 @@ class TestRandomRotation:
         torch.manual_seed(0)  # for random reproductibility
 
         @torch.jit.script
-        def op_script(data: torch.Tensor) -> torch.Tensor:
-
+        def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
             return kornia.random_rotation(data, degrees=45.0)
 
         input = torch.tensor([[1., 0., 0., 2.],
@@ -1412,6 +1412,7 @@ class TestRandomResizedCrop:
         assert (res[0] == res[1]).all()
 
     def test_crop_scale_ratio(self, device):
+        # This is included in doctest
         torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
