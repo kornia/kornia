@@ -24,7 +24,7 @@ common: &common
         command: make build-docs
     - run:
         name: unit tests
-        command: make test-cpu-cov
+        command: make test-cpu
     - run:
         name: send coverage
         when: on_success
