@@ -16,7 +16,7 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.3.1'
+version = '0.3.2'
 
 #################################
 
