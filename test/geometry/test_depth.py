@@ -33,7 +33,7 @@ class TestDepthTo3d:
         points3d = kornia.depth_to_3d(depth, camera_matrix)
         assert points3d.shape == (batch_size, 3, 3, 4)
 
-    def test_unproject_normalized(self, device):
+    def test_unproject_denormalized(self, device):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor([[[
             [1., 1., 1.],
