@@ -121,19 +121,20 @@ Example for semantic segmentation using low-level randomness control:
 	 mask = self.jit(mask, jit_params)
 	 return input, mask
 
-.. autoclass:: RandomHorizontalFlip
-.. autoclass:: RandomVerticalFlip
+.. autoclass:: CenterCrop
+.. autoclass:: ColorJitter
+.. autoclass:: Denormalize
+.. autoclass:: Normalize
+.. autoclass:: RandomAffine
+.. autoclass:: RandomCrop
 .. autoclass:: RandomErasing
 .. autoclass:: RandomGrayscale
-.. autoclass:: RandomAffine
+.. autoclass:: RandomHorizontalFlip
+.. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPerspective
-.. autoclass:: RandomRotation
-.. autoclass:: ColorJitter
-.. autoclass:: CenterCrop
-.. autoclass:: RandomCrop
 .. autoclass:: RandomResizedCrop
-.. autoclass:: Normalize
-.. autoclass:: Denormalize
+.. autoclass:: RandomRotation
+.. autoclass:: RandomVerticalFlip
 
 Functional
 ----------

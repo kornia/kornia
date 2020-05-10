@@ -11,7 +11,7 @@ class MotionBlur(nn.Module):
     r"""Blurs a tensor using the motion filter.
 
     Args:
-        ksize (int): motion kernel width and height. It should be odd and positive.
+        kernel_size (int): motion kernel width and height. It should be odd and positive.
         angle (float): angle of the motion blur in degrees (anti-clockwise rotation).
         direction (float): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -35,25 +35,25 @@ class MotionBlur(nn.Module):
     """
 
     def __init__(
-            self, ksize: int, angle: float, direction: float, border_type: str = 'constant'
+            self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant'
     ) -> None:
         super(MotionBlur, self).__init__()
-        self.ksize = ksize
+        self.kernel_size = kernel_size
         self.angle: float = angle
         self.direction: float = direction
         self.border_type: str = border_type
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__} (ksize={self.ksize}, ' \
+        return f'{self.__class__.__name__} (kernel_size={self.kernel_size}, ' \
                f'angle={self.angle}, direction={self.direction})'
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return motion_blur(x, self.ksize, self.angle, self.direction, self.border_type)
+        return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
 def motion_blur(
     input: torch.Tensor,
-    ksize: int,
+    kernel_size: int,
     angle: float,
     direction: float,
     border_type: str = 'constant'
@@ -65,5 +65,5 @@ def motion_blur(
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
     kernel: torch.Tensor = torch.unsqueeze(
-        get_motion_kernel2d(ksize, angle, direction), dim=0)
+        get_motion_kernel2d(kernel_size, angle, direction), dim=0)
     return filter2D(input, kernel, border_type)

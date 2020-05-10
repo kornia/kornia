@@ -703,7 +703,7 @@ class RandomMotionBlur(AugmentationBase):
     r"""Blurs a tensor using the motion filter. Same transformation happens across batches.
 
     Args:
-        ksize (int or Tuple[int, int]): motion kernel width and height (odd and positive).
+        kernel_size (int or Tuple[int, int]): motion kernel width and height (odd and positive).
             If int, the kernel will have a fixed size.
             If Tuple[int, int], it will randomly generate the value from the range.
         angle (float or Tuple[float, float]): angle of the motion blur in degrees (anti-clockwise rotation).
@@ -734,24 +734,26 @@ class RandomMotionBlur(AugmentationBase):
     """
 
     def __init__(
-            self, ksize: Union[int, Tuple[int, int]], angle: UnionFloat, direction: UnionFloat,
+            self, kernel_size: Union[int, Tuple[int, int]],
+            angle: Union[float, Tuple[float, float]],
+            direction: Union[float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(return_transform)
-        self.ksize = ksize
-        self.angle: float = angle
-        self.direction: float = direction
+        self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
+        self.angle: Union[float, Tuple[float, float]] = angle
+        self.direction: Union[float, Tuple[float, float]] = direction
         self.border_type: BorderType = BorderType.get(border_type)
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__} (ksize={self.ksize}, angle={self.angle}, '\
-            f'direction={self.direction}, border_type={self.border_type.name.lower()}, '\
-            f'return_transform={self.return_transform})'
+        return f"{self.__class__.__name__}(kernel_size={self.kernel_size}, angle={self.angle}, " \
+            f"direction={self.direction}, border_type='{self.border_type.name.lower()}', " \
+            f"return_transform={self.return_transform})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         # TODO: Enable batch mode
-        return rg.motion_blur_param_generator(1, self.ksize, self.angle, self.direction, self.border_type)
+        return rg.motion_blur_param_generator(1, self.kernel_size, self.angle, self.direction, self.border_type)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input, params)

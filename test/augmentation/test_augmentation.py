@@ -1458,10 +1458,10 @@ class TestRandomResizedCrop:
 
 
 class TestRandomMotionBlur:
-    def smoke_test(self, device):
-        f = RandomMotionBlur(ksize=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomResizedCrop(ksize=(3, 5), angle=(10, 30), direction=0.5, "\
-            "border_type='constant',return_transform=False)"
+    def test_smoke(self, device):
+        f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, "\
+            "border_type='constant', return_transform=False)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):
@@ -1476,4 +1476,4 @@ class TestRandomMotionBlur:
             'border_type': torch.tensor([0]),
         }
         assert gradcheck(RandomMotionBlur(
-            ksize=3, angle=(10, 30), direction=(-0.5, 0.5)), (inp, params), raise_exception=True)
+            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5)), (inp, params), raise_exception=True)

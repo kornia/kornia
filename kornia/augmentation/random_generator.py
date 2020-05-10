@@ -591,7 +591,7 @@ def center_crop_params_generator(
 
 def motion_blur_param_generator(
     batch_size: int,
-    ksize: Union[int, Tuple[int, int]],
+    kernel_size: Union[int, Tuple[int, int]],
     angle: UnionFloat,
     direction: UnionFloat,
     border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
@@ -601,11 +601,14 @@ def motion_blur_param_generator(
     angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
     direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0., bounds=(-1, 1))
 
-    if isinstance(ksize, int):
-        ksize_factor = torch.tensor([ksize] * batch_size)
-    else:
+    if isinstance(kernel_size, int):
+        ksize_factor = torch.tensor([kernel_size] * batch_size)
+    elif isinstance(kernel_size, tuple):
+        ksize_x, ksize_y = kernel_size
         ksize_factor = _adapted_uniform(
-            (batch_size,), ksize[0] // 2, ksize[1] // 2, same_on_batch).int() * 2 + 1
+            (batch_size,), ksize_x // 2, ksize_y // 2, same_on_batch).int() * 2 + 1
+    else:
+        raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
     angle_factor = _adapted_uniform(
         (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)

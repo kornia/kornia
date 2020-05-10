@@ -768,24 +768,28 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, C, H, W).
         params (Dict[str, torch.Tensor]):
-            ksize_factor (torch.Tensor): motion kernel width and height (odd and positive).
-            angle_factor (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
-            direction_factor (torch.Tensor): forward/backward direction of the motion blur.
-                Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
-                while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
-                uniformly (but still angled) motion blur.
-            border_type (torch.Tensor): the padding mode to be applied before convolving.
-                CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+            - params['ksize_factor']: motion kernel width and height (odd and positive).
+            - params['angle_factor']: angle of the motion blur in degrees (anti-clockwise rotation).
+            - params['direction_factor']: forward/backward direction of the motion blur.
+              Lower values towards -1.0 will point the motion blur towards the back (with
+              angle provided via angle), while higher values towards 1.0 will point the motion
+              blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
+            - params['border_type']: the padding mode to be applied before convolving.
+              CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Returns:
-        torch.Tensor: Adjusted image.
+        torch.Tensor: Adjusted image with the shape as the inpute (\*, C, H, W).
+
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    transformed = motion_blur(
-        input, params['ksize_factor'].item(), params['angle_factor'].item(),
-        params['direction_factor'].item(), BorderType(params['border_type'].item()).name.lower())
-    return transformed
+    kernel_size: int = cast(int, params['ksize_factor'].item())
+    # TODO: this params should be at some point, learnable tensors
+    angle: float = cast(float, params['angle_factor'].item())
+    direction: float = cast(float, params['direction_factor'].item())
+    border_type: str = cast(str, BorderType(params['border_type'].item()).name.lower())
+
+    return motion_blur(input, kernel_size, angle, direction, border_type)
