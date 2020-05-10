@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.constants import Resample
+from kornia.constants import Resample, BorderType
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -697,3 +697,66 @@ class RandomResizedCrop(AugmentationBase):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_crop(input, params)
+
+
+class RandomMotionBlur(AugmentationBase):
+    r"""Blurs a tensor using the motion filter. Same transformation happens across batches.
+
+    Args:
+        kernel_size (int or Tuple[int, int]): motion kernel width and height (odd and positive).
+            If int, the kernel will have a fixed size.
+            If Tuple[int, int], it will randomly generate the value from the range.
+        angle (float or Tuple[float, float]): angle of the motion blur in degrees (anti-clockwise rotation).
+            If float, it will generate the value from (-angle, angle).
+        direction (float or Tuple[float, float]): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+            If float, it will generate the value from (-direction, direction).
+            If Tuple[int, int], it will randomly generate the value from the range.
+        border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
+            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
+        >>> motion_blur(input)
+        tensor([[[[0.2724, 0.5235, 0.3796, 0.2433, 0.2210],
+                  [0.3233, 0.5494, 0.5746, 0.5407, 0.3910],
+                  [0.2101, 0.3865, 0.3072, 0.2510, 0.1902],
+                  [0.2973, 0.6174, 0.6530, 0.4360, 0.2797],
+                  [0.3804, 0.6217, 0.5535, 0.4855, 0.4249]]]])
+    """
+
+    def __init__(
+            self, kernel_size: Union[int, Tuple[int, int]],
+            angle: Union[float, Tuple[float, float]],
+            direction: Union[float, Tuple[float, float]],
+            border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            return_transform: bool = False
+    ) -> None:
+        super(RandomMotionBlur, self).__init__(return_transform)
+        self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
+        self.angle: Union[float, Tuple[float, float]] = angle
+        self.direction: Union[float, Tuple[float, float]] = direction
+        self.border_type: BorderType = BorderType.get(border_type)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(kernel_size={self.kernel_size}, angle={self.angle}, " \
+            f"direction={self.direction}, border_type='{self.border_type.name.lower()}', " \
+            f"return_transform={self.return_transform})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        # TODO: Enable batch mode
+        return rg.motion_blur_param_generator(1, self.kernel_size, self.angle, self.direction, self.border_type)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_motion_blur(input, params)
