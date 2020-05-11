@@ -2,7 +2,6 @@ import pytest
 
 import kornia
 from kornia.testing import tensor_to_gradcheck_var
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck

@@ -13,8 +13,6 @@ from kornia.constants import pi
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
 
-from test.common import device
-
 
 class TestRandomHorizontalFlip:
 

@@ -3,7 +3,7 @@
 test: mypy lint build-docs test-all
 
 test-all: FORCE
-	pytest -v --device cpu,cuda --dtype float16,float32,float64 --cov=kornia test/ --flake8 --mypy
+	pytest -v --device all --dtype all --cov=kornia test/ --flake8 --mypy
 
 test-cpu: FORCE
 	pytest -v --device cpu --dtype float32,float64 --cov=kornia test/ --flake8 --mypy

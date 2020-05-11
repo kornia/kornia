@@ -5,7 +5,6 @@ import numpy as np
 
 import kornia
 from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
-from test.common import device, dtype
 
 import torch
 from torch.autograd import gradcheck
