@@ -16,7 +16,7 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.3.1'
+version = '0.3.2'
 
 #################################
 
@@ -88,25 +88,25 @@ if __name__ == '__main__':
     write_version_file()
     setup(
         # Metadata
-	name=package_name,
-	version=version,
-	author='Edgar Riba',
-	author_email='contact@kornia.org',
-	url='https://github.com/arraiyopensource/kornia',
-	description='Open Source Differentiable Computer Vision Library for PyTorch',
-	long_description=long_description,
-	license='Apache License 2.0',
-	python_requires='>=3.6',
+        name=package_name,
+        version=version,
+        author='Edgar Riba',
+        author_email='contact@kornia.org',
+        url='https://github.com/kornia/kornia',
+        description='Open Source Differentiable Computer Vision Library for PyTorch',
+        long_description=long_description,
+        license='Apache License 2.0',
+        python_requires='>=3.6',
 
-	# Test
-	setup_requires=['pytest-runner'],
-	tests_require=['pytest'],
+        # Test
+        setup_requires=['pytest-runner'],
+        tests_require=['pytest'],
 
-	# Package info
-	packages=find_packages(exclude=('docs', 'test', 'examples',)),
+        # Package info
+        packages=find_packages(exclude=('docs', 'test', 'examples',)),
 
-	zip_safe=True,
-	install_requires=requirements,
+        zip_safe=True,
+        install_requires=requirements,
         classifiers=[
             'Intended Audience :: Developers',
             'Intended Audience :: Education',
@@ -116,5 +116,5 @@ if __name__ == '__main__':
             'License :: OSI Approved :: Apache Software License',
             'Topic :: Scientific/Engineering :: Image Recognition',
             'Topic :: Software Development :: Libraries',
-         ],
+        ],
     )

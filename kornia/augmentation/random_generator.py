@@ -4,13 +4,12 @@ import math
 
 import torch
 
-from kornia.constants import Resample
+from kornia.constants import Resample, BorderType
 from kornia.augmentation.utils import (
     _adapted_uniform,
     _check_and_bound
 )
 
-# TODO: remove this since it does not help readability
 from .types import (
     TupleFloat,
     UnionFloat,
@@ -38,9 +37,7 @@ def random_color_jitter_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        dict: generated parameter dictionary.
-
-    See :class:`~kornia.augmentation.ColorJitter` for details.
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
     brightness_bound: torch.Tensor = _check_and_bound(
@@ -79,15 +76,11 @@ def random_prob_generator(
 
     Args:
         batch_size (int): the number of images.
-        p (float): probability of the image being flipped or grayscaled. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of the image being flipped or grayscaled. Default value is 0.5
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        dict: generated parameter dictionary.
-
-    See :class:`~kornia.augmentation.RandomGrayscale` for details.
-    See :class:`~kornia.augmentation.RandomHorizontalFlip` for details.
-    See :class:`~kornia.augmentation.RandomVerticalFlip` for details.
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
     if not isinstance(p, float):
@@ -157,9 +150,7 @@ def random_perspective_generator(
 
 
     Returns:
-        List containing [top-left, top-right, bottom-right, bottom-left] of the original image,
-        List containing [top-left, top-right, bottom-right, bottom-left] of the transformed image.
-        The points are in -x order.
+        params (Dict[str, torch.Tensor])
     """
     params: Dict[str, torch.Tensor] = random_prob_generator(batch_size, p)
     start_points, end_points = (
@@ -186,30 +177,32 @@ def random_affine_generator(
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
-        Args:
-            batch_size (int): the tensor batch size.
-            height (int) : height of the image.
-            width (int): width of the image.
-            degrees (float or tuple): Range of degrees to select from.
-                If degrees is a number instead of sequence like (min, max), the range of degrees
-                will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-            translate (tuple, optional): tuple of maximum absolute fraction for horizontal
-                and vertical translations. For example translate=(a, b), then horizontal shift
-                is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-                randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-            scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
-                randomly sampled from the range a <= scale <= b. Will keep original scale by default.
-            shear (sequence or float, optional): Range of degrees to select from.
-                If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-                will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-                range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-                a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
-                Will not apply shear by default
-            resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-            same_on_batch (bool): apply the same transformation across the batch. Default: False
-            align_corners(bool): interpolation flag. Default: False. See
+    Args:
+        batch_size (int): the tensor batch size.
+        height (int) : height of the image.
+        width (int): width of the image.
+        degrees (float or tuple): Range of degrees to select from.
+            If degrees is a number instead of sequence like (min, max), the range of degrees
+            will be (-degrees, +degrees). Set to 0 to deactivate rotations.
+        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+            and vertical translations. For example translate=(a, b), then horizontal shift
+            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
+            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+            randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+        shear (sequence or float, optional): Range of degrees to select from.
+            If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
+            will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
+            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
+            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+            Will not apply shear by default
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.See
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     # check angle ranges
     degrees_tmp: TupleFloat
@@ -272,6 +265,9 @@ def random_rotation_generator(
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners (bool): interpolation flag. Default: False.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     if not torch.is_tensor(degrees):
         if isinstance(degrees, (float, int)):
@@ -314,7 +310,7 @@ def _get_random_affine_params(
     The returned matrix is Bx3x3.
 
     Returns:
-        torch.Tensor: params to be passed to the affine transformation.
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     angle = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
@@ -364,6 +360,7 @@ def random_crop_generator(
     align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
+
     Args:
         batch_size (int): the tensor batch size.
         input_size (tuple): Input image shape, like (h, w).
@@ -372,6 +369,9 @@ def random_crop_generator(
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners (bool): interpolation flag. Default: False.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
      """
     x_diff = input_size[1] - size[1]
     y_diff = input_size[0] - size[0]
@@ -419,10 +419,13 @@ def random_crop_size_generator(
     r"""Get cropping heights and widths for ```crop``` transformation for resized crop transform.
 
     Args:
-        size (Tuple[int, int]): expected output size of each edge.
-        scale: range of size of the origin size cropped.
-        ratio: range of aspect ratio of the origin aspect ratio cropped.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        size (Tuple[int, int]): expected output size of each edge
+        scale: range of size of the origin size cropped
+        ratio: range of aspect ratio of the origin aspect ratio cropped
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     area = _adapted_uniform(
         (10,), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
@@ -464,16 +467,28 @@ def random_rectangles_params_generator(
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```erasing``` transformation for erasing transform
 
-        Args:
-            batch_size (int): the tensor batch size.
-            height (int) : height of the image.
-            width (int): width of the image.
-            p (float): probability of applying random earaing.
-            scale ([int, int]): range of size of the origin size cropped.
-            ratio ([int, int]): range of aspect ratio of the origin aspect ratio cropped.
-            value (float): value to be filled in the erased area.
-            same_on_batch (bool): apply the same transformation across the batch. Default: False.
+    Args:
+        batch_size (int): the tensor batch size.
+        height (int) : height of the image.
+        width (int): width of the image.
+        p (float): probability of applying random earaing.
+        scale ([int, int]): range of size of the origin size cropped
+        ratio ([int, int]): range of aspect ratio of the origin aspect ratio cropped
+        value (float): value to be filled in the erased area.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    if not (isinstance(scale[0], float) and isinstance(scale[1], float) and scale[0] > 0. and scale[1] > 0.):
+        raise TypeError(
+            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
+        )
+    if not (isinstance(ratio[0], float) and isinstance(ratio[1], float) and ratio[0] > 0. and ratio[1] > 0.):
+        raise TypeError(
+            f"'ratio' must be a Tuple[float, float] with positive values"
+        )
+
     batch_prob = random_prob_generator(batch_size, p, same_on_batch)['batch_prob']
     zeros = torch.zeros((batch_size,))
     images_area = height * width
@@ -520,12 +535,15 @@ def center_crop_params_generator(
     align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
-        Args:
-            batch_size (int): the tensor batch size.
-            height (int) : height of the image.
-            width (int): width of the image.
-            size (tuple): Desired output size of the crop, like (h, w).
-            align_corners (bool): interpolation flag. Default: False.
+
+    Args:
+        batch_size (int): the tensor batch size.
+        height (int) : height of the image.
+        width (int): width of the image.
+        size (tuple): Desired output size of the crop, like (h, w).
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
@@ -569,3 +587,36 @@ def center_crop_params_generator(
                 dst=points_dst,
                 interpolation=torch.tensor(Resample.BILINEAR.value),
                 align_corners=torch.tensor(align_corners))
+
+
+def motion_blur_param_generator(
+    batch_size: int,
+    kernel_size: Union[int, Tuple[int, int]],
+    angle: UnionFloat,
+    direction: UnionFloat,
+    border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+    same_on_batch: bool = True
+) -> Dict[str, torch.Tensor]:
+
+    angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
+    direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0., bounds=(-1, 1))
+
+    if isinstance(kernel_size, int):
+        ksize_factor = torch.tensor([kernel_size] * batch_size)
+    elif isinstance(kernel_size, tuple):
+        ksize_x, ksize_y = kernel_size
+        ksize_factor = _adapted_uniform(
+            (batch_size,), ksize_x // 2, ksize_y // 2, same_on_batch).int() * 2 + 1
+    else:
+        raise TypeError(f"Unsupported type: {type(kernel_size)}")
+
+    angle_factor = _adapted_uniform(
+        (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)
+
+    direction_factor = _adapted_uniform(
+        (batch_size,), direction_bound[0], direction_bound[1], same_on_batch)
+
+    return dict(ksize_factor=ksize_factor,
+                angle_factor=angle_factor,
+                direction_factor=direction_factor,
+                border_type=torch.tensor(BorderType.get(border_type).value))

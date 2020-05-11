@@ -71,12 +71,12 @@ class TestRgbYuvConversion:
             out = kornia.yuv_to_rgb(1)
 
     @pytest.mark.parametrize("bad_input_shapes", [([2, 2],), ([3, 3, 3, 3, 3],), ([2, 2, 2],), ([2, 2, 2, 2],)])
-    def test_rgb_to_yuv_shape(self, bad_input_shapes):
+    def test_rgb_to_yuv_shape_bad(self, bad_input_shapes):
         with pytest.raises(ValueError):
             out = kornia.rgb_to_yuv(torch.ones(*bad_input_shapes))
 
     @pytest.mark.parametrize("bad_input_shapes", [([2, 2],), ([3, 3, 3, 3, 3],), ([2, 2, 2],), ([2, 2, 2, 2],)])
-    def test_yuv_to_rbg_shape(self, bad_input_shapes):
+    def test_yuv_to_rbg_shape_bad(self, bad_input_shapes):
         with pytest.raises(ValueError):
             out = kornia.yuv_to_rgb(torch.ones(*bad_input_shapes))
 
