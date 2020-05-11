@@ -1,7 +1,8 @@
+from itertools import product
 from typing import Dict
 
-import torch
 import pytest
+import torch
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -36,6 +37,9 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
 TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
 
+# Combinations of device and dtype to be excluded from testing.
+DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+
 
 @pytest.fixture()
 def device(device_name) -> torch.device:
@@ -45,26 +49,33 @@ def device(device_name) -> torch.device:
 
 
 @pytest.fixture()
-def dtype(device, dtype_name) -> torch.dtype:
-    if device.type == 'cpu' and dtype_name == 'float16':
-        pytest.skip(f"Unsupported device cpu and dtype float16.")
+def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
 def pytest_generate_tests(metafunc):
+    device_names = None
+    dtype_names = None
     if 'device_name' in metafunc.fixturenames:
         raw_value = metafunc.config.getoption('--device')
         if raw_value == 'all':
             device_names = list(TEST_DEVICES.keys())
         else:
             device_names = raw_value.split(',')
-        metafunc.parametrize('device_name', device_names)
     if 'dtype_name' in metafunc.fixturenames:
         raw_value = metafunc.config.getoption('--dtype')
         if raw_value == 'all':
             dtype_names = list(TEST_DTYPES.keys())
         else:
             dtype_names = raw_value.split(',')
+    if device_names is not None and dtype_names is not None:
+        # Exclude any blacklisted device/dtype combinations.
+        params = [combo for combo in product(device_names, dtype_names)
+                  if combo not in DEVICE_DTYPE_BLACKLIST]
+        metafunc.parametrize('device_name,dtype_name', params)
+    elif device_names is not None:
+        metafunc.parametrize('device_name', device_names)
+    elif dtype_names is not None:
         metafunc.parametrize('dtype_name', dtype_names)
 
 
