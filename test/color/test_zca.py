@@ -26,7 +26,7 @@ class TestZCA:
         else:
             expected = torch.sqrt(2 * torch.abs(data)) * torch.sign(data)
 
-        expected.to(device)
+        expected = expected.to(device)
 
         zca = kornia.color.ZCAWhitening(unbiased=unbiased).fit(data)
 
@@ -52,12 +52,12 @@ class TestZCA:
                                      [1.2247448, 0.],
                                      [-1.2247448, 0.],
                                      [0., -1.2247448]], dtype=torch.float32)
-        expected.to(device)
+        expected = expected.to(device)
 
         zca = kornia.color.ZCAWhitening(dim=dim)
         actual = zca(data, True)
 
-        assert_allclose(expected, actual)
+        assert_allclose(actual, expected)
 
     @pytest.mark.parametrize("input_shape", [(15, 2, 2, 2), (10, 4), (20, 3, 2, 2)])
     def test_identity(self, input_shape, device):
@@ -67,7 +67,7 @@ class TestZCA:
 
         """
 
-        data = torch.randn(*input_shape, dtype=torch.float32)
+        data = torch.randn(*input_shape, dtype=torch.float32).to(device)
 
         zca = kornia.color.ZCAWhitening(compute_inv=True).fit(data)
 
@@ -153,8 +153,7 @@ class TestZCA:
             zca = kornia.color.ZCAWhitening()
             zca.inverse_transform(data)
 
-    # @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
 
         data = torch.rand((10, 3, 1, 2)).to(device)
         zca = kornia.color.ZCAWhitening().fit(data)
@@ -175,7 +174,7 @@ class TestZCA:
         else:
             expected = torch.sqrt(2 * torch.abs(data)) * torch.sign(data)
 
-        expected.to(device)
+        expected = expected.to(device)
 
         actual = kornia.zca_whiten(data, unbiased=unbiased)
 
