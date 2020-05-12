@@ -171,7 +171,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     args:
         inp (torch.Tensor) : input data tensor
         dim (int): Specifies dimension that serves as samples dimension. Default = 0
-        eps (float) : a small number used for numerial stablility. Default = 0
+        eps (float) : a small number used for numerical stablility. Default = 0
         unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default = True
         return_inverse (bool): Whether to return the inverse ZCA transform.
 
@@ -179,7 +179,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
         - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
-        - inv_transform: same shape transfrom matrix
+        - inv_transform: same shape as the transfrom matrix
 
     returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
