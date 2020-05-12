@@ -51,6 +51,7 @@ Intensity Transformations
 .. autofunction:: denormalize
 .. autofunction:: zca_mean
 .. autofunction:: zca_whiten
+.. autofunction:: linear_transform
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
