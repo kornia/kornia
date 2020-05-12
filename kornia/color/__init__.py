@@ -16,7 +16,7 @@ from .yuv import RgbToYuv, YuvToRgb, rgb_to_yuv, yuv_to_rgb
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
 from .luv import RgbToLuv, LuvToRgb, rgb_to_luv, luv_to_rgb
 from .normalize import Normalize, normalize, Denormalize, denormalize
-from .zca import zca_mean, ZCAWhitening, zca_whiten
+from .zca import zca_mean, ZCAWhitening, zca_whiten, linear_transform
 from .core import add_weighted, AddWeighted
 from .histogram import histogram, histogram2d
 from .adjust import (
@@ -48,6 +48,7 @@ __all__ = [
     "denormalize",
     "zca_mean",
     "zca_whiten",
+    "linear_transform",
     "histogram",
     "histogram2d",
     "adjust_brightness",
