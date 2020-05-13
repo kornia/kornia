@@ -1,6 +1,5 @@
 import logging
 import pytest
-from test.common import device
 
 import torch
 import torch.nn as nn

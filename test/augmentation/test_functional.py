@@ -11,8 +11,6 @@ import kornia.augmentation.functional as F
 from kornia.constants import pi
 from kornia.augmentation import ColorJitter
 
-from test.common import device
-
 
 class TestHorizontalFlipFn:
 

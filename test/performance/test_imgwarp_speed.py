@@ -4,8 +4,6 @@ from time import time
 import torch
 import kornia as kornia
 
-from test.common import device, dtype
-
 
 shapes = [(512, 3, 256, 256), (256, 1, 64, 64)]
 PSs = [224, 32]

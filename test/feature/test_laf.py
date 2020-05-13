@@ -3,7 +3,6 @@ import pytest
 import kornia as kornia
 import kornia.geometry.transform.imgwarp
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.testing import assert_allclose

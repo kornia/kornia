@@ -8,7 +8,6 @@ import kornia.testing as utils  # test utils
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-from test.common import device, dtype
 
 
 class TestZCA:
