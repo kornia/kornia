@@ -4,7 +4,7 @@ from typing import Dict
 import torch
 import kornia
 
-import kornia.geometry.epipolar as epipolar
+from kornia.geometry import epipolar
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:

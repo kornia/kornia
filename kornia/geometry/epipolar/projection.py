@@ -3,7 +3,7 @@ from typing import Union
 
 import torch
 
-import kornia.geometry.epipolar.numeric as numeric
+from kornia.geometry.epipolar import numeric
 
 
 def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:

@@ -3,9 +3,9 @@ from typing import Tuple
 
 import torch
 
-import kornia.geometry.epipolar.numeric as numeric
-import kornia.geometry.epipolar.projection as projection
-import kornia.geometry.epipolar.triangulation as triangulation
+from kornia.geometry.epipolar import numeric
+from kornia.geometry.epipolar import projection
+from kornia.geometry.epipolar import triangulation
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
