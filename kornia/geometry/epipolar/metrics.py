@@ -16,7 +16,7 @@ def sampson_epipolar_distance(pts1: torch.Tensor,
           (B, N, 2 or 3). If they are not homogenuous, converted automatically.
         pts2 (torch.Tensor): correspondences from the right images with shape
           (B, N, 2 or 3). If they are not homogenuous, converted automatically.
-        Fm (torch.Tensor): Fundamental matrices with shape (B, 3, 3). Called Fm to
+        Fm (torch.Tensor): Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
           avoid ambiguity with torch.nn.functional.
         squared (bool): if True (default), the squared distance is returned.
         eps (float): Small constant for safe sqrt. Default 1e-9.
@@ -73,7 +73,7 @@ def symmetrical_epipolar_distance(pts1: torch.Tensor,
          (B, N, 2 or 3). If they are not homogenuous, converted automatically.
        pts2 (torch.Tensor): correspondences from the right images with shape
          (B, N, 2 or 3). If they are not homogenuous, converted automatically.
-       Fm (torch.Tensor): Fundamental matrices with shape (B, 3, 3). Called Fm to
+       Fm (torch.Tensor): Fundamental matrices with shape :math:`(B, 3, 3)`. Called Fm to
          avoid ambiguity with torch.nn.functional.
        squared (bool): if True (default), the squared distance is returned.
        eps (float): Small constant for safe sqrt. Default 1e-9.

@@ -33,7 +33,8 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Decompose an essential matrix to possible rotations and translation.
 
-    This function decomposes the essential matrix E using svd decomposition [96].
+    This function decomposes the essential matrix E using svd decomposition [96]
+    and give the possible solutions: :math:`R1, R2, t`.
 
     Args:
        E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -105,8 +106,8 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Get Motion (R's and t's ) from Essential matrix.
 
-    Computes and return four possible poses exist for the decomposition of E.
-    They are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
+    Computes and return four possible poses exist for the decomposition of the Essential
+    matrix. The posible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
 
     Args:
         E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -138,9 +139,9 @@ def motion_from_essential_choose_solution(
     r"""Recovers the relative camera rotation and the translation from an estimated essential matrix.
 
     The method check the corresponding points in two images and also returns the triangulated
-    3d points. Internally uses `decompose_essential_matrix` and then chooses the best solution
-    based on the combination that gives more 3d points in front of the camera plane from
-    `triangulate_poins`.
+    3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and then chooses
+    the best solution based on the combination that gives more 3d points in front of the camera plane from
+    :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
 
     Args:
         E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -209,7 +210,7 @@ def relative_camera_motion(
     r"""Computes the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
-    one assuming the first one to be at the origin. If T1 and T2 are the camera motions,
+    one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
     the computed relative motion is :math:`T = T_{2}T^{−1}_{1}`.
 
     Args:
