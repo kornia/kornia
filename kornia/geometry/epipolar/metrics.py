@@ -9,19 +9,20 @@ def sampson_epipolar_distance(pts1: torch.Tensor,
                               Fm: torch.Tensor,
                               squared: bool = True,
                               eps: float = 1e-8) -> torch.Tensor:
-    r"""Returns Sampson distance for correspondences given the fundamental matrix
+    r"""Returns Sampson distance for correspondences given the fundamental matrix.
 
-    Arg:
-        pts1 (torch.Tensor): correspondences from the left images. If they are not homogenuous, converted automatically
-        pts2 (torch.Tensor): correspondences from the right images.
-        Fm (torch.Tensor): fundamental matrices. Called Fm to avoid ambiguity with torch.nn.functional
-        squared (bool): if True (default), the squared distance is returned
-        eps (float): (default 1e-9) small constant for safe sqrt.
+    Args:
+        pts1 (torch.Tensor): correspondences from the left images with shape
+          (B, N, 2 or 3). If they are not homogenuous, converted automatically.
+        pts2 (torch.Tensor): correspondences from the right images with shape
+          (B, N, 2 or 3). If they are not homogenuous, converted automatically.
+        Fm (torch.Tensor): Fundamental matrices with shape (B, 3, 3). Called Fm to
+          avoid ambiguity with torch.nn.functional.
+        squared (bool): if True (default), the squared distance is returned.
+        eps (float): Small constant for safe sqrt. Default 1e-9.
 
-    Shape:
-        - Input: :math:`(B, N, 2 or 3)`, :math:`(B, N, 2 or 3)` and :math:`(B, 3, 3)`. Where B - batch size and
-                 N - number of correspondences
-        - Output: :math:`(B, N)`
+    Returns:
+        torch.Tensor: the computed Sampson distance with shape :math:`(B, N)`.
 
     """
     if not isinstance(Fm, torch.Tensor):
@@ -64,20 +65,22 @@ def symmetrical_epipolar_distance(pts1: torch.Tensor,
                                   pts2: torch.Tensor,
                                   Fm: torch.Tensor,
                                   squared: bool = True,
-                                  eps: float = 1e-9) -> torch.Tensor:
-    r"""Returns symmetrical epipolar distance for correspondences given the fundamental matrix
+                                  eps: float = 1e-8) -> torch.Tensor:
+    r"""Returns symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
-        pts1 (torch.Tensor): correspondences from the left images. If they are not homogenuous, converted automatically
-        pts2 (torch.Tensor): correspondences from the right images.
-        Fm (torch.Tensor): fundamental matrices. Called Fm to avoid ambiguity with torch.nn.functional
-        squared (bool): if True (default), the squared distance is returned
-        eps (float): (default 1e-9) small constant for safe sqrt.
+       pts1 (torch.Tensor): correspondences from the left images with shape
+         (B, N, 2 or 3). If they are not homogenuous, converted automatically.
+       pts2 (torch.Tensor): correspondences from the right images with shape
+         (B, N, 2 or 3). If they are not homogenuous, converted automatically.
+       Fm (torch.Tensor): Fundamental matrices with shape (B, 3, 3). Called Fm to
+         avoid ambiguity with torch.nn.functional.
+       squared (bool): if True (default), the squared distance is returned.
+       eps (float): Small constant for safe sqrt. Default 1e-9.
 
-    Shape:
-        - Input: :math:`(B, N, 2 or 3)`, :math:`(B, N, 2 or 3)` and :math:`(B, 3, 3)`.
-                 Where B - batch size and N - number of correspondences
-        - Output: :math:`(B, N)`
+    Returns:
+        torch.Tensor: the computed Symmetrical distance with shape :math:`(B, N)`.
+
     """
     if not isinstance(Fm, torch.Tensor):
         raise TypeError("Fm type is not a torch.Tensor. Got {}".format(

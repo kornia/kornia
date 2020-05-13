@@ -37,7 +37,6 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     P = epipolar.projection_from_KRt(K, rot_mat, tvec)
 
     # project points3d and backproject to image plane
-    points3d_tmp = kornia.transform_points(P, points3d.expand(num_views, -1, -1))
-    points2d = kornia.convert_points_from_homogeneous(points3d_tmp)
+    points2d = kornia.transform_points(P, points3d.expand(num_views, -1, -1))
 
     return dict(K=K, R=rot_mat, t=tvec, P=P, points3d=points3d, points2d=points2d)

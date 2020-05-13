@@ -76,7 +76,7 @@ class TestProjectionFromKRt:
         R = torch.rand(1, 3, 3, device=device, dtype=dtype)
         t = torch.rand(1, 3, 1, device=device, dtype=dtype)
         P = epi.projection_from_KRt(K, R, t)
-        assert P.shape == (1, 4, 4)
+        assert P.shape == (1, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_shape(self, batch_size, device, dtype):
@@ -85,7 +85,7 @@ class TestProjectionFromKRt:
         R = torch.rand(B, 3, 3, device=device, dtype=dtype)
         t = torch.rand(B, 3, 1, device=device, dtype=dtype)
         P = epi.projection_from_KRt(K, R, t)
-        assert P.shape == (B, 4, 4)
+        assert P.shape == (B, 3, 4)
 
     def test_simple(self, device, dtype):
         K = torch.tensor([[
@@ -108,7 +108,6 @@ class TestProjectionFromKRt:
             [10., 0., 30., 100.],
             [0., 20., 40., 160.],
             [0., 0., 1., 3.],
-            [0., 0., 0., 1.],
         ]], device=device, dtype=dtype)
 
         P_estimated = epi.projection_from_KRt(K, R, t)
