@@ -10,6 +10,7 @@ import kornia.testing as utils  # test utils
 
 
 class TestMaxBlurPool2d:
+
     def test_shape(self, device):
         input = torch.rand(1, 2, 4, 6).to(device)
         pool = kornia.contrib.MaxBlurPool2d(kernel_size=3)
