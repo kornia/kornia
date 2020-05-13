@@ -2,7 +2,6 @@ import pytest
 import torch
 import kornia.testing as utils  # test utils
 import kornia
-from test.common import device
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
