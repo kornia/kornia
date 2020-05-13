@@ -1,5 +1,4 @@
 import pytest
-from test.common import device
 
 import torch
 from torch.testing import assert_allclose

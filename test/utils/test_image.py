@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 
 @pytest.mark.parametrize("input_dtype, expected_dtype",
