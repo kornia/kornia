@@ -25,7 +25,7 @@ class ZCAWhitening(nn.Module):
 
     args:
 
-        dim (int): Dimension determines the axis that represents the samples axis. Default = 0
+        dim (int): Determines the dimension that represents the samples axis. Default = 0
         eps (float) : a small number used for numerial stablility. Default=1e-6
         unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default=False
         compute_inv (bool): Compute the inverse transform matrix. Default=False
@@ -49,8 +49,9 @@ class ZCAWhitening(nn.Module):
 
     Note:
 
-        This implementation uses :class:`~torch.svd` which yields NaNs in the backwards step
-        if the sigular values are not unique.
+        This implementation uses :py:meth:`~torch.svd` which yields NaNs in the backwards step
+        if the sigular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
+        more information.
 
     References:
 
@@ -135,7 +136,6 @@ class ZCAWhitening(nn.Module):
 
         args:
             x (torch.Tensor): Whitened data
-            include_fit (bool): Indicates whether to fit the data as part of the forward pass
 
         returns:
             torch.Tensor: original data
@@ -162,7 +162,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
              return_inverse: bool = False) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     r"""
 
-    Computes ZCA whitening matrix and mean vector. The output can be used with
+    Computes the ZCA whitening matrix and mean vector. The output can be used with
     :py:meth:`~kornia.color.linear_transform`
 
     See :class:`~kornia.color.ZCAWhitening` for details.
@@ -170,20 +170,20 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
 
     args:
         inp (torch.Tensor) : input data tensor
-        dim (int): Specifies dimension that serves as samples dimension. Default = 0
-        eps (float) : a small number used for numerical stablility. Default = 0
-        unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default = True
+        dim (int): Specifies the dimension that serves as the samples dimension. Default = 0
+        unbiased (bool): Whether to use the unbiased estimate of the covariance matrix. Default = True
+        eps (float) : a small number used for numerical stability. Default = 0
         return_inverse (bool): Whether to return the inverse ZCA transform.
 
     shapes:
         - inp: :math:`(D_0,...,D_{\text{dim}},...,D_N)` is a batch of N-D tensors.
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
-        - inv_transform: same shape as the transfrom matrix
+        - inv_transform: same shape as the transform matrix
 
     returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        A tuple containing the ZCA matrix and the mean vector. If return_inv is set to True,
+        A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
     Examples:
@@ -267,12 +267,13 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
 
     args:
         inp (torch.Tensor) : input data tensor
-        dim (int): Specifies dimension that serves as samples dimension. Default = 0
+        dim (int): Specifies the dimension that serves as the samples dimension. Default = 0
+        unbiased (bool): Whether to use the unbiased estimate of the covariance matrix. Default = True
         eps (float) : a small number used for numerial stablility. Default = 0
-        unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default = True
+
 
     returns:
-        (torch.Tensor) : Whiten Input data
+        torch.Tensor : Whiten Input data
 
     Examples:
         >>> import torch
@@ -306,10 +307,10 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
                      mean_vector: torch.Tensor, dim: int = 0) -> torch.Tensor:
     r"""
 
-    Given transformation_matrix and mean_vector, will flatten the input torch.Tensor and
-    subtract mean_vector from it which is then followed by computing the dot
-    product with the transformation matrix and then reshaping the tensor to its
-    original shape.
+    Given a transformation matrix and a mean vector, this function will flatten
+    the input tensor along the given dimension and subtract the mean vector
+    from it. Then the dot product with the transformation matrix will be computed
+    and then the resulting tensor is reshaped to the original input shape.
 
     .. math::
 
@@ -326,7 +327,8 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
 
-
+    returns:
+        torch.Tensor : Transformed data
 
     Example:
         >>> # Example where dim = 3
