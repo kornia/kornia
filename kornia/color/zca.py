@@ -50,7 +50,7 @@ class ZCAWhitening(nn.Module):
     Note:
 
         This implementation uses :py:meth:`~torch.svd` which yields NaNs in the backwards step
-        if the sigular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_. for
+        if the sigular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
         more information.
 
     References:
