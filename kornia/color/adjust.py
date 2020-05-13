@@ -225,6 +225,54 @@ def adjust_brightness(input: torch.Tensor,
     return out
 
 
+def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
+    f""" For each pixel in the image, select the pixel if the value is less than the threshold.
+        Otherwise, subtract 1.0 from the pixel.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not isinstance(thresholds, (float, torch.Tensor,)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. "
+                        f"Got {type(thresholds)}")
+    
+    if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
+        assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
+            f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {threshholds}"
+        # TODO: I am not happy about this line, but no easy to do batch-wise operation
+        thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
+    
+    return torch.where(input < thresholds, input, 1.0 - input)
+
+
+
+def solarize_add(input: torch.Tensor, additions: Union[float, torch.Tensor] = 0.,
+                 thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
+    f""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
+        pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if not isinstance(thresholds, (float, torch.Tensor,)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. "
+                        f"Got {type(thresholds)}")
+
+    if not isinstance(additions, (float, torch.Tensor,)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. "
+                        f"Got {type(additions)}")
+
+    if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
+        assert input.size(0) == len(additions) and len(additions.shape) == 1, \
+            f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
+        # TODO: I am not happy about this line, but no easy to do batch-wise operation
+        additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
+
+    added_input = input + additions
+    added_input = added_input.clamp(0., 1.)
+    return solarize(added_input, thresholds)
+
+
 class AdjustSaturation(nn.Module):
     r"""Adjust color saturation of an image.
 
