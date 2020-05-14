@@ -226,7 +226,7 @@ def adjust_brightness(input: torch.Tensor,
 
 
 def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
-    f""" For each pixel in the image, select the pixel if the value is less than the threshold.
+    r""" For each pixel in the image, select the pixel if the value is less than the threshold.
         Otherwise, subtract 1.0 from the pixel.
     """
     if not torch.is_tensor(input):
@@ -235,20 +235,19 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) 
     if not isinstance(thresholds, (float, torch.Tensor,)):
         raise TypeError(f"The factor should be either a float or torch.Tensor. "
                         f"Got {type(thresholds)}")
-    
+
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
             f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {threshholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
-    
-    return torch.where(input < thresholds, input, 1.0 - input)
 
+    return torch.where(input < thresholds, input, 1.0 - input)
 
 
 def solarize_add(input: torch.Tensor, additions: Union[float, torch.Tensor] = 0.,
                  thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
-    f""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
+    r""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
         pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
     """
     if not torch.is_tensor(input):
@@ -271,6 +270,62 @@ def solarize_add(input: torch.Tensor, additions: Union[float, torch.Tensor] = 0.
     added_input = input + additions
     added_input = added_input.clamp(0., 1.)
     return solarize(added_input, thresholds)
+
+
+def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
+    r"""Reduce the number of bits for each color channel.
+    Args:
+        input (torch.Tensor): image to posterize.
+        bits (int or torch.Tensor): number of high bits. Must be in range [0, 8].
+            If int or one element tensor, input will be posterized by this bits.
+            If 1-d tensor, input will be posterized channel-wisely, len(bits) == input.shape[1].
+            If n-d tensor, input will be posterized element-wise, bits.shape == input.shape[:len(bits.shape)]
+    Returns:
+        torch.Tensor: Image with reduced color channels.
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if isinstance(bits, int):
+        bits = torch.tensor(int)
+
+    if not torch.all((bits > 0) * (bits < 8)):
+        raise ValueError(f"bits must be in range (0, 8).")
+
+    def _posterize_one(input: torch.Tensor, bits: torch.Tensor):
+        # Single bits value condition
+        if bits[0] == 0:
+            return torch.zeros_like(input)
+        if bits[0] == 8:
+            return input.clone()
+        threshold = (2 ** (8 - bits) - 1) / 255.
+        return torch.where(input <= threshold, input, 0)
+
+    if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
+        return _posterize_one(input, bits)
+
+    if len(bits.shape) == 1:
+        res = []
+        if len(input.shape) == 2:
+            input = input.unsqueeze(dim=0)
+        if len(input.shape) == 3:
+            input = input.unsqueeze(dim=0)
+
+        assert bits.shape[0] == input.shape[1], 
+            f"Channel must be equal between bits and input. Got {bits.shape[0]}, {input.shape[1]}."
+
+        for i in range(input.shape[1]):
+            res.append(_posterize_one(input[:, i], bits[i]))
+        return torch.stack(res, dim=1)
+
+    assert bits.shape == input.shape[:len(bits.shape)], 
+        f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+    _input = input.view(-1, *input.shape[len(bits.shape):])
+    _bits = bits.flatten()
+    for i in range(input.shape[0]):
+        res.append(_posterize_one(_input[i], _bits[i]))
+    res = torch.stack(res, dim=0)
+    return res.reshape(*input.shape)
 
 
 class AdjustSaturation(nn.Module):
