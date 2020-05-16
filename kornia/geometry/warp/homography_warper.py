@@ -86,8 +86,7 @@ def homography_warp(patch_src: torch.Tensor,
                         patch_src.device, src_homo_dst.device))
 
     height, width = dsize
-    grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates,
-                           device=src_homo_dst.device)
+    grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
     warped_grid = warp_grid(grid, src_homo_dst, dsize)
 
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode,
@@ -186,7 +185,8 @@ class HomographyWarper(nn.Module):
         if src_homo_dst is not None:
             warped_patch = homography_warp(
                 patch_src, src_homo_dst, (self.height, self.width), mode=self.mode,
-                padding_mode=self.padding_mode, align_corners=self.align_corners)
+                padding_mode=self.padding_mode, align_corners=self.align_corners,
+                normalized_coordinates=self.normalized_coordinates)
         elif _warped_grid is not None:
             if not _warped_grid.device == patch_src.device:
                 raise TypeError("Patch and warped grid must be on the same device. \
