@@ -60,8 +60,7 @@ def homography_warp(patch_src: torch.Tensor,
                                   source of shape :math:`(N, C, H, W)`.
         src_homo_dst (torch.Tensor): The homography or stack of homographies
                                      from destination to source of shape
-                                     :math:`(N, 3, 3)`. The homography assumes
-                                     normalized coordinates [-1, 1].
+                                     :math:`(N, 3, 3)`.
         dsize (Tuple[int, int]): The height and width of the image to warp.
         mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
@@ -69,7 +68,9 @@ def homography_warp(patch_src: torch.Tensor,
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: False. See
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        normalized_coordinates (bool): Whether the coordinates are [-1, 1] normalized
+        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
+                                       coordinates or not.
+
     Return:
         torch.Tensor: Patch sampled at locations from source to destination.
 
