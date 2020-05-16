@@ -79,19 +79,15 @@ class TestHomographyWarper:
         height, width = shape
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
-
-        # instantiate warper
-        warper = kornia.HomographyWarper(height, width,
-                                         normalized_coordinates=False,
-                                         align_corners=True)
-        flow = warper.warp_grid(dst_homo_src)
+        grid = kornia.create_meshgrid(height, width, normalized_coordinates=False)
+        flow = kornia.warp_grid(grid, dst_homo_src, shape)
 
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
         assert_allclose(
-            warper.grid[..., 0].to(device) + offset, flow[..., 0])
+            grid[..., 0].to(device) + offset, flow[..., 0])
         assert_allclose(
-            warper.grid[..., 1].to(device), flow[..., 1])
+            grid[..., 1].to(device), flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7), ])
