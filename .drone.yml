@@ -3,7 +3,9 @@ name: default
 
 steps:
 - name: test
-  image: python
+  image: python:3.6
   commands:
-  - pip install -r requirements.txt
-  - pytest
+  - yes | ./setup_dev_env.sh
+  - source path.bash.inc
+  - make install
+  - make test-cpu
