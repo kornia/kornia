@@ -1,7 +1,6 @@
 import pytest
 
 import kornia as kornia
-from test.common import dtype, device
 
 import torch
 from torch.testing import assert_allclose
