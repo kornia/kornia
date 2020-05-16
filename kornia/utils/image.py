@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import torch
 
@@ -26,22 +28,39 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
 
     input_shape = image.shape
     tensor: torch.Tensor = torch.from_numpy(image)
-
     if len(input_shape) == 2:
         # (H, W) -> (1, H, W)
         tensor = tensor.unsqueeze(0)
-    elif len(input_shape) == 3:
-        # (H, W, C) -> (C, H, W)
-        tensor = tensor.permute(2, 0, 1)
-    elif len(input_shape) == 4:
-        # (B, H, W, C) -> (B, C, H, W)
-        tensor = tensor.permute(0, 3, 1, 2)
-        keepdim = True  # no need to unsqueeze
-    else:
-        raise ValueError(
-            "Cannot process image with shape {}".format(input_shape))
 
-    return tensor.unsqueeze(0) if not keepdim else tensor
+    if not keepdim:
+        tensor = to_bchw(tensor, len(input_shape - 1))
+    return tensor
+
+
+def to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
+    """Converts a PyTorch tensor image to BCHW format.
+
+    Args:
+        tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
+            :math:`(B, C, H, W)`.
+        color_channel_num (Optional[int]): Color channel of the input tensor.
+            If None, it will not alter the input channel.
+
+    Returns:
+        torch.Tensor: input tensor of the form :math:`(B, H, W, C)`.
+    """
+    if len(tensor.shape) > 4 or len(tensor.shape) < 2:
+        raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {tensor.shape}")
+
+    if len(tensor.shape) == 2:
+        tensor = tensor.unsqueeze(0)
+    if len(tensor.shape) == 3:
+        tensor = tensor.unsqueeze(0)
+    if color_channel_num is not None and color_channel_num != 1:
+        channel_list = [0, 1, 2, 3]
+        channel_list.insert(1, channel_list.pop(color_channel_num))
+        tensor = tensor.permute(*channel_list)
+    return tensor
 
 
 def tensor_to_image(tensor: torch.Tensor) -> np.array:
