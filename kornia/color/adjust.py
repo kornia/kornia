@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.utils import image_to_tensor
+from kornia.utils import to_bchw
 from kornia.constants import pi
 
 
@@ -240,7 +240,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) 
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
-            f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {threshholds}"
+            f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
 
@@ -299,10 +299,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
-    def _left_shift(input: torch.Tensor, shift: int):
+    def _left_shift(input: torch.Tensor, shift: torch.Tensor):
         return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.
 
-    def _right_shift(input: torch.Tensor, shift: int):
+    def _right_shift(input: torch.Tensor, shift: torch.Tensor):
         return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor):
@@ -317,8 +317,8 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
         return _posterize_one(input, bits)
 
+    res = []
     if len(bits.shape) == 1:
-        res = []
         input = to_bchw(input)
 
         assert bits.shape[0] == input.shape[1], \
@@ -368,14 +368,14 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     degenerate = torch.clamp(degenerate, 0., 1.)
 
     mask = torch.ones_like(degenerate)
-    padded_mask = torch.nn.functional.pad(mask, (1, 1, 1, 1))
-    padded_degenerate = torch.nn.functional.pad(degenerate, (1, 1, 1, 1))
+    padded_mask = torch.nn.functional.pad(mask, [1, 1, 1, 1])
+    padded_degenerate = torch.nn.functional.pad(degenerate, [1, 1, 1, 1])
     result = torch.where(padded_mask == 1, padded_degenerate, input)
 
-    def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: Union[int, torch.Tensor]) -> torch.Tensor:
+    def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
         if isinstance(factor, torch.Tensor):
             factor = factor.squeeze()
-            assert len(factor) == 0, f"Factor shall be an int or single element tensor. Got {factor}"
+            assert len(factor) == 0, f"Factor shall be a float or single element tensor. Got {factor}"
         if factor == 0.:
             return input1
         if factor == 1.:
