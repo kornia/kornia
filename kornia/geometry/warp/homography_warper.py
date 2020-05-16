@@ -18,23 +18,21 @@ __all__ = [
 ]
 
 
-def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor,
-              dsize: Tuple[int, int]) -> torch.Tensor:
+def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     r"""Compute the grid to warp the coordinates grid by the homography/ies.
 
     Args:
-        grid: Unwrapped grid.
+        grid: Unwrapped grid of the shape :math:`(1, N, W, 2)`.
         src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
-        dsize (Tuple[int, int]): Wrapped grid size.
 
 
     Returns:
         torch.Tensor: the transformed grid of shape :math:`(N, H, W, 2)`.
     """
-    batch_size: int = src_homo_dst.shape[0]
-    height, width = dsize
+    batch_size: int = src_homo_dst.size(0)
+    _, height, width, _ = grid.size()
     # expand grid to match the input batch size
     grid: torch.Tensor = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
@@ -87,7 +85,7 @@ def homography_warp(patch_src: torch.Tensor,
 
     height, width = dsize
     grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
-    warped_grid = warp_grid(grid, src_homo_dst, dsize)
+    warped_grid = warp_grid(grid, src_homo_dst)
 
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode,
                          align_corners=align_corners)
@@ -149,7 +147,7 @@ class HomographyWarper(nn.Module):
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
          """
-        self._warped_grid = warp_grid(self.grid, src_homo_dst, (self.height, self.width))
+        self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
     def forward(
             self,

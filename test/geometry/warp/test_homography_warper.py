@@ -80,7 +80,7 @@ class TestHomographyWarper:
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
         grid = kornia.create_meshgrid(height, width, normalized_coordinates=False)
-        flow = kornia.warp_grid(grid, dst_homo_src, shape)
+        flow = kornia.warp_grid(grid, dst_homo_src)
 
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
