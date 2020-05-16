@@ -254,15 +254,12 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     # source and destination sizes
     src_h, src_w = dsize_src
     dst_h, dst_w = dsize_dst
-    # the devices and types
-    device = dst_pix_trans_src_pix.device
-    dtype = dst_pix_trans_src_pix.dtype
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
-        src_h, src_w).to(device, dtype)
+        src_h, src_w).to(dst_pix_trans_src_pix)
     src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
-        dst_h, dst_w).to(device, dtype)
+        dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = (
         dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
