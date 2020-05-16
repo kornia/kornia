@@ -512,10 +512,8 @@ def equalize(input):
     for image in input:
         # Assumes RGB for now.  Scales each channel independently
         # and then stacks the result.
-        s1 = scale_channel(image, 0)
-        s2 = scale_channel(image, 1)
-        s3 = scale_channel(image, 2)
-        res.append(torch.stack([s1, s2, s3]))
+        scaled_image = torch.stack([scale_channel(image, i) for i in range(len(image))])
+        res.append(scaled_image)
     return torch.stack(res)
 
 
