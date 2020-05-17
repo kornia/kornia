@@ -9,6 +9,7 @@ Blurring
 --------
 
 .. autofunction:: filter2D
+.. autofunction:: filter3D
 .. autofunction:: box_blur
 .. autofunction:: median_blur
 .. autofunction:: gaussian_blur2d
