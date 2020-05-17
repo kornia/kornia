@@ -2,6 +2,8 @@ from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
+
+from kornia.utils import to_bchw
 from .types import (
     FloatUnionType,
     UnionType,
@@ -27,20 +29,8 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(
-            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    return input
+    return to_bchw(input)
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:

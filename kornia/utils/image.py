@@ -49,6 +49,9 @@ def to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> to
     Returns:
         torch.Tensor: input tensor of the form :math:`(B, H, W, C)`.
     """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
         raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {tensor.shape}")
 

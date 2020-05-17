@@ -227,7 +227,7 @@ def adjust_brightness(input: torch.Tensor,
     return out
 
 
-def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
+def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
     r""" For each pixel in the image, select the pixel if the value is less than the threshold.
         Otherwise, subtract 1.0 from the pixel.
     Args:
@@ -254,8 +254,8 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) 
     return torch.where(input < thresholds, input, 1.0 - input)
 
 
-def solarize_add(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
-                 additions: Union[float, torch.Tensor] = 0.) -> torch.Tensor:
+def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
+             additions: Optional[Union[float, torch.Tensor]] = 0.) -> torch.Tensor:
     r""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
         pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
     Args:
@@ -263,7 +263,8 @@ def solarize_add(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0
         thresholds (float or torch.Tensor): solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
-        additions (float or torch.Tensor): between -0.5 and 0.5.
+        additions (optional, float or torch.Tensor): between -0.5 and 0.5. Default None.
+            If None, no addition will be performed.
             If int or one element tensor, same addition will be added across the whole batch.
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
     Returns:
@@ -276,28 +277,30 @@ def solarize_add(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0
         raise TypeError(f"The factor should be either a float or torch.Tensor. "
                         f"Got {type(thresholds)}")
 
-    if not isinstance(additions, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(additions)}")
-
     if isinstance(thresholds, float):
         thresholds = torch.tensor(thresholds)
 
-    if isinstance(additions, float):
-        additions = torch.tensor(additions)
-
-    assert torch.all((thresholds < 0.5) * (thresholds > -0.5)), 
+    assert torch.all((thresholds < 0.5) * (thresholds > -0.5)), \
         f"The value of 'addition' is between -0.5 and 0.5. Got {addtions}."
 
-    if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
-        assert input.size(0) == len(additions) and len(additions.shape) == 1, \
-            f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
-        # TODO: I am not happy about this line, but no easy to do batch-wise operation
-        additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
+    if additions is not None:
+        if not isinstance(additions, (float, torch.Tensor,)):
+            raise TypeError(f"The factor should be either a float or torch.Tensor. "
+                            f"Got {type(additions)}")
 
-    added_input = input + additions
-    added_input = added_input.clamp(0., 1.)
-    return solarize(added_input, thresholds)
+        if isinstance(additions, float):
+            additions = torch.tensor(additions)
+
+        if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
+            assert input.size(0) == len(additions) and len(additions.shape) == 1, \
+                f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
+            # TODO: I am not happy about this line, but no easy to do batch-wise operation
+            additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
+
+        input = input + additions
+        input = input.clamp(0., 1.)
+    
+    return _solarize(input, thresholds)
 
 
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
