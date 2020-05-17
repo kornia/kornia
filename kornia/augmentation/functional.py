@@ -875,6 +875,6 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     res = []
-    for i, (image, prob) in enumerate(input, params['batch_prob']):
+    for image, prob in zip(input, params['batch_prob']):
         res.append(equalize(input) if prob else image)
     return torch.stack(res)

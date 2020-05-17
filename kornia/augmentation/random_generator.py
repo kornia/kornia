@@ -658,7 +658,7 @@ def random_solarize_generator(
 
 def random_posterize_generator(
     batch_size: int,
-    bits: Union[int, Tuple(int, int), torch.Tensor] = 3,
+    bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random posterize parameters for a batch of images.
@@ -675,7 +675,7 @@ def random_posterize_generator(
         bits = torch.tensor(bits)
 
     if len(bits.size()) == 0:
-        lower = 0
+        lower = torch.tensor(0)
         upper = bits
     elif len(bits.size()) == 1 and bits.size(0) == 2:
         lower = bits[0]
@@ -683,7 +683,7 @@ def random_posterize_generator(
     else:
         raise ValueError(f"Expect float or tuple. Got {bits}.")
 
-    bits_factor = _adapted_uniform((batch_size,), lower, upper, same_on_batch).int()
+    bits_factor = _adapted_uniform((batch_size,), lower.float(), upper.float(), same_on_batch).int()
 
     return dict(
         bits_factor=bits_factor
@@ -692,7 +692,7 @@ def random_posterize_generator(
 
 def random_sharpness_generator(
     batch_size: int,
-    sharpness: Union[float, Tuple(float, float), torch.Tensor] = 1.,
+    sharpness: Union[float, Tuple[float, float], torch.Tensor] = 1.,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random sharpness parameters for a batch of images.

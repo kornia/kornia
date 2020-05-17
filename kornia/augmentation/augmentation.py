@@ -726,11 +726,11 @@ class RandomMotionBlur(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
         >>> motion_blur(input)
-        tensor([[[[0.2724, 0.5235, 0.3796, 0.2433, 0.2210],
-                  [0.3233, 0.5494, 0.5746, 0.5407, 0.3910],
-                  [0.2101, 0.3865, 0.3072, 0.2510, 0.1902],
-                  [0.2973, 0.6174, 0.6530, 0.4360, 0.2797],
-                  [0.3804, 0.6217, 0.5535, 0.4855, 0.4249]]]])
+        tensor([[[[0.2761, 0.5200, 0.3753, 0.2423, 0.2193],
+                  [0.3275, 0.5502, 0.5738, 0.5400, 0.3883],
+                  [0.2132, 0.3857, 0.3056, 0.2520, 0.1890],
+                  [0.3016, 0.6172, 0.6487, 0.4331, 0.2770],
+                  [0.3865, 0.6221, 0.5538, 0.4862, 0.4206]]]])
     """
 
     def __init__(
@@ -775,11 +775,22 @@ class RandomSolarize(AugmentationBase):
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> solarize = RandomSolarize(0.1, 0.1)
+        >>> solarize(input)
+        tensor([[[[0.4132, 0.1412, 0.1790, 0.2226, 0.3980],
+                  [0.2754, 0.4194, 0.0130, 0.4538, 0.2771],
+                  [0.4394, 0.4923, 0.1129, 0.2594, 0.3844],
+                  [0.3909, 0.2118, 0.1094, 0.2516, 0.3728],
+                  [0.2278, 0.0000, 0.4876, 0.0353, 0.5100]]]])
     """
 
     def __init__(
         self, thresholds: FloatUnionType = 0.1, additions: FloatUnionType = 0.1,
-        same_on_batch: bool = False,, return_transform: bool = False
+        same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)
         self.thresholds = thresholds
@@ -812,11 +823,22 @@ class RandomPosterize(AugmentationBase):
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> posterize = RandomPosterize(3)
+        >>> posterize(input)
+        tensor([[[[0.0000, 0.5020, 0.0000, 0.0000, 0.0000],
+                  [0.5020, 0.0000, 0.5020, 0.0000, 0.5020],
+                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                  [0.5020, 0.5020, 0.5020, 0.0000, 0.0000],
+                  [0.5020, 0.5020, 0.0000, 0.5020, 0.0000]]]])
     """
 
     def __init__(
-        self, bits: Union[int, Tuple(int, int), torch.Tensor] = 3,
-        same_on_batch: bool = False,, return_transform: bool = False
+        self, bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
+        same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomPosterize, self).__init__(return_transform)
         self.bits = bits
@@ -848,10 +870,33 @@ class RandomSharpness(AugmentationBase):
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> sharpness = RandomSharpness(1.)
+        >>> sharpness(input)
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]],
+        <BLANKLINE>
+                 [[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]],
+        <BLANKLINE>
+                 [[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
     """
 
     def __init__(
-        self, sharpness: FloatUnionType = 1., same_on_batch: bool = False,, return_transform: bool = False
+        self, sharpness: FloatUnionType = 1., same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
         self.sharpness = sharpness
@@ -882,10 +927,21 @@ class RandomEqualize(AugmentationBase):
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> equalize = RandomEqualize(1.)
+        >>> equalize(input)
+        tensor([[[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
+                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
+                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]]])
     """
 
     def __init__(
-        self, p: float = 0.5, same_on_batch: bool = False,, return_transform: bool = False
+        self, p: float = 0.5, same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomEqualize, self).__init__(return_transform)
         self.p = p

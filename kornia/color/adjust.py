@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 
 import torch
 import torch.nn as nn
@@ -280,9 +280,6 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
     if isinstance(thresholds, float):
         thresholds = torch.tensor(thresholds)
 
-    assert torch.all((thresholds < 0.5) * (thresholds > -0.5)), \
-        f"The value of 'addition' is between -0.5 and 0.5. Got {addtions}."
-
     if additions is not None:
         if not isinstance(additions, (float, torch.Tensor,)):
             raise TypeError(f"The factor should be either a float or torch.Tensor. "
@@ -290,6 +287,9 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
 
         if isinstance(additions, float):
             additions = torch.tensor(additions)
+
+        assert torch.all((additions < 0.5) * (additions > -0.5)), \
+            f"The value of 'addition' is between -0.5 and 0.5. Got {additions}."
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             assert input.size(0) == len(additions) and len(additions.shape) == 1, \
@@ -381,7 +381,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     input = to_bchw(input)
     if isinstance(factor, torch.Tensor):
         factor = factor.squeeze()
-        if len(factor) != 0:
+        if len(factor.size()) != 0:
             assert input.size(0) == factor.size(0), \
                 f"Input batch size shall match with factor size if 1d array. Got {input.size(0)} and {factor.size(0)}"
     else:
@@ -405,7 +405,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
         if isinstance(factor, torch.Tensor):
             factor = factor.squeeze()
-            assert len(factor) == 0, f"Factor shall be a float or single element tensor. Got {factor}"
+            assert len(factor.size()) == 0, f"Factor shall be a float or single element tensor. Got {factor}"
         if factor == 0.:
             return input1
         if factor == 1.:
@@ -415,7 +415,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         if factor > 0. and factor < 1.:
             return res
         return torch.clamp(res, 0, 1)
-    if isinstance(factor, (float)) or len(factor) == 0:
+    if isinstance(factor, (float)) or len(factor.size()) == 0:
         return _blend_one(input, result, factor)
     return torch.stack([_blend_one(input[i], result[i], factor[i]) for i in range(len(factor))])
 
