@@ -6,3 +6,4 @@ steps:
   image: python:3.6
   commands:
   - echo "hello world"
+  - echo "hello world 2"
