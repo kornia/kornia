@@ -766,8 +766,12 @@ class RandomSolarize(AugmentationBase):
     r""" Solarize given tensor image or a batch of tensor images randomly.
 
     Args:
-        thresholds (float or tuple): Default value is 0.1
-        additions (float or tuple): Default value is 0.1
+        thresholds (float or tuple): Default value is 0.1.
+            If float x, threshold will be generated from (0.5 - x, 0.5 + x).
+            If tuple (x, y), threshold will be generated from (x, y).
+        additions (float or tuple): Default value is 0.1.
+            If float x, addition will be generated from (-x, x).
+            If tuple (x, y), addition will be generated from (x, y).
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -815,7 +819,10 @@ class RandomPosterize(AugmentationBase):
     r""" Posterize given tensor image or a batch of tensor images randomly.
 
     Args:
-        bits (int or tuple): Default value is 0. Integer that ranged from 0 ~ 8.
+        bits (int or tuple): Default value is 0. Integer that ranged from (0, 8],
+                             in which 0 gives black image and 8 gives the original.
+            If int x, bits will be generated from (x, 8).
+            If tuple (x, y), bits will be generated from (x, y).
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -829,11 +836,11 @@ class RandomPosterize(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> posterize = RandomPosterize(3)
         >>> posterize(input)
-        tensor([[[[0.0000, 0.5020, 0.0000, 0.0000, 0.0000],
-                  [0.5020, 0.0000, 0.5020, 0.0000, 0.5020],
-                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.5020, 0.5020, 0.5020, 0.0000, 0.0000],
-                  [0.5020, 0.5020, 0.0000, 0.5020, 0.0000]]]])
+        tensor([[[[0.4706, 0.7529, 0.0627, 0.1255, 0.2824],
+                  [0.6275, 0.4706, 0.8784, 0.4392, 0.6275],
+                  [0.3451, 0.3765, 0.0000, 0.1569, 0.2824],
+                  [0.5020, 0.6902, 0.7843, 0.1569, 0.2510],
+                  [0.6588, 0.9098, 0.3765, 0.8471, 0.4078]]]])
     """
 
     def __init__(
@@ -862,7 +869,7 @@ class RandomSharpness(AugmentationBase):
     r""" Sharpen given tensor image or a batch of tensor images randomly.
 
     Args:
-        sharpness (float or tuple): Default value is 1.
+        sharpness (float or tuple): Default value is 0.5.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -896,7 +903,7 @@ class RandomSharpness(AugmentationBase):
     """
 
     def __init__(
-        self, sharpness: FloatUnionType = 1., same_on_batch: bool = False, return_transform: bool = False
+        self, sharpness: FloatUnionType = 0.5, same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
         self.sharpness = sharpness
@@ -933,11 +940,11 @@ class RandomEqualize(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> equalize = RandomEqualize(1.)
         >>> equalize(input)
-        tensor([[[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
-                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
-                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
-                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
-                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]]])
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
+                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
     """
 
     def __init__(

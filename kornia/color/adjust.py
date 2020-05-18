@@ -299,7 +299,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
 
         input = input + additions
         input = input.clamp(0., 1.)
-    
+
     return _solarize(input, thresholds)
 
 
@@ -309,8 +309,8 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         input (torch.Tensor): image or batched images to posterize.
         bits (int or torch.Tensor): number of high bits. Must be in range [0, 8].
             If int or one element tensor, input will be posterized by this bits.
-            If 1-d tensor, input will be posterized channel-wisely, len(bits) == input.shape[1].
-            If n-d tensor, input will be posterized element-wisely, bits.shape == input.shape[:len(bits.shape)]
+            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[1].
+            If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
     Returns:
         torch.Tensor: Image with reduced color channels.
     """
@@ -319,10 +319,9 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     if isinstance(bits, int):
         bits = torch.tensor(bits)
-    bits = bits.to(torch.int)
 
-    if not torch.all((bits >= 0) * (bits <= 8)):
-        raise ValueError(f"bits must be in range [0, 8].")
+    if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
+        raise ValueError(f"bits must be integers within range [0, 8].")
 
     # TODO: Make a differentiable version
     # Current version:
@@ -352,12 +351,12 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if len(bits.shape) == 1:
         input = to_bchw(input)
 
-        assert bits.shape[0] == input.shape[1], \
-            f"Channel must be equal between bits and input. Got {bits.shape[0]}, {input.shape[1]}."
+        assert bits.shape[0] == input.shape[0], \
+            f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
 
-        for i in range(input.shape[1]):
-            res.append(_posterize_one(input[:, i], bits[i]))
-        return torch.stack(res, dim=1)
+        for i in range(input.shape[0]):
+            res.append(_posterize_one(input[i], bits[i]))
+        return torch.stack(res, dim=0)
 
     assert bits.shape == input.shape[:len(bits.shape)], \
         f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
@@ -439,12 +438,13 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         # For the purposes of computing the step, filter out the nonzeros.
         nonzero_histo = torch.reshape(histo[histo != 0], [-1])
         step = (torch.sum(nonzero_histo) - nonzero_histo[-1])
+
         def build_lut(histo, step):
             # Compute the cumulative sum, shifting by step // 2
             # and then normalization by step.
             lut = (torch.cumsum(histo, 0) + (step // 2)) // step
             # Shift lut, prepending with 0.
-            lut = torch.cat([torch.zeros(1), lut[:-1]]) 
+            lut = torch.cat([torch.zeros(1), lut[:-1]])
             # Clip the counts to be in range.  This is done
             # in the C code for image.point.
             return torch.clamp(lut, 0, 1.)
@@ -490,6 +490,7 @@ def equalize(input):
         # For the purposes of computing the step, filter out the nonzeros.
         nonzero_histo = torch.reshape(histo[histo != 0], [-1])
         step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
+
         def build_lut(histo, step):
             # Compute the cumulative sum, shifting by step // 2
             # and then normalization by step.
@@ -508,7 +509,7 @@ def equalize(input):
             # can't index using 2d index. Have to flatten and then reshape
             result = torch.gather(build_lut(histo, step), 0, im.flatten().long())
             result = result.reshape_as(im)
-        
+
         return result / 255.
 
     res = []

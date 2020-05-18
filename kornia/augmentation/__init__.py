@@ -16,6 +16,10 @@ __all__ = [
     "RandomRotation",
     "CenterCrop",
     "ColorJitter",
+    "RandomSolarize",
+    "RandomPosterize",
+    "RandomSharpness",
+    "RandomEqualize",
     "Normalize",
     "Denormalize"
 ]

@@ -675,8 +675,8 @@ def random_posterize_generator(
         bits = torch.tensor(bits)
 
     if len(bits.size()) == 0:
-        lower = torch.tensor(0)
-        upper = bits
+        lower = bits
+        upper = torch.tensor(8)
     elif len(bits.size()) == 1 and bits.size(0) == 2:
         lower = bits[0]
         upper = bits[1]

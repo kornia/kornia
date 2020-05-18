@@ -59,7 +59,7 @@ __all__ = [
     "adjust_hue_raw",
     "adjust_saturation_raw",
     "solarize",
-    "equalize", 
+    "equalize",
     "posterize",
     "sharpness",
     "add_weighted",

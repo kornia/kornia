@@ -876,5 +876,5 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
 
     res = []
     for image, prob in zip(input, params['batch_prob']):
-        res.append(equalize(input) if prob else image)
-    return torch.stack(res)
+        res.append(equalize(image) if prob else image)
+    return torch.cat(res, dim=0)

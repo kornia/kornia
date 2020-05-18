@@ -77,6 +77,10 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
     """
+    if not isinstance(low, torch.Tensor):
+        low = torch.tensor(low).float()
+    if not isinstance(high, torch.Tensor):
+        high = torch.tensor(high).float()
     dist = Uniform(low, high)
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0])
