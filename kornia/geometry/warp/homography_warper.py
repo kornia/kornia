@@ -34,7 +34,7 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     batch_size: int = src_homo_dst.size(0)
     _, height, width, _ = grid.size()
     # expand grid to match the input batch size
-    grid: torch.Tensor = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
+    grid = grid.expand(batch_size, -1, -1, -1)  # NxHxWx2
     if len(src_homo_dst.shape) == 3:  # local homography case
         src_homo_dst = src_homo_dst.view(batch_size, 1, 3, 3)  # Nx1x3x3
     # perform the actual grid transformation,
@@ -192,7 +192,7 @@ class HomographyWarper(nn.Module):
                                  Got patch.device: {} warped_grid.device: {}. Wheter \
                                  recall precompute_warp_grid() with the correct device \
                                  for the homograhy or change the patch device.".format(
-                                patch_src.device, self._warped_grid.device))
+                                patch_src.device, _warped_grid.device))
             warped_patch = F.grid_sample(
                 patch_src, _warped_grid, mode=self.mode, padding_mode=self.padding_mode,
                 align_corners=self.align_corners)
