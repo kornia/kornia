@@ -7,7 +7,6 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.augmentation.functional as F
 import kornia.testing as utils  # test utils
-from test.common import device
 
 
 class TestPerspective:
