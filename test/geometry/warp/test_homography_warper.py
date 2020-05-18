@@ -11,7 +11,7 @@ from torch.testing import assert_allclose
 class TestHomographyWarper:
 
     num_tests = 10
-    threshold = 0.05
+    threshold = 0.1
 
     def test_identity(self, device):
         # create input data
@@ -173,8 +173,7 @@ class TestHomographyWarper:
 
         for i in range(self.num_tests):
             # generate homography noise
-            homo_delta = torch.zeros_like(dst_homo_src)
-            homo_delta[:, -1, -1] = 0.0
+            homo_delta = torch.rand_like(dst_homo_src) * 0.3
 
             dst_homo_src_i = dst_homo_src + homo_delta
 
@@ -189,7 +188,7 @@ class TestHomographyWarper:
 
             # projected should be equal as initial
             error = utils.compute_patch_error(
-                patch_dst, patch_dst_to_src, height, width)
+                patch_src, patch_dst_to_src, height, width)
 
             assert error.item() < self.threshold
 
