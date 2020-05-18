@@ -5,7 +5,4 @@ steps:
 - name: test
   image: python:3.6
   commands:
-  - yes | ./setup_dev_env.sh
-  - source path.bash.inc
-  - make install
-  - make test-cpu
+  - echo "hello world"
