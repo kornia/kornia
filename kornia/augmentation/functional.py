@@ -818,7 +818,7 @@ def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     if 'additions_factor' in params:
         additions = params['additions_factor']
     else:
-        additions = None
+        additions = None  # type: ignore
     return solarize(input, thresholds, additions)
 
 

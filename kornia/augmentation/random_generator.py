@@ -709,7 +709,7 @@ def random_sharpness_generator(
         sharpness = torch.tensor(sharpness)
 
     if len(sharpness.size()) == 0:
-        lower = 0
+        lower = torch.tensor(0)
         upper = sharpness
     elif len(sharpness.size()) == 1 and sharpness.size(0) == 2:
         lower = sharpness[0]

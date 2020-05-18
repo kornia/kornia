@@ -903,7 +903,8 @@ class RandomSharpness(AugmentationBase):
     """
 
     def __init__(
-        self, sharpness: FloatUnionType = 0.5, same_on_batch: bool = False, return_transform: bool = False
+        self, sharpness: Union[float, Tuple[float, float], torch.Tensor] = 0.5, same_on_batch: bool = False,
+        return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
         self.sharpness = sharpness
