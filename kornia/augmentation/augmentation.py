@@ -65,7 +65,7 @@ class AugmentationBase(nn.Module):
 class RandomHorizontalFlip(AugmentationBase):
 
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and concatenate the corresponding transformation matrix to the
@@ -117,7 +117,7 @@ class RandomHorizontalFlip(AugmentationBase):
 class RandomVerticalFlip(AugmentationBase):
 
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Vertically flip the tensors and concatenate the corresponding transformation matrix to the
@@ -166,7 +166,7 @@ class RandomVerticalFlip(AugmentationBase):
 class ColorJitter(AugmentationBase):
 
     r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
         brightness (float or tuple): Default value is 0
@@ -491,7 +491,7 @@ class CenterCrop(AugmentationBase):
 class RandomRotation(AugmentationBase):
 
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will rotate the tensors and concatenate the corresponding transformation matrix to the

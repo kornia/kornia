@@ -26,14 +26,15 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         raise ValueError(
             "Input size must be a two, three or four dimensional array")
 
-    input_shape = image.shape
     tensor: torch.Tensor = torch.from_numpy(image)
-    if len(input_shape) == 2:
-        # (H, W) -> (1, H, W)
-        tensor = tensor.unsqueeze(0)
-
-    if not keepdim:
-        tensor = to_bchw(tensor, len(input_shape - 1))
+    # Normalize to channel-last format
+    if len(tensor.shape) == 2:
+        # (H, W) -> (H, W, 1)
+        tensor = tensor.unsqueeze(-1)
+    tensor_shape = tensor.shape
+    tensor = to_bchw(tensor, -1)
+    if keepdim:
+        tensor = tensor.reshape(-1, *tensor_shape[:-1])
     return tensor
 
 

@@ -199,10 +199,10 @@ def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transfo
 
 def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
-    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
 
@@ -225,7 +225,7 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
 
@@ -247,10 +247,10 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
 
 def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
-    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
 
@@ -273,7 +273,7 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
 
@@ -297,17 +297,17 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
 
 def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
-    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['brightness_factor']: The brightness factor.
             - params['contrast_factor']: The contrast factor.
             - params['hue_factor']: The hue factor.
             - params['saturation_factor']: The saturation factor.
             - params['order']: The order of applying color transforms.
-            0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
+              0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
 
     Returns:
         torch.Tensor: The color jitterred input
@@ -336,7 +336,7 @@ def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torc
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor that indicating whether if to transform an image in a batch.
 
@@ -354,7 +354,7 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor that indicating whether if to transform an image in a batch.
 
@@ -382,13 +382,13 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
-            bottom-left] of the orignal image with shape Bx4x2.
+              bottom-left] of the orignal image with shape Bx4x2.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
-            bottom-left] of the transformed image with shape Bx4x2.
+              bottom-left] of the transformed image with shape Bx4x2.
             - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['align_corners']: Boolean tensor.
 
@@ -433,13 +433,13 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
-            bottom-left] of the orignal image with shape Bx4x2.
+              bottom-left] of the orignal image with shape Bx4x2.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
-            bottom-left] of the transformed image with shape Bx4x2.
+              bottom-left] of the transformed image with shape Bx4x2.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
@@ -455,7 +455,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
     r"""Random affine transformation of the image keeping center invariant.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['angle']: Degrees of rotation.
             - params['translations']: Horizontal and vertical translations.
@@ -497,7 +497,7 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['angle']: Degrees of rotation.
             - params['translations']: Horizontal and vertical translations.
@@ -522,10 +522,10 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
 
 def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['degrees']: degree to be applied.
 
@@ -548,7 +548,7 @@ def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Te
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['degrees']: degree to be applied.
 
@@ -576,7 +576,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Te
     Order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 4, 2)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 4, 2)`.
@@ -600,7 +600,7 @@ def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Ten
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 4, 2)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 4, 2)`.
@@ -621,7 +621,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     and size by input.size()
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['widths']: widths tensor
             - params['heights']: heights tensor
@@ -664,11 +664,11 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
     """ Wrapper for adjust_brightness for Torchvision-like param settings.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['brightness_factor']: Brightness adjust factor per element
-            in the batch. 0 gives a black image, 1 does not modify the input image and 2 gives a
-            white image, while any other number modify the brightness.
+              in the batch. 0 gives a black image, 1 does not modify the input image and 2 gives a
+              white image, while any other number modify the brightness.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -685,11 +685,11 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) 
     """Wrapper for adjust_contrast for Torchvision-like param settings.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['contrast_factor']: Contrast adjust factor per element in the batch.
-            0 generates a compleatly black image, 1 does not modify the input image while any other
-            non-negative number modify the brightness by this factor.
+              0 generates a compleatly black image, 1 does not modify the input image while any other
+              non-negative number modify the brightness by this factor.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -706,11 +706,11 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
     """Wrapper for adjust_saturation for Torchvision-like param settings.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['saturation_factor']:  How much to adjust the saturation. 0 will give a black
-            and white image, 1 will give the original image while 2 will enhance the saturation
-            by a factor of 2.
+              and white image, 1 will give the original image while 2 will enhance the saturation
+              by a factor of 2.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -727,12 +727,12 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> to
     """Wrapper for adjust_hue for Torchvision-like param settings.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['hue_factor']: How much to shift the hue channel. Should be in [-0.5, 0.5].
-            0.5 and -0.5 give complete reversal of hue channel in HSV space in positive and negative
-            direction respectively. 0 means no shift. Therefore, both -0.5 and 0.5 will give an
-            image with complementary colors while 0 gives the original image.
+              0.5 and -0.5 give complete reversal of hue channel in HSV space in positive and negative
+              direction respectively. 0 means no shift. Therefore, both -0.5 and 0.5 will give an
+              image with complementary colors while 0 gives the original image.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -749,11 +749,11 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     r"""Perform gamma correction on an image.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['gamma_factor']: Non negative real number, same as γ\gammaγ in the equation.
-            gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
-            dark regions lighter.
+              gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+              dark regions lighter.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -772,7 +772,7 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['ksize_factor']: motion kernel width and height (odd and positive).
             - params['angle_factor']: angle of the motion blur in degrees (anti-clockwise rotation).
@@ -803,10 +803,10 @@ def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     r"""Solarize an image.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['thresholds_factor']
-            - params['additions_factor']
+            - params['thresholds_factor']: thresholds ranged from 0 ~ 1.
+            - params['additions_factor']: additions to add on before solarizing.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -826,9 +826,9 @@ def apply_posterize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     r"""Posterize an image.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['bits_factor']: 0 to 8.
+            - params['bits_factor']: uint8 bits number ranged from 0 to 8.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -845,7 +845,7 @@ def apply_sharpness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     r"""Sharpen an image.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['sharpness_factor']: Sharpness strength. Must be above 0.
 
@@ -864,7 +864,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     r"""Equalize an image.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (*, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['p']: Probability.
 
