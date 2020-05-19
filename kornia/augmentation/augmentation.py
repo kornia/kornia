@@ -21,6 +21,16 @@ from .types import (
 
 
 class AugmentationBase(nn.Module):
+    r"""AugmentationBase base class for customized augmentation implementations. For any augmentation,
+    the implementation of "generate_parameters" and "apply_transform" are required while the
+    "compute_transformation" is only required when passing "return_transform" as True.
+
+    Args:
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated.
+
+    """
     def __init__(self, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform

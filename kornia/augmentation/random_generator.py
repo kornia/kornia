@@ -611,10 +611,10 @@ def random_motion_blur_generator(
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
     angle_factor = _adapted_uniform(
-        (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)
+        (batch_size,), angle_bound[0].float(), angle_bound[1].float(), same_on_batch)
 
     direction_factor = _adapted_uniform(
-        (batch_size,), direction_bound[0], direction_bound[1], same_on_batch)
+        (batch_size,), direction_bound[0].float(), direction_bound[1].float(), same_on_batch)
 
     return dict(ksize_factor=ksize_factor,
                 angle_factor=angle_factor,
@@ -645,10 +645,10 @@ def random_solarize_generator(
     additions_bound: torch.Tensor = _check_and_bound(additions, 'additions', bounds=(-0.5, 0.5))
 
     thresholds_factor = _adapted_uniform(
-        (batch_size,), thresholds_bound[0], thresholds_bound[1], same_on_batch)
+        (batch_size,), thresholds_bound[0].float(), thresholds_bound[1].float(), same_on_batch)
 
     additions_factor = _adapted_uniform(
-        (batch_size,), additions_bound[0], additions_bound[1], same_on_batch)
+        (batch_size,), additions_bound[0].float(), additions_bound[1].float(), same_on_batch)
 
     return dict(
         thresholds_factor=thresholds_factor,
@@ -717,7 +717,7 @@ def random_sharpness_generator(
     else:
         raise ValueError(f"Expect float or tuple. Got {sharpness}.")
 
-    sharpness_factor = _adapted_uniform((batch_size,), lower, upper, same_on_batch)
+    sharpness_factor = _adapted_uniform((batch_size,), lower.float(), upper.float(), same_on_batch)
 
     return dict(
         sharpness_factor=sharpness_factor
