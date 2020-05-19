@@ -34,7 +34,12 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     tensor_shape = tensor.shape
     tensor = to_bchw(tensor, -1)
     if keepdim:
-        tensor = tensor.reshape(-1, *tensor_shape[:-1])
+        if len(tensor_shape) == 3:
+            tensor = tensor.reshape(-1, *tensor_shape[:-1])
+        elif len(tensor_shape) == 4:
+            pass
+        else:
+            raise ValueError(f"Unsupported tensor shapes. Got {tensor_shape}.")
     return tensor
 
 
