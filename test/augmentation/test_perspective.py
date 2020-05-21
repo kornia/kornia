@@ -7,7 +7,6 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.augmentation.functional as F
 import kornia.testing as utils  # test utils
-from test.common import device
 
 
 class TestPerspective:
@@ -21,7 +20,7 @@ class TestPerspective:
         params = dict(
             batch_prob=batch_prob, start_points=start_points,
             end_points=end_points, interpolation=torch.tensor(1),
-            align_corners=False)
+            align_corners=torch.tensor(False))
         out_data = F.apply_perspective(x_data, params)
 
         assert out_data.shape == x_data.shape
@@ -43,7 +42,7 @@ class TestPerspective:
             start_points=start_points,
             end_points=end_points,
             interpolation=torch.tensor(1),
-            align_corners=False
+            align_corners=torch.tensor(False)
         )
         assert gradcheck(F.apply_perspective, (input, params,), raise_exception=True)
 

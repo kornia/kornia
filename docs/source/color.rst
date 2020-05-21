@@ -49,6 +49,9 @@ Intensity Transformations
 
 .. autofunction:: normalize
 .. autofunction:: denormalize
+.. autofunction:: zca_mean
+.. autofunction:: zca_whiten
+.. autofunction:: linear_transform
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
@@ -79,6 +82,8 @@ Modules
 
 .. autoclass:: Normalize
 .. autoclass:: Denormalize
+.. autoclass:: ZCAWhitening
+    :members:
 
 .. autoclass:: AdjustBrightness
 .. autoclass:: AdjustContrast

@@ -486,7 +486,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
         sy_tan = torch.tan(sy)  # type: ignore
         zeros = torch.zeros_like(sx)  # type: ignore
         ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+        shear_mat = torch.stack([ones, -sx_tan, sx_tan * x,  # type: ignore   # noqa: E241
                                  -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
                                 dim=-1).view(-1, 2, 3)
         shear_mat = convert_affinematrix_to_homography(shear_mat)
