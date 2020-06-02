@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.utils import to_bchw
+from kornia.utils.image import _to_bchw
 from kornia.constants import pi
 
 
@@ -229,7 +229,7 @@ def adjust_brightness(input: torch.Tensor,
 
 def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
     r""" For each pixel in the image, select the pixel if the value is less than the threshold.
-        Otherwise, subtract 1.0 from the pixel.
+    Otherwise, subtract 1.0 from the pixel.
     Args:
         input (torch.Tensor): image or batched images to solarize.
         thresholds (float or torch.Tensor): solarize thresholds.
@@ -255,11 +255,11 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
 
 def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
-             additions: Optional[Union[float, torch.Tensor]] = 0.) -> torch.Tensor:
+             additions: Optional[Union[float, torch.Tensor]] = None) -> torch.Tensor:
     r""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
-        pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
+    pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
     Args:
-        input (torch.Tensor): image or batched images to solarize.
+        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to solarize.
         thresholds (float or torch.Tensor): solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
@@ -306,7 +306,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel. Non-differentiable function, uint8 involved.
     Args:
-        input (torch.Tensor): image or batched images to posterize.
+        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to posterize.
         bits (int or torch.Tensor): number of high bits. Must be in range [0, 8].
             If int or one element tensor, input will be posterized by this bits.
             If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[1].
@@ -349,7 +349,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
     res = []
     if len(bits.shape) == 1:
-        input = to_bchw(input)
+        input = _to_bchw(input)
 
         assert bits.shape[0] == input.shape[0], \
             f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
@@ -370,8 +370,8 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Implements Sharpness function from PIL using torch ops.
     Args:
-        input (torch.Tensor): image or batched images for sharpness.
-        bits (float or torch.Tensor): factor of sharpness strength. Must be above 0.
+        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to sharpen.
+        factor (float or torch.Tensor): factor of sharpness strength. Must be above 0.
             If float or one element tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
     Returns:
@@ -419,15 +419,15 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     return torch.stack([_blend_one(input[i], result[i], factor[i]) for i in range(len(factor))])
 
 
-def equalize(input):
-    """Implements Equalize function from PIL using PyTorch ops based on:
+def equalize(input: torch.Tensor) -> torch.Tensor:
+    """Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
     Args:
-        input (torch.Tensor): image or batched images for equalization.
+        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to equalize.
     Returns:
         torch.Tensor: Sharpened image or images.
     """
-    input = to_bchw(input) * 255
+    input = _to_bchw(input) * 255
 
     # Code taken from: https://github.com/pytorch/vision/pull/796
     def scale_channel(im, c):

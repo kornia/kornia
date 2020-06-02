@@ -628,12 +628,14 @@ def random_solarize_generator(
     additions: FloatUnionType = 0.1,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator random solarize parameters for a batch of images.
+    r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,
+    we add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0 
 
     Args:
         batch_size (int): the number of images.
-        thresholds (float or tuple): Default value is 0
-        additions (float or tuple): Default value is 0
+        thresholds (float or tuple): Pixels less than threshold will selected. Otherwise, subtract 1.0 from the pixel.
+            Default value is 0.1
+        additions (float or tuple): The value is between -0.5 and 0.5. Default value is 0.1
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
@@ -665,7 +667,7 @@ def random_posterize_generator(
 
     Args:
         batch_size (int): the number of images.
-        bits (int or tuple): Default value is 0. Integer that ranged from 0 ~ 8.
+        bits (int or tuple): Default value is 3. Integer that ranged from 0 ~ 8.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
@@ -699,7 +701,7 @@ def random_sharpness_generator(
 
     Args:
         batch_size (int): the number of images.
-        sharpness (float or tuple): Default value is 0. Range from 0 ~ 8.
+        sharpness (float or tuple): Default value is 1. Must be above 0.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:

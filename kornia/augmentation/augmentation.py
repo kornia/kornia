@@ -26,7 +26,7 @@ class AugmentationBase(nn.Module):
     "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
 
@@ -790,7 +790,7 @@ class RandomSolarize(AugmentationBase):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples::
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
         >>> solarize = RandomSolarize(0.1, 0.1)
@@ -829,10 +829,10 @@ class RandomPosterize(AugmentationBase):
     r""" Posterize given tensor image or a batch of tensor images randomly.
 
     Args:
-        bits (int or tuple): Default value is 0. Integer that ranged from (0, 8],
-                             in which 0 gives black image and 8 gives the original.
+        bits (int or tuple): Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
             If int x, bits will be generated from (x, 8).
             If tuple (x, y), bits will be generated from (x, y).
+            Default value is 3.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -879,7 +879,7 @@ class RandomSharpness(AugmentationBase):
     r""" Sharpen given tensor image or a batch of tensor images randomly.
 
     Args:
-        sharpness (float or tuple): Default value is 0.5.
+        sharpness (float or tuple): factor of sharpness strength. Must be above 0. Default value is 0.5.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -937,7 +937,7 @@ class RandomEqualize(AugmentationBase):
     r""" Equalize given tensor image or a batch of tensor images randomly.
 
     Args:
-        p (float): Default value is 0.5
+        p (float): Probability to equalize an image. Default value is 0.5
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation

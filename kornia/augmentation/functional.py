@@ -815,10 +815,11 @@ def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     thresholds = params['thresholds_factor']
+    additions: Optional[torch.Tensor]
     if 'additions_factor' in params:
         additions = params['additions_factor']
     else:
-        additions = None  # type: ignore
+        additions = None
     return solarize(input, thresholds, additions)
 
 

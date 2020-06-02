@@ -3,7 +3,7 @@ from typing import Tuple, Union, List
 import torch
 from torch.distributions import Uniform
 
-from kornia.utils import to_bchw
+from kornia.utils.image import _to_bchw
 from .types import (
     FloatUnionType,
     UnionType,
@@ -30,7 +30,7 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
         torch.Tensor
     """
 
-    return to_bchw(input)
+    return _to_bchw(input)
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
