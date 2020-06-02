@@ -482,11 +482,11 @@ def random_rectangles_params_generator(
     """
     if not (isinstance(scale[0], float) and isinstance(scale[1], float) and scale[0] > 0. and scale[1] > 0.):
         raise TypeError(
-            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
+            f"'erase_scale_range' must be a Tuple[float, float] with positive values. Got {scale}."
         )
     if not (isinstance(ratio[0], float) and isinstance(ratio[1], float) and ratio[0] > 0. and ratio[1] > 0.):
         raise TypeError(
-            f"'ratio' must be a Tuple[float, float] with positive values"
+            f"'ratio' must be a Tuple[float, float] with positive values. Got {ratio}."
         )
 
     batch_prob = random_prob_generator(batch_size, p, same_on_batch)['batch_prob']
@@ -629,7 +629,7 @@ def random_solarize_generator(
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,
-    we add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0 
+    we add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0
 
     Args:
         batch_size (int): the number of images.

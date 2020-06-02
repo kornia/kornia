@@ -321,7 +321,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         bits = torch.tensor(bits)
 
     if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
-        raise ValueError(f"bits must be integers within range [0, 8].")
+        raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
 
     # TODO: Make a differentiable version
     # Current version:
