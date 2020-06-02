@@ -377,7 +377,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     Returns:
         torch.Tensor: Sharpened image or images.
     """
-    input = to_bchw(input)
+    input = _to_bchw(input)
     if isinstance(factor, torch.Tensor):
         factor = factor.squeeze()
         if len(factor.size()) != 0:
