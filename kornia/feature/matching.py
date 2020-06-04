@@ -99,7 +99,7 @@ def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
     idx2, dists2 = match_snn(desc2, desc1, th, dm.t())
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
-        idxs_dm = torch.cdist(idx1.float(), idx2.float())
+        idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1)
         mutual_idxs1 = idxs_dm.min(dim=1)[0] < 1e-8
         mutual_idxs2 = idxs_dm.min(dim=0)[0] < 1e-8
         good_idxs1 = idx1[mutual_idxs1.view(-1)]
