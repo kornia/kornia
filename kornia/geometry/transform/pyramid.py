@@ -135,7 +135,7 @@ class ScalePyramid(nn.Module):
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output 1st: :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
+        - Output 1st: :math:`[(B, C, NL, H, W), (B, C, NL, H/2, W/2), ...]`
         - Output 2nd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
         - Output 3rd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
 
@@ -147,10 +147,12 @@ class ScalePyramid(nn.Module):
     def __init__(self,
                  n_levels: int = 3,
                  init_sigma: float = 1.6,
-                 min_size: int = 5,
+                 min_size: int = 15,
                  double_image: bool = False):
         super(ScalePyramid, self).__init__()
-        self.n_levels = n_levels
+        # 3 extra levels are needed for DoG nms.
+        self.n_levels = n_levels 
+        self.extra_levels = 3
         self.init_sigma = init_sigma
         self.min_size = min_size
         self.border = min_size // 2 - 1
@@ -163,6 +165,7 @@ class ScalePyramid(nn.Module):
             '(n_levels=' + str(self.n_levels) + ', ' +\
             'init_sigma=' + str(self.init_sigma) + ', ' + \
             'min_size=' + str(self.min_size) + ', ' + \
+            'extra_levels=' + str(self.extra_levels) + ', ' + \
             'border=' + str(self.border) + ', ' + \
             'sigma_step=' + str(self.sigma_step) + \
             'double_image=' + str(self.double_image) + ')'
@@ -173,61 +176,70 @@ class ScalePyramid(nn.Module):
             ksize += 1
         return ksize
 
+    def get_first_level(self, input):
+        pixel_distance = 1.0
+        cur_sigma = 0.5
+        ## Same as in OpenCV up to interpolation difference
+        if self.double_image:
+            x = F.interpolate(input, scale_factor=2.0, mode='bilinear', align_corners=False)
+            pixel_distance = 0.5
+            cur_sigma *= 2.0
+        else:
+            x = input
+        if self.init_sigma > cur_sigma:
+            sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
+            ksize = self.get_kernel_size(sigma)
+            cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
+            cur_sigma = self.init_sigma
+        else:
+            cur_level = x
+        return cur_level, cur_sigma, pixel_distance
+    
     def forward(self, x: torch.Tensor) -> Tuple[  # type: ignore
             List, List, List]:
         bs, ch, h, w = x.size()
-        pixel_distance = 1.0
-        cur_sigma = 0.5
-        if self.double_image:
-            x = F.interpolate(x, scale_factor=2.0, mode='bilinear', align_corners=False)
-            pixel_distance = 0.5
-            cur_sigma *= 2.0
-        if self.init_sigma > cur_sigma:
-            sigma = math.sqrt(self.init_sigma**2 - cur_sigma**2)
-            cur_sigma = self.init_sigma
-            ksize = self.get_kernel_size(sigma)
-            cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
-        else:
-            cur_level = x
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels).to(x.device).to(x.dtype)]
+        cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
+        
+        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pixel_dists = [pixel_distance * torch.ones(
                        bs,
-                       self.n_levels).to(
+                       self.n_levels + self.extra_levels).to(
                        x.device).to(x.dtype)]
-        pyr = [[cur_level.unsqueeze(1)]]
+        pyr = [[cur_level]]
         oct_idx = 0
         while True:
-            cur_level = pyr[-1][0].squeeze(1)
-            for level_idx in range(1, self.n_levels):
+            cur_level = pyr[-1][0]
+            for level_idx in range(1, self.n_levels + self.extra_levels):
                 sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
+                ksize = self.get_kernel_size(sigma)
                 cur_level = gaussian_blur2d(
                     cur_level, (ksize, ksize), (sigma, sigma))
                 cur_sigma *= self.sigma_step
-                pyr[-1].append(cur_level.unsqueeze(1))
+                pyr[-1].append(cur_level)
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            nextOctaveFirstLevel = F.interpolate(pyr[-1][-1].squeeze(1), scale_factor=0.5,
-                                                 mode='bilinear',
-                                                 align_corners=False)
+            nextOctaveFirstLevel = F.interpolate(pyr[-1][-self.extra_levels], scale_factor=0.5,
+                                                 mode='nearest') # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if (min(nextOctaveFirstLevel.size(2),
                     nextOctaveFirstLevel.size(3)) <= self.min_size):
                 break
-            pyr.append([nextOctaveFirstLevel.unsqueeze(1)])
+            pyr.append([nextOctaveFirstLevel])
             sigmas.append(cur_sigma * torch.ones(
                           bs,
-                          self.n_levels).to(
+                          self.n_levels + self.extra_levels).to(
                           x.device))
             pixel_dists.append(
                 pixel_distance * torch.ones(
                     bs,
-                    self.n_levels).to(
+                    self.n_levels + self.extra_levels).to(
                     x.device))
             oct_idx += 1
         for i in range(len(pyr)):
-            pyr[i] = torch.cat(pyr[i], dim=1)  # type: ignore
+            pyr[i] = torch.stack(pyr[i], dim=2)  # type: ignore
         return pyr, sigmas, pixel_dists
+
 
 
 # functional api
