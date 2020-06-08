@@ -9,10 +9,10 @@ jupyter
 matplotlib
 
 # test
-pytest>=5.1.2
-pytest-flake8
-pytest-cov
-pytest-mypy
+pytest==5.4.2
+pytest-flake8==1.0.6
+pytest-cov==2.9.0
+pytest-mypy==0.6.2
 autopep8
 pydocstyle
 
