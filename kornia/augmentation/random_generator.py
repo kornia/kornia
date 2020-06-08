@@ -482,11 +482,11 @@ def random_rectangles_params_generator(
     """
     if not (isinstance(scale[0], float) and isinstance(scale[1], float) and scale[0] > 0. and scale[1] > 0.):
         raise TypeError(
-            f"'erase_scale_range' must be a Tuple[float, float] with positive values"
+            "'erase_scale_range' must be a Tuple[float, float] with positive values"
         )
     if not (isinstance(ratio[0], float) and isinstance(ratio[1], float) and ratio[0] > 0. and ratio[1] > 0.):
         raise TypeError(
-            f"'ratio' must be a Tuple[float, float] with positive values"
+            "'ratio' must be a Tuple[float, float] with positive values"
         )
 
     batch_prob = random_prob_generator(batch_size, p, same_on_batch)['batch_prob']
