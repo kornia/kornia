@@ -634,7 +634,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     """
     if not (params['widths'].size() == params['heights'].size() == params['xs'].size() == params['ys'].size()):
         raise TypeError(
-            f"rectangle params components must have same shape. "
+            "rectangle params components must have same shape. "
             f"Got ({params['widths'].size()}, {params['heights'].size()}) "
             f"and ({params['xs'].size()}, {params['ys'].size()})"
         )
