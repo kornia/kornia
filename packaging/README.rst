@@ -19,4 +19,4 @@ You can upload the wheels usng `Twine <https://pypi.org/project/twine/>`_
 .. code:: bash
 
     cd /tmp/remote
-    pthon3 -m twine upload *.whl
+    python3 -m twine upload *.whl
