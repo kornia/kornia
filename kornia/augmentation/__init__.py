@@ -5,14 +5,21 @@ from kornia.color.normalize import (
 )
 
 __all__ = [
-    "RandomHorizontalFlip",
-    "RandomVerticalFlip",
+    "RandomAffine",
+    "RandomCrop",
     "RandomErasing",
     "RandomGrayscale",
-    "ColorJitter",
-    "RandomRotation",
-    "RandomCrop",
+    "RandomHorizontalFlip",
+    "RandomVerticalFlip",
+    "RandomPerspective",
     "RandomResizedCrop",
+    "RandomRotation",
+    "CenterCrop",
+    "ColorJitter",
+    "RandomSolarize",
+    "RandomPosterize",
+    "RandomSharpness",
+    "RandomEqualize",
     "Normalize",
     "Denormalize"
 ]

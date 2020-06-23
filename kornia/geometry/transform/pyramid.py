@@ -33,9 +33,11 @@ class PyrDown(nn.Module):
     r"""Blurs a tensor and downsamples it.
 
     Args:
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Return:
         torch.Tensor: the downsampled tensor.
@@ -49,10 +51,11 @@ class PyrDown(nn.Module):
         >>> output = kornia.transform.PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self, border_type: str = 'reflect') -> None:
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
         super(PyrDown, self).__init__()
         self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -66,7 +69,7 @@ class PyrDown(nn.Module):
 
         # downsample.
         out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear',
-                                          align_corners=False)
+                                          align_corners=self.align_corners)
         return out
 
 
@@ -77,6 +80,8 @@ class PyrUp(nn.Module):
         borde_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Return:
         torch.Tensor: the upsampled tensor.
@@ -90,10 +95,11 @@ class PyrUp(nn.Module):
         >>> output = kornia.transform.PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self, border_type: str = 'reflect'):
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
         super(PyrUp, self).__init__()
         self.border_type: str = border_type
         self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+        self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         if not torch.is_tensor(input):
@@ -105,7 +111,7 @@ class PyrUp(nn.Module):
         # upsample tensor
         b, c, height, width = input.shape
         x_up: torch.Tensor = F.interpolate(input, size=(height * 2, width * 2),
-                                           mode='bilinear', align_corners=True)
+                                           mode='bilinear', align_corners=self.align_corners)
 
         # blurs upsampled tensor
         x_blur: torch.Tensor = filter2D(x_up, self.kernel, self.border_type)
@@ -229,26 +235,26 @@ class ScalePyramid(nn.Module):
 
 def pyrdown(
         input: torch.Tensor,
-        border_type: str = 'reflect') -> torch.Tensor:
+        border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
     See :class:`~kornia.transform.PyrDown` for details.
     """
-    return PyrDown(border_type)(input)
+    return PyrDown(border_type, align_corners)(input)
 
 
-def pyrup(input: torch.Tensor, border_type: str = 'reflect') -> torch.Tensor:
+def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
     See :class:`~kornia.transform.PyrUp` for details.
     """
-    return PyrUp(border_type)(input)
+    return PyrUp(border_type, align_corners)(input)
 
 
 def build_pyramid(
         input: torch.Tensor,
         max_level: int,
-        border_type: str = 'reflect') -> List[torch.Tensor]:
+        border_type: str = 'reflect', align_corners: bool = False) -> List[torch.Tensor]:
     r"""Constructs the Gaussian pyramid for an image.
 
     The function constructs a vector of images and builds the Gaussian pyramid
@@ -258,9 +264,11 @@ def build_pyramid(
         input (torch.Tensor): the tensor to be used to constructuct the pyramid.
         max_level (int): 0-based index of the last (the smallest) pyramid layer.
           It must be non-negative.
-        borde_type (str): the padding mode to be applied before convolving.
+        border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
@@ -282,7 +290,7 @@ def build_pyramid(
 
     for _ in range(max_level - 1):
         img_curr: torch.Tensor = pyramid[-1]
-        img_down: torch.Tensor = pyrdown(img_curr, border_type)
+        img_down: torch.Tensor = pyrdown(img_curr, border_type, align_corners)
         pyramid.append(img_down)
 
     return pyramid

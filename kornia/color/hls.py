@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import kornia
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 class HlsToRgb(nn.Module):

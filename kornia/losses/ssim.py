@@ -101,15 +101,15 @@ class SSIM(nn.Module):
                              .format(img2.shape))
 
         if not img1.shape == img2.shape:
-            raise ValueError("img1 and img2 shapes must be the same. Got: {}"
+            raise ValueError("img1 and img2 shapes must be the same. Got: {} and {}"
                              .format(img1.shape, img2.shape))
 
         if not img1.device == img2.device:
-            raise ValueError("img1 and img2 must be in the same device. Got: {}"
+            raise ValueError("img1 and img2 must be in the same device. Got: {} and {}"
                              .format(img1.device, img2.device))
 
         if not img1.dtype == img2.dtype:
-            raise ValueError("img1 and img2 must be in the same dtype. Got: {}"
+            raise ValueError("img1 and img2 must be in the same dtype. Got: {} and {}"
                              .format(img1.dtype, img2.dtype))
 
         # prepare kernel

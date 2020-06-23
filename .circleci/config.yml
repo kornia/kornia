@@ -24,7 +24,7 @@ common: &common
         command: make build-docs
     - run:
         name: unit tests
-        command: make test-cpu-cov
+        command: make test-cpu
     - run:
         name: send coverage
         when: on_success
@@ -45,9 +45,17 @@ jobs:
         environment:
           - PYTHON_VERSION: "3.7"
 
+  python_3_8:
+    <<: *common
+    docker:
+      - image: circleci/python:3.8.0
+        environment:
+          - PYTHON_VERSION: "3.8"
+
 workflows:
   version: 2
   test:
     jobs:
       - python_3_6
       - python_3_7
+      - python_3_8

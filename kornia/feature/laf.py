@@ -115,8 +115,9 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
             if dim is not int:
                 continue
             if var.size(i) != dim:
-                "{} shape should be must be [{}]. "
-                "Got {}".format(var_name, str(req_shape), var.size())
+                raise TypeError(
+                    "{} shape should be must be [{}]. "
+                    "Got {}".format(var_name, str(req_shape), var.size()))
     unscaled_laf: torch.Tensor = torch.cat([kornia.angle_to_rotation_matrix(ori.squeeze(-1)),
                                             xy.unsqueeze(-1)], dim=-1)
     laf: torch.Tensor = scale_laf(unscaled_laf, scale)
@@ -221,11 +222,24 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
         raise TypeError(
             "ellipse shape should be must be [BxNx5]. "
             "Got {}".format(ells.size()))
+    # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
+    # ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
+    #                       torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
+    # out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
 
-    ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
-                           torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
-    out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
-    out = torch.cat([out, ells[..., :2].view(B, N, 2, 1)], dim=3)
+    # We will calculate 2x2 matrix square root via special case formula
+    # https://en.wikipedia.org/wiki/Square_root_of_a_matrix
+    # "The Cholesky factorization provides another particular example of square root
+    #  which should not be confused with the unique non-negative square root."
+    # https://en.wikipedia.org/wiki/Square_root_of_a_2_by_2_matrix
+    # M = (A 0; C D)
+    # R = (sqrt(A) 0; C / (sqrt(A)+sqrt(D)) sqrt(D))
+    a11 = ells[..., 2:3].abs().sqrt()
+    a12 = torch.zeros_like(a11)
+    a22 = ells[..., 4:5].abs().sqrt()
+    a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
+    A = torch.stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
+    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 
 
@@ -310,12 +324,12 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    w = float(w)
-    h = float(h)
-    min_size = min(h, w)
+    wf = float(w)
+    hf = float(h)
+    min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) * min_size
-    coef[0, 0, 0, 2] = w
-    coef[0, 0, 1, 2] = h
+    coef[0, 0, 0, 2] = wf
+    coef[0, 0, 1, 2] = hf
     return coef.expand_as(LAF) * LAF
 
 
@@ -342,12 +356,12 @@ def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     n, ch, h, w = images.size()
-    w = float(w)
-    h = float(h)
-    min_size = min(h, w)
+    wf: float = float(w)
+    hf: float = float(h)
+    min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) / min_size
-    coef[0, 0, 0, 2] = 1.0 / w
-    coef[0, 0, 1, 2] = 1.0 / h
+    coef[0, 0, 0, 2] = 1.0 / wf
+    coef[0, 0, 1, 2] = 1.0 / hf
     return coef.expand_as(LAF) * LAF
 
 
@@ -377,7 +391,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor,
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3),  # type: ignore
-                         [B * N, ch, PS, PS], align_corners=True)
+                         [B * N, ch, PS, PS], align_corners=False)
     grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w) - 1.0
     grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h) - 1.0
     return grid
@@ -411,7 +425,7 @@ def extract_patches_simple(img: torch.Tensor,
     for i in range(B):
         grid = generate_patch_grid_from_normalized_LAF(img[i:i + 1], nlaf[i:i + 1], PS).to(img.device)
         out.append(F.grid_sample(img[i:i + 1].expand(grid.size(0), ch, h, w), grid,  # type: ignore
-                                 padding_mode="border", align_corners=True))
+                                 padding_mode="border", align_corners=False))
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
@@ -456,7 +470,7 @@ def extract_patches_from_pyramid(img: torch.Tensor,
                 nlaf[i:i + 1, scale_mask, :, :],
                 PS)
             patches = F.grid_sample(cur_img[i:i + 1].expand(grid.size(0), ch, h, w), grid,  # type: ignore
-                                    padding_mode="border", align_corners=True)
+                                    padding_mode="border", align_corners=False)
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         cur_img = kornia.pyrdown(cur_img)
         cur_pyr_level += 1
