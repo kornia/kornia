@@ -16,13 +16,17 @@ def compute_padding(kernel_size: List[int]) -> List[int]:
     computed = [k // 2 for k in kernel_size]
 
     # for even kernels we need to do asymetric padding :(
+
     out_padding = []
-    for _computed, _kernel_size in zip(computed, kernel_size):
-        padding = _computed
-        if _kernel_size % 2 == 0:
-            padding = _computed - 1
+
+    for i in range(len(kernel_size)):
+        computed_tmp = computed[-(i + 1)]
+        if kernel_size[i] % 2 == 0:
+            padding = computed_tmp - 1
+        else:
+            padding = computed_tmp
         out_padding.append(padding)
-        out_padding.append(_computed)
+        out_padding.append(computed_tmp)
     return out_padding
 
 
