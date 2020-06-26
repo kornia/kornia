@@ -16,6 +16,7 @@ __all__ = [
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
                     interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
     r"""Extracts crops from the input tensor and resizes them.
+
     Args:
         tensor (torch.Tensor): the reference tensor of shape BxCxHxW.
         boxes (torch.Tensor): a tensor containing the coordinates of the
@@ -26,7 +27,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
         align_corners (bool): mode for grid_generation. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
         torch.Tensor: tensor containing the patches with shape BxN1xN2
     Example:
@@ -89,7 +90,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
         align_corners (bool): mode for grid_generation. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
         torch.Tensor: the output tensor with patches.
 
