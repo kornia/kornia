@@ -585,10 +585,8 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
     b: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=1, mode='diff')  #
-    b[b.abs() < 1e-15] = 0
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
     A: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=2, mode='diff')
-    A[A.abs() < 1e-15] = 0
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
     dxx = A[..., 0]
     dyy = A[..., 1]
@@ -597,7 +595,9 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dys = 0.25 * A[..., 4] # normalization to match OpenCV implementation
     dxs = 0.25 * A[..., 5] # normalization to match OpenCV implementation
     
-    Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], dim=-1).view(-1, 3, 3)
+    Hes = torch.stack([dxx, dxy, dxs,
+                       dxy, dyy, dys,
+                       dxs, dys, dss], dim=-1).view(-1, 3, 3)
     
     # The following is needed to avoid singular cases
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
@@ -609,9 +609,11 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
     dx: torch.Tensor = -x_solved
 
-    # Ignore ones, which are far from window,
+    # Ignore ones, which are far from window center
+    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1)
+    dx[mask1, :, :] = 0
     dx[(dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1), :, :] = 0
-
+    
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
@@ -620,6 +622,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dx_res: torch.Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
     coords_max: torch.Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
     coords_max = coords_max + dx_res
+
     return coords_max, y_max
 
 

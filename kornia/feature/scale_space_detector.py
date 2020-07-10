@@ -9,7 +9,7 @@ from kornia.feature.responses import BlobHessian
 from kornia.geometry import ConvSoftArgmax3d
 from kornia.feature.orientation import PassLAF
 from kornia.feature.laf import (
-    denormalize_laf,
+    denormalize_laf, scale_laf,
     normalize_laf, laf_is_inside_image)
 from kornia.geometry.transform import ScalePyramid
 
@@ -128,7 +128,7 @@ class ScaleSpaceDetector(nn.Module):
             else:
                 oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)).view(B, L, CH, H, W)
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
-                oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
+                oct_resp = oct_resp.permute(0, 2, 1, 3, 4)[:, :-1]
 
             if mask is not None:
                 oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
@@ -164,6 +164,7 @@ class ScaleSpaceDetector(nn.Module):
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
+            octave[:, 0], 5)
             resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
 
             # Normalize LAFs
