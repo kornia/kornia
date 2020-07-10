@@ -151,7 +151,7 @@ class ScalePyramid(nn.Module):
                  double_image: bool = False):
         super(ScalePyramid, self).__init__()
         # 3 extra levels are needed for DoG nms.
-        self.n_levels = n_levels 
+        self.n_levels = n_levels
         self.extra_levels = 3
         self.init_sigma = init_sigma
         self.min_size = min_size
@@ -167,11 +167,16 @@ class ScalePyramid(nn.Module):
             'min_size=' + str(self.min_size) + ', ' + \
             'extra_levels=' + str(self.extra_levels) + ', ' + \
             'border=' + str(self.border) + ', ' + \
-            'sigma_step=' + str(self.sigma_step) + \
+            'sigma_step=' + str(self.sigma_step) + ', ' + \
             'double_image=' + str(self.double_image) + ')'
 
     def get_kernel_size(self, sigma: float):
-        ksize = int(2.0 * 4.0 * sigma + 1.0)
+        ksize = int(2.0 * 4.0 * sigma + 1.0)  
+        
+        #  matches OpenCV, but may cause padding problem for small images
+        #  PyTorch does not allow to pad more than original size.
+        #  Therefore there is a hack in forward function
+        
         if ksize % 2 == 0:
             ksize += 1
         return ksize
@@ -179,7 +184,7 @@ class ScalePyramid(nn.Module):
     def get_first_level(self, input):
         pixel_distance = 1.0
         cur_sigma = 0.5
-        ## Same as in OpenCV up to interpolation difference
+        # Same as in OpenCV up to interpolation difference
         if self.double_image:
             x = F.interpolate(input, scale_factor=2.0, mode='bilinear', align_corners=False)
             pixel_distance = 0.5
@@ -194,12 +199,12 @@ class ScalePyramid(nn.Module):
         else:
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
-    
+
     def forward(self, x: torch.Tensor) -> Tuple[  # type: ignore
             List, List, List]:
         bs, ch, h, w = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
-        
+
         sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pixel_dists = [pixel_distance * torch.ones(
                        bs,
@@ -212,6 +217,14 @@ class ScalePyramid(nn.Module):
             for level_idx in range(1, self.n_levels + self.extra_levels):
                 sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
                 ksize = self.get_kernel_size(sigma)
+                
+                # Hack, because PyTorch does not allow to pad more than original size.
+                # But for the huge sigmas, one needs huge kernel and padding...
+                
+                ksize = min(ksize, min(cur_level.size(2), cur_level.size(3)))
+                if ksize % 2 == 0:
+                    ksize += 1
+                
                 cur_level = gaussian_blur2d(
                     cur_level, (ksize, ksize), (sigma, sigma))
                 cur_sigma *= self.sigma_step
@@ -219,7 +232,7 @@ class ScalePyramid(nn.Module):
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             nextOctaveFirstLevel = F.interpolate(pyr[-1][-self.extra_levels], scale_factor=0.5,
-                                                 mode='nearest') # Nearest matches OpenCV SIFT
+                                                 mode='nearest')  # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if (min(nextOctaveFirstLevel.size(2),
@@ -241,10 +254,7 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-
 # functional api
-
-
 def pyrdown(
         input: torch.Tensor,
         border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:

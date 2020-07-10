@@ -97,7 +97,6 @@ def harris_response(input: torch.Tensor,
     return scores
 
 
-
 def gftt_response(input: torch.Tensor,
                   grads_mode: str = 'sobel',
                   sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -281,7 +280,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
     if not len(input.shape) == 5:
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
                          .format(input.shape))
-    return input[:,:,1:] - input[:,:,:-1]
+    return input[:, :, 1:] - input[:, :, :-1]
 
 
 class BlobDoG(nn.Module):
@@ -294,7 +293,7 @@ class BlobDoG(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ 
+        return self.__class__.__name__
 
     def forward(self, input: torch.Tensor,  # type: ignore
                 sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:

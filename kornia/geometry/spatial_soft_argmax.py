@@ -591,29 +591,27 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dxx = A[..., 0]
     dyy = A[..., 1]
     dss = A[..., 2]
-    dxy = 0.25 * A[..., 3] # normalization to match OpenCV implementation
-    dys = 0.25 * A[..., 4] # normalization to match OpenCV implementation
-    dxs = 0.25 * A[..., 5] # normalization to match OpenCV implementation
-    
+    dxy = 0.25 * A[..., 3]  # normalization to match OpenCV implementation
+    dys = 0.25 * A[..., 4]  # normalization to match OpenCV implementation
+    dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
+
     Hes = torch.stack([dxx, dxy, dxs,
                        dxy, dyy, dys,
                        dxs, dys, dss], dim=-1).view(-1, 3, 3)
-    
+
     # The following is needed to avoid singular cases
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
-    
+
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
     x_solved_masked, _ = torch.solve(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
-    #print (nms_mask.float().sum(), x_solved_masked)
     x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
     dx: torch.Tensor = -x_solved
 
     # Ignore ones, which are far from window center
-    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1)
-    dx[mask1, :, :] = 0
-    dx[(dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1), :, :] = 0
-    
+    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7)
+    dx.masked_fill_(mask1.expand_as(dx), 0)
+
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
