@@ -21,6 +21,16 @@ from .types import (
 
 
 class AugmentationBase(nn.Module):
+    r"""AugmentationBase base class for customized augmentation implementations. For any augmentation,
+    the implementation of "generate_parameters" and "apply_transform" are required while the
+    "compute_transformation" is only required when passing "return_transform" as True.
+
+    Args:
+        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated.
+
+    """
     def __init__(self, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
@@ -65,7 +75,7 @@ class AugmentationBase(nn.Module):
 class RandomHorizontalFlip(AugmentationBase):
 
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and concatenate the corresponding transformation matrix to the
@@ -117,7 +127,7 @@ class RandomHorizontalFlip(AugmentationBase):
 class RandomVerticalFlip(AugmentationBase):
 
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Vertically flip the tensors and concatenate the corresponding transformation matrix to the
@@ -166,7 +176,7 @@ class RandomVerticalFlip(AugmentationBase):
 class ColorJitter(AugmentationBase):
 
     r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
         brightness (float or tuple): Default value is 0
@@ -491,7 +501,7 @@ class CenterCrop(AugmentationBase):
 class RandomRotation(AugmentationBase):
 
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will rotate the tensors and concatenate the corresponding transformation matrix to the
@@ -726,11 +736,11 @@ class RandomMotionBlur(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
         >>> motion_blur(input)
-        tensor([[[[0.2724, 0.5235, 0.3796, 0.2433, 0.2210],
-                  [0.3233, 0.5494, 0.5746, 0.5407, 0.3910],
-                  [0.2101, 0.3865, 0.3072, 0.2510, 0.1902],
-                  [0.2973, 0.6174, 0.6530, 0.4360, 0.2797],
-                  [0.3804, 0.6217, 0.5535, 0.4855, 0.4249]]]])
+        tensor([[[[0.2761, 0.5200, 0.3753, 0.2423, 0.2193],
+                  [0.3275, 0.5502, 0.5738, 0.5400, 0.3883],
+                  [0.2132, 0.3857, 0.3056, 0.2520, 0.1890],
+                  [0.3016, 0.6172, 0.6487, 0.4331, 0.2770],
+                  [0.3865, 0.6221, 0.5538, 0.4862, 0.4206]]]])
     """
 
     def __init__(
@@ -753,10 +763,216 @@ class RandomMotionBlur(AugmentationBase):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         # TODO: Enable batch mode
-        return rg.motion_blur_param_generator(1, self.kernel_size, self.angle, self.direction, self.border_type)
+        return rg.random_motion_blur_generator(1, self.kernel_size, self.angle, self.direction, self.border_type)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input, params)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_motion_blur(input, params)
+
+
+class RandomSolarize(AugmentationBase):
+    r""" Solarize given tensor image or a batch of tensor images randomly.
+
+    Args:
+        thresholds (float or tuple): Default value is 0.1.
+            If float x, threshold will be generated from (0.5 - x, 0.5 + x).
+            If tuple (x, y), threshold will be generated from (x, y).
+        additions (float or tuple): Default value is 0.1.
+            If float x, addition will be generated from (-x, x).
+            If tuple (x, y), addition will be generated from (x, y).
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> solarize = RandomSolarize(0.1, 0.1)
+        >>> solarize(input)
+        tensor([[[[0.4132, 0.1412, 0.1790, 0.2226, 0.3980],
+                  [0.2754, 0.4194, 0.0130, 0.4538, 0.2771],
+                  [0.4394, 0.4923, 0.1129, 0.2594, 0.3844],
+                  [0.3909, 0.2118, 0.1094, 0.2516, 0.3728],
+                  [0.2278, 0.0000, 0.4876, 0.0353, 0.5100]]]])
+    """
+
+    def __init__(
+        self, thresholds: FloatUnionType = 0.1, additions: FloatUnionType = 0.1,
+        same_on_batch: bool = False, return_transform: bool = False
+    ) -> None:
+        super(RandomSolarize, self).__init__(return_transform)
+        self.thresholds = thresholds
+        self.additions = additions
+        self.same_on_batch = same_on_batch
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(thresholds={self.thresholds}, additions={self.additions}, " \
+            f"same_on_batch={self.same_on_batch}, return_transform={self.return_transform})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_solarize_generator(batch_shape[0], self.thresholds, self.additions, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_solarize(input, params)
+
+
+class RandomPosterize(AugmentationBase):
+    r""" Posterize given tensor image or a batch of tensor images randomly.
+
+    Args:
+        bits (int or tuple): Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+            If int x, bits will be generated from (x, 8).
+            If tuple (x, y), bits will be generated from (x, y).
+            Default value is 3.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> posterize = RandomPosterize(3)
+        >>> posterize(input)
+        tensor([[[[0.4706, 0.7529, 0.0627, 0.1255, 0.2824],
+                  [0.6275, 0.4706, 0.8784, 0.4392, 0.6275],
+                  [0.3451, 0.3765, 0.0000, 0.1569, 0.2824],
+                  [0.5020, 0.6902, 0.7843, 0.1569, 0.2510],
+                  [0.6588, 0.9098, 0.3765, 0.8471, 0.4078]]]])
+    """
+
+    def __init__(
+        self, bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
+        same_on_batch: bool = False, return_transform: bool = False
+    ) -> None:
+        super(RandomPosterize, self).__init__(return_transform)
+        self.bits = bits
+        self.same_on_batch = same_on_batch
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(bits={self.bits}, same_on_batch={self.same_on_batch}, " \
+            f"return_transform={self.return_transform})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_posterize_generator(batch_shape[0], self.bits, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_posterize(input, params)
+
+
+class RandomSharpness(AugmentationBase):
+    r""" Sharpen given tensor image or a batch of tensor images randomly.
+
+    Args:
+        sharpness (float or tuple): factor of sharpness strength. Must be above 0. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> sharpness = RandomSharpness(1.)
+        >>> sharpness(input)
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]],
+        <BLANKLINE>
+                 [[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]],
+        <BLANKLINE>
+                 [[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
+                  [0.3489, 0.7325, 0.5629, 0.6284, 0.2939],
+                  [0.5185, 0.8648, 0.9106, 0.6249, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+    """
+
+    def __init__(
+        self, sharpness: Union[float, Tuple[float, float], torch.Tensor] = 0.5, same_on_batch: bool = False,
+        return_transform: bool = False
+    ) -> None:
+        super(RandomSharpness, self).__init__(return_transform)
+        self.sharpness = sharpness
+        self.same_on_batch = same_on_batch
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(sharpness={self.sharpness}, return_transform={self.return_transform})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_sharpness_generator(batch_shape[0], self.sharpness, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_sharpness(input, params)
+
+
+class RandomEqualize(AugmentationBase):
+    r""" Equalize given tensor image or a batch of tensor images randomly.
+
+    Args:
+        p (float): Probability to equalize an image. Default value is 0.5
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples::
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> equalize = RandomEqualize(1.)
+        >>> equalize(input)
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
+                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+    """
+
+    def __init__(
+        self, p: float = 0.5, same_on_batch: bool = False, return_transform: bool = False
+    ) -> None:
+        super(RandomEqualize, self).__init__(return_transform)
+        self.p = p
+        self.same_on_batch = same_on_batch
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(p={self.p}, return_transform={self.return_transform})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_equalize(input, params)
