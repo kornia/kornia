@@ -171,12 +171,12 @@ class ScalePyramid(nn.Module):
             'double_image=' + str(self.double_image) + ')'
 
     def get_kernel_size(self, sigma: float):
-        ksize = int(2.0 * 4.0 * sigma + 1.0)  
-        
+        ksize = int(2.0 * 4.0 * sigma + 1.0)
+
         #  matches OpenCV, but may cause padding problem for small images
         #  PyTorch does not allow to pad more than original size.
         #  Therefore there is a hack in forward function
-        
+
         if ksize % 2 == 0:
             ksize += 1
         return ksize
@@ -217,14 +217,14 @@ class ScalePyramid(nn.Module):
             for level_idx in range(1, self.n_levels + self.extra_levels):
                 sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
                 ksize = self.get_kernel_size(sigma)
-                
+
                 # Hack, because PyTorch does not allow to pad more than original size.
                 # But for the huge sigmas, one needs huge kernel and padding...
-                
+
                 ksize = min(ksize, min(cur_level.size(2), cur_level.size(3)))
                 if ksize % 2 == 0:
                     ksize += 1
-                
+
                 cur_level = gaussian_blur2d(
                     cur_level, (ksize, ksize), (sigma, sigma))
                 cur_sigma *= self.sigma_step

@@ -48,7 +48,7 @@ class TestScaleSpaceDetector:
 
         inp = torch.zeros(1, 1, 33, 33, device=device)
         inp[:, :, 13:-13, 13:-13] = 1.0
-        
+
         mask = torch.zeros(1, 1, 33, 33, device=device)
         mask[:, :, 1:-1, 3:-3] = 1.0
 

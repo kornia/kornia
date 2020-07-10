@@ -117,7 +117,7 @@ class TestScalePyramid:
         PS = 16
         R = 2
         inp = torch.zeros(1, 1, PS, PS).to(device)
-        inp[..., PS//2 - R:PS//2 + R, PS//2 - R:PS//2 + R] = 1.0
+        inp[..., PS // 2 - R:PS // 2 + R, PS // 2 - R:PS // 2 + R] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
