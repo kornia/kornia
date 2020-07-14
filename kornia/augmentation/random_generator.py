@@ -10,20 +10,13 @@ from kornia.augmentation.utils import (
     _check_and_bound
 )
 
-from .types import (
-    TupleFloat,
-    UnionFloat,
-    UnionType,
-    FloatUnionType
-)
-
 
 def random_color_jitter_generator(
     batch_size: int,
-    brightness: FloatUnionType = 0.,
-    contrast: FloatUnionType = 0.,
-    saturation: FloatUnionType = 0.,
-    hue: FloatUnionType = 0.,
+    brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+    contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+    saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+    hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random color jiter parameters for a batch of images.
@@ -167,10 +160,10 @@ def random_affine_generator(
     batch_size: int,
     height: int,
     width: int,
-    degrees: UnionFloat,
-    translate: Optional[TupleFloat] = None,
-    scale: Optional[TupleFloat] = None,
-    shear: Optional[UnionFloat] = None,
+    degrees: Union[float, Tuple[float, float]],
+    translate: Optional[Tuple[float, float]] = None,
+    scale: Optional[Tuple[float, float]] = None,
+    shear: Optional[Union[float, Tuple[float, float]]] = None,
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -205,7 +198,7 @@ def random_affine_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     # check angle ranges
-    degrees_tmp: TupleFloat
+    degrees_tmp: Tuple[float, float]
     if isinstance(degrees, (float, int,)):
         if degrees < 0.:
             raise ValueError("If degrees is a single number, it must be positive.")
@@ -232,7 +225,7 @@ def random_affine_generator(
                 raise ValueError("scale values should be positive")
 
     # check shear range
-    shear_tmp: Optional[TupleFloat]
+    shear_tmp: Optional[Tuple[float, float]]
     if shear is not None:
         if isinstance(shear, float):
             if shear < 0:
@@ -251,7 +244,7 @@ def random_affine_generator(
 
 def random_rotation_generator(
     batch_size: int,
-    degrees: FloatUnionType,
+    degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
     interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -298,10 +291,10 @@ def _get_random_affine_params(
     batch_size: int,
     height: int,
     width: int,
-    degrees: TupleFloat,
-    translate: Optional[TupleFloat],
-    scales: Optional[TupleFloat],
-    shears: Optional[TupleFloat],
+    degrees: Tuple[float, float],
+    translate: Optional[Tuple[float, float]],
+    scales: Optional[Tuple[float, float]],
+    shears: Optional[Tuple[float, float]],
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -592,8 +585,8 @@ def center_crop_params_generator(
 def random_motion_blur_generator(
     batch_size: int,
     kernel_size: Union[int, Tuple[int, int]],
-    angle: UnionFloat,
-    direction: UnionFloat,
+    angle: Union[float, Tuple[float, float]],
+    direction: Union[float, Tuple[float, float]],
     border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
     same_on_batch: bool = True
 ) -> Dict[str, torch.Tensor]:
@@ -624,8 +617,8 @@ def random_motion_blur_generator(
 
 def random_solarize_generator(
     batch_size: int,
-    thresholds: FloatUnionType = 0.1,
-    additions: FloatUnionType = 0.1,
+    thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+    additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,

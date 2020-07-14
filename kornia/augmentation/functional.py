@@ -33,15 +33,10 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute
 
 from . import random_generator as rg
 from .utils import _transform_input, _validate_input_shape, _validate_input_dtype
-from .types import (
-    TupleFloat,
-    UnionFloat,
-    UnionType,
-    FloatUnionType
-)
 
 
-def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
+                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
@@ -56,7 +51,8 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     return output
 
 
-def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
+                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
@@ -71,9 +67,10 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     return output
 
 
-def color_jitter(input: torch.Tensor, brightness: FloatUnionType = 0.,
-                 contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
-                 hue: FloatUnionType = 0., return_transform: bool = False) -> UnionType:
+def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
+                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_color_jitter_generator` for details.
@@ -107,7 +104,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
 def random_perspective(input: torch.Tensor,
                        distortion_scale: float = 0.5,
                        p: float = 0.5,
-                       return_transform: bool = False) -> UnionType:
+                       return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_perspective_generator` for details.
@@ -126,12 +123,12 @@ def random_perspective(input: torch.Tensor,
 
 
 def random_affine(input: torch.Tensor,
-                  degrees: UnionFloat,
-                  translate: Optional[TupleFloat] = None,
-                  scale: Optional[TupleFloat] = None,
-                  shear: Optional[UnionFloat] = None,
+                  degrees: Union[float, Tuple[float, float]],
+                  translate: Optional[Tuple[float, float]] = None,
+                  scale: Optional[Tuple[float, float]] = None,
+                  shear: Optional[Union[float, Tuple[float, float]]] = None,
                   resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-                  return_transform: bool = False) -> UnionType:
+                  return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_affine_generator` for details.
@@ -155,7 +152,7 @@ def random_rectangle_erase(
         scale: Tuple[float, float] = (0.02, 0.33),
         ratio: Tuple[float, float] = (0.3, 3.3),
         return_transform: bool = False
-) -> UnionType:
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""
     Function that erases a random selected rectangle for each image in the batch, putting
     the value to zero.
@@ -182,7 +179,8 @@ def random_rectangle_erase(
     return output
 
 
-def random_rotation(input: torch.Tensor, degrees: FloatUnionType, return_transform: bool = False) -> UnionType:
+def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]], return_transform: bool = False
+                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_rotation_generator` for details.

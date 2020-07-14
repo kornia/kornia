@@ -11,13 +11,6 @@ from .utils import (
     _adapted_uniform,
     _infer_batch_shape
 )
-from .types import (
-    TupleFloat,
-    UnionFloat,
-    UnionType,
-    FloatUnionType,
-    BoarderUnionType
-)
 
 
 class AugmentationBase(nn.Module):
@@ -35,7 +28,7 @@ class AugmentationBase(nn.Module):
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
 
-    def infer_batch_shape(self, input: UnionType) -> torch.Size:
+    def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
         return _infer_batch_shape(input)
 
     def generate_parameters(self, input_shape: torch.Size) -> Dict[str, torch.Tensor]:
@@ -47,8 +40,8 @@ class AugmentationBase(nn.Module):
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-                return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
+    def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                return_transform: Optional[bool] = None) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -207,14 +200,14 @@ class ColorJitter(AugmentationBase):
     """
 
     def __init__(
-        self, brightness: FloatUnionType = 0., contrast: FloatUnionType = 0., saturation: FloatUnionType = 0.,
-        hue: FloatUnionType = 0., return_transform: bool = False, same_on_batch: bool = False
+        self, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(ColorJitter, self).__init__(return_transform)
-        self.brightness: FloatUnionType = brightness
-        self.contrast: FloatUnionType = contrast
-        self.saturation: FloatUnionType = saturation
-        self.hue: FloatUnionType = hue
+        self.brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = brightness
+        self.contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = contrast
+        self.saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = saturation
+        self.hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = hue
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -422,10 +415,10 @@ class RandomAffine(AugmentationBase):
     """
 
     def __init__(
-        self, degrees: UnionFloat, translate: Optional[TupleFloat] = None, scale: Optional[TupleFloat] = None,
-        shear: Optional[UnionFloat] = None, resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False
+        self, degrees: Union[float, Tuple[float, float]], translate: Optional[Tuple[float, float]] = None,
+        scale: Optional[Tuple[float, float]] = None, shear: Optional[Union[float, Tuple[float, float]]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomAffine, self).__init__(return_transform)
         self.degrees = degrees
@@ -534,7 +527,7 @@ class RandomRotation(AugmentationBase):
     # Note: Extra params, center=None, fill=0 in TorchVision
 
     def __init__(
-        self, degrees: FloatUnionType, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]], interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(return_transform)
@@ -591,7 +584,7 @@ class RandomCrop(AugmentationBase):
     """
 
     def __init__(
-        self, size: Tuple[int, int], padding: Optional[BoarderUnionType] = None, pad_if_needed: Optional[bool] = False,
+        self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None, pad_if_needed: Optional[bool] = False,
         fill: int = 0, padding_mode: str = 'constant', return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False
     ) -> None:
@@ -640,8 +633,8 @@ class RandomCrop(AugmentationBase):
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_crop(input, params)
 
-    def forward(self, input: UnionType, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-                return_transform: Optional[bool] = None) -> UnionType:  # type: ignore
+    def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+                return_transform: Optional[bool] = None) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         if type(input) == tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:
@@ -803,7 +796,7 @@ class RandomSolarize(AugmentationBase):
     """
 
     def __init__(
-        self, thresholds: FloatUnionType = 0.1, additions: FloatUnionType = 0.1,
+        self, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1, additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)

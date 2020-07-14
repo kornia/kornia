@@ -1,43 +1,13 @@
 from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
-import torch.nn as nn
-
-from kornia.constants import Resample, BorderType, pi
-from kornia.geometry import (
-    get_perspective_transform,
-    get_rotation_matrix2d,
-    get_affine_matrix2d,
-    warp_perspective,
-    rotate,
-    crop_by_boxes,
-    warp_affine,
-    hflip,
-    vflip,
-    deg2rad
-)
-from kornia.color import (
-    adjust_brightness,
-    adjust_contrast,
-    adjust_saturation,
-    adjust_hue,
-    adjust_gamma,
-    rgb_to_grayscale
-)
-from kornia.filters import motion_blur
-from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
 from .utils import _transform_input3d, _validate_input_dtype
-from .types import (
-    TupleFloat,
-    UnionFloat,
-    UnionType,
-    FloatUnionType
-)
 
 
-def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
+                   ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
@@ -52,7 +22,8 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     return output
 
 
-def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
+                   ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
@@ -67,7 +38,8 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     return output
 
 
-def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False) -> UnionType:
+def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
+                   ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
@@ -105,7 +77,7 @@ def apply_hflip3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch
     flipped: torch.Tensor = input.clone()
 
     to_flip = params['batch_prob'].to(input.device)
-    flipped[to_flip] = hflip(input[to_flip])
+    flipped[to_flip] = torch.flip(input[to_flip], [-1])
 
     return flipped
 
@@ -160,7 +132,7 @@ def apply_vflip3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch
 
     flipped: torch.Tensor = input.clone()
     to_flip = params['batch_prob'].to(input.device)
-    flipped[to_flip] = vflip(input[to_flip])
+    flipped[to_flip] = torch.flip(input[to_flip], [-2])
 
     return flipped
 

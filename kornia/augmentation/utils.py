@@ -2,14 +2,9 @@ from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
-from .types import (
-    FloatUnionType,
-    UnionType,
-    UnionShape
-)
 
 
-def _infer_batch_shape(input: UnionType) -> torch.Size:
+def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
     r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
     """
     if isinstance(input, tuple):
@@ -19,7 +14,7 @@ def _infer_batch_shape(input: UnionType) -> torch.Size:
     return tensor.shape
 
 
-def _infer_batch_shape3d(input: UnionType) -> torch.Size:
+def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
     r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
     """
     if isinstance(input, tuple):
@@ -87,7 +82,7 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _validate_shape(shape: UnionShape, required_shapes: List[str] = ["BCHW"]) -> None:
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: List[str] = ["BCHW"]) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         input: torch.Tensor
@@ -132,8 +127,8 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
         return dist.rsample(shape)
 
 
-def _check_and_bound(factor: FloatUnionType, name: str, center: float = 0.,
-                     bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
+def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
+                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
     r"""Check inputs and compute the corresponding factor bounds
     """
     factor_bound: torch.Tensor

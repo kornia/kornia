@@ -9,7 +9,6 @@ from kornia.augmentation.augmentation import AugmentationBase
 import kornia.augmentation.functional3d as F
 import kornia.augmentation.random_generator as rg
 from kornia.augmentation.utils import (
-    _adapted_uniform,
     _infer_batch_shape3d
 )
 
