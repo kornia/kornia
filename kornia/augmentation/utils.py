@@ -2,8 +2,6 @@ from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
-
-from kornia.utils.image import _to_bchw
 from .types import (
     FloatUnionType,
     UnionType,
@@ -21,6 +19,16 @@ def _infer_batch_shape(input: UnionType) -> torch.Size:
     return tensor.shape
 
 
+def _infer_batch_shape3d(input: UnionType) -> torch.Size:
+    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
+    """
+    if isinstance(input, tuple):
+        tensor = _transform_input3d(input[0])
+    else:
+        tensor = _transform_input3d(input)
+    return tensor.shape
+
+
 def _transform_input(input: torch.Tensor) -> torch.Tensor:
     r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
     Args:
@@ -29,8 +37,44 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    return _to_bchw(input)
+    if len(input.shape) not in [2, 3, 4]:
+        raise ValueError(
+            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
+
+    if len(input.shape) == 2:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 3:
+        input = input.unsqueeze(0)
+
+    return input
+
+
+def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
+    r"""Reshape an input tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
+    Args:
+        input: torch.Tensor
+
+    Returns:
+        torch.Tensor
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    if len(input.shape) not in [3, 4, 5]:
+        raise ValueError(
+            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}")
+
+    if len(input.shape) == 3:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 4:
+        input = input.unsqueeze(0)
+
+    return input
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:

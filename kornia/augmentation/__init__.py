@@ -1,4 +1,5 @@
 from .augmentation import *
+from .augmentation3d import *
 from kornia.color.normalize import (
     Normalize,
     Denormalize
@@ -10,7 +11,10 @@ __all__ = [
     "RandomErasing",
     "RandomGrayscale",
     "RandomHorizontalFlip",
+    "RandomHorizontalFlip3D",
     "RandomVerticalFlip",
+    "RandomVerticalFlip3D",
+    "RandomDepthicalFlip3D",
     "RandomPerspective",
     "RandomResizedCrop",
     "RandomRotation",
@@ -21,5 +25,5 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "Normalize",
-    "Denormalize"
+    "Denormalize",
 ]
