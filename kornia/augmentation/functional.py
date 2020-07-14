@@ -68,7 +68,8 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 
 
 def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-                 contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
                  hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
@@ -179,8 +180,8 @@ def random_rectangle_erase(
     return output
 
 
-def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]], return_transform: bool = False
-                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+                    return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
     See :func:`~kornia.augmentation.random_generator.random_rotation_generator` for details.

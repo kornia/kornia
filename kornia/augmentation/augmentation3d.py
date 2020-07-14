@@ -5,10 +5,10 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
-from kornia.augmentation.augmentation import AugmentationBase
-import kornia.augmentation.functional3d as F
-import kornia.augmentation.random_generator as rg
-from kornia.augmentation.utils import (
+from .augmentation import AugmentationBase
+from . import functional3d as F
+from . import .random_generator as rg
+from .utils import (
     _infer_batch_shape3d
 )
 

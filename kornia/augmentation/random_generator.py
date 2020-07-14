@@ -5,7 +5,7 @@ import math
 import torch
 
 from kornia.constants import Resample, BorderType
-from kornia.augmentation.utils import (
+from .utils import (
     _adapted_uniform,
     _check_and_bound
 )
