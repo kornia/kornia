@@ -131,7 +131,7 @@ class ScaleSpaceDetector(nn.Module):
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
-                if int(self.scale_pyr.extra_levels) % 2 != 0:
+                if self.scale_pyr.extra_levels % 2 != 0:  # type: ignore
                     oct_resp = oct_resp[:, :, :-1]
 
             if mask is not None:
@@ -159,7 +159,9 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, self.scale_pyr.n_levels)
+            max_coords_best = _scale_index_to_scale(max_coords_best,
+                                                    sigmas_oct,
+                                                    self.scale_pyr.n_levels)  # type: ignore
 
             # Create local affine frames (LAFs)
             rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)

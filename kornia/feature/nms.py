@@ -36,7 +36,7 @@ class NonMaximaSuppression2d(nn.Module):
 
     @staticmethod
     def _compute_zero_padding2d(
-            kernel_size: Tuple[int, int, int, int]) -> Tuple[int, int]:
+            kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
         assert isinstance(kernel_size, tuple), type(kernel_size)
         assert len(kernel_size) == 2, kernel_size
 
@@ -67,14 +67,13 @@ class NonMaximaSuppression3d(nn.Module):
     def __init__(self, kernel_size: Tuple[int, int, int]):
         super(NonMaximaSuppression3d, self).__init__()
         self.kernel_size: Tuple[int, int, int] = kernel_size
-        self.padding: Tuple[int,
-                            int,
-                            int] = self._compute_zero_padding3d(kernel_size)
+        self.padding: Tuple[int, int, int,
+                            int, int, int] = self._compute_zero_padding3d(kernel_size)
         self.kernel = _get_nms_kernel3d(*kernel_size)
 
     @staticmethod
     def _compute_zero_padding3d(
-            kernel_size: Tuple[int, int, int]) -> Tuple[int, int, int]:
+            kernel_size: Tuple[int, int, int]) -> Tuple[int, int, int, int, int, int]:
         assert isinstance(kernel_size, tuple), type(kernel_size)
         assert len(kernel_size) == 3, kernel_size
 

@@ -152,7 +152,7 @@ class ScalePyramid(nn.Module):
         super(ScalePyramid, self).__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
-        self.extra_levels = 3
+        self.extra_levels: int = 3
         self.init_sigma = init_sigma
         self.min_size = min_size
         self.border = min_size // 2 - 1
