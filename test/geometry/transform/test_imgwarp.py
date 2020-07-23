@@ -2,7 +2,6 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -185,6 +184,11 @@ class TestWarpPerspective:
                                                (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
 
+        # check jit
+        patch_warped_jit = kornia.jit.warp_perspective(patch, dst_trans_src,
+                                                       (dst_h, dst_w))
+        assert_allclose(patch_warped, patch_warped_jit)
+
     def test_crop_center_resize(self, device):
         # generate input data
         dst_h, dst_w = 4, 4
@@ -228,6 +232,11 @@ class TestWarpPerspective:
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
                                                (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
+
+        # check jit
+        patch_warped_jit = kornia.jit.warp_perspective(patch, dst_trans_src,
+                                                       (dst_h, dst_w))
+        assert_allclose(patch_warped, patch_warped_jit)
 
 
 class TestWarpAffine:

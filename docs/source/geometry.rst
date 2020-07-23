@@ -9,6 +9,7 @@ kornia.geometry
    geometry.camera
    geometry.conversions
    geometry.depth
+   geometry.epipolar
    geometry.linalg
    geometry.transform
    geometry.warp
