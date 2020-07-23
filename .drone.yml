@@ -1,0 +1,17 @@
+kind: pipeline
+type: docker
+name: default
+
+steps:
+- name: common
+  image: python:3
+  commands:
+      - ./setup_dev_env.sh
+      - . path.bash.inc
+      - make install
+      - make lint
+      - make mypy
+      - make build-docs
+      - make test-cpu
+      - bash < (curl -s https://codecov.io/bash)
+      - echo "[END]"
