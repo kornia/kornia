@@ -131,7 +131,7 @@ class ScaleSpaceDetector(nn.Module):
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
-                if self.scale_pyr.extra_levels % 2 != 0:
+                if int(self.scale_pyr.extra_levels) % 2 != 0:
                     oct_resp = oct_resp[:, :, :-1]
 
             if mask is not None:

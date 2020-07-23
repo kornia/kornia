@@ -36,7 +36,7 @@ class NonMaximaSuppression2d(nn.Module):
 
     @staticmethod
     def _compute_zero_padding2d(
-            kernel_size: Tuple[int, int]) -> Tuple[int, int]:
+            kernel_size: Tuple[int, int, int, int]) -> Tuple[int, int]:
         assert isinstance(kernel_size, tuple), type(kernel_size)
         assert len(kernel_size) == 2, kernel_size
 
