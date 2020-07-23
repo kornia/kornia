@@ -1,0 +1,18 @@
+kind: pipeline
+type: docker
+name: default
+
+steps:
+- name: test
+  image: python
+  commands:
+      - python --version
+      - ./setup_dev_env.sh
+
+trigger:
+  branch:
+    - master
+  event:
+    include:
+    - push
+    - pull_request
