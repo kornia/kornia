@@ -79,6 +79,7 @@ from kornia.filters import (
     median_blur,
     motion_blur,
     filter2D,
+    filter3D,
 )
 from kornia.losses import (
     ssim,
