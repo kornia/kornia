@@ -40,6 +40,10 @@ class TestBoundingBoxInferring:
         h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
         assert (h, w) == (expected_height, expected_width)
 
+    @pytest.mark.skip(reason="Crashes with pytorch internal error")
+    #  RuntimeError: isDifferentiableType(variable.scalar_type()) INTERNAL ASSERT FAILED at
+    # "/opt/conda/conda-bld/pytorch_1595629417679/work/torch/csrc/autograd/functions/utils.h":59,
+    # please report a bug to PyTorch.
     def test_gradcheck(self, device):
         boxes = torch.tensor([[
             [1., 1.],

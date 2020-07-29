@@ -491,5 +491,5 @@ def get_motion_kernel2d(kernel_size: int, angle: float, direction: float = 0.) -
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, torch.tensor(angle))
     kernel = kernel[0][0]
-    kernel /= kernel.sum()
+    kernel = kernel / kernel.sum()
     return kernel
