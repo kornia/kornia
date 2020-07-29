@@ -17,6 +17,8 @@ Detectors
 .. autofunction:: gftt_response
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
+.. autofunction:: dog_response
+
 
 Descriptors
 -----------
@@ -54,6 +56,8 @@ Module
 .. autoclass:: BlobHessian
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
+.. autoclass:: BlobDoG
+
 
 .. autoclass:: ScaleSpaceDetector
    :members: forward
