@@ -73,14 +73,9 @@ class clean(distutils.command.clean.clean):
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
-
-pytorch_dep = 'torch'
-if os.getenv('PYTORCH_VERSION'):
-    pytorch_dep += "==" + os.getenv('PYTORCH_VERSION')
-
 requirements = [
     'numpy',
-    pytorch_dep,
+    'torch>=1.5.0',
 ]
 
 
