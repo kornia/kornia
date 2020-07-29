@@ -609,8 +609,9 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dx: torch.Tensor = -x_solved
 
     # Ignore ones, which are far from window center
-    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7)
-    dx.masked_fill_(mask1.expand_as(dx), 0)
+    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] <= 0.7)
+    #  dx.masked_fill_(mask1.expand_as(dx), 0) -- more efficient, but fails gradcheck
+    dx = dx.clone() * mask1.expand_as(dx).to(dx.dtype)
 
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
