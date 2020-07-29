@@ -418,7 +418,7 @@ class TestConvQuadInterp3d:
     def test_gradcheck(self, device):
         input = 10 * torch.rand(1, 2, 3, 5, 5).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.ConvQuadInterp3d(),
+        assert gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
                          (input), raise_exception=True, nondet_tol=1e-4)
 
     def test_diag(self, device):
