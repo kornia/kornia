@@ -3,70 +3,46 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-import kornia
-from kornia.geometry.warp.homography_warper import homography_warp
+from kornia.geometry.conversions import deg2rad
+from kornia.geometry.warp import (
+    normalize_homography, homography_warp
+)
+
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
-    deg2rad, normalize_pixel_coordinates
+    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
 )
+from kornia.testing import check_is_tensor
 
 __all__ = [
     "warp_perspective",
     "warp_affine",
     "get_perspective_transform",
     "get_rotation_matrix2d",
-    "normal_transform_pixel",
     "remap",
     "invert_affine_transform",
-    "angle_to_rotation_matrix"
+    "angle_to_rotation_matrix",
+    "get_affine_matrix2d"
 ]
 
 
-def normal_transform_pixel(height, width):
-
-    tr_mat = torch.Tensor([[1.0, 0.0, -1.0],
-                           [0.0, 1.0, -1.0],
-                           [0.0, 0.0, 1.0]])  # 1x3x3
-
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
-
-    tr_mat = tr_mat.unsqueeze(0)
-
-    return tr_mat
-
-
-def dst_norm_to_dst_norm(dst_pix_trans_src_pix, dsize_src, dsize_dst):
-    # source and destination sizes
-    src_h, src_w = dsize_src
-    dst_h, dst_w = dsize_dst
-    # the devices and types
-    device = dst_pix_trans_src_pix.device
-    dtype = dst_pix_trans_src_pix.dtype
-    # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix = normal_transform_pixel(
-        src_h, src_w).to(device).to(dtype)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix = normal_transform_pixel(
-        dst_h, dst_w).to(device).to(dtype)
-    # compute chain transformations
-    dst_norm_trans_src_norm = torch.matmul(
-        dst_norm_trans_dst_pix, torch.matmul(
-            dst_pix_trans_src_pix, src_pix_trans_src_norm))
-    return dst_norm_trans_src_norm
-
-
-def transform_warp_impl(src, dst_pix_trans_src_pix, dsize_src, dsize_dst):
+def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
+                        dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
+                        grid_mode: str, padding_mode: str,
+                        align_corners: bool) -> torch.Tensor:
     """Compute the transform in normalized cooridnates and perform the warping.
     """
-    dst_norm_trans_dst_norm = dst_norm_to_dst_norm(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
-    return homography_warp(src, torch.inverse(
-        dst_norm_trans_dst_norm), dsize_dst)
+
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode,
+                           align_corners, True)
 
 
-def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
-                     border_value=0):
+def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
+                     flags: str = 'bilinear', border_mode: str = 'zeros',
+                     align_corners: bool = False) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
@@ -82,6 +58,12 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
         src (torch.Tensor): input image.
         M (Tensor): transformation matrix.
         dsize (tuple): size of the output image (height, width).
+        flags (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        border_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         Tensor: the warped input image.
@@ -91,31 +73,29 @@ def warp_perspective(src, M, dsize, flags='bilinear', border_mode=None,
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://github.com/arraiyopensource/kornia/
-       blob/master/docs/source/warp_perspective.ipynb>`_.
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/warp_perspective.html>`_.
     """
-    if not torch.is_tensor(src):
-        raise TypeError("Input src type is not a torch.Tensor. Got {}"
-                        .format(type(src)))
-    if not torch.is_tensor(M):
-        raise TypeError("Input M type is not a torch.Tensor. Got {}"
-                        .format(type(M)))
+    check_is_tensor(src)
+    check_is_tensor(M)
+
     if not len(src.shape) == 4:
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
                          .format(src.shape))
+
     if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
+
     # launches the warper
-    return transform_warp_impl(src, M, (src.shape[-2:]), dsize)
+    h, w = src.shape[-2:]
+    return transform_warp_impl(src, M, (h, w), dsize, flags, border_mode, align_corners)
 
 
-def warp_affine(src: torch.Tensor,
-                M: torch.Tensor,
-                dsize: Tuple[int,
-                             int],
-                flags: Optional[str] = 'bilinear',
-                padding_mode: Optional[str] = 'zeros') -> torch.Tensor:
+def warp_affine(src: torch.Tensor, M: torch.Tensor,
+                dsize: Tuple[int, int], flags: str = 'bilinear',
+                padding_mode: str = 'zeros',
+                align_corners: bool = False) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
     The function warp_affine transforms the source tensor using
@@ -129,10 +109,12 @@ def warp_affine(src: torch.Tensor,
         src (torch.Tensor): input tensor of shape :math:`(B, C, H, W)`.
         M (torch.Tensor): affine transformation of shape :math:`(B, 2, 3)`.
         dsize (Tuple[int, int]): size of the output image (height, width).
-        mode (Optional[str]): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        padding_mode (Optional[str]): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool): mode for grid_generation. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
 
     Returns:
         torch.Tensor: the warped tensor.
@@ -141,28 +123,39 @@ def warp_affine(src: torch.Tensor,
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-       See a working example `here <https://github.com/arraiyopensource/
-       kornia/blob/master/docs/source/warp_affine.ipynb>`__.
+       See a working example `here <https://kornia.readthedocs.io/en/latest/
+       tutorials/warp_affine.html>`__.
     """
     if not torch.is_tensor(src):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"
                         .format(type(src)))
+
     if not torch.is_tensor(M):
         raise TypeError("Input M type is not a torch.Tensor. Got {}"
                         .format(type(M)))
+
     if not len(src.shape) == 4:
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
                          .format(src.shape))
+
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
-                         .format(src.shape))
+                         .format(M.shape))
+    B, C, H, W = src.size()
+    dsize_src = (H, W)
+    out_size = dsize
     # we generate a 3x3 transformation matrix from 2x3 affine
-    M_3x3: torch.Tensor = F.pad(M, [0, 0, 0, 1, 0, 0],
-                                mode="constant", value=0)
-    M_3x3[:, 2, 2] += 1.0
-
-    # launches the warper
-    return transform_warp_impl(src, M_3x3, (src.shape[-2:]), dsize)
+    M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
+        M_3x3, dsize_src, out_size)
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
+                         [B, C, out_size[0], out_size[1]],
+                         align_corners=align_corners)
+    return F.grid_sample(src, grid,  # type: ignore
+                         align_corners=align_corners,
+                         mode=flags,
+                         padding_mode=padding_mode)
 
 
 def get_perspective_transform(src, dst):
@@ -216,7 +209,7 @@ def get_perspective_transform(src, dst):
         raise ValueError("Inputs must have the same shape. Got {}"
                          .format(dst.shape))
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Got {}"
+        raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 
     def ax(p, q):
@@ -271,8 +264,7 @@ def get_perspective_transform(src, dst):
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
-    """
-    Creates a rotation matrix out of angles in degrees
+    r"""Create a rotation matrix out of angles in degrees.
     Args:
         angle: (torch.Tensor): tensor of angles in degrees, any shape.
 
@@ -287,7 +279,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
     """
-    ang_rad = kornia.deg2rad(angle)
+    ang_rad = deg2rad(angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
     sin_a: torch.Tensor = torch.sin(ang_rad)
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
@@ -359,7 +351,7 @@ def get_rotation_matrix2d(
         raise ValueError("Input scale must be a B tensor. Got {}"
                          .format(scale.shape))
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Got {}"
+        raise ValueError("Inputs must have same batch size dimension. Got center {}, angle {} and scale {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
     scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
@@ -372,16 +364,18 @@ def get_rotation_matrix2d(
 
     # create output tensor
     batch_size: int = center.shape[0]
+    one = torch.tensor(1.).to(center.device)
     M: torch.Tensor = torch.zeros(
         batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0:2, 0:2] = scaled_rotation
-    M[..., 0, 2] = (torch.tensor(1.) - alpha) * x - beta * y
-    M[..., 1, 2] = beta * x + (torch.tensor(1.) - alpha) * y
+    M[..., 0, 2] = (one - alpha) * x - beta * y
+    M[..., 1, 2] = beta * x + (one - alpha) * y
     return M
 
 
 def remap(tensor: torch.Tensor, map_x: torch.Tensor,
-          map_y: torch.Tensor) -> torch.Tensor:
+          map_y: torch.Tensor,
+          align_corners: bool = False) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
     The function remap transforms the source tensor using the specified map:
@@ -396,6 +390,8 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
           The tensor must be in the shape of (B, H, W).
         map_y (torch.Tensor): the flow in the y-direction in pixel coordinates.
           The tensor must be in the shape of (B, H, W).
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         torch.Tensor: the warped tensor.
@@ -432,7 +428,7 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
     map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
 
     # warp ans return
-    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm)
+    tensor_warped: torch.Tensor = F.grid_sample(tensor, map_xy_norm, align_corners=align_corners)  # type: ignore
     return tensor_warped
 
 
@@ -451,7 +447,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2×3 matrix of the same type as M.
 
     Args:
-        matrix (torch.Tensor): original affine transform. The tensor musth be
+        matrix (torch.Tensor): original affine transform. The tensor must be
           in the shape of (B, 2, 3).
 
     Return:
@@ -460,11 +456,36 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     if not torch.is_tensor(matrix):
         raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
                         .format(type(matrix)))
-    if not (len(matrix.shape) == 3 or matrix.shape[-2:] == (2, 3)):
+    if not (len(matrix.shape) == 3 and matrix.shape[-2:] == (2, 3)):
         raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
                          .format(matrix.shape))
-    matrix_tmp: torch.Tensor = F.pad(matrix, [0, 0, 0, 1], "constant", 0.0)
-    matrix_tmp[..., 2, 2] += 1.0
-
+    matrix_tmp: torch.Tensor = convert_affinematrix_to_homography(matrix)
     matrix_inv: torch.Tensor = torch.inverse(matrix_tmp)
     return matrix_inv[..., :2, :3]
+
+
+def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angle: torch.Tensor,
+                        sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Composes affine matrix Bx3x3 from the components
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
+    transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
+    transform[..., 2] += translations  # tx/ty
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
+
+    if sx is not None:
+        x, y = torch.split(center, 1, dim=-1)
+        x = x.view(-1)
+        y = y.view(-1)
+        sx_tan = torch.tan(sx)  # type: ignore
+        sy_tan = torch.tan(sy)  # type: ignore
+        zeros = torch.zeros_like(sx)  # type: ignore
+        ones = torch.ones_like(sx)  # type: ignore
+        shear_mat = torch.stack([ones, -sx_tan, sx_tan * x,  # type: ignore   # noqa: E241
+                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
+                                dim=-1).view(-1, 2, 3)
+        shear_mat = convert_affinematrix_to_homography(shear_mat)
+        transform_h = transform_h @ shear_mat
+    return transform_h

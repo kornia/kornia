@@ -1,10 +1,20 @@
 from .responses import (CornerHarris,
                         CornerGFTT,
                         BlobHessian,
+                        BlobDoG,
                         harris_response,
                         gftt_response,
-                        hessian_response)
-from .nms import NonMaximaSuppression2d, non_maxima_suppression2d
+                        hessian_response,
+                        dog_response)
+from .nms import (NonMaximaSuppression2d,
+                  nms2d,
+                  NonMaximaSuppression3d,
+                  nms3d)
+
+# Backward compatibility
+from .nms import nms2d as non_maxima_suppression2d
+from .nms import nms3d as non_maxima_suppression3d
+
 from .laf import (extract_patches_from_pyramid,
                   extract_patches_simple,
                   normalize_laf,
@@ -22,19 +32,27 @@ from .laf import (extract_patches_from_pyramid,
                   laf_to_three_points,
                   laf_from_three_points)
 from .siftdesc import SIFTDescriptor
+from .hardnet import HardNet
+from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
 
 __all__ = [
+    "nms2d",
+    "nms3d",
     "non_maxima_suppression2d",
+    "non_maxima_suppression3d",
     "harris_response",
     "gftt_response",
     "hessian_response",
+    "dog_response",
     "NonMaximaSuppression2d",
+    "NonMaximaSuppression3d",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
+    "BlobDoG",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",
@@ -47,6 +65,7 @@ __all__ = [
     "get_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
+    "HardNet",
     "PassLAF",
     "ScaleSpaceDetector",
     "LAFAffineShapeEstimator",

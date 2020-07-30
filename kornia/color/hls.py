@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-import cv2
 import kornia
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 class HlsToRgb(nn.Module):
@@ -24,6 +23,8 @@ class HlsToRgb(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -57,7 +58,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] * 360 / (2 * pi)
+    h: torch.Tensor = image[..., 0, :, :] * 360 / (2 * pi.to(image.device))
     l: torch.Tensor = image[..., 1, :, :]
     s: torch.Tensor = image[..., 2, :, :]
 
@@ -96,9 +97,11 @@ class RgbToHls(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hsv = kornia.color.RgbToHls()
-        >>> output = hsv(input)  # 2x3x4x5
+        >>> hls = kornia.color.RgbToHls()
+        >>> output = hls(input)  # 2x3x4x5
 
     """
 
@@ -151,7 +154,7 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
     hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
 
-    h: torch.Tensor = 2. * pi * (60. * hi) / 360.  # hue [0, 2*pi]
+    h: torch.Tensor = 2. * pi.to(image.device) * (60. * hi) / 360.  # hue [0, 2*pi]
 
     image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
 

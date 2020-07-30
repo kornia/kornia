@@ -95,6 +95,126 @@ def get_diff_kernel_3x3() -> torch.Tensor:
     ])
 
 
+def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [-0.5, 0.0, 0.5],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, -0.5, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.5, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, -0.5, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.5, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
+
+def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns a first order derivative kernel of 3x3x3"""
+    kernel: torch.Tensor = torch.tensor([[[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [1.0, -2.0, 1.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 1.0, 0.0],
+                                           [0.0, -2.0, 0.0],
+                                           [0.0, 1.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, -2.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[1.0, 0.0, -1.0],
+                                           [0.0, 0.0, 0.0],
+                                           [-1.0, 0.0, 1.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         [[[0.0, 1.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, -1.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, -1.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 1.0, 0.0]],
+                                          ],
+                                         [[[0.0, 0.0, 0.0],
+                                           [1.0, 0.0, -1.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.0]],
+
+                                          [[0.0, 0.0, 0.0],
+                                           [-1.0, 0.0, 1.0],
+                                           [0.0, 0.0, 0.0]],
+                                          ],
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
+
 def get_sobel_kernel2d() -> torch.Tensor:
     kernel_x: torch.Tensor = get_sobel_kernel_3x3()
     kernel_y: torch.Tensor = kernel_x.transpose(0, 1)
@@ -146,6 +266,26 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
         kernel = get_diff_kernel2d()
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel2d_2nd_order()
+    else:
+        raise NotImplementedError("")
+    return kernel
+
+
+def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients,
+    using one of the following operators: sobel, diff"""
+    if mode not in ['sobel', 'diff']:
+        raise TypeError("mode should be either sobel\
+                         or diff. Got {}".format(mode))
+    if order not in [1, 2]:
+        raise TypeError("order should be either 1 or 2\
+                         Got {}".format(order))
+    if mode == 'sobel':
+        raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
+    elif mode == 'diff' and order == 1:
+        kernel = get_diff_kernel3d(device, dtype)
+    elif mode == 'diff' and order == 2:
+        kernel = get_diff_kernel3d_2nd_order(device, dtype)
     else:
         raise NotImplementedError("")
     return kernel
@@ -304,11 +444,11 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     return kernel_2d
 
 
-def get_motion_kernel2d(ksize: int, angle: float, direction: float = 0.) -> torch.Tensor:
+def get_motion_kernel2d(kernel_size: int, angle: float, direction: float = 0.) -> torch.Tensor:
     r"""Function that returns motion blur filter.
 
     Args:
-        ksize (int): motion kernel width and height. It should be odd and positive.
+        kernel_size (int): motion kernel width and height. It should be odd and positive.
         angle (float): angle of the motion blur in degrees (anti-clockwise rotation).
         direction (float): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -333,21 +473,23 @@ def get_motion_kernel2d(ksize: int, angle: float, direction: float = 0.) -> torc
                     [0.1920, 0.3194, 0.0804],
                     [0.2195, 0.0743, 0.0000]])
     """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize < 3:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
+
     if not isinstance(angle, float):
         raise TypeError("angle must be a float")
+
     if not isinstance(direction, float):
         raise TypeError("direction must be a float")
 
-    kernel_size = (ksize, ksize)
+    kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(torch.tensor(direction), -1., 1.).item() + 1.) / 2.
-    kernel = torch.zeros(kernel_size, dtype=torch.float)
-    kernel[kernel_size[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_size[0])
+    kernel = torch.zeros(kernel_tuple, dtype=torch.float)
+    kernel[kernel_tuple[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_tuple[0])
     kernel = kernel.unsqueeze(0).unsqueeze(0)
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, torch.tensor(angle))
     kernel = kernel[0][0]
-    kernel /= kernel.sum()
+    kernel = kernel / kernel.sum()
     return kernel

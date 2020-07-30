@@ -1,32 +1,39 @@
-.PHONY: test test-cpu test-gpu lint mypy build-docs install uninstall FORCE
+.PHONY: test test-cpu test-cuda lint mypy build-docs install uninstall FORCE
 
-test: mypy lint test-cpu
+test: mypy lint build-docs test-all
+
+test-all: FORCE
+	pytest -v --device all --dtype all --cov=kornia test/ --flake8 --mypy
 
 test-cpu: FORCE
-	pytest --typetest cpu -v
+	pytest -v --device cpu --dtype all --cov=kornia test/ --flake8 --mypy
 
-test-cpu-cov: FORCE
-	pytest --typetest cpu -v --cov=kornia test
-
-test-gpu: FORCE
-	pytest --typetest cuda -v
+test-cuda: FORCE
+	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
 lint: FORCE
-	python verify.py --check lint
+	pytest -v --flake8 -m flake8
+
+mypy: FORCE
+	pytest -v --mypy -m mypy test/
 
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
-mypy: FORCE
-	python verify.py --check mypy
+docstyle: FORCE
+	pydocstyle kornia/
 
 build-docs: FORCE
-	python verify.py --check build-docs
+	cd docs; make clean html
 
 install: FORCE
 	python setup.py install
+	
+install-dev: FORCE
+	python setup.py develop
+
+benchmark: FORCE
+	for f in test/performance/*.py  ; do python -utt $${f}; done
 
 uninstall: FORCE
 	pip uninstall kornia
-
-FORCE:

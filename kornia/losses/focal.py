@@ -25,17 +25,23 @@ def focal_loss(
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
-    if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
+    if not len(input.shape) >= 2:
+        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}"
                          .format(input.shape))
 
-    if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError("input and target shapes must be the same. Got: {}"
-                         .format(input.shape, input.shape))
+    if input.size(0) != target.size(0):
+        raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'
+                         .format(input.size(0), target.size(0)))
+
+    n = input.size(0)
+    out_size = (n,) + input.size()[2:]
+    if target.size()[1:] != input.size()[2:]:
+        raise ValueError('Expected target size {}, got {}'.format(
+            out_size, target.size()))
 
     if not input.device == target.device:
         raise ValueError(
-            "input and target must be in the same device. Got: {}" .format(
+            "input and target must be in the same device. Got: {} and {}" .format(
                 input.device, target.device))
 
     # compute softmax over the classes axis
@@ -86,14 +92,14 @@ class FocalLoss(nn.Module):
          in the output, ‘sum’: the output will be summed. Default: ‘none’.
 
     Shape:
-        - Input: :math:`(N, C, H, W)` where C = number of classes.
-        - Target: :math:`(N, H, W)` where each value is
+        - Input: :math:`(N, C, *)` where C = number of classes.
+        - Target: :math:`(N, *)` where each value is
           :math:`0 ≤ targets[i] ≤ C−1`.
 
     Examples:
         >>> N = 5  # num_classes
-        >>> args = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
-        >>> loss = kornia.losses.FocalLoss(*args)
+        >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
+        >>> loss = kornia.losses.FocalLoss(**kwargs)
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = loss(input, target)

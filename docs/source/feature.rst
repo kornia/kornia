@@ -1,12 +1,35 @@
 kornia.feature
-=====================
+==============
 
 .. currentmodule:: kornia.feature
 
+Non Maxima Suppression
+----------------------
+
 .. autofunction:: non_maxima_suppression2d
+.. autofunction:: non_maxima_suppression3d
+.. autofunction:: nms2d
+.. autofunction:: nms3d
+
+Detectors
+---------
+
 .. autofunction:: gftt_response
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
+.. autofunction:: dog_response
+
+
+Descriptors
+-----------
+
+.. autoclass:: SIFTDescriptor
+.. autoclass:: HardNet
+.. autoclass:: SOSNet
+
+Local Affine Frames (LAF)
+-------------------------
+
 .. autofunction:: extract_patches_from_pyramid
 .. autofunction:: extract_patches_simple
 .. autofunction:: normalize_laf
@@ -16,13 +39,26 @@ kornia.feature
 .. autofunction:: make_upright
 .. autofunction:: scale_laf
 .. autofunction:: get_laf_scale
+.. autofunction:: get_laf_center
+.. autofunction:: get_laf_orientation
+.. autofunction:: laf_from_center_scale_ori
+.. autofunction:: laf_is_inside_image
+.. autofunction:: laf_to_three_points
+.. autofunction:: laf_from_three_points
 .. autofunction:: raise_error_if_laf_is_not_valid
 
+
+Module
+------
+
 .. autoclass:: NonMaximaSuppression2d
+.. autoclass:: NonMaximaSuppression3d
 .. autoclass:: BlobHessian
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
-.. autoclass:: SIFTDescriptor
+.. autoclass:: BlobDoG
+
+
 .. autoclass:: ScaleSpaceDetector
    :members: forward
 .. autoclass:: PassLAF

@@ -64,3 +64,29 @@ def compute_patch_error(x, y, h, w):
     """Compute the absolute error between patches.
     """
     return torch.abs(x - y)[..., h // 4:-h // 4, w // 4:-w // 4].mean()
+
+
+def check_is_tensor(obj):
+    """Checks whether the supplied object is a tensor.
+    """
+    if not isinstance(obj, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(obj)))
+
+
+def create_rectified_fundamental_matrix(batch_size):
+    """Creates a batch of rectified fundamental matrices of shape Bx3x3
+    """
+    F_rect = torch.tensor([[0., 0., 0.],
+                           [0., 0., -1.],
+                           [0., 1., 0.]]).view(1, 3, 3)
+    F_repeat = F_rect.repeat(batch_size, 1, 1)
+    return F_repeat
+
+
+def create_random_fundamental_matrix(batch_size, std_val=1e-3):
+    """Creates a batch of random fundamental matrices of shape Bx3x3
+    """
+    F_rect = create_rectified_fundamental_matrix(batch_size)
+    H_left = create_random_homography(batch_size, 3, std_val)
+    H_right = create_random_homography(batch_size, 3, std_val)
+    return H_left.permute(0, 2, 1) @ F_rect @ H_right

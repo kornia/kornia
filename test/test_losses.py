@@ -2,7 +2,6 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import math
 import torch
@@ -39,6 +38,17 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
+        assert (
+            kornia.losses.focal_loss(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
+            ).shape == ()
+        )
+
+    def test_smoke_mean_flat(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes).to(device)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
         assert (
             kornia.losses.focal_loss(
                 logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
@@ -197,7 +207,7 @@ class TestSSIMLoss:
 
     def test_gradcheck(self, device):
         # input data
-        window_size = 5
+        window_size = 3
         img1 = torch.rand(1, 1, 10, 16).to(device)
         img2 = torch.rand(1, 1, 10, 16).to(device)
 
@@ -265,6 +275,22 @@ class TestDivergenceLoss:
         target = utils.tensor_to_gradcheck_var(target)  # to var
         assert gradcheck(kornia.losses.js_div_loss_2d, (input, target),
                          raise_exception=True)
+
+    def test_jit_trace_kl(self, device, dtype):
+        input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        args = (input, target)
+        op = kornia.losses.kl_div_loss_2d
+        op_jit = torch.jit.trace(op, args)
+        assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+
+    def test_jit_trace_js(self, device, dtype):
+        input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
+        args = (input, target)
+        op = kornia.losses.js_div_loss_2d
+        op_jit = torch.jit.trace(op, args)
+        assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
 
 class TestTotalVariation:

@@ -59,7 +59,8 @@ class GaussianBlur2d(nn.Module):
 ######################
 # functional interface
 ######################
-
+# TODO: In terms of functional API, there should not be any initialization of an nn.Module.
+#       This logic is reversed.
 
 def gaussian_blur2d(
         input: torch.Tensor,

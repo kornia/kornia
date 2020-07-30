@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from kornia.geometry import pi
+from kornia.constants import pi
 
 
 class HsvToRgb(nn.Module):
@@ -19,6 +19,8 @@ class HsvToRgb(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -52,15 +54,16 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] / (2 * pi)
+    h: torch.Tensor = image[..., 0, :, :] / (2 * pi.to(image.device))
     s: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
 
     hi: torch.Tensor = torch.floor(h * 6) % 6
     f: torch.Tensor = ((h * 6) % 6) - hi
-    p: torch.Tensor = v * (torch.tensor(1.) - s)
-    q: torch.Tensor = v * (torch.tensor(1.) - f * s)
-    t: torch.Tensor = v * (torch.tensor(1.) - (torch.tensor(1.) - f) * s)
+    one: torch.Tensor = torch.tensor(1.).to(image.device)
+    p: torch.Tensor = v * (one - s)
+    q: torch.Tensor = v * (one - f * s)
+    t: torch.Tensor = v * (one - (one - f) * s)
 
     out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3)
 
@@ -91,6 +94,8 @@ class RgbToHsv(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> hsv = kornia.color.RgbToHsv()
         >>> output = hsv(input)  # 2x3x4x5
@@ -154,5 +159,5 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     h = (h / 6.0) % 1.0
 
-    h = 2 * pi * h
+    h = 2 * pi.to(image.device) * h
     return torch.stack([h, s, v], dim=-3)
