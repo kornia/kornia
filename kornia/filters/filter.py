@@ -80,14 +80,9 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
 
-    if not len(kernel.shape) == 3:
+    if not len(kernel.shape) == 3 and kernel.shape[0] != 1:
         raise ValueError("Invalid kernel shape, we expect 1xHxW. Got: {}"
                          .format(kernel.shape))
-
-    borders_list: List[str] = ['constant', 'reflect', 'replicate', 'circular']
-    if border_type not in borders_list:
-        raise ValueError("Invalid border_type, we expect the following: {0}."
-                         "Got: {1}".format(borders_list, border_type))
 
     # prepare kernel
     b, c, h, w = input.shape
@@ -182,14 +177,9 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
                          .format(input.shape))
 
-    if not len(kernel.shape) == 4:
-        raise ValueError("Invalid kernel shape, we expect BxDxHxW. Got: {}"
+    if not len(kernel.shape) == 4 and kernel.shape[0] != 1:
+        raise ValueError("Invalid kernel shape, we expect 1xDxHxW. Got: {}"
                          .format(kernel.shape))
-
-    borders_list: List[str] = ['constant', 'replicate', 'circular']
-    if border_type not in borders_list:
-        raise ValueError("Invalid border_type, we expect the following: {0}."
-                         "Got: {1}".format(borders_list, border_type))
 
     # prepare kernel
     b, c, d, h, w = input.shape
