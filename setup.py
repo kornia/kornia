@@ -25,9 +25,9 @@ version = '0.3.2'
 # add a maximal version.
 kornia_pt_dependencies = {
     '0.3.2': '>=1.5.0,<1.6.0', # torch==1.6.0 broke test/geometry/transform/test_crop.py
-    '0.3.1': '=>1.5.0',
-    '0.2.2': '=>1.4.0',
-    '0.1.4': '=>1.2.0',
+    '0.3.1': '>=1.5.0',
+    '0.2.2': '>=1.4.0',
+    '0.1.4': '>=1.2.0',
 }
 
 # version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
