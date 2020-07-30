@@ -14,7 +14,7 @@ __all__ = [
 
 
 def warp_projective(src: torch.Tensor,
-                    P: torch.Tensor,
+                    M: torch.Tensor,
                     dsize: Tuple[int, int, int],
                     flags: str = 'bilinear',
                     padding_mode: str = 'zeros',
@@ -22,7 +22,7 @@ def warp_projective(src: torch.Tensor,
     r"""Applies a projective transformation a to 3d tensor.
 
         src (torch.Tensor): input tensor of shape :math:`(B, C, D, H, W)`.
-        P (torch.Tensor): projective transformation of shape :math:`(B, 3, 4)`.
+        M (torch.Tensor): projective transformation matrix of shape :math:`(B, 3, 4)`.
         dsize (Tuple[int, int, int]): size of the output image (depth, height, width).
         mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
@@ -36,18 +36,18 @@ def warp_projective(src: torch.Tensor,
 
     """
     assert len(src.shape) == 5, src.shape
-    assert len(P.shape) == 3 and P.shape[-2:] == (3, 4), P.shape
+    assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
     assert len(dsize) == 3, dsize
     B, C, D, H, W = src.size()
 
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
 
-    P_4x4 = matrix_to_homogeneous(P)  # Bx4x4
+    M_4x4 = matrix_to_homogeneous(M)  # Bx4x4
 
     # we need to normalize the transformation since grid sample needs -1/1 coordinates
-    dst_norm_trans_src_norm: torch.Tensor = _normalize_projection(
-        P_4x4, size_src, size_out)    # Bx4x4
+    dst_norm_trans_src_norm: torch.Tensor = _normalize_projection_matrix(
+        M_4x4, size_src, size_out)    # Bx4x4
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
@@ -96,9 +96,10 @@ def matrix_to_homogeneous(M: torch.Tensor) -> torch.Tensor:
     return M_homo
 
 
-def _normalize_projection(dst_pix_trans_src_pix: torch.Tensor,
-                          dsize_src: Tuple[int, int, int],
-                          dsize_dst: Tuple[int, int, int]) -> torch.Tensor:
+def _normalize_projection_matrix(
+        dst_pix_trans_src_pix: torch.Tensor,
+        dsize_src: Tuple[int, int, int],
+        dsize_dst: Tuple[int, int, int]) -> torch.Tensor:
     r"""Computes the transformation matrix to normalize points before applying sampling."""
     # source and destination sizes
     src_d, src_h, src_w = dsize_src
