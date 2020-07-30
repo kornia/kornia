@@ -18,17 +18,19 @@ import distutils.command.clean
 
 version = '0.3.2'
 
+
 # NOTE(maintainers): update this dictionary each time you do a release
 # When multiple pytorch versions are associated with a single version of kornia,
 # the oldest one is the requirement. The versions should be inequalities.
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
-    '0.3.2': '>=1.5.0,<1.6.0', # torch==1.6.0 broke test/geometry/transform/test_crop.py
+    '0.3.2': '>=1.5.0,<1.6.0',  # torch==1.6.0 broke test/geometry/transform/test_crop.py
     '0.3.1': '>=1.5.0',
     '0.2.2': '>=1.4.0',
     '0.1.4': '>=1.2.0',
 }
+
 
 # version can be overiden eg with KORNIA_BUILD_VERSION so we map each possible kornia version to the dictionary keys
 def dep_version(version):
