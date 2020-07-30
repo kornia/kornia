@@ -4,7 +4,6 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.testing import assert_allclose
@@ -41,6 +40,10 @@ class TestBoundingBoxInferring:
         h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
         assert (h, w) == (expected_height, expected_width)
 
+    @pytest.mark.skip(reason="Crashes with pytorch internal error")
+    #  RuntimeError: isDifferentiableType(variable.scalar_type()) INTERNAL ASSERT FAILED at
+    # "/opt/conda/conda-bld/pytorch_1595629417679/work/torch/csrc/autograd/functions/utils.h":59,
+    # please report a bug to PyTorch.
     def test_gradcheck(self, device):
         boxes = torch.tensor([[
             [1., 1.],
@@ -284,7 +287,7 @@ class TestCenterCrop:
     def test_jit_trace(self, device):
         @torch.jit.script
         def op_script(input: torch.Tensor,
-                      size: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+                      size: Tuple[int, int]) -> torch.Tensor:
             return kornia.center_crop(input, size)
         # 1. Trace op
         batch_size, channels, height, width = 1, 2, 5, 4

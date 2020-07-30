@@ -2,7 +2,6 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -86,7 +85,7 @@ class TestNormalize:
             std = torch.tensor([2.0, 2.0, 2.0]).repeat(2, 1).to(device)
 
             actual = op_script(data, mean, std)
-            expected = image.normalize(data, mean, std)
+            expected = kornia.normalize(data, mean, std)
             assert_allclose(actual, expected)
 
     def test_gradcheck(self, device):

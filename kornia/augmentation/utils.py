@@ -2,6 +2,8 @@ from typing import Tuple, Union, List
 
 import torch
 from torch.distributions import Uniform
+
+from kornia.utils.image import _to_bchw
 from .types import (
     FloatUnionType,
     UnionType,
@@ -27,20 +29,8 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(
-            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    return input
+    return _to_bchw(input)
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
@@ -87,6 +77,10 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
     """
+    if not isinstance(low, torch.Tensor):
+        low = torch.tensor(low).float()
+    if not isinstance(high, torch.Tensor):
+        high = torch.tensor(high).float()
     dist = Uniform(low, high)
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0])

@@ -511,9 +511,8 @@ def spatial_soft_argmax2d(
         >>> coords = kornia.spatial_soft_argmax2d(input, False)
         tensor([[[1.0000, 1.0000]]])
     """
-    input_soft: torch.Tensor = dsnt.spatial_softmax_2d(input, temperature)
-    output: torch.Tensor = dsnt.spatial_softargmax_2d(input_soft,
-                                                      normalized_coordinates)
+    input_soft: torch.Tensor = dsnt.spatial_softmax2d(input, temperature)
+    output: torch.Tensor = dsnt.spatial_expectation2d(input_soft, normalized_coordinates)
     return output
 
 
@@ -543,7 +542,7 @@ class SpatialSoftArgmax2d(nn.Module):
                                      self.normalized_coordinates, self.eps)
 
 
-def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0, eps: float = 1e-6):
+def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7):
     r"""Function that computes the single iteration of quadratic interpolation of of the extremum (max or min) location
     and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT
 
@@ -592,12 +591,16 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0, ep
     dxx = A[..., 0]
     dyy = A[..., 1]
     dss = A[..., 2]
-    dxy = A[..., 3]
-    dys = A[..., 4]
-    dxs = A[..., 5]
-    # for the Hessian
-    Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss]).view(-1, 3, 3)
-    Hes += torch.eye(3, device=Hes.device)[None] * eps
+    dxy = 0.25 * A[..., 3]  # normalization to match OpenCV implementation
+    dys = 0.25 * A[..., 4]  # normalization to match OpenCV implementation
+    dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
+
+    Hes = torch.stack([dxx, dxy, dxs,
+                       dxy, dyy, dys,
+                       dxs, dys, dss], dim=-1).view(-1, 3, 3)
+
+    # The following is needed to avoid singular cases
+    Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
@@ -605,17 +608,18 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 1.0, ep
     x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
     dx: torch.Tensor = -x_solved
 
-    # Ignore ones, which are far from window,
-    dx[(dx.abs().max(dim=1, keepdim=True)[0] > 0.7).view(-1), :, :] = 0
-
+    # Ignore ones, which are far from window center
+    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7)
+    dx.masked_fill_(mask1.expand_as(dx), 0)
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
-        y_max *= (1.0 + strict_maxima_bonus * nms_mask.to(input.dtype))
+        y_max += strict_maxima_bonus * nms_mask.to(input.dtype)
 
     dx_res: torch.Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
     coords_max: torch.Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
     coords_max = coords_max + dx_res
+
     return coords_max, y_max
 
 
@@ -625,7 +629,7 @@ class ConvQuadInterp3d(nn.Module):
     """
 
     def __init__(self,
-                 strict_maxima_bonus: float = 1.0, eps: float = 1e-6) -> None:
+                 strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:
         super(ConvQuadInterp3d, self).__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
         self.eps = eps

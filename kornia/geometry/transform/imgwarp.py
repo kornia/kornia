@@ -12,6 +12,7 @@ from kornia.geometry.warp import (
 from kornia.geometry.conversions import (
     deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
 )
+from kornia.testing import check_is_tensor
 
 __all__ = [
     "warp_perspective",
@@ -35,7 +36,8 @@ def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode, align_corners)
+    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode,
+                           align_corners, True)
 
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
@@ -74,13 +76,8 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
        See a working example `here <https://kornia.readthedocs.io/en/latest/
        tutorials/warp_perspective.html>`_.
     """
-    if not torch.is_tensor(src):
-        raise TypeError("Input src type is not a torch.Tensor. Got {}"
-                        .format(type(src)))
-
-    if not torch.is_tensor(M):
-        raise TypeError("Input M type is not a torch.Tensor. Got {}"
-                        .format(type(M)))
+    check_is_tensor(src)
+    check_is_tensor(M)
 
     if not len(src.shape) == 4:
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
@@ -486,7 +483,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
         sy_tan = torch.tan(sy)  # type: ignore
         zeros = torch.zeros_like(sx)  # type: ignore
         ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones,   -sx_tan,                 sx_tan * x,  # type: ignore   # noqa: E241
+        shear_mat = torch.stack([ones, -sx_tan, sx_tan * x,  # type: ignore   # noqa: E241
                                  -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
                                 dim=-1).view(-1, 2, 3)
         shear_mat = convert_affinematrix_to_homography(shear_mat)

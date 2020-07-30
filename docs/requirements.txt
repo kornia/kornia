@@ -9,5 +9,5 @@ nbconvert==5.5.0
 notebook==6.0.1
 matplotlib==3.1.1
 opencv-python==4.2.0.34
-torch==1.4.0+cpu
-torchvision==0.5+cpu
+torch==1.5.0+cpu
+torchvision==0.6+cpu
