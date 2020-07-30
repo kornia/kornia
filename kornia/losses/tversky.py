@@ -61,7 +61,7 @@ class TverskyLoss(nn.Module):
     .. math::
 
         \text{S}(P, G, \alpha; \beta) =
-          \frac{|PG|}{|PG| + \alpha |P \ G| + \beta |G \ P|}
+          \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
     where:
        - :math:`P` and :math:`G` are the predicted and ground truth binary
