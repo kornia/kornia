@@ -7,10 +7,16 @@ The functions in this section perform various geometrical transformations of 2D 
 
 .. autofunction:: warp_perspective
 .. autofunction:: warp_affine
+.. autofunction:: warp_projective
 .. autofunction:: get_perspective_transform
+.. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
+.. autofunction:: matrix_to_homogeneous
+.. autofunction:: projection_from_Rt
+.. autofunction:: normal_transform_pixel
+.. autofunction:: normal_transform3d_pixel
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
 .. autofunction:: pyrdown
