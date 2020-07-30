@@ -25,6 +25,14 @@ Coordinates Subpixel
 .. autofunction:: spatial_expectation2d
 .. autofunction:: render_gaussian2d
 
+
+Homography
+--------------------
+
+.. autofunction:: find_homography
+.. autofunction:: find_homography_dlt
+
+
 Module
 ------
 

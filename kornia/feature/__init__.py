@@ -37,6 +37,8 @@ from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
+from .matching import match_nn, match_mnn, match_snn, match_smnn
+
 
 __all__ = [
     "nms2d",
@@ -77,4 +79,8 @@ __all__ = [
     "laf_from_center_scale_ori",
     "laf_to_three_points",
     "laf_from_three_points",
+    "match_nn",
+    "match_mnn",
+    "match_snn",
+    "match_smnn",
 ]
