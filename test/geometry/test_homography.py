@@ -117,7 +117,7 @@ class TestFindHomographyDLTIter:
              0.3 * torch.rand(batch_size, 3, 3, device=device))
         H = H / H[:, 2:3, 2:3]
 
-        points_src = 100.* torch.rand(batch_size, 20, 2).to(device)
+        points_src = 100. * torch.rand(batch_size, 20, 2).to(device)
         points_dst = kornia.transform_points(H, points_src)
 
         # making last point an outlier
@@ -141,5 +141,4 @@ class TestFindHomographyDLTIter:
                 points_dst,
                 weights,
             ),
-            rtol=1e-3, atol=1e-4,
-            raise_exception=True)
+            rtol=1e-3, atol=1e-4, raise_exception=True)

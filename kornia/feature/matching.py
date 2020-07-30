@@ -13,19 +13,19 @@ def match_nn(desc1: torch.Tensor, desc2: torch.Tensor,
         desc2, shape of :math:`(B1, B2)`.
 
     Return:
-        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B1, 2)
         torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B1, 1)
+        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B1, 2)
     """
     assert len(desc1.shape) == 2
     assert len(desc2.shape) == 2
-    if dm is not None:
+    if dm is None:
         dm = torch.cdist(desc1, desc2)
     else:
         assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
     match_dists, idxs_in_2 = torch.min(dm, dim=1)
     idxs_in1: torch.Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
     matches_idxs: torch.Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
-    return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
+    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
 def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
@@ -39,13 +39,13 @@ def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
         desc2, shape of :math:`(B1, B2)`.
 
     Return:
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
         torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
     where 0 <= B3 <= min(B1, B2)
-        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
     """
     assert len(desc1.shape) == 2
     assert len(desc2.shape) == 2
-    if dm is not None:
+    if dm is None:
         dm = torch.cdist(desc1, desc2)
     else:
         assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
@@ -61,7 +61,7 @@ def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
         mutual_nns = minsize_idxs == idxs_in_2[idxs_in_1][:ms]
         matches_idxs = torch.cat([idxs_in_1.view(-1, 1), minsize_idxs.view(-1, 1)], dim=1)[mutual_nns]
         match_dists = match_dists2[mutual_nns]
-    return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
+    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
 def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
@@ -77,13 +77,15 @@ def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
         desc2, shape of :math:`(B1, B2)`.
 
     Return:
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
         torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
     where 0 <= B3 <= B1
-        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
     """
     assert len(desc1.shape) == 2
     assert len(desc2.shape) == 2
-    if dm is not None:
+    assert desc2.shape[0] >= 2  # to performs second nearest check, we need at least two descriptors
+
+    if dm is None:
         dm = torch.cdist(desc1, desc2)
     else:
         assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
@@ -94,7 +96,7 @@ def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=dm.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.cpu().view(-1, 1)], dim=1)
-    return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
+    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
 def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
@@ -110,18 +112,21 @@ def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
         desc2, shape of :math:`(B1, B2)`.
 
     Return:
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
         torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
     where 0 <= B3 <= B1
-        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
     """
     assert len(desc1.shape) == 2
     assert len(desc2.shape) == 2
-    if dm is not None:
+    assert desc1.shape[0] >= 2  # to performs second nearest check, we need at least two descriptors
+    assert desc2.shape[0] >= 2  # to performs second nearest check, we need at least two descriptors
+
+    if dm is None:
         dm = torch.cdist(desc1, desc2)
     else:
         assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
-    idx1, dists1 = match_snn(desc1, desc2, th, dm)
-    idx2, dists2 = match_snn(desc2, desc1, th, dm.t())
+    dists1, idx1 = match_snn(desc1, desc2, th, dm)
+    dists2, idx2 = match_snn(desc2, desc1, th, dm.t())
     if len(dists2) > 0 and len(dists1) > 0:
         idx2 = idx2.flip(1)
         idxs_dm = torch.cdist(idx1.float(), idx2.float(), p=1)
@@ -138,4 +143,4 @@ def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
         matches_idxs = good_idxs1
     else:
         matches_idxs, match_dists = torch.empty(0, 2, device=dm.device), torch.empty(0, 1, device=dm.device)
-    return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
+    return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
