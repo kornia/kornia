@@ -27,6 +27,16 @@ Descriptors
 .. autoclass:: HardNet
 .. autoclass:: SOSNet
 
+
+Matching
+-----------
+
+.. autofunction:: match_nn
+.. autofunction:: match_mnn
+.. autofunction:: match_snn
+.. autofunction:: match_smnn
+
+
 Local Affine Frames (LAF)
 -------------------------
 

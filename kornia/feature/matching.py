@@ -1,46 +1,58 @@
-import numpy as np
-import math
 import torch
-import torch.nn.functional as F
-import typing
 from typing import Tuple, Optional
-TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
-def match_nn(desc1: torch.Tensor, desc2: torch.Tensor) -> TupleTensor:
-    '''Function, which finds nearest neightbors for each vector in desc1.
+def match_nn(desc1: torch.Tensor, desc2: torch.Tensor,
+             dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Function, which finds nearest neightbors in desc2 for each vector in desc1.
+    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    Args:
+        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
+        dm (torch.Tensor): optional. Tensor containing the distances from each descriptor in desc1 to each descriptor in
+        desc2, shape of :math:`(B1, B2)`.
+
     Return:
-        torch.Tensor: indexes of matching descriptors in desc1 and desc2
-        torch.Tensor: L2 desriptor distance
-
-
-    Shape:
-        - Input :math:`(B1, D)`, :math:`(B2, D)`
-        - Output: :math:`(B1, 2)`, :math:`(B1, 1)`
-    '''
-    dm = torch.cdist(desc1, desc2)
+        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B1, 2)
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B1, 1)
+    """
+    assert len(desc1.shape) == 2
+    assert len(desc2.shape) == 2
+    if dm is not None:
+        dm = torch.cdist(desc1, desc2)
+    else:
+        assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
     match_dists, idxs_in_2 = torch.min(dm, dim=1)
-    idxs_in1 = torch.arange(0, idxs_in_2.size(0))
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
+    idxs_in1: torch.Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
+    matches_idxs: torch.Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
     return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
 
 
-def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor) -> TupleTensor:
-    '''Function, which finds mutual nearest neightbors for each vector in desc1 and desc2,
-    which satisfies first to second nearest neighbor distance <= th check
-    Return:
-        torch.Tensor: indexes of matching descriptors in desc1 and desc2
-        torch.Tensor: L2 desriptor distance
+def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
+              dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Function, which finds mutual nearest neightbors in desc2 for each vector in desc1.
+    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    Args:
+        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
+        dm (torch.Tensor): optional. Tensor containing the distances from each descriptor in desc1 to each descriptor in
+        desc2, shape of :math:`(B1, B2)`.
 
-    Shape:
-        - Input :math:`(B1, D)`, :math:`(B2, D)`
-        - Output: :math:`(B3, 2)`, :math:`(B3, 1)` where 0 <= B3 <= min(B1,B2)
-    '''
-    dm = torch.cdist(desc1, desc2)
+    Return:
+        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
+    where 0 <= B3 <= min(B1, B2)
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
+    """
+    assert len(desc1.shape) == 2
+    assert len(desc2.shape) == 2
+    if dm is not None:
+        dm = torch.cdist(desc1, desc2)
+    else:
+        assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
     ms = min(dm.size(0), dm.size(1))
     match_dists, idxs_in_2 = torch.min(dm, dim=1)
     match_dists2, idxs_in_1 = torch.min(dm, dim=0)
-    minsize_idxs = torch.arange(ms)
+    minsize_idxs = torch.arange(ms, device=dm.device)
     if dm.size(0) <= dm.size(1):
         mutual_nns = minsize_idxs == idxs_in_1[idxs_in_2][:ms]
         matches_idxs = torch.cat([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)[mutual_nns]
@@ -53,48 +65,61 @@ def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor) -> TupleTensor:
 
 
 def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
-              th: float = 0.8, dm=None) -> TupleTensor:
-    '''Function, which finds mutual nearest neightbors for each vector in desc1 and desc2,
-    which satisfy first to second nearest neighbor distance <= th check in both directions.
-    So, it is intersection of match_mnn(d1,d2), match_snn(d1,d2), match_mnn(d2,d1)
+              th: float = 0.8, dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Function, which finds nearest neightbors in desc2 for each vector in desc1.
+    which satisfy first to second nearest neighbor distance <= th.
+    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    Args:
+        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
+        th (float): distance ratio threshold.
+        dm (torch.Tensor): optional. Tensor containing the distances from each descriptor in desc1 to each descriptor in
+        desc2, shape of :math:`(B1, B2)`.
 
     Return:
-        torch.Tensor: indexes of matching descriptors in desc1 and desc2
-        torch.Tensor: L2 desriptor distance ratio 1st to 2nd nearest neighbor
-
-
-    Shape:
-        - Input :math:`(B1, D)`, :math:`(B2, D)`
-        - Output: :math:`(B3, 2)`, :math:`(B3, 1)`, where 0 <= B3 <= min(B1, B2)
-    '''
-    if dm is None:
+        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
+    where 0 <= B3 <= B1
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
+    """
+    assert len(desc1.shape) == 2
+    assert len(desc2.shape) == 2
+    if dm is not None:
         dm = torch.cdist(desc1, desc2)
+    else:
+        assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
     vals, idxs_in_2 = torch.topk(dm, 2, dim=1, largest=False)
     ratio = vals[:, 0] / vals[:, 1]
     mask = ratio <= th
     match_dists = ratio[mask]
-    idxs_in1 = torch.arange(0, idxs_in_2.size(0))[mask]
+    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=dm.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
     matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.cpu().view(-1, 1)], dim=1)
     return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
 
 
 def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
-               th: float = 0.8) -> TupleTensor:
-    '''Function, which finds mutual nearest neightbors for each vector in desc1 and desc2,
-    which satisfy first to second nearest neighbor distance <= th check in both directions.
-    So, it is intersection of match_mnn(d1,d2), match_snn(d1,d2), match_snn(d2,d1)
-    Resulting distance ratio should be maximum over over distance ratio in both directions
+               th: float = 0.8, dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Function, which finds mutual nearest neightbors in desc2 for each vector in desc1.
+    which satisfy first to second nearest neighbor distance <= th.
+    If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
+    Args:
+        desc1 (torch.Tensor): Batch of descriptors of a shape :math:`(B1, D)`.
+        desc2 (torch.Tensor): Batch of descriptors of a shape :math:`(B2, D)`.
+        th (float): distance ratio threshold.
+        dm (torch.Tensor): optional. Tensor containing the distances from each descriptor in desc1 to each descriptor in
+        desc2, shape of :math:`(B1, B2)`.
+
     Return:
-        torch.Tensor: indexes of matching descriptors in desc1 and desc2
-        torch.Tensor: L2 desriptor distance ratio 1st to 2nd nearest neighbor
-
-
-    Shape:
-        - Input :math:`(B1, D)`, :math:`(B2, D)`
-        - Output: :math:`(B3, 2)`, :math:`(B3, 1)`, where 0 <= B3 <= min(B1, B2)
-    '''
-    dm = torch.cdist(desc1, desc2)
+        torch.Tensor: Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)
+    where 0 <= B3 <= B1
+        torch.Tensor: Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)
+    """
+    assert len(desc1.shape) == 2
+    assert len(desc2.shape) == 2
+    if dm is not None:
+        dm = torch.cdist(desc1, desc2)
+    else:
+        assert (dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))
     idx1, dists1 = match_snn(desc1, desc2, th, dm)
     idx2, dists2 = match_snn(desc2, desc1, th, dm.t())
     if len(dists2) > 0 and len(dists1) > 0:
@@ -109,9 +134,8 @@ def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
         _, idx_upl1 = torch.sort(good_idxs1[:, 0])
         _, idx_upl2 = torch.sort(good_idxs2[:, 0])
         good_idxs1 = good_idxs1[idx_upl1]
-        good_idxs2 = good_idxs2[idx_upl2]
         match_dists = torch.max(dists1_good[idx_upl1], dists2_good[idx_upl2])
         matches_idxs = good_idxs1
     else:
-        matches_idxs, match_dists = torch.empty(0, 2), torch.empty(0, 1)
+        matches_idxs, match_dists = torch.empty(0, 2, device=dm.device), torch.empty(0, 1, device=dm.device)
     return matches_idxs.view(-1, 2), match_dists.view(-1, 1)
