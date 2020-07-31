@@ -5,12 +5,12 @@ import torch.nn.functional as F
 
 from kornia.geometry.conversions import deg2rad
 from kornia.geometry.warp import (
-    normalize_homography, homography_warp
+    normalize_homography, homography_warp, normalize_homography3d
 )
 
 # TODO: move to utils or conversions
 from kornia.geometry.conversions import (
-    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
+    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography, convert_affinematrix_to_homography3d
 )
 from kornia.testing import check_is_tensor
 
@@ -158,6 +158,68 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
                          padding_mode=padding_mode)
 
 
+def warp_affine3d(src: torch.Tensor, M: torch.Tensor,
+                dsize: Tuple[int, int, int], flags: str = 'bilinear',
+                padding_mode: str = 'zeros',
+                align_corners: bool = False) -> torch.Tensor:
+    r"""Applies an affine transformation to a tensor.
+
+    The function warp_affine transforms the source tensor using
+    the specified matrix:
+
+    .. math::
+        \text{dst}(x, y) = \text{src} \left( M_{11} x + M_{12} y + M_{13} ,
+        M_{21} x + M_{22} y + M_{23} \right )
+
+    Args:
+        src (torch.Tensor): input tensor of shape :math:`(B, C, D, H, W)`.
+        M (torch.Tensor): affine transformation of shape :math:`(B, 3, 4)`.
+        dsize (Tuple[int, int, int]): size of the output image (depth, height, width).
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool): mode for grid_generation. Default: False. See
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+
+    Returns:
+        torch.Tensor: the warped tensor.
+
+    Shape:
+        - Output: :math:`(B, C, D, H, W)`
+    """
+    if not torch.is_tensor(src):
+        raise TypeError("Input src type is not a torch.Tensor. Got {}"
+                        .format(type(src)))
+
+    if not torch.is_tensor(M):
+        raise TypeError("Input M type is not a torch.Tensor. Got {}"
+                        .format(type(M)))
+
+    if not len(src.shape) == 5:
+        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}"
+                         .format(src.shape))
+
+    if not (len(M.shape) == 3 or M.shape[-2:] == (3, 4)):
+        raise ValueError("Input M must be a Bx3x4 tensor. Got {}"
+                         .format(M.shape))
+    B, C, D, H, W = src.size()
+    dsize_src = (D, H, W)
+    out_size = dsize
+    # we generate a 3x3 transformation matrix from 2x3 affine
+    M_3x3: torch.Tensor = convert_affinematrix_to_homography3d(M)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
+        M_3x3, dsize_src, out_size)
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    grid = F.affine_grid(src_norm_trans_dst_norm[:, :3, :],  # type: ignore
+                         [B, C, out_size[0], out_size[1], out_size[2]],
+                         align_corners=align_corners)
+    return F.grid_sample(src, grid,  # type: ignore
+                         align_corners=align_corners,
+                         mode=flags,
+                         padding_mode=padding_mode)
+
+
 def get_perspective_transform(src, dst):
     r"""Calculates a perspective transform from four pairs of the corresponding
     points.
@@ -285,6 +347,45 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
 
 
+def angle_to_rotation_matrix3d(yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor) -> torch.Tensor:
+    r"""Create a rotation matrix out of angles in degrees.
+    Args:
+        yaw: (torch.Tensor): tensor of angles in degrees, top to bottom axis.
+        pitch: (torch.Tensor): tensor of angles in degrees, left to right axis.
+        roll: (torch.Tensor): tensor of angles in degrees, tail to nose axis.
+
+    Returns:
+        torch.Tensor: tensor of *x3x3 rotation matrices.
+
+    Shape:
+        - Input: :math:`(*)`,  :math:`(*)`,  :math:`(*)`
+        - Output: :math:`(*, 3, 3)`
+
+    Example:
+        >>> input = torch.rand(1, 3)  # Nx3
+        >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
+    """
+    assert yaw.shape == pitch.shape == roll.shape, \
+        f"yaw, pitch, roll must be the size shape. Got {yaw.shape}, {pitch.shape} and {roll.shape}."
+    yaw_rad = deg2rad(yaw)
+    cos_a: torch.Tensor = torch.cos(yaw_rad)
+    sin_a: torch.Tensor = torch.sin(yaw_rad)
+
+    pitch_rad = deg2rad(pitch)
+    cos_b: torch.Tensor = torch.cos(pitch_rad)
+    sin_b: torch.Tensor = torch.sin(pitch_rad)
+
+    roll_rad = deg2rad(roll)
+    cos_c: torch.Tensor = torch.cos(roll_rad)
+    sin_c: torch.Tensor = torch.sin(roll_rad)
+
+    return torch.stack([
+        cos_a * cos_b, cos_a * sin_b * sin_c - sin_a * cos_c, cos_a * sin_b * cos_c + sin_a * sin_c,
+        sin_a * cos_b, sin_a * sin_b * sin_c + cos_a * cos_c, sin_a * sin_b * cos_c - cos_a * sin_c,
+        - sin_b      , cos_b * sin_c                        , cos_b * cos_c
+    ], dim=-1).view(*yaw.shape, 3, 3)
+
+
 def get_rotation_matrix2d(
         center: torch.Tensor,
         angle: torch.Tensor,
@@ -370,6 +471,100 @@ def get_rotation_matrix2d(
     M[..., 0:2, 0:2] = scaled_rotation
     M[..., 0, 2] = (one - alpha) * x - beta * y
     M[..., 1, 2] = beta * x + (one - alpha) * y
+    return M
+
+
+def get_rotation_matrix3d(
+        center: torch.Tensor,
+        yaw: torch.Tensor,
+        pitch: torch.Tensor,
+        roll: torch.Tensor,
+        scale: torch.Tensor) -> torch.Tensor:
+    r"""Calculates an affine matrix of 3D rotation.
+
+    The function calculates the following matrix:
+
+    .. math::
+        \begin{bmatrix}
+            cos(\text{yaw})cos(\text{pitch})
+            & cos(\text{yaw})sin(\text{pitch})sin(\text{roll}) - sin(\text{yaw})cos(\text{roll})
+            & cos(\text{yaw})sin(\text{pitch})cos(\text{roll}) + sin(\text{yaw})cos(\text{roll}) & 0 \\
+            sin(\text{yaw})cos(\text{pitch})
+            & sin(\text{yaw})sin(\text{pitch})sin(\text{roll}) + cos(\text{yaw})cos(\text{roll})
+            & sin(\text{yaw})sin(\text{pitch})cos(\text{roll}) - cos(\text{yaw})sin(\text{roll}) & 0 \\
+            - sin(\text{yaw})
+            & cos(\text{pitch})sin(\text{roll})
+            & cos(\text{pitch})cos(\text{roll}) & 0
+        \end{bmatrix}
+
+    The transformation maps the rotation center to itself
+    If this is not the target, adjust the shift.
+
+    Args:
+        center (Tensor): center of the rotation in the source image.
+        yaw (Tensor): rotation angle in degrees. Positive values mean
+            counter-clockwise rotation (the coordinate origin is assumed to
+            be the top-left corner).
+        pitch (Tensor): rotation angle in degrees. Positive values mean
+            counter-clockwise rotation (the coordinate origin is assumed to
+            be the top-left corner).
+        roll (Tensor): rotation angle in degrees. Positive values mean
+            counter-clockwise rotation (the coordinate origin is assumed to
+            be the top-left corner).
+        scale (Tensor): isotropic scale factor.
+
+    Returns:
+        Tensor: the affine matrix of 2D rotation.
+
+    Shape:
+        - Input: :math:`(B, 3)`, :math:`(B)` and :math:`(B)`
+        - Output: :math:`(B, 3, 4)`
+
+    Example:
+        >>> center = torch.zeros(1, 3)
+        >>> scale = torch.ones(1)
+        >>> angle = 45. * torch.ones(1)
+        >>> M = kornia.get_rotation_matrix3d(center, angle, scale)
+        tensor([[[ 0.7071,  0.7071,  0.0000],
+                 [-0.7071,  0.7071,  0.0000]]])
+    """
+    # TODO: translation to rotation center
+    # TODO: axis-wise scaling?
+    if not torch.is_tensor(center):
+        raise TypeError("Input center type is not a torch.Tensor. Got {}"
+                        .format(type(center)))
+    if not torch.is_tensor(yaw) or not torch.is_tensor(pitch) or not torch.is_tensor(roll):
+        raise TypeError("Input yaw, pitch, roll type is not a torch.Tensor. Got yaw {}, pitch {}, roll {}"
+                        .format(type(yaw), type(pitch), type(roll)))
+    if not torch.is_tensor(scale):
+        raise TypeError("Input scale type is not a torch.Tensor. Got {}"
+                        .format(type(scale)))
+    if not (len(center.shape) == 2 and center.shape[1] == 3):
+        raise ValueError("Input center must be a Bx3 tensor. Got {}"
+                         .format(center.shape))
+    if not len(yaw.shape) == 1 or not len(pitch.shape) == 1 or not len(roll.shape) == 1:
+        raise ValueError("Input yaw, pitch, roll must be a B tensor. Got yaw {}, pitch {}, roll {}"
+                        .format(yaw.shape, pitch.shape, roll.shape))
+    if not len(scale.shape) == 1:
+        raise ValueError("Input scale must be a B tensor. Got {}"
+                         .format(scale.shape))
+    if not (center.shape[0] == yaw.shape[0] == pitch.shape[0] == roll.shape[0] == scale.shape[0]):
+        raise ValueError("Inputs must have same batch size dimension. Got center {}, yaw {}, pitch {}, roll {}"
+                         "and scale {}".format(center.shape, yaw.shape, pitch.shape, roll.shape, scale.shape))
+    # convert angle and apply scale
+    scaled_rotation: torch.Tensor = angle_to_rotation_matrix3d(yaw, pitch, roll) * scale.view(-1, 1, 1)
+
+    # unpack the center to x, y, z coordinates
+    x: torch.Tensor = center[..., 0]
+    y: torch.Tensor = center[..., 1]
+    z: torch.Tensor = center[..., 2]
+
+    # create output tensor
+    batch_size: int = center.shape[0]
+    one = torch.tensor(1.).to(center.device)
+    M: torch.Tensor = torch.zeros(
+        batch_size, 3, 4, device=center.device, dtype=center.dtype)
+    M[..., 0:3, 0:3] = scaled_rotation
     return M
 
 
