@@ -135,6 +135,25 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
     return H
 
 
+def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
+    r"""Function that converts batch of affine matrices from [Bx3x4] to [Bx3x4].
+
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4)  # Bx3x4
+        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx3x3
+    """
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(A)))
+    if not (len(A.shape) == 3 and A.shape[-2:] == (3, 4)):
+        raise ValueError("Input matrix must be a Bx3x4 tensor. Got {}"
+                         .format(A.shape))
+    H: torch.Tensor = torch.nn.functional.pad(A, [0, 0, 0, 1], "constant", value=0.)
+    H[..., -1, -1] += 1.0
+    return H
+
+
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix
 
