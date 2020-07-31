@@ -15,7 +15,6 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: invert_affine_transform
 .. autofunction:: matrix_to_homogeneous
 .. autofunction:: projection_from_Rt
-.. autofunction:: normal_transform_pixel
 .. autofunction:: normal_transform3d_pixel
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize

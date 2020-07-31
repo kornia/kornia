@@ -1,4 +1,7 @@
 from .augmentation import (
+    AugmentationBase,
+    CenterCrop,
+    ColorJitter,
     RandomAffine,
     RandomCrop,
     RandomErasing,
@@ -8,8 +11,6 @@ from .augmentation import (
     RandomPerspective,
     RandomResizedCrop,
     RandomRotation,
-    CenterCrop,
-    ColorJitter,
     RandomSolarize,
     RandomPosterize,
     RandomSharpness,
@@ -27,6 +28,11 @@ from kornia.color.normalize import (
 )
 
 __all__ = [
+    "AugmentationBase",
+    "CenterCrop",
+    "ColorJitter",
+    "Normalize",
+    "Denormalize",
     "RandomAffine",
     "RandomCrop",
     "RandomErasing",
@@ -39,13 +45,9 @@ __all__ = [
     "RandomPerspective",
     "RandomResizedCrop",
     "RandomRotation",
-    "CenterCrop",
-    "ColorJitter",
     "RandomSolarize",
     "RandomPosterize",
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
-    "Normalize",
-    "Denormalize",
 ]

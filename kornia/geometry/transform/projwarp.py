@@ -21,6 +21,7 @@ def warp_projective(src: torch.Tensor,
                     align_corners: bool = True) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
+    Args:
         src (torch.Tensor): input tensor of shape :math:`(B, C, D, H, W)`.
         M (torch.Tensor): projective transformation matrix of shape :math:`(B, 3, 4)`.
         dsize (Tuple[int, int, int]): size of the output image (depth, height, width).
@@ -28,8 +29,7 @@ def warp_projective(src: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: True. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+        align_corners (bool): mode for grid_generation. Default: True.
 
     Returns:
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
@@ -148,16 +148,16 @@ def normal_transform3d_pixel(depth: int, height: int, width: int) -> torch.Tenso
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torch.Tensor:
     r"""Calculates the projection matrix for a 3D rotation.
 
-    The function computes the projection matrix given the center, scales and angles per axis.
+    The function computes the projection matrix given the center and angles per axis.
 
     Args:
         center (torch.Tensor): center of the rotation in the source with shape :math:`(B, 3)`.
-        angles (Tensor): angle axis vector containing the rotation angles in degrees in the form
+        angles (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
 
     Returns:
-        Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
+        torch.Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
     """
     assert len(center.shape) == 2 and center.shape[-1] == 3, center.shape

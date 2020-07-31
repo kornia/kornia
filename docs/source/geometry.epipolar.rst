@@ -39,7 +39,6 @@ Projection
 
 .. autofunction:: projection_from_KRt
 .. autofunction:: projections_from_fundamental
-.. autofunction:: scale_intrinsics
 .. autofunction:: intrinsics_like
 .. autofunction:: scale_intrinsics
 .. autofunction:: random_intrinsics
