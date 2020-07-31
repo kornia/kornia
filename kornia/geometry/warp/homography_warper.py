@@ -14,6 +14,7 @@ __all__ = [
     "homography_warp",
     "warp_grid",
     "normalize_homography",
+    "normalize_homography3d",
     "normal_transform_pixel",
 ]
 
@@ -228,6 +229,33 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     return tr_mat
 
 
+def normal_transform_pixel3d(depth:int, height: int, width: int) -> torch.Tensor:
+    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
+
+    Args:
+        depth (int): image depth.
+        height (int): image height.
+        width (int): image width.
+
+    Returns:
+        Tensor: normalized transform.
+
+    Shape:
+        Output: :math:`(1, 4, 4)`
+    """
+    tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
+                           [0.0, 1.0, 0.0, -1.0],
+                           [0.0, 0.0, 1.0, -1.0],
+                           [0.0, 0.0, 0.0, 1.0]])  # 4x4
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (depth - 1.0)
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
+    tr_mat[2, 2] = tr_mat[1, 1] * 2.0 / (width - 1.0)
+
+    tr_mat = tr_mat.unsqueeze(0)  # 1x4x4
+    return tr_mat
+
+
 def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
                          dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
@@ -259,6 +287,44 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
         dst_h, dst_w).to(dst_pix_trans_src_pix)
+    # compute chain transformations
+    dst_norm_trans_src_norm: torch.Tensor = (
+        dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    )
+    return dst_norm_trans_src_norm
+
+
+def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
+                           dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]) -> torch.Tensor:
+    r"""Normalize a given homography in pixels to [-1, 1].
+
+    Args:
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destiantion to be
+          normalized. :math:`(B, 4, 4)`
+        dsize_src (tuple): size of the source image (depth, height, width).
+        dsize_src (tuple): size of the destination image (depth, height, width).
+
+    Returns:
+        Tensor: the normalized homography.
+
+    Shape:
+        Output: :math:`(B, 4, 4)`
+    """
+    check_is_tensor(dst_pix_trans_src_pix)
+
+    if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
+        raise ValueError("Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {}"
+                         .format(dst_pix_trans_src_pix.shape))
+
+    # source and destination sizes
+    src_d, src_h, src_w = dsize_src
+    dst_d, dst_h, dst_w = dsize_dst
+    # compute the transformation pixel/norm for src/dst
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
+        src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
+        dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
     dst_norm_trans_src_norm: torch.Tensor = (
         dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
