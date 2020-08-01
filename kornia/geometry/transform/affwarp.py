@@ -4,7 +4,10 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.imgwarp import (
-    warp_affine, warp_affine3d, get_rotation_matrix2d, get_rotation_matrix3d
+    warp_affine, get_rotation_matrix2d
+)
+from kornia.geometry.transform.projwarp import (
+    warp_projective, get_projective_transform
 )
 
 __all__ = [
@@ -59,8 +62,21 @@ def _compute_rotation_matrix(angle: torch.Tensor,
 def _compute_rotation_matrix3d(yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor,
                                center: torch.Tensor) -> torch.Tensor:
     """Computes a pure affine rotation matrix."""
-    scale: torch.Tensor = torch.ones_like(yaw)
-    matrix: torch.Tensor = get_rotation_matrix3d(center, yaw, pitch, roll, scale)
+    if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
+        yaw = yaw.unsqueeze(dim=0)
+        pitch = pitch.unsqueeze(dim=0)
+        roll = roll.unsqueeze(dim=0)
+
+    if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 1:
+        yaw = yaw.unsqueeze(dim=1)
+        pitch = pitch.unsqueeze(dim=1)
+        roll = roll.unsqueeze(dim=1)
+
+    assert len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2, \
+        f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
+
+    angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
+    matrix: torch.Tensor = get_projective_transform(center, angles)
     return matrix
 
 
@@ -161,8 +177,8 @@ def affine3d(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     depth: int = tensor.shape[-3]
     height: int = tensor.shape[-2]
     width: int = tensor.shape[-1]
-    warped: torch.Tensor = warp_affine3d(tensor, matrix, (depth, height, width), mode,
-                                         align_corners=align_corners)
+    warped: torch.Tensor = warp_projective(tensor, matrix, (depth, height, width), mode,
+                                           align_corners=align_corners)
 
     # return in the original shape
     if is_unbatched:

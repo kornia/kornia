@@ -11,6 +11,7 @@ __all__ = [
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
     "convert_affinematrix_to_homography",
+    "convert_affinematrix_to_homography3d",
     "angle_axis_to_rotation_matrix",
     "angle_axis_to_quaternion",
     "rotation_matrix_to_angle_axis",
