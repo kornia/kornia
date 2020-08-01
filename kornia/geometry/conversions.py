@@ -137,12 +137,12 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
 
 
 def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
-    r"""Function that converts batch of affine matrices from [Bx3x4] to [Bx3x4].
+    r"""Function that converts batch of affine matrices from [Bx3x4] to [Bx4x4].
 
     Examples::
 
         >>> input = torch.rand(2, 3, 4)  # Bx3x4
-        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx3x3
+        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx4x4
     """
     if not isinstance(A, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
