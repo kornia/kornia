@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, cast
 
 import torch
 from torch.distributions import Uniform
@@ -162,3 +162,51 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
             f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
 
     return factor_bound
+
+
+def _rotation_range_reader(
+    degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
+        Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
+) -> torch.Tensor:
+
+    if not torch.is_tensor(degrees):
+        if isinstance(degrees, (float, int)):
+            if degrees < 0:
+                raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
+            yaw = torch.tensor([-degrees, degrees]).to(torch.float32)
+            pitch = torch.tensor([-degrees, degrees]).to(torch.float32)
+            roll = torch.tensor([-degrees, degrees]).to(torch.float32)
+
+        elif isinstance(degrees, (tuple)) and len(degrees) == 2 \
+            and isinstance(degrees[0], (float, int)) and isinstance(degrees[1], (float, int)):
+            yaw = torch.tensor(degrees).to(torch.float32)
+            pitch = torch.tensor(degrees).to(torch.float32)
+            roll = torch.tensor(degrees).to(torch.float32)
+
+        elif isinstance(degrees, (tuple)) and len(degrees) == 3 \
+            and isinstance(degrees[0], (tuple)) and isinstance(degrees[1], (tuple)) \
+            and isinstance(degrees[2], (tuple)):
+            yaw = torch.tensor(degrees[0]).to(torch.float32)
+            pitch = torch.tensor(degrees[1]).to(torch.float32)
+            roll = torch.tensor(degrees[2]).to(torch.float32)
+
+        elif isinstance(degrees, (tuple)) and len(degrees) == 3 \
+            and isinstance(degrees[0], (float, int)) and isinstance(degrees[1], (float, int)) \
+            and isinstance(degrees[2], (float, int)):
+            yaw = torch.tensor((-degrees[0], degrees[0])).to(torch.float32)
+            pitch = torch.tensor((-degrees[1], degrees[1])).to(torch.float32)
+            roll = torch.tensor((-degrees[2], degrees[2])).to(torch.float32)
+        else:
+            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {degrees}")
+
+    else:
+        # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
+        degrees = cast(torch.Tensor, degrees)
+        if len(degrees) != 3 and len(degrees[0]) != len(degrees[1]) != len(degrees[2]) != 2:
+            raise ValueError(
+                f"Degrees must be a 3x2 tensor for the degree range of yaw, pitch, roll. Got {degrees.shape}")
+        yaw = degrees[0]
+        pitch = degrees[1]
+        roll = degrees[2]
+
+    return torch.stack([yaw, pitch, roll], dim=0)
