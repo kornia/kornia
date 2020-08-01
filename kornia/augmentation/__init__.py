@@ -1,18 +1,53 @@
-from .augmentation import *
+from .augmentation import (
+    AugmentationBase,
+    CenterCrop,
+    ColorJitter,
+    RandomAffine,
+    RandomCrop,
+    RandomErasing,
+    RandomGrayscale,
+    RandomHorizontalFlip,
+    RandomVerticalFlip,
+    RandomPerspective,
+    RandomResizedCrop,
+    RandomRotation,
+    RandomSolarize,
+    RandomPosterize,
+    RandomSharpness,
+    RandomEqualize,
+    RandomMotionBlur
+)
+from .augmentation3d import (
+    RandomHorizontalFlip3D,
+    RandomVerticalFlip3D,
+    RandomDepthicalFlip3D
+)
 from kornia.color.normalize import (
     Normalize,
     Denormalize
 )
 
 __all__ = [
-    "RandomHorizontalFlip",
-    "RandomVerticalFlip",
+    "AugmentationBase",
+    "CenterCrop",
+    "ColorJitter",
+    "Normalize",
+    "Denormalize",
+    "RandomAffine",
+    "RandomCrop",
     "RandomErasing",
     "RandomGrayscale",
-    "ColorJitter",
-    "RandomRotation",
-    "RandomCrop",
+    "RandomHorizontalFlip",
+    "RandomHorizontalFlip3D",
+    "RandomVerticalFlip",
+    "RandomVerticalFlip3D",
+    "RandomDepthicalFlip3D",
+    "RandomPerspective",
     "RandomResizedCrop",
-    "Normalize",
-    "Denormalize"
+    "RandomRotation",
+    "RandomSolarize",
+    "RandomPosterize",
+    "RandomSharpness",
+    "RandomEqualize",
+    "RandomMotionBlur",
 ]

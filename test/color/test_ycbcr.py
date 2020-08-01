@@ -3,7 +3,6 @@ import pytest
 import kornia
 import kornia.testing as utils  # test utils
 
-import cv2
 import numpy as np
 
 import torch
@@ -145,9 +144,9 @@ class TestYcbcrToRgb:
                               [0.2245, 0.2413, 0.2351, 0.9522, 0.8158]]])  # 3x5x5
 
         # OpenCV
+        # expected = cv2.cvtColor(data_cv, cv2.COLOR_YCrCb2RGB)
         data_cv = data.numpy().transpose(1, 2, 0).copy()
         data_cv[..., 1:] = data_cv[..., -1:0:-1]
-        expected = cv2.cvtColor(data_cv, cv2.COLOR_YCrCb2RGB)
 
         r_expected = torch.tensor([[1.3226931, 0.5639256, 0.14902398, 1.0217545, 0.2569923],
                                    [0.37973762, 0.64386904, 1.1992811, -0.603531, 0.4239992],
@@ -195,9 +194,9 @@ class TestYcbcrToRgb:
                               [0.2245, 0.2413, 0.2351, 0.9522, 0.8158]]])  # 3x5x5
 
         # OpenCV
+        # expected = cv2.cvtColor(data_cv, cv2.COLOR_YCrCb2RGB)
         data_cv = data.numpy().transpose(1, 2, 0).copy()
         data_cv[..., 1:] = data_cv[..., -1:0:-1]
-        expected = cv2.cvtColor(data_cv, cv2.COLOR_YCrCb2RGB)
 
         expected = torch.tensor([[[1.3226931, 0.5639256, 0.14902398, 1.0217545, 0.2569923],
                                   [0.37973762, 0.64386904, 1.1992811, -0.603531, 0.4239992],

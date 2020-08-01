@@ -444,11 +444,11 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
     return kernel_2d
 
 
-def get_motion_kernel2d(ksize: int, angle: float, direction: float = 0.) -> torch.Tensor:
+def get_motion_kernel2d(kernel_size: int, angle: float, direction: float = 0.) -> torch.Tensor:
     r"""Function that returns motion blur filter.
 
     Args:
-        ksize (int): motion kernel width and height. It should be odd and positive.
+        kernel_size (int): motion kernel width and height. It should be odd and positive.
         angle (float): angle of the motion blur in degrees (anti-clockwise rotation).
         direction (float): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
@@ -473,21 +473,23 @@ def get_motion_kernel2d(ksize: int, angle: float, direction: float = 0.) -> torc
                     [0.1920, 0.3194, 0.0804],
                     [0.2195, 0.0743, 0.0000]])
     """
-    if not isinstance(ksize, int) or ksize % 2 == 0 or ksize < 3:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
+
     if not isinstance(angle, float):
         raise TypeError("angle must be a float")
+
     if not isinstance(direction, float):
         raise TypeError("direction must be a float")
 
-    kernel_size = (ksize, ksize)
+    kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(torch.tensor(direction), -1., 1.).item() + 1.) / 2.
-    kernel = torch.zeros(kernel_size, dtype=torch.float)
-    kernel[kernel_size[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_size[0])
+    kernel = torch.zeros(kernel_tuple, dtype=torch.float)
+    kernel[kernel_tuple[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_tuple[0])
     kernel = kernel.unsqueeze(0).unsqueeze(0)
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, torch.tensor(angle))
     kernel = kernel[0][0]
-    kernel /= kernel.sum()
+    kernel = kernel / kernel.sum()
     return kernel

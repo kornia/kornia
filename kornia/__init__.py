@@ -45,6 +45,9 @@ from kornia.color import (
     luv_to_rgb,
     normalize,
     denormalize,
+    zca_mean,
+    zca_whiten,
+    linear_transform,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -76,6 +79,7 @@ from kornia.filters import (
     median_blur,
     motion_blur,
     filter2D,
+    filter3D,
 )
 from kornia.losses import (
     ssim,
@@ -97,4 +101,4 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.geometry import pi
+from kornia.constants import pi

@@ -170,7 +170,8 @@ class Sobel(nn.Module):
 
 
 # functiona api
-
+# TODO: In terms of functional API, there should not be any initialization of an nn.Module.
+#       This logic is reversed.
 
 def spatial_gradient(input: torch.Tensor,
                      mode: str = 'sobel',

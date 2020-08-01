@@ -1,9 +1,11 @@
 from .responses import (CornerHarris,
                         CornerGFTT,
                         BlobHessian,
+                        BlobDoG,
                         harris_response,
                         gftt_response,
-                        hessian_response)
+                        hessian_response,
+                        dog_response)
 from .nms import (NonMaximaSuppression2d,
                   nms2d,
                   NonMaximaSuppression3d,
@@ -35,6 +37,8 @@ from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
 from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation
+from .matching import match_nn, match_mnn, match_snn, match_smnn
+
 
 __all__ = [
     "nms2d",
@@ -44,11 +48,13 @@ __all__ = [
     "harris_response",
     "gftt_response",
     "hessian_response",
+    "dog_response",
     "NonMaximaSuppression2d",
     "NonMaximaSuppression3d",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
+    "BlobDoG",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",
@@ -73,4 +79,8 @@ __all__ = [
     "laf_from_center_scale_ori",
     "laf_to_three_points",
     "laf_from_three_points",
+    "match_nn",
+    "match_mnn",
+    "match_snn",
+    "match_smnn",
 ]
