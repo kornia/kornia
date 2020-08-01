@@ -55,22 +55,17 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         \right )
 
     Args:
-        src (torch.Tensor): input image.
-        M (Tensor): transformation matrix.
+        src (torch.Tensor): input image with shape :math:`(B, C, H, W)`.
+        M (torch.Tensor): transformation matrix with shape :math:`(B, 3, 3)`.
         dsize (tuple): size of the output image (height, width).
         flags (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
         border_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        align_corners(bool): interpolation flag. Default: False.
 
     Returns:
-        Tensor: the warped input image.
-
-    Shape:
-        - Input: :math:`(B, C, H, W)` and :math:`(B, 3, 3)`
-        - Output: :math:`(B, C, H, W)`
+        torch.Tensor: the warped input image :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/
@@ -113,14 +108,10 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+        align_corners (bool): mode for grid_generation. Default: False.
 
     Returns:
-        torch.Tensor: the warped tensor.
-
-    Shape:
-        - Output: :math:`(B, C, H, W)`
+        torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/

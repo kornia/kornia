@@ -32,7 +32,7 @@ class PSNRLoss(nn.Module):
         >>> kornia.losses.psnr_loss(torch.ones(1), 1.2*torch.ones(1), 2)
         tensor(20.0000) # 10 * log(4/((1.2-1)**2)) / log(10)
 
-    reference:
+    Reference:
         https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
     """
 

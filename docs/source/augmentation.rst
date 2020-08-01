@@ -19,7 +19,6 @@ This is the base class for creating a new transform. The user only needs to over
 
 
 .. autoclass:: AugmentationBase
-   :members: return_transform
 
    .. automethod:: generate_parameters
    .. automethod:: compute_transformation

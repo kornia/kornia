@@ -63,7 +63,7 @@ class SIFTDescriptor(nn.Module):
         is computed
 
     Returns:
-        Tensor: SIFT descriptor of the patches
+        torch.Tensor: SIFT descriptor of the patches
 
     Shape:
         - Input: (B, 1, num_spatial_bins, num_spatial_bins)

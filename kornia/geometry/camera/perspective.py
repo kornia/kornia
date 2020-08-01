@@ -18,7 +18,7 @@ def project_points(
         point3d (torch.Tensor): tensor containing the 3d points to be projected
             to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
-            matrix. The tensor shape must be Bx4x4.
+            matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
         torch.Tensor: array of (u, v) cam coordinates with shape :math:`(*, 2)`.
@@ -26,17 +26,22 @@ def project_points(
     if not torch.is_tensor(point_3d):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}"
                         .format(type(point_3d)))
+
     if not torch.is_tensor(camera_matrix):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
+
     if not (point_3d.device == camera_matrix.device):
         raise ValueError("Input tensors must be all in the same device.")
+
     if not point_3d.shape[-1] == 3:
         raise ValueError("Input points_3d must be in the shape of (*, 3)."
                          " Got {}".format(point_3d.shape))
+
     if not camera_matrix.shape[-2:] == (3, 3):
         raise ValueError(
             "Input camera_matrix must be in the shape of (*, 3, 3).")
+
     # projection eq. [u, v, w]' = K * [x y z 1]'
     # u = fx * X / Z + cx
     # v = fy * Y / Z + cy
