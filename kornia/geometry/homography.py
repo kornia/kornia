@@ -64,7 +64,7 @@ def find_homography_dlt_iterated(points1: torch.Tensor,
                                  weights: torch.Tensor,
                                  soft_inl_th: float = 3.0,
                                  n_iter: int = 5) -> torch.Tensor:
-    r"""Computes the homography matrix using the iteratively-reweighted least squares (IRWLS)
+    r"""Computes the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
 
@@ -72,8 +72,8 @@ def find_homography_dlt_iterated(points1: torch.Tensor,
         points1 (torch.Tensor): A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2 (torch.Tensor): A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights (torch.Tensor): Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
-        Used for the first iteration of the IRWLS.
-        soft_inl_th (float): Soft inlier threshold used for weight calculation
+          Used for the first iteration of the IRWLS.
+        soft_inl_th (float): Soft inlier threshold used for weight calculation.
         n_iter (int): number of iterations. Default is 5.
 
     Returns:

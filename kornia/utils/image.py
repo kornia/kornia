@@ -6,11 +6,13 @@ import torch
 
 def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     """Converts a numpy image to a PyTorch 4d tensor image.
+
     Args:
         image (numpy.ndarray): image of the form :math:`(H, W, C)`, :math:`(H, W)` or
             :math:`(B, H, W, C)`.
         keepdim (bool): If ``False`` unsqueeze the input image to match the shape
             :math:`(B, H, W, C)`. Default: ``True``
+
     Returns:
         torch.Tensor: tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
@@ -63,8 +65,10 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
 
     if len(tensor.shape) == 2:
         tensor = tensor.unsqueeze(0)
+
     if len(tensor.shape) == 3:
         tensor = tensor.unsqueeze(0)
+
     if color_channel_num is not None and color_channel_num != 1:
         channel_list = [0, 1, 2, 3]
         channel_list.insert(1, channel_list.pop(color_channel_num))
@@ -73,8 +77,9 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
 
 
 def tensor_to_image(tensor: torch.Tensor) -> np.array:
-    """Converts a PyTorch tensor image to a numpy image. In case the tensor is in the GPU,
-    it will be copied back to CPU.
+    """Converts a PyTorch tensor image to a numpy image.
+
+    In case the tensor is in the GPU, it will be copied back to CPU.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)` or
@@ -94,6 +99,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
 
     input_shape = tensor.shape
     image: np.array = tensor.cpu().detach().numpy()
+
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
         image = image
