@@ -69,3 +69,4 @@ class SOSNet(nn.Module):
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr
+    
