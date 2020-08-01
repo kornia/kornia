@@ -240,13 +240,13 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
     if center is not None and not torch.is_tensor(center):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))
-    if len(tensor.shape) not in (3, 4,):
-        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. "
+    if len(tensor.shape) not in (4, 5,):
+        raise ValueError("Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. "
                          "Got: {}".format(tensor.shape))
 
     # compute the rotation center
     if center is None:
-        center = _compute_tensor_center(tensor)
+        center = _compute_tensor_center3d(tensor)
 
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center

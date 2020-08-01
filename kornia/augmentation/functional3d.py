@@ -5,9 +5,14 @@ import torch
 from . import random_generator as rg
 from .utils import _transform_input3d, _validate_input_dtype
 from kornia.constants import Resample, BorderType, pi
-from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
+from kornia.geometry.transform.affwarp import (
+    _compute_rotation_matrix3d, _compute_tensor_center3d
+)
+from kornia.geometry.transform.projwarp import warp_projective
 from kornia.geometry import (
-    rotate3d
+    rotate3d,
+    get_affine_matrix3d,
+    deg2rad
 )
 
 
@@ -227,6 +232,77 @@ def compute_dflip_transformation3d(input: torch.Tensor, params: Dict[str, torch.
     trans_mat[to_flip] = flip_mat.type_as(input)
 
     return trans_mat
+
+
+def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Random affine transformation of the image keeping center invariant.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
+            - params['translations']: Horizontal and vertical translations.
+            - params['center']: Rotation center.
+            - params['scale']: Scaling params.
+            - params['sx']: Shear param toward x-axis.
+            - params['sy']: Shear param toward y-axis.
+            - params['sz']: Shear param toward y-axis.
+            - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
+
+    Returns:
+        torch.Tensor: The transfromed input
+    """
+
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    # arrange input data
+    x_data: torch.Tensor = input.view(-1, *input.shape[-4:])
+
+    depth, height, width = x_data.shape[-3:]
+
+    # concatenate transforms
+    transform: torch.Tensor = compute_affine_transformation3d(input, params)
+
+    resample_name: str = Resample(params['resample'].item()).name.lower()
+    align_corners: bool = cast(bool, params['align_corners'].item())
+
+    out_data: torch.Tensor = warp_projective(x_data, transform[:, :3, :],
+                                             (depth, height, width), resample_name,
+                                             align_corners=align_corners)
+    return out_data.view_as(input)
+
+
+def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
+            - params['translations']: Depthical, Horizontal and vertical translations.
+            - params['center']: Rotation center.
+            - params['scale']: Scaling params.
+            - params['sx']: Shear param toward x-axis.
+            - params['sy']: Shear param toward y-axis.
+            - params['sz']: Shear param toward y-axis.
+            - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
+
+    Returns:
+        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    transform = get_affine_matrix3d(
+        params['translations'], params['center'], params['scale'], params['angles'],
+        deg2rad(params['sx']), deg2rad(params['sy']), deg2rad(params['sz'])
+    ).type_as(input)
+    return transform
 
 
 def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
