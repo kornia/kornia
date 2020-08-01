@@ -3,12 +3,12 @@ from typing import Tuple, List
 
 import torch
 import kornia as K
+from kornia.geometry.conversions import convert_affinematrix_to_homography3d
+from kornia.geometry.warp import normalize_homography3d
 
 __all__ = [
     "warp_projective",
     "get_projective_transform",
-    "normal_transform3d_pixel",
-    "matrix_to_homogeneous",
     "projection_from_Rt",
 ]
 
@@ -43,10 +43,10 @@ def warp_projective(src: torch.Tensor,
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
 
-    M_4x4 = matrix_to_homogeneous(M)  # Bx4x4
+    M_4x4 = convert_affinematrix_to_homography3d(M)  # Bx4x4
 
     # we need to normalize the transformation since grid sample needs -1/1 coordinates
-    dst_norm_trans_src_norm: torch.Tensor = _normalize_projection_matrix(
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
         M_4x4, size_src, size_out)    # Bx4x4
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
@@ -76,73 +76,6 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     assert len(tvec.shape) >= 2 and tvec.shape[-2:] == (3, 1), tvec.shape
 
     return torch.cat([rmat, tvec], dim=-1)  # Bx3x4
-
-
-def matrix_to_homogeneous(M: torch.Tensor) -> torch.Tensor:
-    r"""Converts a generic transformation matrix to make it usable for homogeneous coordinates.
-
-    Appends to the last matrix row an extra row filled with zeros with a one to the end.
-
-    Args:
-        M (torch.Tensor): the transformation matrix with at least two dimensions :math:`(*, M, N)`.
-
-    Returns:
-        torch.Tensor: the transformation matrix with shape :math:`(*, M, N + 1)`.
-
-    """
-    M_homo = torch.nn.functional.pad(M, [0, 0, 0, 1], "constant", value=0.)
-    M_homo[..., -1, -1] += 1.0
-
-    return M_homo
-
-
-def _normalize_projection_matrix(
-        dst_pix_trans_src_pix: torch.Tensor,
-        dsize_src: Tuple[int, int, int],
-        dsize_dst: Tuple[int, int, int]) -> torch.Tensor:
-    r"""Computes the transformation matrix to normalize points before applying sampling."""
-    # source and destination sizes
-    src_d, src_h, src_w = dsize_src
-    src_d, dst_h, dst_w = dsize_dst
-
-    # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: torch.Tensor = normal_transform3d_pixel(
-        src_d, src_h, src_w).to(dst_pix_trans_src_pix)
-
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
-
-    dst_norm_trans_dst_pix: torch.Tensor = normal_transform3d_pixel(
-        src_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
-
-    # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = (
-        dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
-    )
-    return dst_norm_trans_src_norm
-
-
-def normal_transform3d_pixel(depth: int, height: int, width: int) -> torch.Tensor:
-    r"""Compute the normalization matrix from image size in pixels to [-1, 1].
-
-    Args:
-        depth (int): tensor depht.
-        height (int): tensor height.
-        width (int): tensor width.
-
-    Returns:
-        torch.Tensor: normalized transform with shape :math:`(1, 4, 4)`.
-
-    """
-    tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
-                           [0.0, 1.0, 0.0, -1.0],
-                           [0.0, 0.0, 1.0, -1.0],
-                           [0.0, 0.0, 0.0, 1.0]])  # 4x4
-
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
-    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / (depth - 1.0)
-
-    return tr_mat[None]  # 1x4x4
 
 
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torch.Tensor:
@@ -180,7 +113,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torc
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
 
     # chain 4x4 transforms
-    proj_mat = matrix_to_homogeneous(proj_mat)  # Bx4x4
+    proj_mat = convert_affinematrix_to_homography3d(proj_mat)  # Bx4x4
     proj_mat = (from_origin_mat @ proj_mat @ to_origin_mat)
 
     return proj_mat[..., :3, :]  # Bx3x4
