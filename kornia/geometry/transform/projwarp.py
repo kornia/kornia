@@ -78,7 +78,7 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     return torch.cat([rmat, tvec], dim=-1)  # Bx3x4
 
 
-def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torch.Tensor:
+def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
     r"""Calculates the projection matrix for a 3D rotation.
 
     The function computes the projection matrix given the center and angles per axis.
@@ -88,6 +88,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torc
         angles (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
+        scales (torch.Tensor): isotropic scale factor.
 
     Returns:
         torch.Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
@@ -100,7 +101,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor) -> torc
 
     # create rotation matrix
     angle_axis_rad: torch.Tensor = K.deg2rad(angles)
-    rmat: torch.Tensor = K.angle_axis_to_rotation_matrix(angle_axis_rad)  # Bx3x3
+    rmat: torch.Tensor = K.angle_axis_to_rotation_matrix(angle_axis_rad) * scales.view(-1, 1, 1)  # Bx3x3
 
     # define matrix to move forth and back to origin
     from_origin_mat = torch.eye(4)[None].repeat(rmat.shape[0], 1, 1).type_as(center)  # Bx4x4

@@ -179,18 +179,24 @@ def _get_random_affine_params(
     center = center.expand(batch_size, -1)
 
     if shears is not None:
-        sx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
-        sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
-        sz = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        sxy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        sxz = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        syx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        syz = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        szx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        szy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
     else:
-        sx = sy = sz = torch.tensor([0] * batch_size)
+        sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size)
 
     return dict(translations=translations,
                 center=center,
                 scale=scale,
                 angles=angles,
-                sx=sx,
-                sy=sy,
-                sz=sz,
+                sxy=sxy,
+                sxz=sxz,
+                syx=syx,
+                syz=syz,
+                szx=szx,
+                szy=szy,
                 resample=torch.tensor(Resample.get(resample).value),
                 align_corners=torch.tensor(align_corners))
