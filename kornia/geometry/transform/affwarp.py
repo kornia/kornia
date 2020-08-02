@@ -29,7 +29,8 @@ __all__ = [
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane."""
+    """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+    assert 2 <= len(tensor) <=4, f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}."
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -40,7 +41,8 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
 
 
 def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane."""
+    """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
+    assert 3 <= len(tensor) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
     depth, height, width = tensor.shape[-3:]
     center_x: float = float(depth - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -76,7 +78,8 @@ def _compute_rotation_matrix3d(yaw: torch.Tensor, pitch: torch.Tensor, roll: tor
         f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
-    matrix: torch.Tensor = get_projective_transform(center, angles)
+    scales: torch.Tensor = torch.ones_like(yaw)
+    matrix: torch.Tensor = get_projective_transform(center, angles, scales)
     return matrix
 
 
@@ -119,7 +122,8 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     r"""Apply an affine transformation to the image.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped.
+        tensor (torch.Tensor): The image tensor to be warped in shapes of
+            :math:`(H, W)`, :math:`(D, H, W)` and :math:`(B, C, H, W)`.
         matrix (torch.Tensor): The 2x3 affine transformation matrix.
         mode (str): 'bilinear' | 'nearest'
         align_corners(bool): interpolation flag. Default: False. See
@@ -155,7 +159,8 @@ def affine3d(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     r"""Apply an affine transformation to the 3d volume.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped.
+        tensor (torch.Tensor): The image tensor to be warped in shapes of
+            :math:`(D, H, W)`, :math:`(C, D, H, W)` and :math:`(B, C, D, H, W)`.
         matrix (torch.Tensor): The 3x4 affine transformation matrix.
         mode (str): 'bilinear' | 'nearest'
         align_corners(bool): interpolation flag. Default: False. See
