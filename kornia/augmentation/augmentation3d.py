@@ -217,6 +217,12 @@ class RandomAffine3D(AugmentationBase3D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 3, 3, 3)
+        >>> aug = RandomAffine3D((15., 20., 20.), return_transform=True)
+        >>> aug(input)
     """
 
     def __init__(
