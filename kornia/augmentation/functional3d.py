@@ -287,9 +287,12 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
             - params['translations']: Depthical, Horizontal and vertical translations.
             - params['center']: Rotation center.
             - params['scale']: Scaling params.
-            - params['sx']: Shear param toward x-axis.
-            - params['sy']: Shear param toward y-axis.
-            - params['sz']: Shear param toward y-axis.
+            - params['sxy']: Shear param toward x-y-axis.
+            - params['sxz']: Shear param toward x-z-axis.
+            - params['syx']: Shear param toward y-x-axis.
+            - params['syz']: Shear param toward y-z-axis.
+            - params['szx']: Shear param toward z-x-axis.
+            - params['szy']: Shear param toward z-y-axis.
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['align_corners']: Boolean tensor.
 
@@ -300,7 +303,8 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform = get_affine_matrix3d(
         params['translations'], params['center'], params['scale'], params['angles'],
-        deg2rad(params['sx']), deg2rad(params['sy']), deg2rad(params['sz'])
+        deg2rad(params['sxy']), deg2rad(params['sxz']), deg2rad(params['syx']),
+        deg2rad(params['syz']), deg2rad(params['szx']), deg2rad(params['szy'])
     ).type_as(input)
     return transform
 
