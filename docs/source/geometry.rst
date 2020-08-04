@@ -10,6 +10,7 @@ kornia.geometry
    geometry.conversions
    geometry.depth
    geometry.epipolar
+   geometry.homography
    geometry.linalg
    geometry.transform
    geometry.warp
@@ -24,13 +25,6 @@ Coordinates Subpixel
 .. autofunction:: spatial_softmax2d
 .. autofunction:: spatial_expectation2d
 .. autofunction:: render_gaussian2d
-
-Homography
-----------
-
-.. autofunction:: find_homography_dlt
-.. autofunction:: find_homography_dlt_iterated
-
 
 Module
 ------
