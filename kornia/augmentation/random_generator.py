@@ -717,3 +717,19 @@ def random_sharpness_generator(
     return dict(
         sharpness_factor=sharpness_factor
     )
+
+
+def random_mixup_generator(batch_size: int) -> Dict[str, torch.Tensor]:
+    r"""Generator mixup indexes and lambdas for a batch of inputs.
+    Args:
+        batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+    """
+    mixup_pairs: torch.Tensor = torch.randperm(batch_size)
+    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch=False)
+
+    return dict(
+        mixup_pairs=mixup_pairs,
+        mixup_lambdas=mixup_lambdas
+    )

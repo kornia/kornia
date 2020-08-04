@@ -880,3 +880,26 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     for image, prob in zip(input, params['batch_prob']):
         res.append(equalize(image) if prob else image)
     return torch.cat(res, dim=0)
+
+
+def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
+                params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Apply mixup to images in a batch.
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        labels (torch.Tensor): Label tensor with shape (B,).
+        params (Dict[str, torch.Tensor]):
+            - params['mixup_pairs']: Mixup indexes.
+            - params['mixup_lambdas']: Lambda for the mixup strength.
+    Returns:
+        torch.Tensor: Adjusted image.
+    """
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
+    labels_permute = labels.index_select(dim=0, index=params['mixup_pairs'].to(labels.device))
+
+    lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(input.device)
+    inputs = input * (1 - lam) + input_permute * lam
+    labels = torch.stack([labels.float(), labels_permute.float(), params['mixup_lambdas'].to(labels.device)], dim=-1)
+    return inputs, labels

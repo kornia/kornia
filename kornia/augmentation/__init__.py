@@ -22,6 +22,9 @@ from .augmentation3d import (
     RandomVerticalFlip3D,
     RandomDepthicalFlip3D
 )
+from .label_soften_augmentation import (
+    RandomMixUp
+)
 from kornia.color.normalize import (
     Normalize,
     Denormalize
@@ -50,4 +53,5 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
+    "RandomMixUp",
 ]
