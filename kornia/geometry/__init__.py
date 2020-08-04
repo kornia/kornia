@@ -4,7 +4,6 @@ from kornia.geometry.linalg import *
 from kornia.geometry.transform import *
 from kornia.geometry.warp import *
 from kornia.geometry.depth import *
-from kornia.geometry.dsnt import *
-from kornia.geometry.spatial_soft_argmax import *
+from kornia.geometry.subpix import *
 from kornia.geometry.epipolar import *
 from kornia.geometry.homography import *

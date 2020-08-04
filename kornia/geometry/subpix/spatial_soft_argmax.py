@@ -1,12 +1,13 @@
+from typing import Tuple, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 import kornia
-from kornia.geometry import dsnt
+from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
-from typing import Tuple, Union
 
 
 def _get_window_grid_kernel2d(h: int, w: int,
@@ -126,7 +127,7 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int,
 class ConvSoftArgmax2d(nn.Module):
     r"""Module that calculates soft argmax 2d per window.
 
-    See :func:`~kornia.geometry.conv_soft_argmax2d` for details.
+    See :func:`~kornia.geometry.subpix.conv_soft_argmax2d` for details.
     """
 
     def __init__(self,
@@ -170,7 +171,7 @@ class ConvSoftArgmax2d(nn.Module):
 class ConvSoftArgmax3d(nn.Module):
     r"""Module that calculates soft argmax 3d per window.
 
-    See :func:`~kornia.geometry.conv_soft_argmax3d` for details.
+    See :func:`~kornia.geometry.subpix.conv_soft_argmax3d` for details.
     """
 
     def __init__(self,
@@ -519,7 +520,7 @@ def spatial_soft_argmax2d(
 class SpatialSoftArgmax2d(nn.Module):
     r"""Module that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
-    See :func:`~kornia.contrib.spatial_soft_argmax2d` for details.
+    See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
 
     def __init__(self,
@@ -625,7 +626,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
 
 class ConvQuadInterp3d(nn.Module):
     r"""Module that calculates soft argmax 3d per window
-    See :func:`~kornia.geometry.conv_quad_interp3d` for details.
+    See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
 
     def __init__(self,
