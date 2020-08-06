@@ -518,11 +518,11 @@ def get_shear_matrix3d(
         m = S_{xy}
         n = S_{xz}
         o = S_{yx}
-        p = S_{xy}S_{yx} + S_{yz}
-        q = S_{xz}S_{yx}
+        p = S_{xy}S_{yx} + 1
+        q = S_{xz}S_{yx} + S_{yz}
         r = S_{zx} + S_{yx}S_{zy}
-        s = S_{xy}S_{zx} + (S_{xy}S_{yx} + S_{yz})S_{zy}
-        t = S_{xz}S_{zx} + S_{xz}S_{yx}S_{zy} + 1
+        s = S_{xy}S_{zx} + (S_{xy}S_{yx} + 1)S_{zy}
+        t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
     
