@@ -43,9 +43,9 @@ class DummyDataset(Dataset):
 import kornia
 
 transform = nn.Sequential(
-    kornia.color.AdjustBrightness(0.5),
-    kornia.color.AdjustGamma(gamma=2.),
-    kornia.color.AdjustContrast(0.7),
+    kornia.enhance.AdjustBrightness(0.5),
+    kornia.enhance.AdjustGamma(gamma=2.),
+    kornia.enhance.AdjustContrast(0.7),
 )
 
 ################################
