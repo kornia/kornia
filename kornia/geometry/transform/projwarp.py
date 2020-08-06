@@ -21,6 +21,9 @@ def warp_projective(src: torch.Tensor,
                     align_corners: bool = True) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
+    .. warning::
+        This API signature it is experimental and might suffer some changes in the future.
+
     Args:
         src (torch.Tensor): input tensor of shape :math:`(B, C, D, H, W)`.
         M (torch.Tensor): projective transformation matrix of shape :math:`(B, 3, 4)`.
@@ -62,6 +65,9 @@ def warp_projective(src: torch.Tensor,
 def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
     r"""Compute the projection matrix from Rotation and translation.
 
+    .. warning::
+        This API signature it is experimental and might suffer some changes in the future.
+
     Concatenates the batch of rotations and translations such that :math:`P = [R | t]`.
 
     Args:
@@ -80,6 +86,9 @@ def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
 
 def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales: torch.Tensor) -> torch.Tensor:
     r"""Calculates the projection matrix for a 3D rotation.
+
+    .. warning::
+        This API signature it is experimental and might suffer some changes in the future.
 
     The function computes the projection matrix given the center and angles per axis.
 
