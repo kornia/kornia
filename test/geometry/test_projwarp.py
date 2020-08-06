@@ -4,6 +4,7 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
+import kornia
 import kornia.geometry.transform.projwarp as proj
 
 
@@ -39,10 +40,10 @@ class TestWarpProjective:
         out_shape = (3, 4, 5)
         input = torch.rand(2, 5, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
-        P = proj.matrix_to_homogeneous(P)
+        P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
         output = proj.warp_projective(input, P_hat, out_shape)
-        assert_allclose(output, input)
+        assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
         input = torch.tensor([[[[
@@ -79,7 +80,8 @@ class TestWarpProjective:
 
         angles = torch.tensor([[90., 0., 0.]], device=device, dtype=dtype)
 
-        P = proj.get_projective_transform(center, angles)
+        scales: torch.Tensor = torch.ones_like(angles[:, 0])
+        P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_projective(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
@@ -118,7 +120,8 @@ class TestWarpProjective:
 
         angles = torch.tensor([[0., 90., 0.]], device=device, dtype=dtype)
 
-        P = proj.get_projective_transform(center, angles)
+        scales: torch.Tensor = torch.ones_like(angles[:, 0])
+        P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_projective(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
@@ -157,7 +160,8 @@ class TestWarpProjective:
 
         angles = torch.tensor([[0., 0., 90.]], device=device, dtype=dtype)
 
-        P = proj.get_projective_transform(center, angles)
+        scales: torch.Tensor = torch.ones_like(angles[:, 0])
+        P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_projective(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
@@ -221,7 +225,8 @@ class TestWarpProjective:
 
         angles = torch.tensor([[0., 90., 0.]], device=device, dtype=dtype)
 
-        P = proj.get_projective_transform(center, angles)
+        scales: torch.Tensor = torch.ones_like(angles[:, 0])
+        P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_projective(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
@@ -230,7 +235,8 @@ class TestGetRotationMatrix3d:
     def test_smoke(self, device, dtype):
         center = torch.rand(1, 3, device=device, dtype=dtype)
         angle = torch.rand(1, 3, device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         assert P.shape == (1, 3, 4)
 
     @pytest.mark.parametrize("batch_size", [1, 3, 6])
@@ -238,13 +244,15 @@ class TestGetRotationMatrix3d:
         B: int = batch_size
         center = torch.rand(B, 3, device=device, dtype=dtype)
         angle = torch.rand(B, 3, device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         assert P.shape == (B, 3, 4)
 
     def test_identity(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
         angle = torch.zeros(1, 3, device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         P_expected = torch.tensor([
             [1., 0., 0., 0.],
             [0., 1., 0., 0.],
@@ -255,7 +263,8 @@ class TestGetRotationMatrix3d:
     def test_rot90x(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
         angle = torch.tensor([[90., 0., 0.]], device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         P_expected = torch.tensor([
             [1., 0., 0., 0.],
             [0., 0., -1., 0.],
@@ -266,7 +275,8 @@ class TestGetRotationMatrix3d:
     def test_rot90y(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
         angle = torch.tensor([[0., 90., 0.]], device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         P_expected = torch.tensor([
             [0., 0., 1., 0.],
             [0., 1., 0., 0.],
@@ -277,7 +287,8 @@ class TestGetRotationMatrix3d:
     def test_rot90z(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
         angle = torch.tensor([[0., 0., 90.]], device=device, dtype=dtype)
-        P = proj.get_projective_transform(center, angle)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        P = proj.get_projective_transform(center, angle, scales)
         P_expected = torch.tensor([
             [0., -1., 0., 0.],
             [1., 0., 0., 0.],
@@ -289,4 +300,5 @@ class TestGetRotationMatrix3d:
         # generate input data
         center = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
         angle = torch.rand(1, 3, device=device, dtype=torch.float64)
-        assert gradcheck(proj.get_projective_transform, (center, angle), raise_exception=True)
+        scales: torch.Tensor = torch.ones_like(angle[:, 0])
+        assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True)
