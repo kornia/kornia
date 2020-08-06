@@ -4,13 +4,17 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.imgwarp import (
-    warp_affine, get_rotation_matrix2d,
+    warp_affine, get_rotation_matrix2d
+)
+from kornia.geometry.transform.projwarp import (
+    warp_projective, get_projective_transform
 )
 
 __all__ = [
     "affine",
     "scale",
     "rotate",
+    "rotate3d",
     "translate",
     "shear",
     "resize",
@@ -25,7 +29,8 @@ __all__ = [
 
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
-    """Computes the center of tensor plane."""
+    """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
+    assert 2 <= len(tensor.shape) <= 4, f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}."
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
@@ -35,11 +40,46 @@ def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     return center
 
 
+def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
+    """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
+    assert 3 <= len(tensor.shape) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
+    depth, height, width = tensor.shape[-3:]
+    center_x: float = float(depth - 1) / 2
+    center_y: float = float(height - 1) / 2
+    center_z: float = float(width - 1) / 2
+    center: torch.Tensor = torch.tensor(
+        [center_x, center_y, center_z],
+        device=tensor.device, dtype=tensor.dtype)
+    return center
+
+
 def _compute_rotation_matrix(angle: torch.Tensor,
                              center: torch.Tensor) -> torch.Tensor:
     """Computes a pure affine rotation matrix."""
     scale: torch.Tensor = torch.ones_like(angle)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
+    return matrix
+
+
+def _compute_rotation_matrix3d(yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor,
+                               center: torch.Tensor) -> torch.Tensor:
+    """Computes a pure affine rotation matrix."""
+    if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
+        yaw = yaw.unsqueeze(dim=0)
+        pitch = pitch.unsqueeze(dim=0)
+        roll = roll.unsqueeze(dim=0)
+
+    if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 1:
+        yaw = yaw.unsqueeze(dim=1)
+        pitch = pitch.unsqueeze(dim=1)
+        roll = roll.unsqueeze(dim=1)
+
+    assert len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2, \
+        f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
+
+    angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
+    scales: torch.Tensor = torch.ones_like(yaw)
+    matrix: torch.Tensor = get_projective_transform(center, angles, scales)
     return matrix
 
 
@@ -82,7 +122,8 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     r"""Apply an affine transformation to the image.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be warped.
+        tensor (torch.Tensor): The image tensor to be warped in shapes of
+            :math:`(H, W)`, :math:`(D, H, W)` and :math:`(B, C, H, W)`.
         matrix (torch.Tensor): The 2x3 affine transformation matrix.
         mode (str): 'bilinear' | 'nearest'
         align_corners(bool): interpolation flag. Default: False. See
@@ -113,6 +154,44 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     return warped
 
 
+def affine3d(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
+             align_corners: bool = False) -> torch.Tensor:
+    r"""Apply an affine transformation to the 3d volume.
+
+    Args:
+        tensor (torch.Tensor): The image tensor to be warped in shapes of
+            :math:`(D, H, W)`, :math:`(C, D, H, W)` and :math:`(B, C, D, H, W)`.
+        matrix (torch.Tensor): The 3x4 affine transformation matrix.
+        mode (str): 'bilinear' | 'nearest'
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+
+    Returns:
+        torch.Tensor: The warped image.
+    """
+    # warping needs data in the shape of BCDHW
+    is_unbatched: bool = tensor.ndimension() == 4
+    if is_unbatched:
+        tensor = torch.unsqueeze(tensor, dim=0)
+
+    # we enforce broadcasting since by default grid_sample it does not
+    # give support for that
+    matrix = matrix.expand(tensor.shape[0], -1, -1)
+
+    # warp the input tensor
+    depth: int = tensor.shape[-3]
+    height: int = tensor.shape[-2]
+    width: int = tensor.shape[-1]
+    warped: torch.Tensor = warp_projective(tensor, matrix, (depth, height, width), mode,
+                                           align_corners=align_corners)
+
+    # return in the original shape
+    if is_unbatched:
+        warped = torch.squeeze(warped, dim=0)
+
+    return warped
+
+
 # based on:
 # https://github.com/anibali/tvl/blob/master/src/tvl/transforms.py#L185
 
@@ -129,7 +208,7 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
     if not torch.is_tensor(angle):
         raise TypeError("Input angle type is not a torch.Tensor. Got {}"
                         .format(type(angle)))
-    if center is not None and not torch.is_tensor(angle):
+    if center is not None and not torch.is_tensor(center):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))
     if len(tensor.shape) not in (3, 4,):
@@ -148,6 +227,42 @@ def rotate(tensor: torch.Tensor, angle: torch.Tensor,
 
     # warp using the affine transform
     return affine(tensor, rotation_matrix[..., :2, :3], mode, align_corners)
+
+
+def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll: torch.Tensor,
+             center: Union[None, torch.Tensor] = None, mode: str = 'bilinear',
+             align_corners: bool = False) -> torch.Tensor:
+    r"""Rotate the image anti-clockwise about the centre.
+
+    See :class:`~kornia.Rotate` for details.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(yaw):
+        raise TypeError("Input angle type is not a torch.Tensor. Got {}"
+                        .format(type(yaw)))
+    if center is not None and not torch.is_tensor(center):
+        raise TypeError("Input center type is not a torch.Tensor. Got {}"
+                        .format(type(center)))
+    if len(tensor.shape) not in (4, 5,):
+        raise ValueError("Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. "
+                         "Got: {}".format(tensor.shape))
+
+    # compute the rotation center
+    if center is None:
+        center = _compute_tensor_center3d(tensor)
+
+    # compute the rotation matrix
+    # TODO: add broadcasting to get_rotation_matrix2d for center
+    yaw = yaw.expand(tensor.shape[0])
+    pitch = yaw.expand(tensor.shape[0])
+    roll = yaw.expand(tensor.shape[0])
+    center = center.expand(tensor.shape[0], -1)
+    rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
+
+    # warp using the affine transform
+    return affine3d(tensor, rotation_matrix[..., :3, :4], mode, align_corners)
 
 
 def translate(tensor: torch.Tensor, translation: torch.Tensor,
