@@ -24,6 +24,12 @@ This is the base class for creating a new transform. The user only needs to over
    .. automethod:: compute_transformation
    .. automethod:: apply_transform
 
+.. autoclass:: AugmentationBase3D
+
+   .. automethod:: generate_parameters
+   .. automethod:: compute_transformation
+   .. automethod:: apply_transform
+
 Create your own transformation:
 
 .. code-block:: python
@@ -137,9 +143,16 @@ Example for semantic segmentation using low-level randomness control:
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomEqualize
+.. autoclass:: RandomDepthicalFlip3D
+.. autoclass:: RandomHorizontalFlip3D
+.. autoclass:: RandomVerticalFlip3D
+.. autoclass:: RandomRotation3D
+.. autoclass:: RandomAffine3D
 
 Functional
 ----------
 
 .. automodule:: kornia.augmentation.functional
+    :members:
+.. automodule:: kornia.augmentation.functional3d
     :members:
