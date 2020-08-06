@@ -495,7 +495,38 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     transform[..., 3] += translations  # tx/ty/tz
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography3d(transform)
+    shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
+    transform_h = transform_h @ shear_mat
+    return transform_h
 
+def get_shear_matrix3d(
+    center: torch.Tensor,
+    sxy: Optional[torch.Tensor] = None, sxz: Optional[torch.Tensor] = None,
+    syx: Optional[torch.Tensor] = None, syz: Optional[torch.Tensor] = None,
+    szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None,
+):
+    r"""Composes shear matrix Bx4x4 from the components.
+
+    .. math::
+        \begin{bmatrix} 
+            1 & o & r & oy + rz \\
+            m & p & s & mx + py + sz -y \\
+            n & q & t & nx + qy + tz -z \\
+            0 & 0 & 0 & 1  \\
+        \end{bmatrix}
+        Where:
+        m = S_{xy}
+        n = S_{xz}
+        o = S_{yx}
+        p = S_{xy}S_{yx} + S_{yz}
+        q = S_{xz}S_{yx}
+        r = S_{zx} + S_{yx}S_{zy}
+        s = S_{xy}S_{zx} + (S_{xy}S_{yx} + S_{yz})S_{zy}
+        t = S_{xz}S_{zx} + S_{xz}S_{yx}S_{zy} + 1
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    
+    """
     sxy = torch.tensor(0) if sxy is None else sxy
     sxz = torch.tensor(0) if sxz is None else sxz
     syx = torch.tensor(0) if syx is None else syx
@@ -504,28 +535,45 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     szy = torch.tensor(0) if szy is None else szy
 
     x, y, z = torch.split(center, 1, dim=-1)
-    x = x.view(-1)
-    y = y.view(-1)
-    z = z.view(-1)
+    x, y, z = x.view(-1), y.view(-1), z.view(-1)
+    # Prepare parameters
     sxy_tan = torch.tan(sxy)  # type: ignore
     sxz_tan = torch.tan(sxz)  # type: ignore
     syx_tan = torch.tan(syx)  # type: ignore
     syz_tan = torch.tan(syz)  # type: ignore
     szx_tan = torch.tan(szx)  # type: ignore
     szy_tan = torch.tan(szy)  # type: ignore
-    zeros = torch.zeros_like(sxy)  # type: ignore
-    ones = torch.ones_like(sxy)  # type: ignore
-    m00, m01, m02 = ones, -sxy_tan, -sxz_tan
-    m10, m11, m12 = -syx_tan, sxy_tan * syx_tan + ones, sxz_tan * syx_tan - syz_tan
-    m20 = syx_tan * szy_tan - szx_tan
-    m21 = sxy_tan * szx_tan - szy_tan * m11
-    m22 = sxz_tan * szx_tan - szy_tan * m12 +ones
-    # TODO: translation math
+
+    # compute translation matrix
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+        sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
+
+    m03 = m01 * y + m02 * z
+    m13 = m10 * x + m11 * y + m12 * z - y
+    m23 = m20 * x + m21 * y + m22 * z - z
+
+    # shear matrix is implemented with negative values
+    sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan = \
+        - sxy_tan, - sxz_tan, - syx_tan, - syz_tan, - szx_tan, - szy_tan
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+        sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
+
     shear_mat = torch.stack([
-        m00, m10, m20, zeros,
-        m01, m11, m21, zeros,
-        m02, m12, m22, zeros
+        m00, m01, m02, m03,
+        m10, m11, m12, m13,
+        m20, m21, m22, m23
     ], dim=-1).view(-1, 3, 4)
     shear_mat = convert_affinematrix_to_homography3d(shear_mat)
-    transform_h = transform_h @ shear_mat
-    return transform_h
+    return shear_mat
+
+
+def _computer_shear_matrix(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+    zeros = torch.zeros_like(sxy_tan)  # type: ignore
+    ones = torch.ones_like(sxy_tan)  # type: ignore
+
+    m00, m10, m20 = ones, sxy_tan, sxz_tan
+    m01, m11, m21 = syx_tan, sxy_tan * syx_tan + ones, sxz_tan * syx_tan + syz_tan
+    m02 = syx_tan * szy_tan + szx_tan
+    m12 = sxy_tan * szx_tan + szy_tan * m11
+    m22 = sxz_tan * szx_tan + szy_tan * m21 + ones
+    return m00, m10, m20, m01, m11, m21, m02, m12, m22

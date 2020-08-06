@@ -201,18 +201,21 @@ class RandomAffine3D(AugmentationBase3D):
             If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
-            and vertical translations. For example translate=(a, b), then horizontal shift
-            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+        translate (tuple, optional): tuple of maximum absolute fraction for depthical, horizontal
+            and vertical translations. For example translate=(a, b, c), then
+            depthical shift will be randomly sampled in the range -img_depth * a < dx < img_depth * a
+            horizontal shift will be randomly sampled in the range -img_width * b < dy < img_width * b.
+            vertical shift will be randomly sampled in the range -img_height * b < dy < img_height * b.
+            Will not translate by default.
         scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-            will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
-            Will not apply shear by default
+            If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be apllied.
+            If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
+            If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
+            will be applied.
+            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
+            will be applied.
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
@@ -223,12 +226,28 @@ class RandomAffine3D(AugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomAffine3D((15., 20., 20.), return_transform=True)
         >>> aug(input)
+        (tensor([[[[[0.4503, 0.4763, 0.1680],
+                   [0.2029, 0.4267, 0.3515],
+                   [0.3195, 0.5436, 0.3706]],
+        <BLANKLINE>
+                  [[0.5255, 0.3508, 0.4858],
+                   [0.0795, 0.1689, 0.4220],
+                   [0.5306, 0.7234, 0.6879]],
+        <BLANKLINE>
+                  [[0.2971, 0.2746, 0.3471],
+                   [0.4924, 0.4960, 0.6460],
+                   [0.3187, 0.4556, 0.7596]]]]]), tensor([[[ 0.9722, -0.0603,  0.2262, -0.1381],
+                 [ 0.1131,  0.9669, -0.2286,  0.1486],
+                 [-0.2049,  0.2478,  0.9469,  0.0102],
+                 [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
     """
 
     def __init__(
         self, degrees: Union[float, Tuple[float, float, float]],
         translate: Optional[Tuple[float, float, float]] = None, scale: Optional[Tuple[float, float]] = None,
-        shear: Optional[Union[float, Tuple[float, float]]] = None,
+        shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
+            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
+                Tuple[float, float], Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:

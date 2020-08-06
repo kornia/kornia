@@ -164,49 +164,45 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
     return factor_bound
 
 
-def _rotation_range_reader(
-    degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
-        Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
+def _tuple_range_reader(
+    shears: Union[torch.Tensor, float, tuple],
+    target_size: int
 ) -> torch.Tensor:
+    """
+    Given target_size, it will generate the correponding (target_size, 2) range tensor for tasks like
+    affine transformation.
+    """
+    target_shape = torch.Size([target_size, 2])
+    if not torch.is_tensor(shears):
+        if isinstance(shears, (float, int)):
+            if shears < 0:
+                raise ValueError(f"If shears is only one number it must be a positive number. Got{shears}")
+            shears_tmp = torch.tensor([-shears, shears]).repeat(target_shape[0], 1).to(torch.float32)
 
-    if not torch.is_tensor(degrees):
-        if isinstance(degrees, (float, int)):
-            if degrees < 0:
-                raise ValueError(f"If Degrees is only one number it must be a positive number. Got{degrees}")
-            yaw = torch.tensor([-degrees, degrees]).to(torch.float32)
-            pitch = torch.tensor([-degrees, degrees]).to(torch.float32)
-            roll = torch.tensor([-degrees, degrees]).to(torch.float32)
+        elif isinstance(shears, (tuple)) and len(shears) == 2 \
+            and isinstance(shears[0], (float, int)) and isinstance(shears[1], (float, int)):
+            shears_tmp = torch.tensor(shears).repeat(target_shape[0], 1).to(torch.float32)
 
-        elif isinstance(degrees, (tuple)) and len(degrees) == 2 \
-            and isinstance(degrees[0], (float, int)) and isinstance(degrees[1], (float, int)):
-            yaw = torch.tensor(degrees).to(torch.float32)
-            pitch = torch.tensor(degrees).to(torch.float32)
-            roll = torch.tensor(degrees).to(torch.float32)
+        elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
+            and all([isinstance(x, (float, int)) for x in shears]):
+            shears_tmp = torch.tensor([(-s, s) for s in shears]).to(torch.float32)
 
-        elif isinstance(degrees, (tuple)) and len(degrees) == 3 \
-            and isinstance(degrees[0], (tuple)) and isinstance(degrees[1], (tuple)) \
-            and isinstance(degrees[2], (tuple)):
-            yaw = torch.tensor(degrees[0]).to(torch.float32)
-            pitch = torch.tensor(degrees[1]).to(torch.float32)
-            roll = torch.tensor(degrees[2]).to(torch.float32)
+        elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
+            and all([isinstance(x, (tuple)) for x in shears]):
+            shears_tmp = torch.tensor(shears).to(torch.float32)
 
-        elif isinstance(degrees, (tuple)) and len(degrees) == 3 \
-            and isinstance(degrees[0], (float, int)) and isinstance(degrees[1], (float, int)) \
-            and isinstance(degrees[2], (float, int)):
-            yaw = torch.tensor((-degrees[0], degrees[0])).to(torch.float32)
-            pitch = torch.tensor((-degrees[1], degrees[1])).to(torch.float32)
-            roll = torch.tensor((-degrees[2], degrees[2])).to(torch.float32)
         else:
-            raise TypeError(f"Degrees should be a float number a sequence or a tensor. Got {degrees}")
+            raise TypeError(
+                "If not pass a tensor, it must be float, (float, float) for isotropic shearing or a tuple of"
+                f"{target_size} floats or {target_size} (float, float) for independent shearing. Got {shears}.")
 
     else:
         # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
-        degrees = cast(torch.Tensor, degrees)
-        if len(degrees) != 3 and len(degrees[0]) != len(degrees[1]) != len(degrees[2]) != 2:
+        shears = cast(torch.Tensor, shears)
+        if shears.shape != target_shape:
             raise ValueError(
-                f"Degrees must be a 3x2 tensor for the degree range of yaw, pitch, roll. Got {degrees.shape}")
-        yaw = degrees[0]
-        pitch = degrees[1]
-        roll = degrees[2]
+                f"Degrees must be a {list(target_shape)} tensor for the degree range for independent shearing."
+                f"Got {shears}")
+        shears_tmp = shears
 
-    return torch.stack([yaw, pitch, roll], dim=0)
+    return shears_tmp
