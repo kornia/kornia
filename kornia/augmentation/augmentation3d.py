@@ -246,8 +246,8 @@ class RandomAffine3D(AugmentationBase3D):
         self, degrees: Union[float, Tuple[float, float, float]],
         translate: Optional[Tuple[float, float, float]] = None, scale: Optional[Tuple[float, float]] = None,
         shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
-                Tuple[float, float], Tuple[float, float]]] = None,
+                     Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
+                     Tuple[float, float], Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
@@ -324,7 +324,7 @@ class RandomRotation3D(AugmentationBase3D):
     """
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
+                             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:

@@ -226,7 +226,7 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     return tr_mat
 
 
-def normal_transform_pixel3d(depth:int, height: int, width: int) -> torch.Tensor:
+def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
