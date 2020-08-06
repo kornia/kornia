@@ -35,13 +35,19 @@ class TestRandomHorizontalFlip3D:
 
         input = torch.tensor([[[0., 0., 0., 0.],
                                [0., 0., 0., 0.],
-                               [0., 0., 1., 2.]]])  # 1 x 3 x 4
+                               [0., 0., 1., 2.]],
+                              [[0., 0., 0., 0.],
+                               [0., 0., 0., 0.],
+                               [0., 0., 1., 2.]]])  # 2 x 3 x 4
 
         input = input.to(device)
 
         expected = torch.tensor([[[0., 0., 0., 0.],
                                   [0., 0., 0., 0.],
-                                  [2., 1., 0., 0.]]])  # 1x 3 x 4
+                                  [2., 1., 0., 0.]],
+                                 [[0., 0., 0., 0.],
+                                  [0., 0., 0., 0.],
+                                  [2., 1., 0., 0.]]])  # 2 x 3 x 4
 
         expected = expected.to(device)
 
@@ -92,8 +98,8 @@ class TestRandomHorizontalFlip3D:
                                   [0., 0., 0., 1.]]])  # 1 x 4 x 4
         identity = identity.to(device)
 
-        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
-        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
+        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
@@ -191,12 +197,18 @@ class TestRandomVerticalFlip3D:
 
         input = torch.tensor([[[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]])  # 1 x 3 x 3
+                              [0., 1., 1.]],
+                             [[0., 0., 0.],
+                              [0., 0., 0.],
+                              [0., 1., 1.]]])  # 2 x 3 x 3
         input = input.to(device)
 
         expected = torch.tensor([[[0., 1., 1.],
-                                 [0., 0., 0.],
-                                 [0., 0., 0.]]])  # 1 x 3 x 3
+                                  [0., 0., 0.],
+                                  [0., 0., 0.]],
+                                 [[0., 1., 1.],
+                                  [0., 0., 0.],
+                                  [0., 0., 0.]]])  # 2 x 3 x 3
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[1., 0., 0., 0.],
@@ -245,8 +257,8 @@ class TestRandomVerticalFlip3D:
                                   [0., 0., 0., 1.]]])  # 1 x 4 x 4
         identity = identity.to(device)
 
-        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
-        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
+        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
@@ -410,8 +422,8 @@ class TestRandomDepthicalFlip3D:
                                   [0., 0., 0., 1.]]])  # 1 x 4 x 4
         identity = identity.to(device)
 
-        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
-        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 4 x 4 x 3
+        input = input.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
+        expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
