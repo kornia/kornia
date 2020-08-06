@@ -16,13 +16,13 @@ from kornia.geometry import (
     vflip,
     deg2rad
 )
-from kornia.color import (
+from kornia.color import rgb_to_grayscale
+from kornia.enhance import (
     adjust_brightness,
     adjust_contrast,
     adjust_saturation,
     adjust_hue,
     adjust_gamma,
-    rgb_to_grayscale,
     solarize,
     equalize,
     posterize,

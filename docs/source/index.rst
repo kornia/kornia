@@ -18,6 +18,7 @@ Kornia Documentation
    augmentation
    color
    contrib
+   enhance
    feature
    filters
    geometry
