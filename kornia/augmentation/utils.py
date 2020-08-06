@@ -180,15 +180,15 @@ def _tuple_range_reader(
             shears_tmp = torch.tensor([-shears, shears]).repeat(target_shape[0], 1).to(torch.float32)
 
         elif isinstance(shears, (tuple)) and len(shears) == 2 \
-            and isinstance(shears[0], (float, int)) and isinstance(shears[1], (float, int)):
+                and isinstance(shears[0], (float, int)) and isinstance(shears[1], (float, int)):
             shears_tmp = torch.tensor(shears).repeat(target_shape[0], 1).to(torch.float32)
 
         elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
-            and all([isinstance(x, (float, int)) for x in shears]):
+                and all([isinstance(x, (float, int)) for x in shears]):
             shears_tmp = torch.tensor([(-s, s) for s in shears]).to(torch.float32)
 
         elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
-            and all([isinstance(x, (tuple)) for x in shears]):
+                and all([isinstance(x, (tuple)) for x in shears]):
             shears_tmp = torch.tensor(shears).to(torch.float32)
 
         else:

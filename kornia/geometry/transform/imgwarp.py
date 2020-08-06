@@ -499,6 +499,7 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     transform_h = transform_h @ shear_mat
     return transform_h
 
+
 def get_shear_matrix3d(
     center: torch.Tensor,
     sxy: Optional[torch.Tensor] = None, sxz: Optional[torch.Tensor] = None,
@@ -508,7 +509,7 @@ def get_shear_matrix3d(
     r"""Composes shear matrix Bx4x4 from the components.
 
     .. math::
-        \begin{bmatrix} 
+        \begin{bmatrix}
             1 & o & r & oy + rz \\
             m & p & s & mx + py + sz -y \\
             n & q & t & nx + qy + tz -z \\
@@ -525,7 +526,6 @@ def get_shear_matrix3d(
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
-    
     """
     sxy = torch.tensor(0) if sxy is None else sxy
     sxz = torch.tensor(0) if sxz is None else sxz
