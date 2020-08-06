@@ -193,7 +193,7 @@ class RandomAffine3D(AugmentationBase3D):
     r"""Random 3D affine transformation of the image keeping center invariant.
 
     Args:
-        degrees (float or tuple or list): Range of degrees to select from.
+        degrees (float or tuple or list): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
             If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
             If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
             If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
@@ -262,7 +262,8 @@ class RandomAffine3D(AugmentationBase3D):
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
-        f"resample={self.resample.name}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch}"
+        f"resample={self.resample.name}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch} "
+        f"align_corners={self.align_corners}"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
@@ -335,7 +336,8 @@ class RandomRotation3D(AugmentationBase3D):
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, "
-        f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
+        f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch}), "
+        f"align_corners={self.align_corners}"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
