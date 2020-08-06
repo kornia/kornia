@@ -99,6 +99,7 @@ def random_affine_generator3d(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     degrees_tmp = _tuple_range_reader(degrees, 3)
+    shears_tmp: Optional[torch.Tensor]
     if shears is not None:
         shears_tmp = _tuple_range_reader(shears, 6)
     else:
