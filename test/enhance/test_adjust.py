@@ -23,7 +23,7 @@ class TestAdjustSaturation:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustSaturation(1.)
+        f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
 
     def test_saturation_one_batch(self):
@@ -46,7 +46,7 @@ class TestAdjustSaturation:
                                [.25, .25]]]])  # 2x3x2x2
 
         expected = data
-        f = kornia.color.AdjustSaturation(torch.ones(2))
+        f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self):
@@ -71,7 +71,7 @@ class TestAdjustHue:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustHue(0.)
+        f = kornia.enhance.AdjustHue(0.)
         assert_allclose(f(data), expected)
 
     def test_hue_one_batch(self):
@@ -94,7 +94,7 @@ class TestAdjustHue:
                                [.25, .25]]]])  # 2x3x2x2
 
         expected = data
-        f = kornia.color.AdjustHue(torch.tensor([0, 0]))
+        f = kornia.enhance.AdjustHue(torch.tensor([0, 0]))
         assert_allclose(f(data), expected)
 
     def test_hue_flip_batch(self):
@@ -116,7 +116,7 @@ class TestAdjustHue:
                               [[.25, .25],
                                [.25, .25]]]])  # 2x3x2x2
 
-        f = kornia.color.AdjustHue(torch.tensor([-pi, pi]))
+        f = kornia.enhance.AdjustHue(torch.tensor([-pi, pi]))
         result = f(data)
         assert_allclose(result, result.flip(0))
 
@@ -142,7 +142,7 @@ class TestAdjustGamma:
         data = data.to(device)
         expected = torch.ones_like(data)
 
-        f = kornia.color.AdjustGamma(0.)
+        f = kornia.enhance.AdjustGamma(0.)
         assert_allclose(f(data), expected)
 
     def test_gamma_one(self, device):
@@ -158,7 +158,7 @@ class TestAdjustGamma:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustGamma(1.)
+        f = kornia.enhance.AdjustGamma(1.)
         assert_allclose(f(data), expected)
 
     def test_gamma_one_gain_two(self, device):
@@ -183,7 +183,7 @@ class TestAdjustGamma:
         data = data.to(device)
         expected = expected.to(device)
 
-        f = kornia.color.AdjustGamma(1., 2.)
+        f = kornia.enhance.AdjustGamma(1., 2.)
         assert_allclose(f(data), expected)
 
     def test_gamma_two(self, device):
@@ -208,7 +208,7 @@ class TestAdjustGamma:
         data = data.to(device)
         expected = expected.to(device)
 
-        f = kornia.color.AdjustGamma(2.)
+        f = kornia.enhance.AdjustGamma(2.)
         assert_allclose(f(data), expected)
 
     def test_gamma_two_batch(self):
@@ -248,7 +248,7 @@ class TestAdjustGamma:
                                   [[.0625, .0625],
                                    [.0625, .0625]]]])  # 2x3x2x2
 
-        f = kornia.color.AdjustGamma(torch.tensor([2., 2.]), gain=torch.ones(2))
+        f = kornia.enhance.AdjustGamma(torch.tensor([2., 2.]), gain=torch.ones(2))
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self, device):
@@ -275,7 +275,7 @@ class TestAdjustContrast:
         data = data.to(device)
         expected = torch.zeros_like(data)
 
-        f = kornia.color.AdjustContrast(0.)
+        f = kornia.enhance.AdjustContrast(0.)
 
         assert_allclose(f(data), expected)
 
@@ -292,7 +292,7 @@ class TestAdjustContrast:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustContrast(1.)
+        f = kornia.enhance.AdjustContrast(1.)
 
         assert_allclose(f(data), expected)
 
@@ -319,7 +319,7 @@ class TestAdjustContrast:
         data = data.to(device)
         expected = expected.to(device)
 
-        f = kornia.color.AdjustContrast(2.)
+        f = kornia.enhance.AdjustContrast(2.)
 
         assert_allclose(f(data), expected)
 
@@ -355,7 +355,7 @@ class TestAdjustContrast:
         expected = expected.to(device)
         factor = factor.to(device)
 
-        f = kornia.color.AdjustContrast(factor)
+        f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
     def test_factor_tensor_color(self, device):
@@ -402,7 +402,7 @@ class TestAdjustContrast:
         expected = expected.to(device)
         factor = factor.to(device)
 
-        f = kornia.color.AdjustContrast(factor)
+        f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
     def test_factor_tensor_shape(self, device):
@@ -449,7 +449,7 @@ class TestAdjustContrast:
         expected = expected.to(device)
         factor = factor.to(device)
 
-        f = kornia.color.AdjustContrast(factor)
+        f = kornia.enhance.AdjustContrast(factor)
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self, device):
@@ -476,7 +476,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = data.clone()
 
-        f = kornia.color.AdjustBrightness(0.)
+        f = kornia.enhance.AdjustBrightness(0.)
         assert_allclose(f(data), expected)
 
     def test_factor_one(self, device):
@@ -493,7 +493,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = torch.ones_like(data)
 
-        f = kornia.color.AdjustBrightness(1.)
+        f = kornia.enhance.AdjustBrightness(1.)
         assert_allclose(f(data), expected)
 
     def test_factor_minus(self, device):
@@ -519,7 +519,7 @@ class TestAdjustBrightness:
         data = data.to(device)
         expected = expected.to(device)
 
-        f = kornia.color.AdjustBrightness(-0.5)
+        f = kornia.enhance.AdjustBrightness(-0.5)
         assert_allclose(f(data), expected)
 
     def test_factor_tensor(self, device):
@@ -542,7 +542,7 @@ class TestAdjustBrightness:
         expected = torch.ones_like(data)
         factor = factor.to(device)
 
-        f = kornia.color.AdjustBrightness(factor)
+        f = kornia.enhance.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
 
     def test_factor_tensor_color(self, device):
@@ -589,7 +589,7 @@ class TestAdjustBrightness:
         expected = expected.to(device)
         factor = factor.to(device)
 
-        f = kornia.color.AdjustBrightness(factor)
+        f = kornia.enhance.AdjustBrightness(factor)
         assert_allclose(f(data), expected)
 
     def test_gradcheck(self, device):
