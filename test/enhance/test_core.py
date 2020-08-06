@@ -29,7 +29,7 @@ class TestAddWeighted:
         src1 = src1.to(device)
         src2 = src2.to(device)
 
-        f = kornia.color.AddWeighted(alpha, beta, gamma)
+        f = kornia.enhance.AddWeighted(alpha, beta, gamma)
         assert_allclose(f(src1, src2), src1 * alpha + src2 * beta + gamma)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -37,14 +37,14 @@ class TestAddWeighted:
         @torch.jit.script
         def op_script(src1: torch.Tensor, alpha: float, src2: torch.Tensor,
                       beta: float, gamma: float) -> torch.Tensor:
-            return kornia.color.add_weighted(src1, alpha, src2, beta, gamma)
+            return kornia.enhance.add_weighted(src1, alpha, src2, beta, gamma)
 
         src1, src2, alpha, beta, gamma = self.get_input(3)
         src1 = src1.to(device)
         src2 = src2.to(device)
 
         actual = op_script(src1, alpha, src2, beta, gamma)
-        expected = kornia.color.add_weighted(src1, alpha, src2, beta, gamma)
+        expected = kornia.enhance.add_weighted(src1, alpha, src2, beta, gamma)
         assert_allclose(actual, expected)
 
     @pytest.mark.parametrize("size", [2, 3])
@@ -59,5 +59,5 @@ class TestAddWeighted:
         src1 = utils.tensor_to_gradcheck_var(src1)  # to var
         src2 = utils.tensor_to_gradcheck_var(src2)  # to var
 
-        assert gradcheck(kornia.color.AddWeighted(alpha, beta, gamma), (src1, src2),
+        assert gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2),
                          raise_exception=True)

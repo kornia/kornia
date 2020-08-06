@@ -12,6 +12,7 @@ except ImportError:
 from kornia import augmentation
 from kornia import color
 from kornia import contrib
+from kornia import enhance
 from kornia import feature
 from kornia import filters
 from kornia import geometry
@@ -43,6 +44,8 @@ from kornia.color import (
     xyz_to_rgb,
     rgb_to_luv,
     luv_to_rgb,
+)
+from kornia.enhance import (
     normalize,
     denormalize,
     zca_mean,
