@@ -165,7 +165,7 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
 
 
 def _tuple_range_reader(
-    shears: Union[torch.Tensor, float, tuple],
+    input_range: Union[torch.Tensor, float, tuple],
     target_size: int
 ) -> torch.Tensor:
     """
@@ -173,36 +173,47 @@ def _tuple_range_reader(
     affine transformation.
     """
     target_shape = torch.Size([target_size, 2])
-    if not torch.is_tensor(shears):
-        if isinstance(shears, (float, int)):
-            if shears < 0:
-                raise ValueError(f"If shears is only one number it must be a positive number. Got{shears}")
-            shears_tmp = torch.tensor([-shears, shears]).repeat(target_shape[0], 1).to(torch.float32)
+    if not torch.is_tensor(input_range):
+        if isinstance(input_range, (float, int)):
+            if input_range < 0:
+                raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
+            input_range_tmp = torch.tensor([-input_range, input_range]).repeat(target_shape[0], 1).to(torch.float32)
 
-        elif isinstance(shears, (tuple)) and len(shears) == 2 \
-                and isinstance(shears[0], (float, int)) and isinstance(shears[1], (float, int)):
-            shears_tmp = torch.tensor(shears).repeat(target_shape[0], 1).to(torch.float32)
+        elif isinstance(input_range, (tuple)) and len(input_range) == 2 \
+                and isinstance(input_range[0], (float, int)) and isinstance(input_range[1], (float, int)):
+            input_range_tmp = torch.tensor(input_range).repeat(target_shape[0], 1).to(torch.float32)
 
-        elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
-                and all([isinstance(x, (float, int)) for x in shears]):
-            shears_tmp = torch.tensor([(-s, s) for s in shears]).to(torch.float32)
+        elif isinstance(input_range, (tuple)) and len(input_range) == target_shape[0] \
+                and all([isinstance(x, (float, int)) for x in input_range]):
+            input_range_tmp = torch.tensor([(-s, s) for s in input_range]).to(torch.float32)
 
-        elif isinstance(shears, (tuple)) and len(shears) == target_shape[0] \
-                and all([isinstance(x, (tuple)) for x in shears]):
-            shears_tmp = torch.tensor(shears).to(torch.float32)
+        elif isinstance(input_range, (tuple)) and len(input_range) == target_shape[0] \
+                and all([isinstance(x, (tuple)) for x in input_range]):
+            input_range_tmp = torch.tensor(input_range).to(torch.float32)
 
         else:
             raise TypeError(
-                "If not pass a tensor, it must be float, (float, float) for isotropic shearing or a tuple of"
-                f"{target_size} floats or {target_size} (float, float) for independent shearing. Got {shears}.")
+                "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of"
+                f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}.")
 
     else:
         # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
-        shears = cast(torch.Tensor, shears)
-        if shears.shape != target_shape:
+        input_range = cast(torch.Tensor, input_range)
+        if len(input_range.shape) == 0:
+            input_range_tmp = torch.tensor([-input_range, input_range]).repeat(target_shape[0], 1).to(torch.float32)
+        elif len(input_range.shape) == 1 and len(input_range) == 1:
+            input_range_tmp = torch.tensor([-input_range[0], input_range[0]]).repeat(
+                target_shape[0], 1).to(torch.float32)
+        elif len(input_range.shape) == 1 and len(input_range) == 2:
+            input_range_tmp = input_range.repeat(target_shape[0], 1).to(torch.float32)
+        elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
+            input_range_tmp = torch.tensor([(-s, s) for s in input_range]).to(torch.float32)
+        elif input_range.shape == target_shape:
+            input_range_tmp = input_range
+        else:
             raise ValueError(
-                f"Degrees must be a {list(target_shape)} tensor for the degree range for independent shearing."
-                f"Got {shears}")
-        shears_tmp = shears
+                f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
+                f"Got {input_range}")
+            input_range_tmp = input_range
 
-    return shears_tmp
+    return input_range_tmp
