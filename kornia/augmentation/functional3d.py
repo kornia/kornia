@@ -241,12 +241,15 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
         input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
         params (Dict[str, torch.Tensor]):
             - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
-            - params['translations']: Horizontal and vertical translations.
+            - params['translations']: Depthical, Horizontal and vertical translations.
             - params['center']: Rotation center.
-            - params['scale']: Scaling params.
-            - params['sx']: Shear param toward x-axis.
-            - params['sy']: Shear param toward y-axis.
-            - params['sz']: Shear param toward y-axis.
+            - params['scale']: Isotropic scaling params.
+            - params['sxy']: Shear param toward x-y-axis.
+            - params['sxz']: Shear param toward x-z-axis.
+            - params['syx']: Shear param toward y-x-axis.
+            - params['syz']: Shear param toward y-z-axis.
+            - params['szx']: Shear param toward z-x-axis.
+            - params['szy']: Shear param toward z-y-axis.
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['align_corners']: Boolean tensor.
 
@@ -286,7 +289,7 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
             - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
             - params['translations']: Depthical, Horizontal and vertical translations.
             - params['center']: Rotation center.
-            - params['scale']: Scaling params.
+            - params['scale']: Isotropic scaling params.
             - params['sxy']: Shear param toward x-y-axis.
             - params['sxz']: Shear param toward x-z-axis.
             - params['syx']: Shear param toward y-x-axis.
