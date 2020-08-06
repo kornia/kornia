@@ -30,7 +30,7 @@ __all__ = [
 
 def _compute_tensor_center(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (H, W), (C, H, W) and (B, C, H, W)."""
-    assert 2 <= len(tensor) <=4, f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}."
+    assert 2 <= len(tensor) <= 4, f"Must be a 3D tensor as HW, CHW and BCHW. Got {tensor.shape}."
     height, width = tensor.shape[-2:]
     center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
