@@ -25,7 +25,7 @@ from .augmentation3d import (
     RandomRotation3D,
     RandomAffine3D
 )
-from kornia.color.normalize import (
+from kornia.enhance.normalize import (
     Normalize,
     Denormalize
 )
