@@ -51,7 +51,7 @@ Create your own transformation:
       
       def compute_transformation(self, input, params):
 
-    B, _, H, W = input.shape
+    	 B, _, H, W = input.shape
 
 	 # compute transformation
 	 angles: torch.Tensor = params['angles'].type_as(input)
@@ -62,7 +62,7 @@ Create your own transformation:
 
       def apply_transform(self, input, params):
 
-    _, _, H, W = input.shape
+    	 _, _, H, W = input.shape
 	 # compute transformation
 	 transform = self.compute_transformation(input, params)
 
