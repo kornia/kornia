@@ -45,21 +45,26 @@ Create your own transformation:
 
       def generate_parameters(self, input_shape: torch.Size):
          # generate the random parameters for your use case.
-         angles_rad torch.Tensor = torch.rand(batch_shape) * K.pi
-	 angles_deg = kornia.rad2deg(angles_rad) * self.angle
+         angles_rad torch.Tensor = torch.rand(input_shape[0]) * K.pi
+	 angles_deg = kornia.rad2deg(angles_rad) 
 	 return dict(angles=angles_deg)
       
       def compute_transformation(self, input, params):
+
+    B, _, H, W = input.shape
+
 	 # compute transformation
 	 angles: torch.Tensor = params['angles'].type_as(input)
-	 center = torch.tensor([[W / 2, H / 2]]).type_as(input)
+	 center = torch.tensor([[W / 2, H / 2]]*B).type_as(input)
 	 transform = K.get_rotation_matrix2d(
             center, angles, torch.ones_like(angles))
 	 return transform
 
       def apply_transform(self, input, params):
+
+    _, _, H, W = input.shape
 	 # compute transformation
-	 transform = self.compute_transform(input, params)
+	 transform = self.compute_transformation(input, params)
 
          # apply transformation and return
 	 output = K.warp_affine(input, transform, (H, W))
