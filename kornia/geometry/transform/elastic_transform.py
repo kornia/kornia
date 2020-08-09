@@ -40,13 +40,20 @@ def elastic_transform_2d(tensor: torch.Tensor,
     n, c, h, w = tensor.shape
     
     # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_y = kornia.filters.get_gaussian_kernel2d(kernel_size, (sigma[0], sigma[0]))[None].to(device=tensor.device)
-    kernel_x = kornia.filters.get_gaussian_kernel2d(kernel_size, (sigma[1], sigma[1]))[None].to(device=tensor.device)
+    kernel_y = get_gaussian_kernel2d(kernel_size, (sigma[0], sigma[0]))[None]
+    kernel_x = get_gaussian_kernel2d(kernel_size, (sigma[1], sigma[1]))[None]
 
     # Convolve over a random displacement matrix and scale them with 'alpha'
-    displacement = torch.rand(n, 2, h, w, generator=generator).to(device=tensor.device) * 0.1
-    disp_y = kornia.filters.filter2D(displacement[:,[0]], kernel=kernel_y, border_type='reflect') * alpha[0]
-    disp_x = kornia.filters.filter2D(displacement[:,[1]], kernel=kernel_x, border_type='reflect') * alpha[1]
+    disp = torch.rand(n, 2, h, w, generator=generator).to(device=tensor.device)
+    disp[:,0] *= disp_scale[0]
+    disp[:,1] *= disp_scale[1]
+
+    disp_y = kornia.filters.filter2D(disp[:,[0]], kernel=kernel_y, border_type='reflect') * alpha[0]
+    disp_x = kornia.filters.filter2D(disp[:,[1]], kernel=kernel_x, border_type='reflect') * alpha[1]
+
+    # scale displacements
+    disp_y *= alpha[0]
+    disp_x *= alpha[1]
 
     # stack and normalize displacement
     disp = torch.cat([disp_y, disp_x], dim=1).squeeze(0).permute(0,2,3,1)
@@ -56,4 +63,5 @@ def elastic_transform_2d(tensor: torch.Tensor,
     warped =  F.grid_sample(tensor, (grid + disp).clamp(-1,1), align_corners=True)
     
     return warped
+
 
