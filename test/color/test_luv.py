@@ -6,7 +6,6 @@ import kornia.testing as utils  # test utils
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-from test.common import device
 
 
 class TestRgbToLuv:
@@ -75,7 +74,7 @@ class TestRgbToLuv:
         rgb = kornia.color.RgbToLuv()
 
         data_out = luv(rgb(data))
-        assert_allclose(data_out, data)
+        assert_allclose(data_out, data, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):

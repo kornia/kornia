@@ -1,38 +1,42 @@
 kornia.color
-------------
+============
 
 .. currentmodule:: kornia.color
 
 The functions in this section perform various color space conversions.
 
-.. autofunction:: rgb_to_grayscale
-.. autofunction:: bgr_to_grayscale
-.. autofunction:: rgb_to_hsv
-.. autofunction:: hsv_to_rgb
-.. autofunction:: rgb_to_hls
-.. autofunction:: hls_to_rgb
 .. autofunction:: rgb_to_bgr
-.. autofunction:: bgr_to_rgb
-.. autofunction:: rgb_to_yuv
-.. autofunction:: yuv_to_rgb
+.. autofunction:: rgb_to_grayscale
+.. autofunction:: rgb_to_hsv
+.. autofunction:: rgb_to_hls
+.. autofunction:: rgb_to_luv
 .. autofunction:: rgb_to_rgba
-.. autofunction:: bgr_to_rgba
+.. autofunction:: rgb_to_xyz
+.. autofunction:: rgb_to_ycbcr
+.. autofunction:: rgb_to_yuv
+
 .. autofunction:: rgba_to_rgb
 .. autofunction:: rgba_to_bgr
-.. autofunction:: rgb_to_xyz
-.. autofunction:: xyz_to_rgb
-.. autofunction:: rgb_to_luv
-.. autofunction:: luv_to_rgb
-.. autofunction:: normalize
-.. autofunction:: denormalize
-.. autofunction:: adjust_brightness
-.. autofunction:: adjust_contrast
-.. autofunction:: adjust_saturation
-.. autofunction:: adjust_hue
-.. autofunction:: adjust_gamma
-.. autofunction:: add_weighted
 
-.. autoclass:: AddWeighted
+.. autofunction:: bgr_to_grayscale
+.. autofunction:: bgr_to_rgb
+.. autofunction:: bgr_to_rgba
+
+.. autofunction:: hls_to_rgb
+
+.. autofunction:: hsv_to_rgb
+
+.. autofunction:: luv_to_rgb
+
+.. autofunction:: ycbcr_to_rgb
+.. autofunction:: yuv_to_rgb
+
+.. autofunction:: xyz_to_rgb
+
+
+Modules
+-------
+
 .. autoclass:: RgbToGrayscale
 .. autoclass:: BgrToGrayscale
 .. autoclass:: RgbToHsv
@@ -51,10 +55,5 @@ The functions in this section perform various color space conversions.
 .. autoclass:: XyzToRgb
 .. autoclass:: RgbToLuv
 .. autoclass:: LuvToRgb
-.. autoclass:: Normalize
-.. autoclass:: Denormalize
-.. autoclass:: AdjustBrightness
-.. autoclass:: AdjustContrast
-.. autoclass:: AdjustSaturation
-.. autoclass:: AdjustHue
-.. autoclass:: AdjustGamma
+.. autoclass:: YcbcrToRgb
+.. autoclass:: RgbToYcbcr

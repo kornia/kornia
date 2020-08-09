@@ -37,7 +37,7 @@ def confusion_matrix(
                         "torch.int64 dtype. Got {}".format(type(target)))
     if not input.shape == target.shape:
         raise ValueError("Inputs input and target must have the same shape. "
-                         "Got: {}".format(input.shape, target.shape))
+                         "Got: {} and {}".format(input.shape, target.shape))
     if not input.device == target.device:
         raise ValueError("Inputs must be in the same device. "
                          "Got: {} - {}".format(input.device, target.device))

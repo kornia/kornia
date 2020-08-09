@@ -2,7 +2,6 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.testing import assert_allclose
@@ -77,8 +76,8 @@ class TestPyrDown:
 
 class TestScalePyramid:
     def test_shape_tuple(self, device):
-        inp = torch.zeros(3, 2, 12, 12).to(device)
-        SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=10)
+        inp = torch.zeros(3, 2, 41, 41).to(device)
+        SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=30)
         out = SP(inp)
         assert len(out) == 3
         assert len(out[0]) == 1
@@ -86,25 +85,25 @@ class TestScalePyramid:
         assert len(out[2]) == 1
 
     def test_shape_batch(self, device):
-        inp = torch.zeros(3, 2, 21, 21).to(device)
+        inp = torch.zeros(3, 2, 31, 31).to(device)
         SP = kornia.geometry.ScalePyramid(n_levels=1)
         sp, sigmas, pd = SP(inp)
-        assert sp[0].shape == (3, 1, 2, 21, 21)
+        assert sp[0].shape == (3, 2, 3 + 1, 31, 31)
 
     def test_shape_batch_double(self, device):
-        inp = torch.zeros(3, 2, 12, 12).to(device)
+        inp = torch.zeros(3, 2, 31, 31).to(device)
         SP = kornia.geometry.ScalePyramid(n_levels=1, double_image=True)
         sp, sigmas, pd = SP(inp)
-        assert sp[0].shape == (3, 1, 2, 24, 24)
+        assert sp[0].shape == (3, 2, 1 + 3, 62, 62)
 
     def test_n_levels_shape(self, device):
         inp = torch.zeros(1, 1, 32, 32).to(device)
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
-        assert sp[0].shape == (1, 3, 1, 32, 32)
+        assert sp[0].shape == (1, 1, 3 + 3, 32, 32)
 
     def test_blur_order(self, device):
-        inp = torch.rand(1, 1, 21, 21).to(device)
+        inp = torch.rand(1, 1, 31, 31).to(device)
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
@@ -115,15 +114,17 @@ class TestScalePyramid:
         return
 
     def test_symmetry_preserving(self, device):
-        inp = torch.zeros(1, 1, 22, 22).to(device)
-        inp[0, 0, 8:14, 8:14] = 1.0
+        PS = 16
+        R = 2
+        inp = torch.zeros(1, 1, PS, PS).to(device)
+        inp[..., PS // 2 - R:PS // 2 + R, PS // 2 - R:PS // 2 + R] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
             for ii, img in enumerate(pyr_level):
                 img = img.squeeze()
-                assert torch.allclose(img, img.flip(1))
-                assert torch.allclose(img, img.flip(2))
+                assert torch.allclose(img, img.flip(1), atol=1e-5, rtol=1e-3)
+                assert torch.allclose(img, img.flip(2), atol=1e-5, rtol=1e-3)
         return
 
     def test_gradcheck(self, device):

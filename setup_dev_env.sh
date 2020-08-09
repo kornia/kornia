@@ -19,9 +19,9 @@ conda_bin=$conda_bin_dir/conda
 platform=`uname`
 if [[ "$platform" == "Darwin" ]];
 then
- download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
+ download_link=https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh
 else
- download_link=https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
+ download_link=https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 fi
 
 if [ ! -e $dev_env_dir/miniconda.sh ]; then

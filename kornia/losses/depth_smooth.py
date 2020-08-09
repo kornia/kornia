@@ -40,17 +40,17 @@ def inverse_depth_smoothness_loss(
                          .format(image.shape))
 
     if not idepth.shape[-2:] == image.shape[-2:]:
-        raise ValueError("idepth and image shapes must be the same. Got: {}"
+        raise ValueError("idepth and image shapes must be the same. Got: {} and {}"
                          .format(idepth.shape, image.shape))
 
     if not idepth.device == image.device:
         raise ValueError(
-            "idepth and image must be in the same device. Got: {}" .format(
+            "idepth and image must be in the same device. Got: {} and {}" .format(
                 idepth.device, image.device))
 
     if not idepth.dtype == image.dtype:
         raise ValueError(
-            "idepth and image must be in the same dtype. Got: {}" .format(
+            "idepth and image must be in the same dtype. Got: {} and {}" .format(
                 idepth.dtype, image.dtype))
 
     # compute the gradients

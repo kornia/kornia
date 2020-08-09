@@ -25,12 +25,12 @@ def tversky_loss(input: torch.Tensor, target: torch.Tensor,
                          .format(input.shape))
 
     if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError("input and target shapes must be the same. Got: {}"
+        raise ValueError("input and target shapes must be the same. Got: {} and {}"
                          .format(input.shape, input.shape))
 
     if not input.device == target.device:
         raise ValueError(
-            "input and target must be in the same device. Got: {}" .format(
+            "input and target must be in the same device. Got: {} and {}" .format(
                 input.device, target.device))
 
     # compute softmax over the classes axis
@@ -61,7 +61,7 @@ class TverskyLoss(nn.Module):
     .. math::
 
         \text{S}(P, G, \alpha; \beta) =
-          \frac{|PG|}{|PG| + \alpha |P \ G| + \beta |G \ P|}
+          \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
     where:
        - :math:`P` and :math:`G` are the predicted and ground truth binary

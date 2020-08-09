@@ -7,6 +7,7 @@ kornia.geometry.conversions
 .. autofunction:: deg2rad
 .. autofunction:: convert_points_from_homogeneous
 .. autofunction:: convert_points_to_homogeneous
+.. autofunction:: convert_affinematrix_to_homography
 .. autofunction:: rotation_matrix_to_angle_axis
 .. autofunction:: rotation_matrix_to_quaternion
 .. autofunction:: quaternion_to_angle_axis

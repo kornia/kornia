@@ -3,7 +3,6 @@ import pytest
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck

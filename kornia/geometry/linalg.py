@@ -1,9 +1,11 @@
 from typing import Optional
 
 import torch
+
 import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.testing import check_is_tensor
 
 
 __all__ = [
@@ -195,8 +197,8 @@ def transform_points(trans_01: torch.Tensor,
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = kornia.transform_points(trans_01, points_1)  # BxNx3
     """
-    if not torch.is_tensor(trans_01) or not torch.is_tensor(points_1):
-        raise TypeError("Input type is not a torch.Tensor")
+    check_is_tensor(trans_01)
+    check_is_tensor(points_1)
     if not trans_01.device == points_1.device:
         raise TypeError("Tensor must be in the same device")
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:

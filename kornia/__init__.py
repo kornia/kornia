@@ -12,9 +12,11 @@ except ImportError:
 from kornia import augmentation
 from kornia import color
 from kornia import contrib
+from kornia import enhance
 from kornia import feature
 from kornia import filters
 from kornia import geometry
+from kornia import jit
 from kornia import losses
 from kornia import utils
 
@@ -42,8 +44,13 @@ from kornia.color import (
     xyz_to_rgb,
     rgb_to_luv,
     luv_to_rgb,
+)
+from kornia.enhance import (
     normalize,
     denormalize,
+    zca_mean,
+    zca_whiten,
+    linear_transform,
     adjust_brightness,
     adjust_contrast,
     adjust_gamma,
@@ -75,6 +82,7 @@ from kornia.filters import (
     median_blur,
     motion_blur,
     filter2D,
+    filter3D,
 )
 from kornia.losses import (
     ssim,
@@ -96,4 +104,4 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.geometry import pi
+from kornia.constants import pi

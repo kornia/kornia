@@ -5,7 +5,6 @@ import numpy as np
 
 import kornia
 from kornia.testing import tensor_to_gradcheck_var, create_eye_batch
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -34,17 +33,17 @@ class TestAngleAxisToQuaternion:
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
-    def test_small_angle(self, device):
+    def test_small_angle(self, device, dtype):
         theta = 1e-2
-        angle_axis = torch.tensor([theta, 0., 0.]).to(device)
-        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
+        angle_axis = torch.tensor([theta, 0., 0.]).to(device, dtype)
+        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device, dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
-    def test_x_rotation(self, device):
+    def test_x_rotation(self, device, dtype):
         half_sqrt2 = 0.5 * np.sqrt(2)
-        angle_axis = torch.tensor([kornia.pi / 2, 0., 0.]).to(device)
-        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.]).to(device)
+        angle_axis = torch.tensor([kornia.pi / 2, 0., 0.]).to(device, dtype)
+        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.]).to(device, dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected)
 
@@ -307,16 +306,16 @@ class TestQuaternionToAngleAxis:
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
-    def test_z_rotation(self, device):
-        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5]).to(device)
-        expected = torch.tensor([0., 0., kornia.pi / 3]).to(device)
+    def test_z_rotation(self, device, dtype):
+        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5]).to(device, dtype)
+        expected = torch.tensor([0., 0., kornia.pi / 3]).to(device, dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
-    def test_small_angle(self, device):
+    def test_small_angle(self, device, dtype):
         theta = 1e-2
-        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device)
-        expected = torch.tensor([theta, 0., 0.]).to(device)
+        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.]).to(device, dtype)
+        expected = torch.tensor([theta, 0., 0.]).to(device, dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected)
 
@@ -427,6 +426,46 @@ class TestConvertPointsToHomogeneous:
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
         op = kornia.convert_points_to_homogeneous
+        op_script = torch.jit.script(op)
+
+        points_h = torch.zeros(1, 2, 3).to(device)
+        actual = op_script(points_h)
+        expected = op(points_h)
+
+        assert_allclose(actual, expected)
+
+
+class TestConvertAtoH:
+    def test_convert_points(self, device):
+        # generate input data
+        A = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+        ]).to(device).view(1, 2, 3)
+
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]).to(device).view(1, 3, 3)
+
+        # to euclidean
+        H = kornia.geometry.conversions.convert_affinematrix_to_homography(A)
+        assert_allclose(H, expected)
+
+    @pytest.mark.parametrize("batch_shape", [
+        (10, 2, 3), (16, 2, 3)])
+    def test_gradcheck(self, device, batch_shape):
+        points_h = torch.rand(batch_shape).to(device)
+
+        # evaluate function gradient
+        points_h = tensor_to_gradcheck_var(points_h)  # to var
+        assert gradcheck(kornia.convert_affinematrix_to_homography, (points_h,),
+                         raise_exception=True)
+
+    @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit(self, device):
+        op = kornia.convert_affinematrix_to_homography
         op_script = torch.jit.script(op)
 
         points_h = torch.zeros(1, 2, 3).to(device)

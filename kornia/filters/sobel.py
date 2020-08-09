@@ -128,6 +128,7 @@ class Sobel(nn.Module):
 
     Args:
         normalized (bool): if True, L1 norm of the kernel is set to 1.
+        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -139,9 +140,10 @@ class Sobel(nn.Module):
     """
 
     def __init__(self,
-                 normalized: bool = True) -> None:
+                 normalized: bool = True, eps: float = 1e-6) -> None:
         super(Sobel, self).__init__()
         self.normalized: bool = normalized
+        self.eps: float = eps
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + '('\
@@ -163,12 +165,13 @@ class Sobel(nn.Module):
         gy: torch.Tensor = edges[:, :, 1]
 
         # compute gradient maginitude
-        magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy)
+        magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps)
         return magnitude
 
 
 # functiona api
-
+# TODO: In terms of functional API, there should not be any initialization of an nn.Module.
+#       This logic is reversed.
 
 def spatial_gradient(input: torch.Tensor,
                      mode: str = 'sobel',
@@ -193,9 +196,9 @@ def spatial_gradient3d(input: torch.Tensor,
     return SpatialGradient3d(mode, order)(input)
 
 
-def sobel(input: torch.Tensor, normalized: bool = True) -> torch.Tensor:
+def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
     See :class:`~kornia.filters.Sobel` for details.
     """
-    return Sobel(normalized)(input)
+    return Sobel(normalized, eps)(input)

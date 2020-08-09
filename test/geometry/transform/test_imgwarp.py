@@ -2,7 +2,6 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.autograd import gradcheck
@@ -27,16 +26,16 @@ def test_warp_perspective_rotation(batch_shape, device):
 
     # apply transformation and inverse
     _, _, h, w = patch.shape
-    patch_warped = kornia.warp_perspective(patch, M, dsize=(height, width))
+    patch_warped = kornia.warp_perspective(patch, M, dsize=(height, width), align_corners=True)
     patch_warped_inv = kornia.warp_perspective(
-        patch_warped, torch.inverse(M), dsize=(height, width))
+        patch_warped, torch.inverse(M), dsize=(height, width), align_corners=True)
 
     # generate mask to compute error
     mask = torch.ones_like(patch)
     mask_warped_inv = kornia.warp_perspective(
-        kornia.warp_perspective(patch, M, dsize=(height, width)),
+        kornia.warp_perspective(patch, M, dsize=(height, width), align_corners=True),
         torch.inverse(M),
-        dsize=(height, width))
+        dsize=(height, width), align_corners=True)
 
     assert_allclose(mask_warped_inv * patch,
                     mask_warped_inv * patch_warped_inv)
@@ -175,16 +174,20 @@ class TestWarpPerspective:
             [13, 14, 15, 16],
         ]]]).expand(batch_size, channels, -1, -1).to(device)
 
-        expected = torch.FloatTensor([[[
-            [1, 2, 3],
-            [5, 6, 7],
-            [9, 10, 11],
-        ]]]).to(device)
+        expected = torch.tensor(
+            [[[[0.2500, 0.9167, 1.5833],
+               [2.1667, 5.1667, 6.5000],
+               [4.8333, 10.5000, 11.8333]]]]).to(device)
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
                                                (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
+
+        # check jit
+        patch_warped_jit = kornia.jit.warp_perspective(patch, dst_trans_src,
+                                                       (dst_h, dst_w))
+        assert_allclose(patch_warped, patch_warped_jit)
 
     def test_crop_center_resize(self, device):
         # generate input data
@@ -219,17 +222,21 @@ class TestWarpPerspective:
             [13, 14, 15, 16],
         ]]]).to(device)
 
-        expected = torch.FloatTensor([[[
-            [6.000, 6.333, 6.666, 7.000],
-            [7.333, 7.666, 8.000, 8.333],
-            [8.666, 9.000, 9.333, 9.666],
-            [10.000, 10.333, 10.666, 11.000],
-        ]]]).to(device)
+        expected = torch.tensor(
+            [[[[5.1667, 5.6111, 6.0556, 6.5000],
+               [6.9444, 7.3889, 7.8333, 8.2778],
+               [8.7222, 9.1667, 9.6111, 10.0556],
+               [10.5000, 10.9444, 11.3889, 11.8333]]]]).to(device)
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
                                                (dst_h, dst_w))
         assert_allclose(patch_warped, expected)
+
+        # check jit
+        patch_warped_jit = kornia.jit.warp_perspective(patch, dst_trans_src,
+                                                       (dst_h, dst_w))
+        assert_allclose(patch_warped, patch_warped_jit)
 
 
 class TestWarpAffine:
@@ -248,7 +255,7 @@ class TestWarpAffine:
         aff_ab[..., -1] += offset
         img_b = torch.arange(float(height * width)).view(
             1, channels, height, width).repeat(batch_size, 1, 1, 1).to(device)
-        img_a = kornia.warp_affine(img_b, aff_ab, (height, width))
+        img_a = kornia.warp_affine(img_b, aff_ab, (height, width), align_corners=True)
         assert_allclose(img_b[..., :2, :3], img_a[..., 1:, 1:])
 
     def test_gradcheck(self, device):
@@ -273,7 +280,7 @@ class TestRemap:
         input = torch.ones(1, 1, height, width).to(device)
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False).to(device)
-        input_warped = kornia.remap(input, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(input, grid[..., 0], grid[..., 1], align_corners=True)
         assert_allclose(input, input_warped)
 
     def test_shift(self, device):
@@ -293,7 +300,7 @@ class TestRemap:
             height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply shift in both x/y direction
 
-        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
         assert_allclose(input_warped, expected)
 
     def test_shift_batch(self, device):
@@ -321,7 +328,7 @@ class TestRemap:
         grid[0, ..., 0] += 1.  # apply shift in the x direction
         grid[1, ..., 1] += 1.  # apply shift in the y direction
 
-        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
         assert_allclose(input_warped, expected)
 
     def test_shift_batch_broadcast(self, device):
@@ -341,7 +348,7 @@ class TestRemap:
             height, width, normalized_coordinates=False).to(device)
         grid += 1.  # apply shift in both x/y direction
 
-        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1])
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
         assert_allclose(input_warped, expected)
 
     def test_gradcheck(self, device):
@@ -404,7 +411,7 @@ class TestRemap:
 
 class TestInvertAffineTransform:
     def test_smoke(self, device):
-        matrix = torch.eye(2, 3).to(device)
+        matrix = torch.eye(2, 3).to(device)[None]
         matrix_inv = kornia.invert_affine_transform(matrix)
         assert_allclose(matrix, matrix_inv)
 
@@ -434,7 +441,7 @@ class TestInvertAffineTransform:
         assert_allclose(matrix_inv, expected)
 
     def test_gradcheck(self, device):
-        matrix = torch.eye(2, 3).to(device)
+        matrix = torch.eye(2, 3).to(device)[None]
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
         assert gradcheck(kornia.invert_affine_transform, (matrix,),
                          raise_exception=True)
