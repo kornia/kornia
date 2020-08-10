@@ -55,7 +55,7 @@ Create your own transformation:
 
 	 # compute transformation
 	 angles: torch.Tensor = params['angles'].type_as(input)
-	 center = torch.tensor([[W / 2, H / 2]]*B).type_as(input)
+	 center = torch.tensor([[W / 2, H / 2]] * B).type_as(input)
 	 transform = K.get_rotation_matrix2d(
             center, angles, torch.ones_like(angles))
 	 return transform
