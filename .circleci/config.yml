@@ -1,6 +1,16 @@
 version: 2.1
 
+orbs:
+  aws-cli: circleci/aws-cli@0.1.4
+  aws-ecs: circleci/aws-ecs@0.0.10
+
 commands:
+  aws_config:
+    steps:
+      - aws-cli/install
+      - aws-cli/configure:
+          aws-access-key-id: $AWS_ACCESS_KEY_ID
+          aws-region: $AWS_REGION
   common:
     steps:
       - checkout
@@ -40,6 +50,7 @@ jobs:
         environment:
           - PYTHON_VERSION: "3.6"
     steps:
+      - aws_config
       - common
       - docs
 
