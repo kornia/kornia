@@ -12,7 +12,6 @@ commands:
           aws-access-key-id: $AWS_ACCESS_KEY_ID
           aws-secret-access-key: $ACCESS_KEY_ID_ENV_VAR_NAME
           aws-region: $AWS_REGION
-          context: aws_context
   common:
     steps:
       - checkout
