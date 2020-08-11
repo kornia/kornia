@@ -7,10 +7,11 @@ commands:
   aws_config:
     steps:
       - aws-cli/install
+        version: 2
       - aws-cli/configure:
-          aws-access-key-id: AWS_ACCESS_KEY_ID
-          aws-secret-access-key: ACCESS_KEY_ID_ENV_VAR_NAME
-          aws-region: AWS_REGION
+        aws-access-key-id: AWS_ACCESS_KEY_ID
+        aws-secret-access-key: ACCESS_KEY_ID_ENV_VAR_NAME
+        aws-region: AWS_REGION
        
   common:
     steps:
