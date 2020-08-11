@@ -1,17 +1,17 @@
 version: 2.1
 
 orbs:
-  aws-cli: circleci/aws-cli@1.2.1
-  aws-ecs: circleci/aws-ecs@0.0.10
+  aws-cli: circleci/aws-cli@0.1.13
 
 commands:
   aws_config:
     steps:
       - aws-cli/install
       - aws-cli/configure:
-          aws-access-key-id: $AWS_ACCESS_KEY_ID
-          aws-secret-access-key: $ACCESS_KEY_ID_ENV_VAR_NAME
-          aws-region: $AWS_REGION
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: ACCESS_KEY_ID_ENV_VAR_NAME
+          aws-region: AWS_REGION
+       
   common:
     steps:
       - checkout
