@@ -11,6 +11,8 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: get_perspective_transform
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
+.. autofunction:: get_affine_matrix2d
+.. autofunction:: get_affine_matrix3d
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
 .. autofunction:: projection_from_Rt

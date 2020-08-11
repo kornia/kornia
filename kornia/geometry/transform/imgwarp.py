@@ -458,9 +458,17 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
 
 def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angle: torch.Tensor,
                         sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Composes affine matrix Bx3x3 from the components
+    r"""Composes affine matrix from the components.
+
+    Args:
+        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
+        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
+        sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+
     Returns:
-        torch.Tensor: params to be passed to the affine transformation.
+        torch.Tensor: the affine transformation matrix :math:`(B, 2, 3)`.
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
@@ -487,9 +495,21 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
                         sxy: Optional[torch.Tensor] = None, sxz: Optional[torch.Tensor] = None,
                         syx: Optional[torch.Tensor] = None, syz: Optional[torch.Tensor] = None,
                         szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Composes affine matrix Bx4x4 from the components
+    r"""Composes 3d affine matrix from the components.
+
+    Args:
+        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 3)`.
+        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 3)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
+        sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
+        syx (torch.Tensor, optional): tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
+        syz (torch.Tensor, optional): tensor containing the shear factor in the yz-direction with shape :math:`(B)`.
+        szx (torch.Tensor, optional): tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
+        szy (torch.Tensor, optional): tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
+
     Returns:
-        torch.Tensor: params to be passed to the affine transformation.
+        torch.Tensor: the 3d affine transformation matrix :math:`(B, 4, 4)`.
     """
     transform: torch.Tensor = get_projective_transform(center, -angles, scale)
     transform[..., 3] += translations  # tx/ty/tz
