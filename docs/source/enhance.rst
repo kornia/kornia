@@ -21,6 +21,11 @@ The functions in this section perform normalisations and intensity transformatio
 .. autofunction:: histogram
 .. autofunction:: histogram2d
 
+.. autofunction:: solarize
+.. autofunction:: posterize
+.. autofunction:: sharpness
+.. autofunction:: equalize
+
 Modules
 -------
 
