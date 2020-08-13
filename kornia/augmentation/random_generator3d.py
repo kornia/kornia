@@ -62,7 +62,7 @@ def random_affine_generator3d(
     scale: Optional[Tuple[float, float]] = None,
     shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                   Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
-                  Tuple[float, float], Tuple[float, float]]] = None,
+                        Tuple[float, float], Tuple[float, float]]] = None,
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
