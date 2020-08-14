@@ -380,13 +380,13 @@ class Resize(nn.Module):
 
     Args:
         size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
-        output size will be matched to this. If size is an int, smaller edge of the image will
-        be matched to this number. i.e, if height > width, then image will be rescaled
-        to (size * height / width, size)
+            output size will be matched to this. If size is an int, smaller edge of the image will
+            be matched to this number. i.e, if height > width, then image will be rescaled
+            to (size * height / width, size)
         interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
-        'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
+            'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
         align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         edge (str): Corresponding edge if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
 
