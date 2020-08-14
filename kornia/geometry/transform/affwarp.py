@@ -338,8 +338,24 @@ def shear(tensor: torch.Tensor, shear: torch.Tensor, align_corners: bool = False
     return affine(tensor, shear_matrix[..., :2, :3], align_corners=align_corners)
 
 
+def _edge_to_image_size(
+    edge_size: int, aspect_ratio: float, edge: str = "short"
+) -> Tuple[int, int]:
+    if edge not in ("short", "long", "vert", "horz"):
+        raise ValueError
+    if edge == "vert":
+        return edge_size, round(edge_size * aspect_ratio)
+    elif edge == "horz":
+        return round(edge_size * aspect_ratio), edge_size
+    elif (edge == "short") ^ (aspect_ratio < 1.0):
+        return edge_size, round(edge_size * aspect_ratio)
+    else:
+        return round(edge_size / aspect_ratio), edge_size
+
+
 def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
-           interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
+           interpolation: str = 'bilinear', align_corners: bool = False,
+           edge: str = "short") -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
     See :class:`~kornia.Resize` for details.
@@ -348,22 +364,15 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
-    new_size: Tuple[int, int]
-
+    input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
-        w, h = input.shape[-2:]
-        if (w <= h and w == size) or (h <= w and h == size):
-            return input
-        if w < h:
-            ow = size
-            oh = int(size * h / w)
-        else:
-            oh = size
-            ow = int(size * w / h)
-        new_size = (ow, oh)
-    else:
-        new_size = size
-    return torch.nn.functional.interpolate(input, size=new_size, mode=interpolation, align_corners=align_corners)
+        aspect_ratio = w / h
+        size = _edge_to_image_size(size, aspect_ratio, edge)
+
+    if size == input_size:
+        return input
+
+    return torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
 
 class Resize(nn.Module):
@@ -378,19 +387,23 @@ class Resize(nn.Module):
         'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
         align_corners(bool): interpolation flag. Default: False. See
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        edge (str): Corresponding edge if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
+            or ``"horz"``. Defaults to ``"short"``.
+
     Returns:
         torch.Tensor: The resized tensor.
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear',
-                 align_corners: bool = False) -> None:
+                 align_corners: bool = False, edge:str = "short") -> None:
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
         self.align_corners: bool = align_corners
+        self.edge = edge
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return resize(input, self.size, self.interpolation, align_corners=self.align_corners)
+        return resize(input, self.size, self.interpolation, align_corners=self.align_corners, edge=self.edge)
 
 
 class Rotate(nn.Module):
