@@ -342,7 +342,7 @@ def _edge_to_image_size(
     edge_size: int, aspect_ratio: float, edge: str = "short"
 ) -> Tuple[int, int]:
     if edge not in ("short", "long", "vert", "horz"):
-        raise ValueError
+        raise ValueError(f"edge can be one of 'short', 'long', 'vert', and 'horz'. Got '{edge}'")
     if edge == "vert":
         return edge_size, round(edge_size * aspect_ratio)
     elif edge == "horz":
