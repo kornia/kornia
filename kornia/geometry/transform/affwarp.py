@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import torch
 import torch.nn as nn
@@ -23,6 +23,7 @@ __all__ = [
     "Translate",
     "Shear",
     "Resize",
+    "Affine",
 ]
 
 # utilities to compute affine matrices
@@ -391,6 +392,48 @@ class Resize(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return resize(input, self.size, self.interpolation, align_corners=self.align_corners)
+
+
+class Affine(nn.Module):
+    def __init__(
+            self,
+            angle: Optional[torch.Tensor] = None,
+            translation: Optional[torch.Tensor] = None,
+            scale_factor: Optional[torch.Tensor] = None,
+            shear: Optional[torch.Tensor] = None,
+            center: Optional[torch.Tensor] = None,
+            align_corners: bool = False,
+    ) -> None:
+        if not any(arg is not None for arg in (angle, translation, scale_factor, shear)):
+            # FIXME
+            raise RuntimeError
+
+        super().__init__()
+
+        self.matrix = self._compute_affine_matrix(angle, translation, scale_factor, shear, center)
+        self.align_corners = align_corners
+
+    @staticmethod
+    def _compute_affine_matrix(
+            angle: Optional[torch.Tensor],
+            translation: Optional[torch.Tensor],
+            scale_factor: Optional[torch.Tensor],
+            shear: Optional[torch.Tensor],
+            center: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        matrices = []
+        if angle is not None:
+            matrices.append(_compute_rotation_matrix(angle, center))
+        if translation is not None:
+            matrices.append(_compute_translation_matrix(translation))
+        if scale_factor is not None:
+            matrices.append(_compute_scaling_matrix(scale_factor, center))
+        if shear is not None:
+            matrices.append(_compute_shear_matrix(shear))
+        return torch.chain_matmul(matrices)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return affine(input, self.matrix[..., :2, :3], align_corners=self.align_corners)
 
 
 class Rotate(nn.Module):
