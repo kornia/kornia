@@ -36,6 +36,33 @@ class TestResize:
         assert gradcheck(kornia.Resize(new_size), (input, ), raise_exception=True)
 
 
+class TestRescale:
+    def test_smoke(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (1.0, 1.0))
+        assert_allclose(input, output)
+
+    def test_upsize(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (3.0, 2.0))
+        assert output.shape == (1, 3, 9, 8)
+
+    def test_downsize(self, device):
+        input = torch.rand(1, 3, 9, 8, device=device)
+        output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0))
+        assert output.shape == (1, 3, 3, 4)
+
+    def test_one_param(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, 2.0)
+        assert output.shape == (1, 3, 6, 8)
+
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 3, 4).to(device)
+        input = utils.tensor_to_gradcheck_var(input)
+        assert gradcheck(kornia.Rescale(2.0), (input, ), raise_exception=True)
+
+
 class TestRotate:
     def test_angle90(self, device):
         # prepare input data
