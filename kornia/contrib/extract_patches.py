@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, Sequence
+from typing import Optional, Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -8,7 +8,7 @@ from torch.nn.modules.utils import _pair
 
 
 def _extract_tensor_patchesnd(
-    input: torch.Tensor, window_sizes: Sequence[int], strides: Sequence[int]
+    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
 ) -> torch.Tensor:
     batch_size, num_channels = input.size()[:2]
     dims = range(2, input.dim())
@@ -108,8 +108,8 @@ class ExtractTensorPatches(nn.Module):
 def extract_tensor_patches(
     input: torch.Tensor,
     window_size: Union[int, Tuple[int, int]],
-    stride: Optional[Union[int, Tuple[int, int]]] = 1,
-    padding: Optional[Union[int, Tuple[int, int]]] = 0
+    stride: Union[int, Tuple[int, int]] = 1,
+    padding: Union[int, Tuple[int, int]] = 0
 ) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 
