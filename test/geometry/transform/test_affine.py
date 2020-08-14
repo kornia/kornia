@@ -28,6 +28,21 @@ class TestResize:
         out = kornia.resize(inp, 10)
         assert out.shape == (1, 3, 25, 10)
 
+    def test_one_param_long(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, 10, edge="long")
+        assert out.shape == (1, 3, 10, 4)
+
+    def test_one_param_vert(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, 10, edge="vert")
+        assert out.shape == (1, 3, 10, 4)
+
+    def test_one_param_horz(self, device):
+        inp = torch.rand(1, 3, 2, 5).to(device)
+        out = kornia.resize(inp, 10, edge="horz")
+        assert out.shape == (1, 3, 4, 10)
+
     def test_gradcheck(self, device):
         # test parameters
         new_size = 4
