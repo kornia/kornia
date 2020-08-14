@@ -344,13 +344,13 @@ def _edge_to_image_size(
     if edge not in ("short", "long", "vert", "horz"):
         raise ValueError(f"edge can be one of 'short', 'long', 'vert', and 'horz'. Got '{edge}'")
     if edge == "vert":
-        return edge_size, round(edge_size * aspect_ratio)
+        return edge_size, int(edge_size * aspect_ratio)
     elif edge == "horz":
-        return round(edge_size / aspect_ratio), edge_size
+        return int(edge_size / aspect_ratio), edge_size
     elif (edge == "short") ^ (aspect_ratio < 1.0):
-        return edge_size, round(edge_size * aspect_ratio)
+        return edge_size, int(edge_size * aspect_ratio)
     else:
-        return round(edge_size / aspect_ratio), edge_size
+        return int(edge_size / aspect_ratio), edge_size
 
 
 def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
