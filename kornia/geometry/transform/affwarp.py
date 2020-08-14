@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.imgwarp import (
-    warp_affine, get_rotation_matrix2d
+    warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
 from kornia.geometry.transform.projwarp import (
     warp_projective, get_projective_transform
@@ -404,36 +404,50 @@ class Affine(nn.Module):
             center: Optional[torch.Tensor] = None,
             align_corners: bool = False,
     ) -> None:
-        if not any(arg is not None for arg in (angle, translation, scale_factor, shear)):
+        batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
+        if not batch_sizes:
             # FIXME
             raise RuntimeError
 
+        batch_size = batch_sizes[0]
+        if not all(other == batch_size for other in batch_sizes[1:]):
+            # FIXME
+            raise RuntimeError
+
+        self._batch_size = batch_size
+
         super().__init__()
 
-        self.matrix = self._compute_affine_matrix(angle, translation, scale_factor, shear, center)
+        if angle is None:
+            angle = torch.zeros(batch_size)
+        self.angle = angle
+
+        if translation is None:
+            translation = torch.zeros(batch_size, 2)
+        self.translation = translation
+
+        if scale_factor is None:
+            scale_factor = torch.ones(batch_size)
+        self.scale_factor = scale_factor
+
+        self.shear = shear
+        self.center = center
         self.align_corners = align_corners
 
-    @staticmethod
-    def _compute_affine_matrix(
-            angle: Optional[torch.Tensor],
-            translation: Optional[torch.Tensor],
-            scale_factor: Optional[torch.Tensor],
-            shear: Optional[torch.Tensor],
-            center: Optional[torch.Tensor],
-    ) -> torch.Tensor:
-        matrices = []
-        if angle is not None:
-            matrices.append(_compute_rotation_matrix(angle, center))
-        if translation is not None:
-            matrices.append(_compute_translation_matrix(translation))
-        if scale_factor is not None:
-            matrices.append(_compute_scaling_matrix(scale_factor, center))
-        if shear is not None:
-            matrices.append(_compute_shear_matrix(shear))
-        return torch.chain_matmul(matrices)
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return affine(input, self.matrix[..., :2, :3], align_corners=self.align_corners)
+        if self.shear is None:
+            sx = sy = None
+        else:
+            sx, sy = self.shear[..., 0], self.shear[..., 1]
+
+        if self.center is None:
+            center = _compute_tensor_center(input).expand(input.size()[0], -1)
+        else:
+            center = self.center
+
+        matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
+        return affine(input, matrix[..., :2, :3], align_corners=self.align_corners)
+
 
 
 class Rotate(nn.Module):
