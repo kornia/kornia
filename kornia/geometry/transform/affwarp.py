@@ -413,7 +413,7 @@ class Affine(nn.Module):
             details.
 
     Raises:
-        RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is given.
+        RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
 
     Returns:
         torch.Tensor: The transformed tensor.
@@ -430,13 +430,15 @@ class Affine(nn.Module):
     ) -> None:
         batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
         if not batch_sizes:
-            # FIXME
-            raise RuntimeError
+            msg = (
+                "Affine was created without any affine parameter. At least one of angle, translation, scale_factor, or "
+                "shear has to be set."
+            )
+            raise RuntimeError(msg)
 
         batch_size = batch_sizes[0]
         if not all(other == batch_size for other in batch_sizes[1:]):
-            # FIXME
-            raise RuntimeError
+            raise RuntimeError(f"The batch sizes of the affine parameters mismatch: {batch_sizes}")
 
         self._batch_size = batch_size
 
