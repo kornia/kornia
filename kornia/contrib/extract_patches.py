@@ -7,17 +7,6 @@ import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
 
-def _extract_tensor_patchesnd(
-    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
-) -> torch.Tensor:
-    batch_size, num_channels = input.size()[:2]
-    dims = range(2, input.dim())
-    for dim, patch_size, stride in zip(dims, window_sizes, strides):
-        input = input.unfold(dim, patch_size, stride)
-    input = input.permute(0, *dims, 1, *[dim + len(dims) for dim in dims]).contiguous()
-    return input.view(batch_size, -1, num_channels, *window_sizes)
-
-
 class ExtractTensorPatches(nn.Module):
     r"""Module that extract patches from tensors and stack them.
 
@@ -86,23 +75,22 @@ class ExtractTensorPatches(nn.Module):
         self.padding: Tuple[int, int] = _pair(padding)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        if not torch.is_tensor(input):
-            raise TypeError("Input input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(input.shape))
-
-        if self.padding:
-            pad_vert, pad_horz = self.padding
-            input = F.pad(input, [pad_horz, pad_horz, pad_vert, pad_vert])
-
-        return _extract_tensor_patchesnd(input, self.window_size, self.stride)
+        return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
 
 
 ######################
 # functional interface
 ######################
+
+def _extract_tensor_patchesnd(
+    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
+) -> torch.Tensor:
+    batch_size, num_channels = input.size()[:2]
+    dims = range(2, input.dim())
+    for dim, patch_size, stride in zip(dims, window_sizes, strides):
+        input = input.unfold(dim, patch_size, stride)
+    input = input.permute(0, *dims, 1, *[dim + len(dims) for dim in dims]).contiguous()
+    return input.view(batch_size, -1, num_channels, *window_sizes)
 
 
 def extract_tensor_patches(
@@ -115,4 +103,15 @@ def extract_tensor_patches(
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
     """
-    return ExtractTensorPatches(window_size, stride=stride, padding=padding)(input)
+    if not torch.is_tensor(input):
+        raise TypeError("Input input type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+    if not len(input.shape) == 4:
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
+                         .format(input.shape))
+
+    if padding:
+        pad_vert, pad_horz = padding
+        input = F.pad(input, [pad_horz, pad_horz, pad_vert, pad_vert])
+
+    return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
