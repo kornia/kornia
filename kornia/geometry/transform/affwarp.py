@@ -395,6 +395,30 @@ class Resize(nn.Module):
 
 
 class Affine(nn.Module):
+    r"""Apply multiple elementary affine transforms simultaneously.
+
+    Args:
+        angle (torch.Tensor, optional): Angle in degrees for counter-clockwise rotation around the center. The tensor
+            must have a shape of (B), where B is the batch size.
+        translation (torch.Tensor, optional): Amount of pixels for translation in x- and y-direction. The tensor must
+            have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
+        scale_factor (torch.Tensor, optional): Factor for scaling. The tensor must have a shape of (B), where B is the
+            batch size.
+        shear (torch.Tensor, optional): Angles in degrees for shearing in x- and y-direction around the center. The
+            tensor must have a shape of (B, 2), where B is the batch size and the last dimension contains sx and sy.
+        center (torch.Tensor, optional): Transformation center in pixels. The tensor must have a shape of (B, 2), where
+            B is the batch size and the last dimension contains cx and cy. Defaults to the center of image to be
+            transformed.
+        align_corners (bool): interpolation flag. Default: False. See :func:`~torch.nn.functional.interpolate` for
+            details.
+
+    Raises:
+        RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is given.
+
+    Returns:
+        torch.Tensor: The transformed tensor.
+    """
+
     def __init__(
             self,
             angle: Optional[torch.Tensor] = None,
