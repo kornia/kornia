@@ -475,7 +475,6 @@ class Affine(nn.Module):
         return affine(input, matrix[..., :2, :3], align_corners=self.align_corners)
 
 
-
 class Rotate(nn.Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
