@@ -111,7 +111,7 @@ def extract_tensor_patches(
                          .format(input.shape))
 
     if padding:
-        pad_vert, pad_horz = padding
+        pad_vert, pad_horz = _pair(padding)
         input = F.pad(input, [pad_horz, pad_horz, pad_vert, pad_vert])
 
     return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
