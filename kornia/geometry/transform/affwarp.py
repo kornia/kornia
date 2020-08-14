@@ -18,11 +18,13 @@ __all__ = [
     "translate",
     "shear",
     "resize",
+    "rescale",
     "Scale",
     "Rotate",
     "Translate",
     "Shear",
     "Resize",
+    "Rescale",
 ]
 
 # utilities to compute affine matrices
@@ -391,6 +393,34 @@ class Resize(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return resize(input, self.size, self.interpolation, align_corners=self.align_corners)
+
+def rescale(
+    input: torch.Tensor,
+    factor: Union[float, Tuple[float, float]],
+    interpolation: str = "bilinear",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    if isinstance(factor, float):
+        factor_vert = factor_horz = factor
+    else:
+        factor_vert, factor_horz = factor
+
+    height, width = input.size()[-2:]
+    size = (int(height * factor_vert), int(width * factor_horz))
+    return resize(input, size, interpolation=interpolation, align_corners=align_corners)
+
+
+class Rescale(nn.Module):
+    def __init__(
+        self, factor: Union[float, Tuple[float, float]], interpolation: str = "bilinear", align_corners: bool = False
+    ) -> None:
+        super().__init__()
+        self.factor: Union[float, Tuple[float, float]] = factor
+        self.interpolation: str = interpolation
+        self.align_corners: bool = align_corners
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
 
 
 class Rotate(nn.Module):
