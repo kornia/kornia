@@ -31,6 +31,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: vflip
 .. autofunction:: rot180
 .. autofunction:: resize
+.. autofunction:: rescale
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -43,3 +44,4 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
+.. autoclass:: Rescale
