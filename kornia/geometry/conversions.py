@@ -448,7 +448,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
 def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
-    The quaternion should be in (x, y, z, w) format.
+    The quaternion should be in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
