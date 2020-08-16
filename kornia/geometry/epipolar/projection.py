@@ -1,5 +1,5 @@
 """Module for image projections."""
-from typing import Union
+from typing import Union, Tuple
 
 import torch
 
@@ -106,6 +106,32 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     K_h[..., -1, -1] += 1.
 
     return K @ Rt
+
+def kRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""Get the intrinsics, rotation-matrix and the camera-center.
+
+    This function decomposes the Projection matrix into 
+    1. `t` where `t` is -(P'-1) * p' where (P'-1) is the first 3x3 submatrix of `P` and p' is the last column of `P` 
+    2. `k, R` from the first 3x3 sum-matrix of P using the RQ-decomposition method 
+
+    Args:
+        P (torch.Tensor): the projection matrix with shape :math:`(B, 3, 4)`.
+
+    Returns:
+        k (torch.Tensor): the camera-matrix with shape :math:`(B, 3, 3)`.
+        R (torch.Tensor): the rotation-matrix with shape :math:`(B, 3 3)`.
+
+    """
+
+    assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
+
+    submat_3x3 = P[:, 0:3, 0:3]
+    last_column = P[:,0:3, 3].unsqueeze(-1)
+    t = torch.matmul(-torch.inverse(submat_3x3), last_column).squeeze(-1)
+
+
+
+    return None, None, t
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
