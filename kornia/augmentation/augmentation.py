@@ -335,7 +335,7 @@ class RandomPerspective(AugmentationBase):
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5
         distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
@@ -355,14 +355,20 @@ class RandomPerspective(AugmentationBase):
 
     def __init__(
         self, distortion_scale: float = 0.5, p: float = 0.5,
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(return_transform)
         self.p: float = p
         self.distortion_scale: float = distortion_scale
-        self.interpolation: Resample = Resample.get(interpolation)
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
@@ -535,12 +541,18 @@ class RandomRotation(AugmentationBase):
 
     def __init__(
         self, degrees: Union[float, Tuple[float, float], List[float]],
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(return_transform)
         self.degrees = degrees
-        self.interpolation: Resample = Resample.get(interpolation)
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
@@ -577,7 +589,7 @@ class RandomCrop(AugmentationBase):
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -596,7 +608,7 @@ class RandomCrop(AugmentationBase):
     def __init__(
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomCrop, self).__init__(return_transform)
@@ -605,7 +617,7 @@ class RandomCrop(AugmentationBase):
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
-        self.interpolation = interpolation
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
@@ -664,7 +676,7 @@ class RandomResizedCrop(AugmentationBase):
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -686,7 +698,8 @@ class RandomResizedCrop(AugmentationBase):
     def __init__(
         self, size: Tuple[int, int], scale: Tuple[float, float] = (0.08, 1.0),
         ratio: Tuple[float, float] = (3. / 4., 4. / 3.),
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False
     ) -> None:
@@ -694,7 +707,12 @@ class RandomResizedCrop(AugmentationBase):
         self.size = size
         self.scale = scale
         self.ratio = ratio
-        self.interpolation: Resample = Resample.get(interpolation)
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
