@@ -127,26 +127,25 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
         return dist.rsample(shape)
 
 
-def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
-                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
+def _check_and_bound(factor: Union[float, Tuple[float, float], List[float]], name: str,
+                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> Tuple:
     r"""Check inputs and compute the corresponding factor bounds
     """
-    factor_bound: torch.Tensor
-    if not isinstance(factor, torch.Tensor):
-        factor = torch.tensor(factor, dtype=torch.float32)
+    factor_bound: Tuple
 
-    if factor.dim() == 0:
-        _center = torch.tensor(center, dtype=torch.float32)
+    if isinstance(factor, (int, float)):
 
         if factor < 0:
-            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor.item()}")
+            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
 
-        factor_bound = torch.tensor([_center - factor, _center + factor], dtype=torch.float32)
+        factor_bound = [center - factor, center + factor]
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
-        factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
+        factor_bound[0] = max(bounds[0], factor_bound[0])
+        factor_bound[1] = min(bounds[1], factor_bound[1])
 
-    elif factor.shape[0] == 2 and factor.dim() == 1:
+    elif isinstance(factor, (tuple, list)) and len(factor) == 2 and \
+            isinstance(factor[0], (int, float)) and isinstance(factor[1], (int, float)):
 
         if not bounds[0] <= factor[0] or not bounds[1] >= factor[1]:
             raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor}.")
@@ -159,7 +158,7 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
     else:
 
         raise TypeError(
-            f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
+            f"{name} should be a float number or a tuple with length 2 whose values between {bounds}. Got {factor}")
 
     return factor_bound
 

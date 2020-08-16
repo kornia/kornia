@@ -201,17 +201,17 @@ class ColorJitter(AugmentationBase):
     """
 
     def __init__(
-        self, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        self, brightness: Union[float, Tuple[float, float], List[float]] = 0.,
+        contrast: Union[float, Tuple[float, float], List[float]] = 0.,
+        saturation: Union[float, Tuple[float, float], List[float]] = 0.,
+        hue: Union[float, Tuple[float, float], List[float]] = 0.,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(ColorJitter, self).__init__(return_transform)
-        self.brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = brightness
-        self.contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = contrast
-        self.saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = saturation
-        self.hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = hue
+        self.brightness: Union[float, Tuple[float, float], List[float]] = brightness
+        self.contrast: Union[float, Tuple[float, float], List[float]] = contrast
+        self.saturation: Union[float, Tuple[float, float], List[float]] = saturation
+        self.hue: Union[float, Tuple[float, float], List[float]] = hue
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -399,8 +399,8 @@ class RandomAffine(AugmentationBase):
         shear (sequence or float, optional): Range of degrees to select from.
             If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
             will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 2 tuples, then
+            x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in (shear[1][0], shear[1][1]) will be applied.
             Will not apply shear by default
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation
@@ -534,7 +534,7 @@ class RandomRotation(AugmentationBase):
     # Note: Extra params, center=None, fill=0 in TorchVision
 
     def __init__(
-        self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+        self, degrees: Union[float, Tuple[float, float], List[float]],
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
@@ -745,11 +745,11 @@ class RandomMotionBlur(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
         >>> motion_blur(input)
-        tensor([[[[0.2761, 0.5200, 0.3753, 0.2423, 0.2193],
-                  [0.3275, 0.5502, 0.5738, 0.5400, 0.3883],
-                  [0.2132, 0.3857, 0.3056, 0.2520, 0.1890],
-                  [0.3016, 0.6172, 0.6487, 0.4331, 0.2770],
-                  [0.3865, 0.6221, 0.5538, 0.4862, 0.4206]]]])
+        tensor([[[[0.2972, 0.5154, 0.4153, 0.1641, 0.1765],
+                  [0.3045, 0.6160, 0.6123, 0.6701, 0.4225],
+                  [0.1914, 0.3224, 0.2456, 0.1485, 0.1799],
+                  [0.2974, 0.6258, 0.6399, 0.4802, 0.1939],
+                  [0.3919, 0.6911, 0.6984, 0.5462, 0.5357]]]])
     """
 
     def __init__(
@@ -812,8 +812,8 @@ class RandomSolarize(AugmentationBase):
     """
 
     def __init__(
-        self, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        self, thresholds: Union[float, Tuple[float, float], List[float]] = 0.1,
+        additions: Union[float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)

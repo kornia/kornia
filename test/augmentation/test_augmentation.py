@@ -546,51 +546,6 @@ class TestColorJitter:
         expected = expected.to(device)
         assert_allclose(f(input), expected)
 
-    def test_random_saturation_tensor(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(saturation=torch.tensor(0.2))
-
-        input = torch.tensor([[[[0.1, 0.2, 0.3],
-                                [0.6, 0.5, 0.4],
-                                [0.7, 0.8, 1.]],
-
-                               [[1.0, 0.5, 0.6],
-                                [0.6, 0.3, 0.2],
-                                [0.8, 0.1, 0.2]],
-
-                               [[0.6, 0.8, 0.7],
-                                [0.9, 0.3, 0.2],
-                                [0.8, 0.4, .5]]]])  # 1 x 1 x 3 x 3
-        input = input.repeat(2, 1, 1, 1).to(device)  # 2 x 3 x 3
-
-        expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
-                                   [6.2921e-01, 5.0000e-01, 4.0000e-01],
-                                   [7.0974e-01, 8.0000e-01, 1.0000e+00]],
-
-                                  [[1.0000e+00, 5.2921e-01, 6.0974e-01],
-                                   [6.2921e-01, 3.1947e-01, 2.1947e-01],
-                                   [8.0000e-01, 1.6816e-01, 2.7790e-01]],
-
-                                  [[6.3895e-01, 8.0000e-01, 7.0000e-01],
-                                   [9.0000e-01, 3.1947e-01, 2.1947e-01],
-                                   [8.0000e-01, 4.3895e-01, 5.4869e-01]]],
-
-
-                                 [[[1.1921e-07, 1.2953e-01, 2.5302e-01],
-                                   [5.6476e-01, 5.0000e-01, 4.0000e-01],
-                                   [6.8825e-01, 8.0000e-01, 1.0000e+00]],
-
-                                  [[1.0000e+00, 4.6476e-01, 5.8825e-01],
-                                   [5.6476e-01, 2.7651e-01, 1.7651e-01],
-                                   [8.0000e-01, 1.7781e-02, 1.0603e-01]],
-
-                                  [[5.5556e-01, 8.0000e-01, 7.0000e-01],
-                                   [9.0000e-01, 2.7651e-01, 1.7651e-01],
-                                   [8.0000e-01, 3.5302e-01, 4.4127e-01]]]])
-        expected = expected.to(device)
-
-        assert_allclose(f(input), expected)
-
     def test_random_saturation_tuple(self, device):
         torch.manual_seed(42)
         f = ColorJitter(saturation=(0.8, 1.2))
@@ -638,7 +593,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.1 / pi)
+        f = ColorJitter(hue=0.1 / pi.item())
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -682,52 +637,7 @@ class TestColorJitter:
 
     def test_random_hue_list(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=[-0.1 / pi, 0.1 / pi])
-
-        input = torch.tensor([[[[0.1, 0.2, 0.3],
-                                [0.6, 0.5, 0.4],
-                                [0.7, 0.8, 1.]],
-
-                               [[1.0, 0.5, 0.6],
-                                [0.6, 0.3, 0.2],
-                                [0.8, 0.1, 0.2]],
-
-                               [[0.6, 0.8, 0.7],
-                                [0.9, 0.3, 0.2],
-                                [0.8, 0.4, .5]]]])  # 1 x 1 x 3 x 3
-        input = input.repeat(2, 1, 1, 1).to(device)  # 2 x 3 x 3
-
-        expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
-                                   [0.6000, 0.5000, 0.4000],
-                                   [0.7000, 0.8000, 1.0000]],
-
-                                  [[1.0000, 0.5251, 0.6167],
-                                   [0.6126, 0.3000, 0.2000],
-                                   [0.8000, 0.1000, 0.2000]],
-
-                                  [[0.5623, 0.8000, 0.7000],
-                                   [0.9000, 0.3084, 0.2084],
-                                   [0.7958, 0.4293, 0.5335]]],
-
-
-                                 [[[0.1000, 0.2000, 0.3000],
-                                   [0.6116, 0.5000, 0.4000],
-                                   [0.7000, 0.8000, 1.0000]],
-
-                                  [[1.0000, 0.4769, 0.5846],
-                                   [0.6000, 0.3077, 0.2077],
-                                   [0.7961, 0.1000, 0.2000]],
-
-                                  [[0.6347, 0.8000, 0.7000],
-                                   [0.9000, 0.3000, 0.2000],
-                                   [0.8000, 0.3730, 0.4692]]]])
-        expected = expected.to(device)
-
-        assert_allclose(f(input), expected)
-
-    def test_random_hue_tensor(self, device):
-        torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.1 / pi, 0.1 / pi]))
+        f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],

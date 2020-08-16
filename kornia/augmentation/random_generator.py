@@ -13,10 +13,10 @@ from .utils import (
 
 def random_color_jitter_generator(
     batch_size: int,
-    brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-    contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-    saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-    hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+    brightness: Union[float, Tuple[float, float], List[float]] = 0.,
+    contrast: Union[float, Tuple[float, float], List[float]] = 0.,
+    saturation: Union[float, Tuple[float, float], List[float]] = 0.,
+    hue: Union[float, Tuple[float, float], List[float]] = 0.,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random color jiter parameters for a batch of images.
@@ -33,16 +33,13 @@ def random_color_jitter_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
-    brightness_bound: torch.Tensor = _check_and_bound(
-        brightness, 'brightness', center=1., bounds=(0, 2))
+    brightness_bound: Tuple = _check_and_bound(brightness, 'brightness', center=1., bounds=(0, 2))
 
-    contrast_bound: torch.Tensor = _check_and_bound(
-        contrast, 'contrast', center=1.)
+    contrast_bound: Tuple = _check_and_bound(contrast, 'contrast', center=1.)
 
-    saturation_bound: torch.Tensor = _check_and_bound(
-        saturation, 'saturation', center=1.)
+    saturation_bound: Tuple = _check_and_bound(saturation, 'saturation', center=1.)
 
-    hue_bound: torch.Tensor = _check_and_bound(hue, 'hue', bounds=(-0.5, 0.5))
+    hue_bound: Tuple = _check_and_bound(hue, 'hue', bounds=(-0.5, 0.5))
 
     brightness_factor = _adapted_uniform(
         (batch_size,), brightness_bound[0], brightness_bound[1], same_on_batch)
@@ -163,7 +160,7 @@ def random_affine_generator(
     degrees: Union[float, Tuple[float, float]],
     translate: Optional[Tuple[float, float]] = None,
     scale: Optional[Tuple[float, float]] = None,
-    shear: Optional[Union[float, Tuple[float, float]]] = None,
+    shear: Optional[Union[float, Tuple[float, float], Tuple[float, float, float, float]]] = None,
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -198,15 +195,7 @@ def random_affine_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     # check angle ranges
-    degrees_tmp: Tuple[float, float]
-    if isinstance(degrees, (float, int,)):
-        if degrees < 0.:
-            raise ValueError("If degrees is a single number, it must be positive.")
-        degrees_tmp = (-degrees, degrees)
-    else:
-        assert isinstance(degrees, (tuple, list)) and len(degrees) == 2, \
-            "degrees should be a list or tuple and it must be of length 2."
-        degrees_tmp = degrees
+    degrees_tmp: Tuple[float, float] = _check_and_bound(degrees, 'degrees', 0, (-360, 360))
 
     # check translation range
     if translate is not None:
@@ -225,18 +214,15 @@ def random_affine_generator(
                 raise ValueError("scale values should be positive")
 
     # check shear range
-    shear_tmp: Optional[Tuple[float, float]]
+    shear_tmp: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     if shear is not None:
-        if isinstance(shear, float):
-            if shear < 0:
-                raise ValueError("If shear is a single number, it must be positive.")
-            shear_tmp = (-shear, shear)
+        if isinstance(shear, float) or (isinstance(shear, tuple) and len(shear) == 2):
+            shear_tmp = _check_and_bound(shear, 'shear', 0, (-360, 360)), (0, 0)
+        elif isinstance(shear, tuple) and len(shear) == 4:
+            shear_tmp = (_check_and_bound(shear[:2], 'shear', 0, (-360, 360)),
+                         _check_and_bound(shear[2:], 'shear', 0, (-360, 360)))
         else:
-            assert isinstance(shear, (tuple, list)) and len(shear) == 2, \
-                "shear should be a list or tuple and it must be of length 2."
-            shear_tmp = shear
-    else:
-        shear_tmp = shear
+            raise ValueError(f"Expected shear to be a number or a tuple with 2 or 4 values. Got {shear_tmp}.")
 
     return _get_random_affine_params(
         batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch, align_corners)
@@ -294,7 +280,7 @@ def _get_random_affine_params(
     degrees: Tuple[float, float],
     translate: Optional[Tuple[float, float]],
     scales: Optional[Tuple[float, float]],
-    shears: Optional[Tuple[float, float]],
+    shears: Optional[Tuple[Tuple[float, float], Tuple[float, float]]],
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -328,8 +314,8 @@ def _get_random_affine_params(
     center = center.expand(batch_size, -1)
 
     if shears is not None:
-        sx = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
-        sy = _adapted_uniform((batch_size,), shears[0], shears[1], same_on_batch)
+        sx = _adapted_uniform((batch_size,), shears[0][0], shears[0][1], same_on_batch)
+        sy = _adapted_uniform((batch_size,), shears[1][0], shears[1][1], same_on_batch)
     else:
         sx = sy = torch.tensor([0] * batch_size)
 
@@ -591,8 +577,8 @@ def random_motion_blur_generator(
     same_on_batch: bool = True
 ) -> Dict[str, torch.Tensor]:
 
-    angle_bound: torch.Tensor = _check_and_bound(angle, 'angle', center=0.)
-    direction_bound: torch.Tensor = _check_and_bound(direction, 'direction', center=0., bounds=(-1, 1))
+    angle_bound: Tuple = _check_and_bound(angle, 'angle', center=0., bounds=(-360, 360))
+    direction_bound: Tuple = _check_and_bound(direction, 'direction', center=0., bounds=(-1, 1))
 
     if isinstance(kernel_size, int):
         ksize_factor = torch.tensor([kernel_size] * batch_size)
@@ -604,10 +590,10 @@ def random_motion_blur_generator(
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
     angle_factor = _adapted_uniform(
-        (batch_size,), angle_bound[0].float(), angle_bound[1].float(), same_on_batch)
+        (batch_size,), angle_bound[0], angle_bound[1], same_on_batch)
 
     direction_factor = _adapted_uniform(
-        (batch_size,), direction_bound[0].float(), direction_bound[1].float(), same_on_batch)
+        (batch_size,), direction_bound[0], direction_bound[1], same_on_batch)
 
     return dict(ksize_factor=ksize_factor,
                 angle_factor=angle_factor,
@@ -635,15 +621,15 @@ def random_solarize_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
-    thresholds_bound: torch.Tensor = _check_and_bound(
+    thresholds_bound: Tuple = _check_and_bound(
         thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
-    additions_bound: torch.Tensor = _check_and_bound(additions, 'additions', bounds=(-0.5, 0.5))
+    additions_bound: Tuple = _check_and_bound(additions, 'additions', bounds=(-0.5, 0.5))
 
     thresholds_factor = _adapted_uniform(
-        (batch_size,), thresholds_bound[0].float(), thresholds_bound[1].float(), same_on_batch)
+        (batch_size,), thresholds_bound[0], thresholds_bound[1], same_on_batch)
 
     additions_factor = _adapted_uniform(
-        (batch_size,), additions_bound[0].float(), additions_bound[1].float(), same_on_batch)
+        (batch_size,), additions_bound[0], additions_bound[1], same_on_batch)
 
     return dict(
         thresholds_factor=thresholds_factor,
