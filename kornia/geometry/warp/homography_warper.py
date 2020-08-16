@@ -16,6 +16,7 @@ __all__ = [
     "normalize_homography",
     "normalize_homography3d",
     "normal_transform_pixel",
+    "normal_transform_pixel3d",
 ]
 
 
@@ -213,7 +214,7 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
         width (int): image width.
 
     Returns:
-        torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`
+        torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`.
     """
     tr_mat = torch.tensor([[1.0, 0.0, -1.0],
                            [0.0, 1.0, -1.0],
@@ -222,8 +223,7 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
     tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
 
-    tr_mat = tr_mat.unsqueeze(0)  # 1x3x3
-    return tr_mat
+    return tr_mat.unsqueeze(0)  # 1x3x3
 
 
 def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tensor:
@@ -235,22 +235,18 @@ def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tenso
         width (int): image width.
 
     Returns:
-        Tensor: normalized transform.
-
-    Shape:
-        Output: :math:`(1, 4, 4)`
+        Tensor: normalized transform with shape :math:`(1, 4, 4)`.
     """
     tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
                            [0.0, 1.0, 0.0, -1.0],
                            [0.0, 0.0, 1.0, -1.0],
                            [0.0, 0.0, 0.0, 1.0]])  # 4x4
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (depth - 1.0)
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
     tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
-    tr_mat[2, 2] = tr_mat[1, 1] * 2.0 / (width - 1.0)
+    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / (depth - 1.0)
 
-    tr_mat = tr_mat.unsqueeze(0)  # 1x4x4
-    return tr_mat
+    return tr_mat.unsqueeze(0)  # 1x4x4
 
 
 def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
