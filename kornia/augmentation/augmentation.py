@@ -373,14 +373,14 @@ class RandomPerspective(AugmentationBase):
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
-        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, interpolation={self.interpolation.name}, "
+        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.p, self.distortion_scale,
-            self.interpolation, self.same_on_batch, self.align_corners)
+            self.resample, self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation(input, params)
@@ -557,12 +557,12 @@ class RandomRotation(AugmentationBase):
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
-        repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, "
+        repr = f"(degrees={self.degrees}, interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.interpolation,
+        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.resample,
                                             self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -624,13 +624,13 @@ class RandomCrop(AugmentationBase):
     def __repr__(self) -> str:
         repr = f"(crop_size={self.size}, padding={self.padding}, fill={self.fill}, "
         f"pad_if_needed={self.pad_if_needed}, padding_mode={self.padding_mode}, "
-        f"interpolation={self.interpolation.name}, "
+        f"interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
-                                        interpolation=self.interpolation, same_on_batch=self.same_on_batch,
+                                        interpolation=self.resample, same_on_batch=self.same_on_batch,
                                         align_corners=self.align_corners)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
@@ -718,7 +718,7 @@ class RandomResizedCrop(AugmentationBase):
 
     def __repr__(self) -> str:
         repr = f"(size={self.size}, resize_to={self.scale}, resize_to={self.ratio}, "
-        f"interpolation={self.interpolation.name}, return_transform={self.return_transform}, "
+        f"interpolation={self.resample.name}, return_transform={self.return_transform}, "
         f"same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 

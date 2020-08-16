@@ -475,20 +475,28 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
 
-    if sx is not None or sy is not None:
-        x, y = torch.split(center, 1, dim=-1)
-        x = x.view(-1)
-        y = y.view(-1)
-        sx_tan = torch.tan(sx)  # type: ignore
-        sy_tan = torch.tan(sy)  # type: ignore
-        zeros = torch.zeros_like(sx)  # type: ignore
-        ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones, -sx_tan, sx_tan * y,  # type: ignore   # noqa: E241
-                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)],  # noqa: E241
-                                dim=-1).view(-1, 2, 3)
-        shear_mat = convert_affinematrix_to_homography(shear_mat)
+    if any([s is not None for s in [sx, sy]]):
+        shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
     return transform_h
+
+
+def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
+    sx = torch.tensor(0) if sx is None else sx
+    sy = torch.tensor(0) if sy is None else sy
+
+    x, y = torch.split(center, 1, dim=-1)
+    x, y = x.view(-1), y.view(-1)
+
+    sx_tan = torch.tan(sx)  # type: ignore
+    sy_tan = torch.tan(sy)  # type: ignore
+    ones = torch.ones_like(sx)  # type: ignore
+    shear_mat = torch.stack([
+        ones, -sx_tan, sx_tan * y,  # type: ignore   # noqa: E241
+        -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)  # noqa: E241
+    ], dim=-1).view(-1, 2, 3)
+    shear_mat = convert_affinematrix_to_homography(shear_mat)
+    return shear_mat
 
 
 def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angles: torch.Tensor,
@@ -515,8 +523,9 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     transform[..., 3] += translations  # tx/ty/tz
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography3d(transform)
-    shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
-    transform_h = transform_h @ shear_mat
+    if any([s is not None for s in [sxy, sxz, syx, syz, szx, szy]]):
+        shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
+        transform_h = transform_h @ shear_mat
     return transform_h
 
 
@@ -587,7 +596,7 @@ def get_shear_matrix3d(
     return shear_mat
 
 
-def _computer_shear_matrix(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+def _computer_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
     zeros = torch.zeros_like(sxy_tan)  # type: ignore
     ones = torch.ones_like(sxy_tan)  # type: ignore
 
