@@ -249,6 +249,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
             f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
+        thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
 
     return torch.where(input < thresholds, input, 1.0 - input)
@@ -295,8 +296,8 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
             assert input.size(0) == len(additions) and len(additions.shape) == 1, \
                 f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
+            additions = additions.to(input.device).to(input.dtype)
             additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
-
         input = input + additions
         input = input.clamp(0., 1.)
 
