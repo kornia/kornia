@@ -577,6 +577,7 @@ class RandomCrop(AugmentationBase):
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
@@ -595,6 +596,7 @@ class RandomCrop(AugmentationBase):
     def __init__(
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
+        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomCrop, self).__init__(return_transform)
@@ -603,18 +605,21 @@ class RandomCrop(AugmentationBase):
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
+        self.interpolation = interpolation
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(crop_size={self.size}, padding={self.padding}, fill={self.fill}, "
-        f"pad_if_needed={self.pad_if_needed}, padding_mode=${self.padding_mode}, "
+        f"pad_if_needed={self.pad_if_needed}, padding_mode={self.padding_mode}, "
+        f"interpolation={self.interpolation.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
-                                        same_on_batch=self.same_on_batch, align_corners=self.align_corners)
+                                        interpolation=self.interpolation, same_on_batch=self.same_on_batch,
+                                        align_corners=self.align_corners)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
