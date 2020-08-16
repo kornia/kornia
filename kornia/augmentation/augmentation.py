@@ -99,12 +99,10 @@ class RandomHorizontalFlip(AugmentationBase):
 
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False,
-                 align_corners: bool = False) -> None:
+    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
-        self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
