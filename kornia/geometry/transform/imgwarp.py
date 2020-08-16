@@ -574,7 +574,7 @@ def get_shear_matrix3d(
     szy_tan = torch.tan(szy)  # type: ignore
 
     # compute translation matrix
-    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
         sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
 
     m03 = m01 * y + m02 * z
@@ -584,7 +584,7 @@ def get_shear_matrix3d(
     # shear matrix is implemented with negative values
     sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan = \
         - sxy_tan, - sxz_tan, - syx_tan, - syz_tan, - szx_tan, - szy_tan
-    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
         sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
 
     shear_mat = torch.stack([
@@ -596,7 +596,7 @@ def get_shear_matrix3d(
     return shear_mat
 
 
-def _computer_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
     zeros = torch.zeros_like(sxy_tan)  # type: ignore
     ones = torch.ones_like(sxy_tan)  # type: ignore
 

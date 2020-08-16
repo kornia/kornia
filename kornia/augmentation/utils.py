@@ -128,21 +128,19 @@ def _adapted_uniform(shape: Union[Tuple, torch.Size], low, high, same_on_batch=F
 
 
 def _check_and_bound(factor: Union[float, Tuple[float, float], List[float]], name: str,
-                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> Tuple:
+                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> Tuple[float, float]:
     r"""Check inputs and compute the corresponding factor bounds
     """
-    factor_bound: Tuple
+    factor_bound: Tuple[float, float]
 
     if isinstance(factor, (int, float)):
 
         if factor < 0:
             raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
 
-        factor_bound = [center - factor, center + factor]
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
-        factor_bound[0] = max(bounds[0], factor_bound[0])
-        factor_bound[1] = min(bounds[1], factor_bound[1])
+        factor_bound = (max(bounds[0], center - factor), min(bounds[1], center + factor))
 
     elif isinstance(factor, (tuple, list)) and len(factor) == 2 and \
             isinstance(factor[0], (int, float)) and isinstance(factor[1], (int, float)):
@@ -153,7 +151,7 @@ def _check_and_bound(factor: Union[float, Tuple[float, float], List[float]], nam
         if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
 
-        factor_bound = factor
+        factor_bound = (factor[0], factor[1])
 
     else:
 

@@ -67,10 +67,10 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     return output
 
 
-def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-                 contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-                 saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-                 hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
+def color_jitter(input: torch.Tensor, brightness: Union[float, Tuple[float, float], List[float]] = 0.,
+                 contrast: Union[float, Tuple[float, float], List[float]] = 0.,
+                 saturation: Union[float, Tuple[float, float], List[float]] = 0.,
+                 hue: Union[float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 

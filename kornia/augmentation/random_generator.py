@@ -217,10 +217,10 @@ def random_affine_generator(
     shear_tmp: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
     if shear is not None:
         if isinstance(shear, float) or (isinstance(shear, tuple) and len(shear) == 2):
-            shear_tmp = _check_and_bound(shear, 'shear', 0, (-360, 360)), (0, 0)
+            shear_tmp = _check_and_bound(shear, 'shear', 0, (-360, 360)), (0, 0)  # type:ignore
         elif isinstance(shear, tuple) and len(shear) == 4:
-            shear_tmp = (_check_and_bound(shear[:2], 'shear', 0, (-360, 360)),
-                         _check_and_bound(shear[2:], 'shear', 0, (-360, 360)))
+            shear_tmp = (_check_and_bound((shear[0], shear[1]), 'shear', 0, (-360, 360)),
+                         _check_and_bound((shear[2], shear[3]), 'shear', 0, (-360, 360)))  # type:ignore
         else:
             raise ValueError(f"Expected shear to be a number or a tuple with 2 or 4 values. Got {shear_tmp}.")
 
@@ -603,8 +603,8 @@ def random_motion_blur_generator(
 
 def random_solarize_generator(
     batch_size: int,
-    thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-    additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+    thresholds: Union[float, Tuple[float, float], List[float]] = 0.1,
+    additions: Union[float, Tuple[float, float], List[float]] = 0.1,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,
@@ -621,9 +621,9 @@ def random_solarize_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
 
-    thresholds_bound: Tuple = _check_and_bound(
+    thresholds_bound: Tuple[float, float] = _check_and_bound(
         thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
-    additions_bound: Tuple = _check_and_bound(additions, 'additions', bounds=(-0.5, 0.5))
+    additions_bound: Tuple[float, float] = _check_and_bound(additions, 'additions', bounds=(-0.5, 0.5))
 
     thresholds_factor = _adapted_uniform(
         (batch_size,), thresholds_bound[0], thresholds_bound[1], same_on_batch)
