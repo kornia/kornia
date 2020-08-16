@@ -220,6 +220,7 @@ class RandomAffine3D(AugmentationBase3D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -301,6 +302,7 @@ class RandomRotation3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
