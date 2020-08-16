@@ -24,6 +24,7 @@ class AugmentationBase(nn.Module):
                                       wont be concatenated.
 
     """
+
     def __init__(self, return_transform: bool = False) -> None:
         super(AugmentationBase, self).__init__()
         self.return_transform = return_transform
