@@ -4,7 +4,7 @@ import math
 
 import torch
 
-from kornia.constants import Resample, BorderType
+from kornia.constants import Resample, BorderType, SamplePadding
 from .utils import (
     _adapted_uniform,
     _check_and_bound
@@ -166,7 +166,8 @@ def random_affine_generator(
     shear: Optional[Union[float, Tuple[float, float]]] = None,
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
-    align_corners: bool = False
+    align_corners: bool = False,
+    padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
@@ -193,6 +194,7 @@ def random_affine_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners(bool): interpolation flag. Default: False.See
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -239,7 +241,8 @@ def random_affine_generator(
         shear_tmp = shear
 
     return _get_random_affine_params(
-        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch, align_corners)
+        batch_size, height, width, degrees_tmp, translate, scale, shear_tmp, resample, same_on_batch,
+        align_corners, padding_mode)
 
 
 def random_rotation_generator(
@@ -297,7 +300,8 @@ def _get_random_affine_params(
     shears: Optional[Tuple[float, float]],
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
-    align_corners: bool = False
+    align_corners: bool = False,
+    padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```affine``` transformation random affine transform.
     The returned matrix is Bx3x3.
@@ -340,6 +344,7 @@ def _get_random_affine_params(
                 sx=sx,
                 sy=sy,
                 resample=torch.tensor(Resample.get(resample).value),
+                padding_mode=torch.tensor(SamplePadding.get(padding_mode).value),
                 align_corners=torch.tensor(align_corners))
 
 
