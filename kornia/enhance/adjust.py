@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.augmentation.utils import _transform_input3d
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.constants import pi
