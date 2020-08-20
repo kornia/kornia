@@ -471,7 +471,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
-def equalize_volume(input: torch.Tensor):
+def equalize3d(input: torch.Tensor):
     """Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
     Args:
