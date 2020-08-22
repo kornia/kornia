@@ -126,12 +126,24 @@ def kRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
 
     submat_3x3 = P[:, 0:3, 0:3]
-    last_column = P[:,0:3, 3].unsqueeze(-1)
+    last_column = P[:, 0:3, 3].unsqueeze(-1)
     t = torch.matmul(-torch.inverse(submat_3x3), last_column).squeeze(-1)
 
+    # Trick to turn QR-decomposition into RQ-decomposition
+    reverse = torch.Tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]]).unsqueeze(0)
+    submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
+    ortho_mat, upper_mat = torch.qr(submat_3x3)
+    ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
+    upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
 
+    # Turning the `upper_mat's` diagonal elements to positive.
+    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1)
+    signs = diagonals / diagonals.abs()
+    signs_mat = torch.diag_embed(signs)
 
-    return None, None, t
+    K = torch.matmul(upper_mat, signs_mat)
+    R = torch.matmul(signs_mat, ortho_mat)
+    return (K, R, t)
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
