@@ -110,16 +110,16 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 def kRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Get the intrinsics, rotation-matrix and the camera-center.
 
-    This function decomposes the Projection matrix into 
-    1. `t` where `t` is -(P'-1) * p' where (P'-1) is the first 3x3 submatrix of `P` and p' is the last column of `P` 
-    2. `k, R` from the first 3x3 sum-matrix of P using the RQ-decomposition method 
+    This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
+
 
     Args:
         P (torch.Tensor): the projection matrix with shape :math:`(B, 3, 4)`.
 
     Returns:
-        k (torch.Tensor): the camera-matrix with shape :math:`(B, 3, 3)`.
-        R (torch.Tensor): the rotation-matrix with shape :math:`(B, 3 3)`.
+        torch.Tensor: The Camera matrix with shape :math:`(B, 3, 3)`.
+        torch.Tensor: The Rotation matrix with shape :math:`(B, 3, 3)`.
+        torch.Tensor: the Translation vector with shape :math:`(B, 3)`.
 
     """
 
@@ -143,7 +143,7 @@ def kRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     K = torch.matmul(upper_mat, signs_mat)
     R = torch.matmul(signs_mat, ortho_mat)
-    return (K, R, t)
+    return K, R, t
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
