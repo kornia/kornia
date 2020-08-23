@@ -138,3 +138,28 @@ class TestProjectionsFromFundamental:
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(epi.projections_from_fundamental,
                          (F_mat,), raise_exception=True)
+q:
+
+class KRtFromProjection:
+    def test_smoke(self, device, dtype):
+        P = torch.randn(1, 3, 4, device=device, dtype=dtype)
+        K, R, t = epi.kRt_from_projection(P)
+        assert K.shape() == (1, 3, 3)
+        assert R.shape() == (1, 3, 3)
+        assert t.shape() == (1, 3, 1)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_shape(self, batch_size, device, dtype):
+        B: int = batch_size
+        P = torch.rand(B, 3, 3, device=device, dtype=dtype)
+        K, R, t = epi.kRt_from_projection(P)
+        assert K.shape() == (B, 3, 3)
+        assert R.shape() == (B, 3, 3)
+        assert t.shape() == (B, 3, 1)
+
+    def test_simple(self, device, dtype):
+        pass
+
+    def test_simple(self, device, dtype):
+        pass
+
