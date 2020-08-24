@@ -342,7 +342,7 @@ def _side_to_image_size(
     side_size: int, aspect_ratio: float, side: str = "short"
 ) -> Tuple[int, int]:
     if side not in ("short", "long", "vert", "horz"):
-        raise ValueError(f"edge can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
+        raise ValueError(f"side can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
     if side == "vert":
         return side_size, int(side_size * aspect_ratio)
     elif side == "horz":
