@@ -7,7 +7,6 @@ import torch
 from kornia.constants import Resample, BorderType
 from .utils import (
     _adapted_uniform,
-    _check_and_bound,
     _tuple_range_reader,
 )
 

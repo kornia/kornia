@@ -1368,7 +1368,7 @@ class TestRandomResizedCrop:
 class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, "\
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
             "border_type='constant', return_transform=False)"
         assert str(f) == repr
 

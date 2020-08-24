@@ -32,7 +32,7 @@ from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
-from .utils import _transform_input, _validate_input_shape, _validate_input_dtype
+from .utils import _transform_input, _validate_input_shape, _validate_input_dtype, _range_bound
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -67,10 +67,11 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     return output
 
 
-def color_jitter(input: torch.Tensor, brightness: Union[float, Tuple[float, float], List[float]] = 0.,
-                 contrast: Union[float, Tuple[float, float], List[float]] = 0.,
-                 saturation: Union[float, Tuple[float, float], List[float]] = 0.,
-                 hue: Union[float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
+def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
@@ -79,6 +80,10 @@ def color_jitter(input: torch.Tensor, brightness: Union[float, Tuple[float, floa
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
+    brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+    contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+    saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+    hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
     params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
     output = apply_color_jitter(input, params)
     if return_transform:
@@ -138,6 +143,19 @@ def random_affine(input: torch.Tensor,
 
     input = _transform_input(input)
     batch_size, _, height, width = input.size()
+
+    degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    if translate is not None:
+        translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+    if scale is not None:
+        scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+    if shear is not None:
+        shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+        shear = torch.stack([
+            _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+            torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2 else
+            _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+        ])
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
         batch_size, height, width, degrees, translate, scale, shear, resample)
     output = apply_affine(input, params)

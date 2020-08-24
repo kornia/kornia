@@ -5,11 +5,12 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
-from . import functional as F
-from . import random_generator as rg
-from .utils import (
-    _adapted_uniform,
-    _infer_batch_shape
+import kornia.augmentation.functional as F
+import kornia.augmentation.random_generator as rg
+from kornia.augmentation.utils import (
+    _infer_batch_shape,
+    _range_bound,
+    _singular_range_check
 )
 
 
@@ -201,17 +202,17 @@ class ColorJitter(AugmentationBase):
     """
 
     def __init__(
-        self, brightness: Union[float, Tuple[float, float], List[float]] = 0.,
-        contrast: Union[float, Tuple[float, float], List[float]] = 0.,
-        saturation: Union[float, Tuple[float, float], List[float]] = 0.,
-        hue: Union[float, Tuple[float, float], List[float]] = 0.,
+        self, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(ColorJitter, self).__init__(return_transform)
-        self.brightness: Union[float, Tuple[float, float], List[float]] = brightness
-        self.contrast: Union[float, Tuple[float, float], List[float]] = contrast
-        self.saturation: Union[float, Tuple[float, float], List[float]] = saturation
-        self.hue: Union[float, Tuple[float, float], List[float]] = hue
+        self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+        self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+        self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+        self.hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -302,13 +303,14 @@ class RandomErasing(AugmentationBase):
     # Note: Extra params, inplace=False in Torchvision.
 
     def __init__(
-            self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
+            self, p: float = 0.5, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+            ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomErasing, self).__init__(return_transform)
         self.p = p
-        self.scale: Tuple[float, float] = scale
-        self.ratio: Tuple[float, float] = ratio
+        self.scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.value: float = value
         self.same_on_batch = same_on_batch
 
@@ -354,7 +356,7 @@ class RandomPerspective(AugmentationBase):
     """
 
     def __init__(
-        self, distortion_scale: float = 0.5, p: float = 0.5,
+        self, distortion_scale: Union[torch.Tensor, float] = 0.5, p: float = 0.5,
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
@@ -362,7 +364,8 @@ class RandomPerspective(AugmentationBase):
     ) -> None:
         super(RandomPerspective, self).__init__(return_transform)
         self.p: float = p
-        self.distortion_scale: float = distortion_scale
+        self.distortion_scale = \
+            distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample: Resample
         if interpolation is not None:
             import warnings
@@ -427,16 +430,30 @@ class RandomAffine(AugmentationBase):
     """
 
     def __init__(
-        self, degrees: Union[float, Tuple[float, float]], translate: Optional[Tuple[float, float]] = None,
-        scale: Optional[Tuple[float, float]] = None, shear: Optional[Union[float, Tuple[float, float]]] = None,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomAffine, self).__init__(return_transform)
-        self.degrees = degrees
-        self.translate = translate
-        self.scale = scale
-        self.shear = shear
+        degrees = degrees if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+        self.translate: Optional[torch.Tensor] = None
+        if translate is not None:
+            self.translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+        self.scale: Optional[torch.Tensor] = None
+        if scale is not None:
+            self.scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+        self.shear: Optional[torch.Tensor] = None
+        if shear is not None:
+            shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+            self.shear = torch.stack([
+                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+                torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2 else
+                _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+            ])
         self.resample: Resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
@@ -540,13 +557,14 @@ class RandomRotation(AugmentationBase):
     # Note: Extra params, center=None, fill=0 in TorchVision
 
     def __init__(
-        self, degrees: Union[float, Tuple[float, float], List[float]],
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(return_transform)
-        self.degrees = degrees
+        degrees = degrees if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
         self.resample: Resample
         if interpolation is not None:
             import warnings
@@ -696,8 +714,8 @@ class RandomResizedCrop(AugmentationBase):
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale: Tuple[float, float] = (0.08, 1.0),
-        ratio: Tuple[float, float] = (3. / 4., 4. / 3.),
+        self, size: Tuple[int, int], scale: Union[torch.Tensor, Tuple[float, float]] = (0.08, 1.0),
+        ratio: Union[torch.Tensor, Tuple[float, float]] = (3. / 4., 4. / 3.),
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
@@ -705,8 +723,8 @@ class RandomResizedCrop(AugmentationBase):
     ) -> None:
         super(RandomResizedCrop, self).__init__(return_transform)
         self.size = size
-        self.scale = scale
-        self.ratio = ratio
+        self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.resample: Resample
         if interpolation is not None:
             import warnings
@@ -772,15 +790,20 @@ class RandomMotionBlur(AugmentationBase):
 
     def __init__(
             self, kernel_size: Union[int, Tuple[int, int]],
-            angle: Union[float, Tuple[float, float]],
-            direction: Union[float, Tuple[float, float]],
+            angle: Union[torch.Tensor, float, Tuple[float, float]],
+            direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(return_transform)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
-        self.angle: Union[float, Tuple[float, float]] = angle
-        self.direction: Union[float, Tuple[float, float]] = direction
+
+        angle = angle if isinstance(angle, torch.Tensor) else torch.tensor(angle)
+        self.angle = _range_bound(angle, 'angle', center=0., bounds=(-360, 360))
+
+        direction = direction if isinstance(direction, torch.Tensor) else torch.tensor(direction)
+        self.direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
+
         self.border_type: BorderType = BorderType.get(border_type)
 
     def __repr__(self) -> str:
@@ -830,13 +853,18 @@ class RandomSolarize(AugmentationBase):
     """
 
     def __init__(
-        self, thresholds: Union[float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[float, Tuple[float, float], List[float]] = 0.1,
+        self, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)
-        self.thresholds = thresholds
-        self.additions = additions
+
+        thresholds = thresholds if isinstance(thresholds, torch.Tensor) else torch.tensor(thresholds)
+        self.thresholds = _range_bound(thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
+
+        additions = additions if isinstance(additions, torch.Tensor) else torch.tensor(additions)
+        self.additions = _range_bound(additions, 'additions', bounds=(-0.5, 0.5))
+
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -886,7 +914,16 @@ class RandomPosterize(AugmentationBase):
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomPosterize, self).__init__(return_transform)
-        self.bits = bits
+
+        if not isinstance(bits, torch.Tensor):
+            bits = torch.tensor(bits)
+        if len(bits.size()) == 0:
+            self.bits = torch.tensor([bits, torch.tensor(8)], dtype=torch.float32)
+        elif len(bits.size()) == 1 and bits.size(0) == 2:
+            self.bits = torch.tensor([bits[0], bits[1]], dtype=torch.float32)
+        else:
+            raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
+
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -941,11 +978,17 @@ class RandomSharpness(AugmentationBase):
     """
 
     def __init__(
-        self, sharpness: Union[float, Tuple[float, float], torch.Tensor] = 0.5, same_on_batch: bool = False,
-        return_transform: bool = False
+        self, sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
+        same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
-        self.sharpness = sharpness
+        sharpness = sharpness if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
+        if sharpness.dim() == 0:
+            self.sharpness = torch.tensor([0, sharpness], dtype=torch.float32)
+        elif sharpness.dim() == 1 and sharpness.size(0) == 2:
+            self.sharpness = torch.tensor([sharpness[0], sharpness[1]], dtype=torch.float32)
+        else:
+            raise ValueError(f"'sharpness' must be a scalar or a length 2 tensor. Got {sharpness}.")
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:

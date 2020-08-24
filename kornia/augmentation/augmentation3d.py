@@ -244,8 +244,9 @@ class RandomAffine3D(AugmentationBase3D):
     """
 
     def __init__(
-        self, degrees: Union[float, Tuple[float, float, float]],
-        translate: Optional[Tuple[float, float, float]] = None, scale: Optional[Tuple[float, float]] = None,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float, float]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
         shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                      Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                            Tuple[float, float], Tuple[float, float]]] = None,
