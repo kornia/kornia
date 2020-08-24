@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 import torch
 import torch.nn as nn

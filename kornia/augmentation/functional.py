@@ -108,7 +108,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
 
 
 def random_perspective(input: torch.Tensor,
-                       distortion_scale: float = 0.5,
+                       distortion_scale: Union[torch.Tensor, float] = 0.5,
                        p: float = 0.5,
                        return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
@@ -119,6 +119,8 @@ def random_perspective(input: torch.Tensor,
 
     input = _transform_input(input)
     batch_size, _, height, width = input.size()
+    distortion_scale =  \
+        distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
     params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
         batch_size, height, width, p, distortion_scale)
     output = apply_perspective(input, params)

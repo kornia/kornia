@@ -741,9 +741,8 @@ class RandomResizedCrop(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
-        _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
-        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), _target_size,
+        target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)['size']
+        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch,
                                         align_corners=self.align_corners)
 
