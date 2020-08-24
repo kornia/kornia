@@ -482,6 +482,17 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
 
 
 def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
+    r"""Composes shear matrix Bx4x4 from the components.
+    Note: Ordered shearing, shear x-axis then y-axis
+
+    .. math::
+        \begin{bmatrix}
+            1 & b \\
+            a & ab + 1 \\
+        \end{bmatrix}
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+    """
     sx = torch.tensor(0) if sx is None else sx
     sy = torch.tensor(0) if sy is None else sy
 
@@ -536,6 +547,7 @@ def get_shear_matrix3d(
     szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None,
 ):
     r"""Composes shear matrix Bx4x4 from the components.
+    Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::
         \begin{bmatrix}

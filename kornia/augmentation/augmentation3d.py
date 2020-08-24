@@ -10,7 +10,9 @@ from kornia.augmentation import functional3d as F
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation import random_generator3d as rg3
 from kornia.augmentation.utils import (
-    _infer_batch_shape3d
+    _infer_batch_shape3d,
+    _tuple_range_reader,
+    _singular_range_check
 )
 
 
@@ -254,7 +256,23 @@ class RandomAffine3D(AugmentationBase3D):
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomAffine3D, self).__init__(return_transform)
-        self.degrees = degrees
+        self.degrees = _tuple_range_reader(degrees, 3)
+        self.shear: Optional[torch.Tensor] = None
+        if shear is not None:
+            self.shear = _tuple_range_reader(shear, 6)
+
+        # check translation range
+        self.translate: Optional[torch.Tensor] = None
+        if translate is not None:
+            self.translate = translate if isinstance(translate, torch.Tensor) else torch.tensor(translate)
+            _singular_range_check(self.translate, 'translate', bounds=(0, 1), mode='3d')
+
+        # check scale range
+        self.scale: Optional[torch.Tensor] = None
+        if scale is not None:
+            self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+            _singular_range_check(self.scale, 'scale', bounds=(0, float('inf')), mode='2d')
+
         self.translate = translate
         self.scale = scale
         self.shear = shear
@@ -333,7 +351,7 @@ class RandomRotation3D(AugmentationBase3D):
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation3D, self).__init__(return_transform)
-        self.degrees = degrees
+        self.degrees = _tuple_range_reader(degrees, 3)
         self.interpolation: Resample = Resample.get(interpolation)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners

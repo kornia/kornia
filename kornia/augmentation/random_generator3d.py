@@ -13,8 +13,7 @@ from .utils import (
 
 def random_rotation_generator3d(
     batch_size: int,
-    degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
-                   Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
+    degrees: torch.Tensor,
     interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -37,11 +36,9 @@ def random_rotation_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    _degrees = _tuple_range_reader(degrees, 3)
-
-    yaw = _adapted_uniform((batch_size,), _degrees[0][0], _degrees[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size,), _degrees[1][0], _degrees[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size,), _degrees[2][0], _degrees[2][1], same_on_batch)
+    yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
 
     return dict(yaw=yaw,
                 pitch=pitch,
@@ -97,31 +94,9 @@ def random_affine_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    degrees_tmp = _tuple_range_reader(degrees, 3)
-    shears_tmp: Optional[torch.Tensor]
-    if shears is not None:
-        shears_tmp = _tuple_range_reader(shears, 6)
-    else:
-        shears_tmp = None
-
-    # check translation range
-    if translate is not None:
-        assert isinstance(translate, (tuple, list)) and len(translate) == 3, \
-            "translate should be a list or tuple and it must be of length 3."
-        for t in translate:
-            if not (0.0 <= t <= 1.0):
-                raise ValueError("translation values should be between 0 and 1")
-
-    # check scale range
-    if scale is not None:
-        assert isinstance(scale, (tuple, list)) and len(scale) == 2, \
-            "scale should be a list or tuple and it must be of length 2."
-        for s in scale:
-            if s <= 0:
-                raise ValueError("scale values should be positive")
-
+    # TODO: param validation
     return _get_random_affine_params(
-        batch_size, depth, height, width, degrees_tmp, translate, scale, shears_tmp,
+        batch_size, depth, height, width, degrees, translate, scale, shears,
         resample, same_on_batch, align_corners)
 
 
