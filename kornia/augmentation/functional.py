@@ -810,9 +810,8 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     kernel_size: int = cast(int, params['ksize_factor'].item())
-    # TODO: this params should be at some point, learnable tensors
-    angle: float = cast(float, params['angle_factor'].item())
-    direction: float = cast(float, params['direction_factor'].item())
+    angle = params['angle_factor']
+    direction = params['direction_factor']
     border_type: str = cast(str, BorderType(params['border_type'].item()).name.lower())
 
     return motion_blur(input, kernel_size, angle, direction, border_type)

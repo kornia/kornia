@@ -48,7 +48,8 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a float number or a tuple with length 2 whose values between {bounds}. Got {ranged_factor}")
+            f"{name} should be a float number or a tuple with length 2 whose values between {bounds}."
+            f"Got {ranged_factor}.")
 
 
 def _singular_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None,
@@ -71,7 +72,8 @@ def _singular_range_check(ranged_factor: torch.Tensor, name: str, bounds: Option
                 raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {ranged_factor}.")
     else:
         raise TypeError(
-            f"{name} should be a float number or a tuple with length {dim_size} whose values between {bounds}. Got {ranged_factor}")
+            f"{name} should be a float number or a tuple with length {dim_size} whose values between {bounds}."
+            f"Got {ranged_factor}")
 
 
 def _tuple_range_reader(
