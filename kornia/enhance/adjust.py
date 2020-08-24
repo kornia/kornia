@@ -482,11 +482,11 @@ def equalize3d(input: torch.Tensor):
     input = _transform_input3d(input) * 255.
 
     res = []
-    for sequence in input:
+    for volume in input:
         # Assumes RGB for now.  Scales each channel independently
         # and then stacks the result.
-        scaled_input = torch.stack([_scale_channel(sequence[c, :, :, :]) for c in range(len(sequence))])
-        res.append(scaled_input.transpose(0, 1))
+        scaled_input = torch.stack([_scale_channel(volume[i, :, :, :]) for i in range(len(volume))])
+        res.append(scaled_input)
 
     return torch.stack(res)
 

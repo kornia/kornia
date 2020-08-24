@@ -599,3 +599,59 @@ class TestAdjustBrightness:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_brightness, (img, 2.),
                          raise_exception=True)
+
+
+class TestEqualize:
+    def test_equalize_image(self, device):
+        bs, channels, height, width = 1, 3, 4, 5
+
+        img = torch.ones(channels, height, width)
+        img = img.to(device)
+        f = kornia.enhance.equalize
+
+        assert f(img).shape == torch.Size([bs, channels, height, width])
+
+    def test_equalize_image_batch(self, device):
+        bs, channels, height, width = 2, 3, 4, 5
+
+        img = torch.ones(bs, channels, height, width)
+        img = img.to(device)
+        f = kornia.enhance.equalize
+
+        assert f(img).shape == torch.Size([bs, channels, height, width])
+
+    def test_gradcheck(self, device):
+        bs, channels, height, width = 2, 3, 4, 5
+        img = torch.ones(bs, channels, height, width)
+        img = img.to(device)
+        img = utils.tensor_to_gradcheck_var(img)
+        assert gradcheck(kornia.enhance.equalize, (img,),
+                         raise_exception=True)
+
+
+class TestEqualize3D:
+    def test_equalize_volume(self, device):
+        bs, channels, depth, height, width = 1, 3, 6, 4, 5
+
+        volume = torch.ones(channels, depth, height, width)
+        volume = volume.to(device)
+        f = kornia.enhance.equalize3d
+
+        assert f(volume).shape == torch.Size([bs, channels, depth, height, width])
+
+    def test_equalize_volume_batch(self, device):
+        bs, channels, depth, height, width = 2, 3, 6, 4, 5
+
+        volume = torch.ones(bs, channels, depth, height, width)
+        volume = volume.to(device)
+        f = kornia.enhance.equalize3d
+
+        assert f(volume).shape == torch.Size([bs, channels, depth, height, width])
+
+    def test_gradcheck(self, device):
+        bs, channels, depth, height, width = 2, 3, 6, 4, 5
+        volume = torch.ones(bs, channels, depth, height, width)
+        volume = volume.to(device)
+        volume = utils.tensor_to_gradcheck_var(volume)
+        assert gradcheck(kornia.enhance.equalize3d, (volume,),
+                         raise_exception=True)
