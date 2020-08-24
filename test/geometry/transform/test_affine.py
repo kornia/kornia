@@ -30,17 +30,17 @@ class TestResize:
 
     def test_one_param_long(self, device):
         inp = torch.rand(1, 3, 5, 2).to(device)
-        out = kornia.resize(inp, 10, edge="long")
+        out = kornia.resize(inp, 10, side="long")
         assert out.shape == (1, 3, 10, 4)
 
     def test_one_param_vert(self, device):
         inp = torch.rand(1, 3, 5, 2).to(device)
-        out = kornia.resize(inp, 10, edge="vert")
+        out = kornia.resize(inp, 10, side="vert")
         assert out.shape == (1, 3, 10, 4)
 
     def test_one_param_horz(self, device):
         inp = torch.rand(1, 3, 2, 5).to(device)
-        out = kornia.resize(inp, 10, edge="horz")
+        out = kornia.resize(inp, 10, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
     def test_gradcheck(self, device):
