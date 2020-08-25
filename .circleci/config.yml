@@ -20,6 +20,9 @@ commands:
           name: static check
           command: make mypy
       - run:
+          name: doctest
+          command: make doctest
+      - run:
           name: unit tests
           command: make test-cpu
       - run:
