@@ -16,11 +16,12 @@ class RgbToYuv(nn.Module):
     shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
-    Examples::
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> yuv = kornia.color.RgbToYuv()
         >>> output = yuv(input)  # 2x3x4x5
-    Reference::
+
+    Reference:
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
