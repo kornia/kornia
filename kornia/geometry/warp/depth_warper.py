@@ -182,8 +182,10 @@ class DepthWarper(nn.Module):
 
         Example:
             >>> # pinholes camera models
-            >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4), torch.tensor([32]), torch.tensor([32]))
-            >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4), torch.tensor([32]), torch.tensor([32]))
+            >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+            ... torch.tensor([32]), torch.tensor([32]))
+            >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+            ... torch.tensor([32]), torch.tensor([32]))
             >>> # create the depth warper, compute the projection matrix
             >>> warper = DepthWarper(pinhole_dst, 32, 32)
             >>> _ = warper.compute_projection_matrix(pinhole_src)
@@ -212,8 +214,10 @@ def depth_warp(pinhole_dst: PinholeCamera,
 
     Example:
         >>> # pinholes camera models
-        >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4), torch.tensor([32]), torch.tensor([32]))
-        >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4), torch.tensor([32]), torch.tensor([32]))
+        >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+        ... torch.tensor([32]), torch.tensor([32]))
+        >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+        ... torch.tensor([32]), torch.tensor([32]))
         >>> # warp the destionation frame to reference by depth
         >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
         >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
