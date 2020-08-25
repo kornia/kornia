@@ -21,12 +21,9 @@ class RgbToGrayscale(nn.Module):
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.RgbToGrayscale()
+        >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
@@ -79,12 +76,9 @@ class BgrToGrayscale(nn.Module):
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.BgrToGrayscale()
+        >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 

@@ -75,11 +75,11 @@ def spatial_expectation2d(
 
     Examples:
         >>> heatmaps = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 0.]]]])
-        >>> coords = spatial_expectation_2d(heatmaps, False)
-        tensor([[[1.0000, 2.0000]]])
+        ... [0., 0., 0.],
+        ... [0., 0., 0.],
+        ... [0., 1., 0.]]]])
+        >>> spatial_expectation2d(heatmaps, False)
+        tensor([[[1., 2.]]])
     """
     _validate_batched_image_tensor_input(input)
 

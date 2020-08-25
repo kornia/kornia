@@ -44,7 +44,7 @@ def compose_transformations(
     Example::
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_12 = torch.eye(4)  # 4x4
-        >>> trans_02 = kornia.compose_transformations(trans_01, trans_12)  # 4x4
+        >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
 
     """
     if not torch.is_tensor(trans_01):
@@ -103,7 +103,7 @@ def inverse_transformation(trans_12):
 
     Example:
         >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
-        >>> trans_21 = kornia.inverse_transformation(trans_12)  # Nx4x4
+        >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
     """
     if not torch.is_tensor(trans_12):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -155,7 +155,7 @@ def relative_transformation(
     Example::
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_02 = torch.eye(4)  # 4x4
-        >>> trans_12 = kornia.relative_transformation(trans_01, trans_02)  # 4x4
+        >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
     """
     if not torch.is_tensor(trans_01):
         raise TypeError("Input trans_01 type is not a torch.Tensor. Got {}"
@@ -195,7 +195,7 @@ def transform_points(trans_01: torch.Tensor,
 
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
-        >>> points_0 = kornia.transform_points(trans_01, points_1)  # BxNx3
+        >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
     """
     check_is_tensor(trans_01)
     check_is_tensor(points_1)
@@ -276,10 +276,37 @@ def perspective_transform_lafs(trans_01: torch.Tensor,
         - Output: :math:`(B, N, 2, 3)`
 
     Examples:
-
+        >>> rng = torch.manual_seed(0)
         >>> lafs_1 = torch.rand(2, 4, 2, 3)  # BxNx2x3
-        >>> trans_01 = torch.eye(3).view(1, 3, 3)  # Bx3x3
-        >>> lafs_0 = kornia.perspective_transform_lafs(trans_01, lafs_1)  # BxNx2x3
+        >>> lafs_1
+        tensor([[[[0.4963, 0.7682, 0.0885],
+                  [0.1320, 0.3074, 0.6341]],
+        <BLANKLINE>
+                 [[0.4901, 0.8964, 0.4556],
+                  [0.6323, 0.3489, 0.4017]],
+        <BLANKLINE>
+                 [[0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000]],
+        <BLANKLINE>
+                 [[0.1610, 0.2823, 0.6816],
+                  [0.9152, 0.3971, 0.8742]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[0.4194, 0.5529, 0.9527],
+                  [0.0362, 0.1852, 0.3734]],
+        <BLANKLINE>
+                 [[0.3051, 0.9320, 0.1759],
+                  [0.2698, 0.1507, 0.0317]],
+        <BLANKLINE>
+                 [[0.2081, 0.9298, 0.7231],
+                  [0.7423, 0.5263, 0.2437]],
+        <BLANKLINE>
+                 [[0.5846, 0.0332, 0.1387],
+                  [0.2422, 0.8155, 0.7932]]]])
+        >>> trans_01 = torch.eye(3).repeat(2, 1, 1)  # Bx3x3
+        >>> trans_01.shape
+        torch.Size([2, 3, 3])
+        >>> lafs_0 = perspective_transform_lafs(trans_01, lafs_1)  # BxNx2x3
     """
     kornia.feature.laf.raise_error_if_laf_is_not_valid(lafs_1)
     if not torch.is_tensor(trans_01):

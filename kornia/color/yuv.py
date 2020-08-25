@@ -18,7 +18,7 @@ class RgbToYuv(nn.Module):
         - output: :math:`(*, 3, H, W)`
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> yuv = kornia.color.RgbToYuv()
+        >>> yuv = RgbToYuv()
         >>> output = yuv(input)  # 2x3x4x5
 
     Reference:
@@ -72,7 +72,7 @@ class YuvToRgb(nn.Module):
         - output: :math:`(*, 3, H, W)`
     Examples::
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.YuvToRgb()
+        >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 

@@ -21,7 +21,7 @@ class RgbToXyz(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> xyz = kornia.color.RgbToXyz()
+        >>> xyz = RgbToXyz()
         >>> output = xyz(input)  # 2x3x4x5
 
     Reference:
@@ -50,7 +50,7 @@ class XyzToRgb(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.XyzToRgb()
+        >>> rgb = XyzToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
     Reference:

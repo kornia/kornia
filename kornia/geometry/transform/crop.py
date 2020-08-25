@@ -32,20 +32,20 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         torch.Tensor: tensor containing the patches with shape BxN1xN2
     Example:
         >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-            ]])
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ...  ]])
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
-        >>> kornia.crop_and_resize(input, boxes, (2, 2))
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]])  # 1x4x2
+        >>> crop_and_resize(input, boxes, (2, 2), align_corners=True)
         tensor([[[ 6.0000,  7.0000],
-                 [ 10.0000, 11.0000]]])
+                 [10.0000, 11.0000]]])
     """
     if not torch.is_tensor(tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -96,12 +96,12 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
 
     Examples:
         >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-             ]])
-        >>> kornia.center_crop(input, (2, 4))
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ...  ]])
+        >>> center_crop(input, (2, 4))
         tensor([[[ 5.0000,  6.0000,  7.0000,  8.0000],
                  [ 9.0000, 10.0000, 11.0000, 12.0000]]])
     """
@@ -205,13 +205,13 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
     Example:
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]])  # 1x4x2
         >>> _infer_bounding_box(boxes)
-        (2, 2)
+        (tensor(2.), tensor(2.))
     """
     assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
         "Boxes must have be square, while get widths %s and %s" % \

@@ -38,7 +38,7 @@ class BoxBlur(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
-        >>> blur = kornia.filters.BoxBlur((3, 3))
+        >>> blur = BoxBlur((3, 3))
         >>> output = blur(input)  # 2x4x5x7
     """
 

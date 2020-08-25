@@ -17,14 +17,10 @@ class HsvToRgb(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.HsvToRgb()
+        >>> rgb = HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:

@@ -77,7 +77,7 @@ class DiceLoss(nn.Module):
 
     Examples:
         >>> N = 5  # num_classes
-        >>> loss = kornia.losses.DiceLoss()
+        >>> loss = DiceLoss()
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = loss(input, target)

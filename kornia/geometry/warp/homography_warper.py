@@ -79,7 +79,7 @@ def homography_warp(patch_src: torch.Tensor,
     Example:
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
-        >>> output = kornia.homography_warp(input, homography, (32, 32))
+        >>> output = homography_warp(input, homography, (32, 32))
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError("Patch and homography must be on the same device. \
@@ -175,7 +175,7 @@ class HomographyWarper(nn.Module):
         Example:
             >>> input = torch.rand(1, 3, 32, 32)
             >>> homography = torch.eye(3).view(1, 3, 3)
-            >>> warper = kornia.HomographyWarper(32, 32)
+            >>> warper = HomographyWarper(32, 32)
             >>> # without precomputing the warp
             >>> output = warper(input, homography)  # NxCxHxW
             >>> # precomputing the warp

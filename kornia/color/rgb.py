@@ -169,14 +169,10 @@ class BgrToRgb(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.BgrToRgb()
+        >>> rgb = BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -198,14 +194,10 @@ class RgbToBgr(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> bgr = kornia.color.RgbToBgr()
+        >>> bgr = RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -230,10 +222,9 @@ class RgbToRgba(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 4, H, W)`
 
-    Examples::
-
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgba = kornia.color.RgbToRgba(1.)
+        >>> rgba = RgbToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
     """
 
@@ -260,10 +251,9 @@ class BgrToRgba(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 4, H, W)`
 
-    Examples::
-
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgba = kornia.color.BgrToRgba(1.)
+        >>> rgba = BgrToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
     """
 
@@ -287,10 +277,9 @@ class RgbaToRgb(nn.Module):
         - image: :math:`(*, 4, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
+    Examples:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> rgba = kornia.color.RgbaToRgb()
+        >>> rgba = RgbaToRgb()
         >>> output = rgba(input)  # 2x3x4x5
     """
 
@@ -313,10 +302,9 @@ class RgbaToBgr(nn.Module):
         - image: :math:`(*, 4, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
+    Examples:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> rgba = kornia.color.RgbaToBgr()
+        >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
     """
 

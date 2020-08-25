@@ -38,13 +38,13 @@ class ZCAWhitening(nn.Module):
 
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
-        >>> zca = kornia.color.ZCAWhitening().fit(x)
+        >>> zca = ZCAWhitening().fit(x)
         >>> x_whiten = zca(x)
-        >>> zca = kornia.color.ZCAWhitening()
+        >>> zca = ZCAWhitening()
         >>> x_whiten = zca(x, include_fit = True) # Includes the fitting step
         >>> x_whiten = zca(x) # Can run now without the fitting set
         >>> # Enable backprop through ZCA fitting process
-        >>> zca = kornia.color.ZCAWhitening(detach_transforms = False)
+        >>> zca = ZCAWhitening(detach_transforms = False)
         >>> x_whiten = zca(x, include_fit = True) # Includes the fitting step
 
     Note:
@@ -139,9 +139,6 @@ class ZCAWhitening(nn.Module):
 
         returns:
             torch.Tensor: original data
-
-
-
         """
 
         if not self.fitted:
@@ -187,7 +184,6 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
     Examples:
-        >>> from kornia.color import zca_mean
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> transform_matrix, mean_vector,_ = zca_mean(x) # Returns transformation matrix and data mean
         >>> x = torch.rand(3,20,2,2)
@@ -276,11 +272,11 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
         torch.Tensor : Whiten Input data
 
     Examples:
-        >>> import torch
-        >>> import kornia
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
-        >>> x_whiten = kornia.color.zca_whiten(x)
-
+        >>> zca_whiten(x)
+        tensor([[ 0.0000,  1.1547],
+                [ 1.0000, -0.5773],
+                [-1.0000, -0.5773]])
     """
 
     if not isinstance(inp, torch.Tensor):
@@ -335,16 +331,16 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
         >>> inp = torch.ones((10,3,4,5))
         >>> transform_mat = torch.ones((10*3*4,10*3*4))
         >>> mean = 2*torch.ones((1,10*3*4))
-        >>> out = kornia.color.linear_transform(inp, transform_mat, mean, 3)
-        >>> print(out) # Should a be (10,3,4,5) tensor of -120s
+        >>> out = linear_transform(inp, transform_mat, mean, 3)
+        >>> print(out.shape, out.unique())  # Should a be (10,3,4,5) tensor of -120s
+        torch.Size([10, 3, 4, 5]) tensor([-120.])
         >>> # Example where dim = 0
         >>> inp = torch.ones((10,2))
         >>> transform_mat = torch.ones((2,2))
         >>> mean = torch.zeros((1,2))
-        >>> out = kornia.color.linear_transform(inp, transform_mat, mean)
-        >>> print(out) # Should a be (10,3,4,5) tensor of 2s
-
-
+        >>> out = linear_transform(inp, transform_mat, mean)
+        >>> print(out.shape, out.unique()) # Should a be (10,2) tensor of 2s
+        torch.Size([10, 2]) tensor([2.])
     """
 
     inp_size = inp.size()

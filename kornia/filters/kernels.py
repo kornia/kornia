@@ -309,10 +309,10 @@ def get_gaussian_kernel1d(kernel_size: int,
 
     Examples::
 
-        >>> kornia.image.get_gaussian_kernel(3, 2.5)
+        >>> get_gaussian_kernel1d(3, 2.5)
         tensor([0.3243, 0.3513, 0.3243])
 
-        >>> kornia.image.get_gaussian_kernel(5, 1.5)
+        >>> get_gaussian_kernel1d(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
     if (not isinstance(kernel_size, int) or (
@@ -347,12 +347,12 @@ def get_gaussian_kernel2d(
 
     Examples::
 
-        >>> kornia.image.get_gaussian_kernel2d((3, 3), (1.5, 1.5))
+        >>> get_gaussian_kernel2d((3, 3), (1.5, 1.5))
         tensor([[0.0947, 0.1183, 0.0947],
                 [0.1183, 0.1478, 0.1183],
                 [0.0947, 0.1183, 0.0947]])
 
-        >>> kornia.image.get_gaussian_kernel2d((3, 5), (1.5, 1.5))
+        >>> get_gaussian_kernel2d((3, 5), (1.5, 1.5))
         tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
@@ -390,10 +390,10 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
         - Output: math:`(\text{kernel_size})`
 
     Examples::
-        >>> kornia.image.get_laplacian_kernel(3)
+        >>> get_laplacian_kernel1d(3)
         tensor([ 1., -2.,  1.])
 
-        >>> kornia.image.get_laplacian_kernel(5)
+        >>> get_laplacian_kernel1d(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
@@ -419,18 +419,16 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
     Examples::
 
-        >>> kornia.image.get_laplacian_kernel2d(3)
+        >>> get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
                 [ 1., -8.,  1.],
                 [ 1.,  1.,  1.]])
-
-        >>> kornia.image.get_laplacian_kernel2d(5)
+        >>> get_laplacian_kernel2d(5)
         tensor([[  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1., -24.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.]])
-
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
             kernel_size <= 0:
@@ -462,16 +460,16 @@ def get_motion_kernel2d(kernel_size: int, angle: float, direction: float = 0.) -
         - Output: :math:`(ksize, ksize)`
 
     Examples::
-        >>> kornia.filters.get_motion_kernel2d(5, 0., 0.)
+        >>> get_motion_kernel2d(5, 0., 0.)
         tensor([[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                 [0.2000, 0.2000, 0.2000, 0.2000, 0.2000],
                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]])
-        >>> kornia.filters.get_motion_kernel2d(3, 215., -0.5)
-            tensor([[0.0000, 0.0412, 0.0732],
-                    [0.1920, 0.3194, 0.0804],
-                    [0.2195, 0.0743, 0.0000]])
+        >>> get_motion_kernel2d(3, 215., -0.5)
+        tensor([[0.0000, 0.0412, 0.0732],
+                [0.1920, 0.3194, 0.0804],
+                [0.2195, 0.0743, 0.0000]])
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")

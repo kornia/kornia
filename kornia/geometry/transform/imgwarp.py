@@ -269,7 +269,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
+        >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
     """
     ang_rad = deg2rad(angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
@@ -320,7 +320,7 @@ def get_rotation_matrix2d(
         >>> center = torch.zeros(1, 2)
         >>> scale = torch.ones(1)
         >>> angle = 45. * torch.ones(1)
-        >>> M = kornia.get_rotation_matrix2d(center, angle, scale)
+        >>> get_rotation_matrix2d(center, angle, scale)
         tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])
     """
@@ -389,10 +389,11 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
         torch.Tensor: the warped tensor.
 
     Example:
-        >>> grid = kornia.utils.create_meshgrid(2, 2, False)  # 1x2x2x2
+        >>> from kornia.utils import create_meshgrid
+        >>> grid = create_meshgrid(2, 2, False)  # 1x2x2x2
         >>> grid += 1  # apply offset in both directions
         >>> input = torch.ones(1, 1, 2, 2)
-        >>> kornia.remap(input, grid[..., 0], grid[..., 1])   # 1x1x2x2
+        >>> remap(input, grid[..., 0], grid[..., 1], align_corners=True)   # 1x1x2x2
         tensor([[[[1., 0.],
                   [0., 0.]]]])
 

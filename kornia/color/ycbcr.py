@@ -16,14 +16,10 @@ class YcbcrToRgb(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.YcbcrToRgb()
+        >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -81,14 +77,10 @@ class RgbToYcbcr(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> ycbcr = kornia.color.RgbToYcbcr()
+        >>> ycbcr = RgbToYcbcr()
         >>> output = ycbcr(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:

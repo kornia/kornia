@@ -31,7 +31,7 @@ class RgbToLuv(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> luv = kornia.color.RgbToLuv()
+        >>> luv = RgbToLuv()
         >>> output = luv(input)  # 2x3x4x5
 
     Reference:
@@ -66,7 +66,7 @@ class LuvToRgb(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.LuvToRgb()
+        >>> rgb = LuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
     References:

@@ -30,7 +30,7 @@ class MotionBlur(nn.Module):
 
     Examples::
         >>> input = torch.rand(2, 4, 5, 7)
-        >>> motion_blur = kornia.filters.MotionBlur(3, 35., 0.5)
+        >>> motion_blur = MotionBlur(3, 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7
     """
 

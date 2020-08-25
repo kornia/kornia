@@ -21,14 +21,10 @@ class HlsToRgb(nn.Module):
     reference:
         https://en.wikipedia.org/wiki/HSL_and_HSV
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.HlsToRgb()
+        >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -95,14 +91,10 @@ class RgbToHls(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hls = kornia.color.RgbToHls()
+        >>> hls = RgbToHls()
         >>> output = hls(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
