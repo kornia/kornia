@@ -5,9 +5,9 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
-import kornia.augmentation.functional as F
-import kornia.augmentation.random_generator as rg
-from kornia.augmentation.utils import (
+from . import functional as F
+from . import random_generator as rg
+from .utils import (
     _infer_batch_shape,
     _range_bound,
     _singular_range_check

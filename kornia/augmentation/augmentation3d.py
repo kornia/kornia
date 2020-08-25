@@ -259,8 +259,8 @@ class RandomAffine3D(AugmentationBase3D):
         super(RandomAffine3D, self).__init__(return_transform)
         self.degrees = _tuple_range_reader(degrees, 3)
         self.shear: Optional[torch.Tensor] = None
-        if shear is not None:
-            self.shear = _tuple_range_reader(shear, 6)
+        if shears is not None:
+            self.shear = _tuple_range_reader(shears, 6)
 
         # check translation range
         self.translate: Optional[torch.Tensor] = None
@@ -274,9 +274,6 @@ class RandomAffine3D(AugmentationBase3D):
             self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
             _singular_range_check(self.scale, 'scale', bounds=(0, float('inf')), mode='2d')
 
-        self.translate = translate
-        self.scale = scale
-        self.shear = shear
         self.resample: Resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners

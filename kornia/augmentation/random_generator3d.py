@@ -89,17 +89,17 @@ def random_affine_generator3d(
     angles = torch.cat([yaw, pitch, roll], dim=-1).view((batch_size, -1))
 
     # compute tensor ranges
-    if scales is not None:
-        assert scale.shape == torch.Size([2]), f"'scale' must be the shape of (2). Got {scale.shape}."
-        scale = _adapted_uniform((batch_size,), scales[0], scales[1], same_on_batch)
+    if scale is not None:
+        assert scale.shape == torch.Size([2]), f"'scale' must be the shape of (2). Got {scale.shape}."  # type: ignore
+        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch)
     else:
         scale = torch.ones(batch_size)
 
     if translate is not None:
         assert translate.shape == torch.Size([3]), f"'translate' must be the shape of (2). Got {translate.shape}."
-        max_dx: float = translate[0] * depth
-        max_dy: float = translate[1] * width
-        max_dz: float = translate[2] * height
+        max_dx: torch.Tensor = translate[0] * depth
+        max_dy: torch.Tensor = translate[1] * width
+        max_dz: torch.Tensor = translate[2] * height
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),

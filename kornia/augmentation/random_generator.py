@@ -13,25 +13,30 @@ from .utils import (
 
 def random_color_jitter_generator(
     batch_size: int,
-    brightness: torch.Tensor = 0.,
-    contrast: torch.Tensor = 0.,
-    saturation: torch.Tensor = 0.,
-    hue: torch.Tensor = 0.,
+    brightness: Optional[torch.Tensor] = None,
+    contrast: Optional[torch.Tensor] = None,
+    saturation: Optional[torch.Tensor] = None,
+    hue: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator random color jiter parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
-        brightness (float or tuple): Default value is 0
-        contrast (float or tuple): Default value is 0
-        saturation (float or tuple): Default value is 0
-        hue (float or tuple): Default value is 0
+        brightness (torch.Tensor, optional): Default value is 0
+        contrast (torch.Tensor, optional): Default value is 0
+        saturation (torch.Tensor, optional): Default value is 0
+        hue (torch.Tensor, optional): Default value is 0
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    brightness = torch.tensor(0.) if brightness is None else cast(torch.Tensor, brightness)
+    contrast = torch.tensor(0.) if contrast is None else cast(torch.Tensor, contrast)
+    hue = torch.tensor(0.) if hue is None else cast(torch.Tensor, hue)
+    saturation = torch.tensor(0.) if saturation is None else cast(torch.Tensor, saturation)
+
     _joint_range_check(brightness, "brightness", (0, 2))
     _joint_range_check(contrast, "contrast", (0, float('inf')))
     _joint_range_check(hue, "hue", (-0.5, 0.5))
@@ -174,23 +179,20 @@ def random_affine_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     _joint_range_check(degrees, "degrees")
-    _joint_range_check(translate, "translate", skip_none=True)
-    _joint_range_check(scale, "scale", skip_none=True)
-    if shear is not None:
-        _joint_range_check(shear[0], "shear", skip_none=True)
-        _joint_range_check(shear[1], "shear", skip_none=True)
 
     angle = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
     # compute tensor ranges
     if scale is not None:
+        _joint_range_check(cast(torch.Tensor, scale), "scale")
         scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch)
     else:
         scale = torch.ones(batch_size)
 
     if translate is not None:
-        max_dx: float = translate[0] * width
-        max_dy: float = translate[1] * height
+        _joint_range_check(cast(torch.Tensor, translate), "translate")
+        max_dx: torch.Tensor = translate[0] * width
+        max_dy: torch.Tensor = translate[1] * height
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch)
@@ -203,6 +205,8 @@ def random_affine_generator(
     center = center.expand(batch_size, -1)
 
     if shear is not None:
+        _joint_range_check(cast(torch.Tensor, shear)[0], "shear")
+        _joint_range_check(cast(torch.Tensor, shear)[1], "shear")
         sx = _adapted_uniform((batch_size,), shear[0][0], shear[0][1], same_on_batch)
         sy = _adapted_uniform((batch_size,), shear[1][0], shear[1][1], same_on_batch)
     else:
@@ -220,7 +224,7 @@ def random_affine_generator(
 
 def random_rotation_generator(
     batch_size: int,
-    degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+    degrees: torch.Tensor,
     interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -338,7 +342,7 @@ def random_crop_size_generator(
     # Element-wise w, h condition
     cond = ((0 < h) * (h < size[1]) * (0 < w) * (w < size[0])).int()
     if torch.sum(cond) > 0:
-        return (h[torch.argmax(cond)], w[torch.argmax(cond)])
+        return dict(size=torch.stack([h[torch.argmax(cond)], w[torch.argmax(cond)]], dim=0))
 
     # Fallback to center crop
     in_ratio = float(size[0]) / float(size[1])

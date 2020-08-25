@@ -80,11 +80,11 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
-    brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
-    contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
-    saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
-    hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
-    params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
+    _brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+    _contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+    _saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+    _hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+    params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
     output = apply_color_jitter(input, params)
     if return_transform:
         return output, compute_intensity_transformation(input, params)
@@ -146,20 +146,20 @@ def random_affine(input: torch.Tensor,
     input = _transform_input(input)
     batch_size, _, height, width = input.size()
 
-    degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
     if translate is not None:
-        translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+        _translate: torch.Tensor = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
     if scale is not None:
-        scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+        _scale: torch.Tensor = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
     if shear is not None:
-        shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
-        shear = torch.stack([
-            _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-            torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2 else
-            _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+        _shear: torch.Tensor = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+        _shear = torch.stack([
+            _range_bound(_shear if _shear.dim() == 0 else _shear[:2], 'shear-x', 0, (-360, 360)),
+            torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
+            _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
         ])
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
-        batch_size, height, width, degrees, translate, scale, shear, resample)
+        batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
     output = apply_affine(input, params)
     if return_transform:
         transform = compute_affine_transformation(input, params)
@@ -191,8 +191,10 @@ def random_rectangle_erase(
     """
     input = _transform_input(input)
     b, _, h, w = input.size()
+    _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+    _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
     params = rg.random_rectangles_params_generator(
-        b, h, w, p, scale, ratio
+        b, h, w, p, _scale, _ratio
     )
     output = apply_erase_rectangles(input, params)
     if return_transform:
@@ -209,7 +211,8 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     """
     input = _transform_input(input)
     batch_size, _, _, _ = input.size()
-    params = rg.random_rotation_generator(batch_size, degrees=degrees)
+    _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    params = rg.random_rotation_generator(batch_size, degrees=_degrees)
     output = apply_rotation(input, params)
     if return_transform:
         return output, compute_rotate_tranformation(input, params)

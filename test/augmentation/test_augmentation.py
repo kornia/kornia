@@ -725,7 +725,7 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue_list(self, device):
+    def test_random_hue_list_batch(self, device):
         torch.manual_seed(42)
         f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
 

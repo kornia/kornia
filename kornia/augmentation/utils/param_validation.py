@@ -33,11 +33,8 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
     return factor_bound
 
 
-def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None,
-                       skip_none: bool = False) -> None:
+def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
-    if skip_none and ranged_factor is None:
-        return
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
