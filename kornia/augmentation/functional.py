@@ -893,6 +893,29 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
             - params['mixup_lambdas']: Lambda for the mixup strength.
     Returns:
         torch.Tensor: Adjusted image.
+
+    Examples:
+        >>> input = torch.stack([torch.eye(5).unsqueeze(dim=0), torch.ones(5, 5).unsqueeze(dim=0)])
+        >>> labels = torch.tensor([0, 1])
+        >>> params = dict(mixup_pairs=torch.tensor([1, 0]), mixup_lambdas=torch.tensor([0.5, 0.9]))
+        >>> out_img, out_label = apply_mixup(input, labels, params)
+        >>> out_img
+        tensor([[[[1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
+                  [0.5000, 1.0000, 0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 1.0000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000, 1.0000, 0.5000],
+                  [0.5000, 0.5000, 0.5000, 0.5000, 1.0000]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[1.0000, 0.1000, 0.1000, 0.1000, 0.1000],
+                  [0.1000, 1.0000, 0.1000, 0.1000, 0.1000],
+                  [0.1000, 0.1000, 1.0000, 0.1000, 0.1000],
+                  [0.1000, 0.1000, 0.1000, 1.0000, 0.1000],
+                  [0.1000, 0.1000, 0.1000, 0.1000, 1.0000]]]])
+        >>> out_label
+        tensor([[0.0000, 1.0000, 0.5000],
+                [1.0000, 0.0000, 0.9000]])
+
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])

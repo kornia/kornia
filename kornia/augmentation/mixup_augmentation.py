@@ -14,10 +14,12 @@ from kornia.augmentation.utils import (
 )
 
 
-class AugmentationWithLabelBase(AugmentationBase):
-    r"""AugmentationWithLabelBase base class for customized augmentation implementations. For any augmentation,
+class AugmentationMixUp(AugmentationBase):
+    r"""AugmentationMixUp base class for customized augmentation implementations. For any augmentation,
     the implementation of "generate_parameters" and "apply_transform" are required while the
     "compute_transformation" is only required when passing "return_transform" as True.
+
+    In "apply_transform", both input and label tensors are required due to the n
 
     Args:
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
@@ -26,13 +28,14 @@ class AugmentationWithLabelBase(AugmentationBase):
 
     """
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,     # type: ignore
-                        params: Dict[str, torch.Tensor]) -> (torch.Tensor, torch.Tensor):   # type: ignore
+                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
 
-    def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],  # type: ignore
-                label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,
-                return_transform: Optional[bool] = None
-                ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    def forward(
+        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],  # type: ignore
+        label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,
+        return_transform: Optional[bool] = None
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:  # type: ignore
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -56,12 +59,12 @@ class AugmentationWithLabelBase(AugmentationBase):
         return output
 
 
-class RandomMixUp(AugmentationWithLabelBase):
+class RandomMixUp(AugmentationMixUp):
     """
     Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(B, 3)` tensor that contains (label_a, label_b, lambda) for each image.
-    The implementation is on top of `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py`.
+    while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
+    each image. The implementation is on top of `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py`.
     The loss and accuracy are computed as:
         ```
         def loss_mixup(y, logits):
@@ -69,7 +72,7 @@ class RandomMixUp(AugmentationWithLabelBase):
             loss_a = criterion(logits, y[:, 0].long(), reduction='none')
             loss_b = criterion(logits, y[:, 1].long(), reduction='none')
             return ((1 - y[:, 2]) * loss_a + y[:, 2] * loss_b).mean()
-        
+
         def acc_mixup(y, logits):
             pred = torch.argmax(logits, dim=1).to(y.device)
             return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
@@ -83,6 +86,9 @@ class RandomMixUp(AugmentationWithLabelBase):
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B,)`
         - Output: :math:`(B, C, H, W)`, :math:`(B, 3)`
+
+    Note:
+        This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -100,14 +106,22 @@ class RandomMixUp(AugmentationWithLabelBase):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.6556],
                 [1.0000, 1.0000, 0.3138]]))
     """
-    def __init__(self, return_transform: bool = False) -> None:
+    def __init__(self, p: float = 1.0, max_lambda: Optional[Union[torch.Tensor, float]] = None,
+                 return_transform: bool = False) -> None:
         super(RandomMixUp, self).__init__(return_transform)
+        self.p = p
+        if max_lambda is None:
+            self.max_lambda = torch.tensor(1.)
+        else:
+            self.max_lambda = \
+                cast(torch.Tensor, max_lambda) if isinstance(max_lambda, torch.Tensor) else torch.tensor(max_lambda)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(return_transform={self.return_transform})"
+        return f"{self.__class__.__name__}(p={self.p}, max_lambda={self.max_lambda}"
+        f", return_transform={self.return_transform})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_mixup_generator(batch_shape[0])
+        return rg.random_mixup_generator(batch_shape[0], self.p, self.max_lambda)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input, params)

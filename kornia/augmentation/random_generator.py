@@ -719,15 +719,27 @@ def random_sharpness_generator(
     )
 
 
-def random_mixup_generator(batch_size: int) -> Dict[str, torch.Tensor]:
+def random_mixup_generator(batch_size: int, p: float = 0.5,
+                           max_lambda: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
     r"""Generator mixup indexes and lambdas for a batch of inputs.
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
+        max_lambda (torch.Tensor, optional): max strength for mixup images, ranged from (0., 1.).
+            If None, it will be set to 1, which means no restrictions.
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> random_mixup_generator(5, 0.7)
+        {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
+    if max_lambda is None:
+        max_lambda = torch.tensor(1.)
+    batch_probs: torch.Tensor = random_prob_generator(batch_size, p)['batch_prob']
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
-    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch=False)
+    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, max_lambda, same_on_batch=False)
+    mixup_lambdas = mixup_lambdas * batch_probs.float()
 
     return dict(
         mixup_pairs=mixup_pairs,
