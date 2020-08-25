@@ -147,12 +147,15 @@ def random_affine(input: torch.Tensor,
     batch_size, _, height, width = input.size()
 
     _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    _translate: Optional[torch.Tensor] = None
+    _scale: Optional[torch.Tensor] = None
+    _shear: Optional[torch.Tensor] = None
     if translate is not None:
-        _translate: torch.Tensor = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+        _translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
     if scale is not None:
-        _scale: torch.Tensor = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+        _scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
     if shear is not None:
-        _shear: torch.Tensor = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+        _shear = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
         _shear = torch.stack([
             _range_bound(_shear if _shear.dim() == 0 else _shear[:2], 'shear-x', 0, (-360, 360)),
             torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
