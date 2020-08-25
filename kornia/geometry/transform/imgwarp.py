@@ -492,9 +492,28 @@ def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, 
         \end{bmatrix}
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
+
+    Params:
+        center (torch.Tensor): shearing center coordinates of (x, y).
+        sx (torch.Tensor, optional): shearing degree along x axis.
+        sy (torch.Tensor, optional): shearing degree along y axis.
+
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sx = torch.randn(1)
+        >>> sx
+        tensor([1.5410])
+        >>> center = torch.tensor([[0., 0.]])  # Bx2
+        >>> get_shear_matrix2d(center, sx=sx)
+        tensor([[[  1.0000, -33.5468,   0.0000],
+                 [ -0.0000,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   1.0000]]])
     """
-    sx = torch.tensor(0) if sx is None else sx
-    sy = torch.tensor(0) if sy is None else sy
+    sx = torch.tensor([0.]).repeat(center.size(0)) if sx is None else sx
+    sy = torch.tensor([0.]).repeat(center.size(0)) if sy is None else sy
 
     x, y = torch.split(center, 1, dim=-1)
     x, y = x.view(-1), y.view(-1)
@@ -565,15 +584,37 @@ def get_shear_matrix3d(
         r = S_{zx} + S_{yx}S_{zy}
         s = S_{xy}S_{zx} + (S_{xy}S_{yx} + 1)S_{zy}
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
+
+    Params:
+        center (torch.Tensor): shearing center coordinates of (x, y, z).
+        sxy (torch.Tensor, optional): shearing degree along x axis, towards y plane.
+        sxz (torch.Tensor, optional): shearing degree along x axis, towards z plane.
+        syx (torch.Tensor, optional): shearing degree along y axis, towards x plane.
+        syz (torch.Tensor, optional): shearing degree along y axis, towards z plane.
+        szx (torch.Tensor, optional): shearing degree along z axis, towards x plane.
+        szy (torch.Tensor, optional): shearing degree along z axis, towards y plane.
+
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sxy, sxz, syx, syz = torch.randn(4, 1)
+        >>> sxy, sxz, syx, syz
+        (tensor([1.5410]), tensor([-0.2934]), tensor([-2.1788]), tensor([0.5684]))
+        >>> center = torch.tensor([[0., 0., 0.]])  # Bx3
+        >>> get_shear_matrix3d(center, sxy=sxy, sxz=sxz, syx=syx, syz=syz)
+        tensor([[[  1.0000,  -1.4369,   0.0000,   0.0000],
+                 [-33.5468,  49.2039,   0.0000,   0.0000],
+                 [  0.3022,  -1.0729,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   0.0000,   1.0000]]])
     """
-    sxy = torch.tensor(0) if sxy is None else sxy
-    sxz = torch.tensor(0) if sxz is None else sxz
-    syx = torch.tensor(0) if syx is None else syx
-    syz = torch.tensor(0) if syz is None else syz
-    szx = torch.tensor(0) if szx is None else szx
-    szy = torch.tensor(0) if szy is None else szy
+    sxy = torch.tensor([0.]).repeat(center.size(0)) if sxy is None else sxy
+    sxz = torch.tensor([0.]).repeat(center.size(0)) if sxz is None else sxz
+    syx = torch.tensor([0.]).repeat(center.size(0)) if syx is None else syx
+    syz = torch.tensor([0.]).repeat(center.size(0)) if syz is None else syz
+    szx = torch.tensor([0.]).repeat(center.size(0)) if szx is None else szx
+    szy = torch.tensor([0.]).repeat(center.size(0)) if szy is None else szy
 
     x, y, z = torch.split(center, 1, dim=-1)
     x, y, z = x.view(-1), y.view(-1), z.view(-1)
