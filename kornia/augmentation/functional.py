@@ -926,3 +926,44 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
     inputs = input * (1 - lam) + input_permute * lam
     labels = torch.stack([labels.float(), labels_permute.float(), params['mixup_lambdas'].to(labels.device)], dim=-1)
     return inputs, labels
+
+
+def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
+                 params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Apply cutmix to images in a batch.
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        labels (torch.Tensor): Label tensor with shape (B,).
+        params (Dict[str, torch.Tensor]):
+            - params['mix_pairs']: Mixup indexes with shape (num_mixes, B).
+            - params['crop_area']: Lambda for the mixup strength (num_mixes, B, 4, 2).
+            - params['cutmix_betas']: cutmix beta values for the mixup strength (num_mixes, B).
+    Returns:
+        torch.Tensor: Adjusted image.
+
+    Examples:
+        >>> input = torch.stack([torch.eye(5).unsqueeze(dim=0), torch.ones(5, 5).unsqueeze(dim=0)])
+        >>> labels = torch.tensor([0, 1])
+        >>> params = dict(mixup_pairs=torch.tensor([1, 0]), mixup_lambdas=torch.tensor([0.5, 0.9]))
+        >>> out_img, out_label = apply_mixup(input, labels, params)
+    """
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    num_mixes = params['mixup_pairs'].size(0)
+    batch_size = params['mixup_pairs'].size(1)
+
+    start_points = params['start_points'].view(-1, 2)
+    cut_shape = params['cut_shape'].view(-1, 2)
+    cutmix_betas = params['cutmix_betas'].view(-1)
+
+    input_permute = input.index_select(dim=0, index=params['mixup_pairs'].view(-1).to(input.device))
+    labels_permute = labels.index_select(dim=0, index=params['mixup_pairs'].view(-1).to(labels.device))
+
+    output = input.clone()
+    for _ in range(num_mixes):
+        params['crop_src']
+
+    lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(input.device)
+    inputs = input * (1 - lam) + input_permute * lam
+    labels = torch.stack([labels.float(), labels_permute.float(), params['mixup_lambdas'].to(labels.device)], dim=-1)
+    return inputs, labels

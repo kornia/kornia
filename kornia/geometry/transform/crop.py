@@ -165,6 +165,9 @@ def crop_by_boxes(tensor, src_box, dst_box,
         If the src_box is smaller than dst_box, the following error will be thrown.
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
+    validate_bboxes(src_box)
+    validate_bboxes(dst_box)
+
     if tensor.ndimension() not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
     # warping needs data in the shape of BCHW
@@ -213,6 +216,13 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
         >>> _infer_bounding_box(boxes)
         (2, 2)
     """
+    validate_bboxes(boxes)
+    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)[0]
+    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)[0]
+    return (height, width)
+
+
+def validate_bboxes(boxes: torch.Tensor) -> None:
     assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
         "Boxes must have be square, while get widths %s and %s" % \
         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
@@ -224,6 +234,33 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
     assert len((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
         "Boxes can only have one heights, got %s" % str((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique())
 
-    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)[0]
-    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)[0]
-    return (height, width)
+
+def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
+    """Convert bounding boxes to masks. Covered area is 1. and the remaining is 0.
+
+    Examples:
+        >>> boxes = torch.tensor([[
+        ...        [1., 1.],
+        ...        [3., 1.],
+        ...        [3., 2.],
+        ...        [1., 2.],
+        ...   ]])  # 1x4x2
+        >>> bbox_to_mask(boxes, 5, 5)
+        tensor([[0., 0., 0., 0., 0.],
+                [0., 1., 1., 1., 0.],
+                [0., 1., 1., 1., 0.],
+                [0., 0., 0., 0., 0.],
+                [0., 0., 0., 0., 0.]])
+    """
+    validate_bboxes(boxes)
+    mask = torch.zeros((len(boxes), height, width))
+
+    mask_out = []
+    for m, box in zip(mask, boxes):
+        m = m.index_fill(1, torch.arange(box[0, 0], box[1, 0] + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(0, torch.arange(box[1, 1], box[2, 1] + 1, dtype=torch.long), torch.tensor(1))
+        m = m.unsqueeze(dim=0)
+        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
+        mask_out.append(m_out)
+
+    return torch.cat(mask_out, dim=0).float()

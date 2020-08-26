@@ -9,13 +9,12 @@ from kornia.constants import Resample, BorderType
 import kornia.augmentation.functional as F
 import kornia.augmentation.random_generator as rg
 from kornia.augmentation.utils import (
-    _adapted_uniform,
     _infer_batch_shape
 )
 
 
-class AugmentationMixUp(AugmentationBase):
-    r"""AugmentationMixUp base class for customized augmentation implementations. For any augmentation,
+class MixAugmentation(AugmentationBase):
+    r"""MixAugmentation base class for customized augmentation implementations. For any augmentation,
     the implementation of "generate_parameters" and "apply_transform" are required while the
     "compute_transformation" is only required when passing "return_transform" as True.
 
@@ -27,6 +26,9 @@ class AugmentationMixUp(AugmentationBase):
                                       wont be concatenated.
 
     """
+    def __init__(self):
+        super(MixAugmentation, self).__init__()
+
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,     # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
@@ -59,7 +61,7 @@ class AugmentationMixUp(AugmentationBase):
         return output
 
 
-class RandomMixUp(AugmentationMixUp):
+class RandomMixUp(MixAugmentation):
     """
     Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
@@ -106,9 +108,8 @@ class RandomMixUp(AugmentationMixUp):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.6556],
                 [1.0000, 1.0000, 0.3138]]))
     """
-    def __init__(self, p: float = 1.0, max_lambda: Optional[Union[torch.Tensor, float]] = None,
-                 return_transform: bool = False) -> None:
-        super(RandomMixUp, self).__init__(return_transform)
+    def __init__(self, p: float = 1.0, max_lambda: Optional[Union[torch.Tensor, float]] = None) -> None:
+        super(RandomMixUp, self).__init__()
         self.p = p
         if max_lambda is None:
             self.max_lambda = torch.tensor(1.)
@@ -118,7 +119,6 @@ class RandomMixUp(AugmentationMixUp):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.p}, max_lambda={self.max_lambda}"
-        f", return_transform={self.return_transform})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_mixup_generator(batch_shape[0], self.p, self.max_lambda)
@@ -129,3 +129,46 @@ class RandomMixUp(AugmentationMixUp):
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
         return F.apply_mixup(input, label, params)
+
+
+class RandomCutMix(MixAugmentation):
+    """
+    Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
+    The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
+    while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
+    each image. The implementation is on top of `https://github.com/ildoonet/cutmix/blob/master/cutmix/cutmix.py`.
+
+    Args:
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`, :math:`(B,)`
+        - Output: :math:`(B, C, H, W)`, :math:`(B, 3)`
+
+    Note:
+        This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
+
+    """
+    def __init__(self, p: float = 0.5, num_mix: int = 1, beta: Optional[Union[torch.Tensor, float]] = None) -> None:
+        super(RandomCutMix, self).__init__()
+        self.p = p
+        self.num_mix = num_mix
+        if beta is None:
+            self.beta = torch.tensor(1.)
+        else:
+            self.beta = cast(torch.Tensor, beta) if isinstance(beta, torch.Tensor) else torch.tensor(beta)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(p={self.p}, num_mix={num_mix}, beta={self.beta}"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_cutmix_generator(batch_shape[0], self.p, self.num_mix, self.beta)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input, params)
+
+    def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
+                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        return F.apply_cutmix(input, label, params)

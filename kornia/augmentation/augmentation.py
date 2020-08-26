@@ -8,7 +8,6 @@ from kornia.constants import Resample, BorderType
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
-    _adapted_uniform,
     _infer_batch_shape
 )
 
