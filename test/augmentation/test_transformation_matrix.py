@@ -23,7 +23,7 @@ class TestHorizontalFlipFn:
                               [0., 0., 1., 2.]])  # 3 x 4
         input.to(device)
 
-        expected_transform = torch.tensor([[-1., 0., 4.],
+        expected_transform = torch.tensor([[-1., 0., 3.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
@@ -44,7 +44,7 @@ class TestHorizontalFlipFn:
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 2.],
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
 
@@ -73,7 +73,7 @@ class TestVerticalFlipFn:
         input.to(device)
 
         expected_transform = torch.tensor([[1., 0., 0.],
-                                           [0., -1., 3.],
+                                           [0., -1., 2.],
                                            [0., 0., 1.]])  # 3 x 3
 
         identity = torch.tensor([[1., 0., 0.],
@@ -94,7 +94,7 @@ class TestVerticalFlipFn:
         input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
+                                            [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
 
         identity = torch.tensor([[[1., 0., 0.],
