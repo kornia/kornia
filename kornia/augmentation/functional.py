@@ -3,7 +3,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 import torch.nn as nn
 
-from kornia.constants import Resample, BorderType, pi
+from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (
     get_perspective_transform,
     get_rotation_matrix2d,
@@ -32,7 +32,7 @@ from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
-from .utils import _transform_input, _validate_input_shape, _validate_input_dtype
+from .utils import _transform_input, _validate_input_shape, _validate_input_dtype, _range_bound
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -70,7 +70,8 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
 def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
                  contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
                  saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-                 hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0., return_transform: bool = False
+                 hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+                 return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
 
@@ -79,7 +80,11 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
-    params = rg.random_color_jitter_generator(batch_size, brightness, contrast, saturation, hue)
+    _brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+    _contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+    _saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+    _hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+    params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
     output = apply_color_jitter(input, params)
     if return_transform:
         return output, compute_intensity_transformation(input, params)
@@ -103,7 +108,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
 
 
 def random_perspective(input: torch.Tensor,
-                       distortion_scale: float = 0.5,
+                       distortion_scale: Union[torch.Tensor, float] = 0.5,
                        p: float = 0.5,
                        return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
@@ -114,6 +119,8 @@ def random_perspective(input: torch.Tensor,
 
     input = _transform_input(input)
     batch_size, _, height, width = input.size()
+    distortion_scale =  \
+        distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
     params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
         batch_size, height, width, p, distortion_scale)
     output = apply_perspective(input, params)
@@ -138,8 +145,24 @@ def random_affine(input: torch.Tensor,
 
     input = _transform_input(input)
     batch_size, _, height, width = input.size()
+
+    _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    _translate: Optional[torch.Tensor] = None
+    _scale: Optional[torch.Tensor] = None
+    _shear: Optional[torch.Tensor] = None
+    if translate is not None:
+        _translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+    if scale is not None:
+        _scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+    if shear is not None:
+        _shear = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+        _shear = torch.stack([
+            _range_bound(_shear if _shear.dim() == 0 else _shear[:2], 'shear-x', 0, (-360, 360)),
+            torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
+            _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
+        ])
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
-        batch_size, height, width, degrees, translate, scale, shear, resample)
+        batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
     output = apply_affine(input, params)
     if return_transform:
         transform = compute_affine_transformation(input, params)
@@ -171,8 +194,10 @@ def random_rectangle_erase(
     """
     input = _transform_input(input)
     b, _, h, w = input.size()
+    _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+    _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
     params = rg.random_rectangles_params_generator(
-        b, h, w, p, scale, ratio
+        b, h, w, p, _scale, _ratio
     )
     output = apply_erase_rectangles(input, params)
     if return_transform:
@@ -189,7 +214,8 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     """
     input = _transform_input(input)
     batch_size, _, _, _ = input.size()
-    params = rg.random_rotation_generator(batch_size, degrees=degrees)
+    _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    params = rg.random_rotation_generator(batch_size, degrees=_degrees)
     output = apply_rotation(input, params)
     if return_transform:
         return output, compute_rotate_tranformation(input, params)
@@ -463,6 +489,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
             - params['sx']: Shear param toward x-axis.
             - params['sy']: Shear param toward y-axis.
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['padding_mode']: Integer tensor, see SamplePadding enum.
             - params['align_corners']: Boolean tensor.
 
     Returns:
@@ -484,11 +511,13 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
     transform: torch.Tensor = compute_affine_transformation(input, params)
 
     resample_name: str = Resample(params['resample'].item()).name.lower()
+    padding_mode: str = SamplePadding(params['padding_mode'].item()).name.lower()
     align_corners: bool = cast(bool, params['align_corners'].item())
 
     out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],
                                          (height, width), resample_name,
-                                         align_corners=align_corners)
+                                         align_corners=align_corners,
+                                         padding_mode=padding_mode)
     return out_data.view_as(input)
 
 
@@ -792,9 +821,8 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     kernel_size: int = cast(int, params['ksize_factor'].item())
-    # TODO: this params should be at some point, learnable tensors
-    angle: float = cast(float, params['angle_factor'].item())
-    direction: float = cast(float, params['direction_factor'].item())
+    angle = params['angle_factor']
+    direction = params['direction_factor']
     border_type: str = cast(str, BorderType(params['border_type'].item()).name.lower())
 
     return motion_blur(input, kernel_size, angle, direction, border_type)
