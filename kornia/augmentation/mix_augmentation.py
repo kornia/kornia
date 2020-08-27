@@ -51,8 +51,8 @@ class MixAugmentation(AugmentationBase):
 
 
 class RandomMixUp(MixAugmentation):
-    """
-    Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
+    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
+
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
     each image. The implementation is on top of `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py`.
@@ -70,13 +70,19 @@ class RandomMixUp(MixAugmentation):
         ```
 
     Args:
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
+        p (float): probability for performing mixup. Default is 0.5.
+        max_lambda (float or torch.Tensor, optional): max value of mixup strength. Default is 1.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
-    Shape:
-        - Input: :math:`(B, C, H, W)`, :math:`(B,)`
-        - Output: :math:`(B, C, H, W)`, :math:`(B, 3)`
+    Inputs:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Input image tensors, shape of :math:`(B, C, H, W)`.
+        - Label: raw labels, shape of :math:`(B,)`.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
 
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.
@@ -120,9 +126,9 @@ class RandomMixUp(MixAugmentation):
 
 
 class RandomCutMix(MixAugmentation):
-    """
-    Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
+    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
     <https://arxiv.org/pdf/1905.04899.pdf>`.
+
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(num_mixes, B, 3)` tensor that contains (label_permuted_batch, lambda)
     for each cutmix. The implementation referred to `https://github.com/clovaai/CutMix-PyTorch`.
@@ -144,16 +150,23 @@ class RandomCutMix(MixAugmentation):
         ```
 
     Args:
-        height (int): the width of the input image
-        width (int): the width of the input image
+        height (int): the width of the input image.
+        width (int): the width of the input image.
         p (float): probability for performing cutmix. Default is 0.5.
         num_mix (int): cut mix times. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for beta distribution. It controls the cut size.
             If None, it will be set to 1.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
-    Shape:
-        - Input: :math:`(B, C, H, W)`, :math:`(B,)`
-        - Output: :math:`(B, C, H, W)`, :math:`(num_mix, B, 2)`
+    Inputs:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Input image tensors, shape of :math:`(B, C, H, W)`.
+        - Raw labels, shape of :math:`(B,)`
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
@@ -190,7 +203,7 @@ class RandomCutMix(MixAugmentation):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.p}, num_mix={self.num_mix}, beta={self.beta}, "
-        f"height={self.height}, width={self.width}"
+        f"height={self.height}, width={self.width}, same_on_batch={self.same_on_batch}"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,

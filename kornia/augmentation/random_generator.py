@@ -608,12 +608,14 @@ def random_mixup_generator(
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator mixup indexes and lambdas for a batch of inputs.
+
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
         p (flot): probability of applying mixup.
         max_lambda (torch.Tensor, optional): max strength for mixup images, ranged from (0., 1.).
             If None, it will be set to 1, which means no restrictions.
-        same_on_batch (bool): if to use exact params across the batch
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
 
@@ -624,7 +626,7 @@ def random_mixup_generator(
     """
     if max_lambda is None:
         max_lambda = torch.tensor(1.)
-    batch_probs: torch.Tensor = random_prob_generator(batch_size, p)['batch_prob']
+    batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, max_lambda, same_on_batch=same_on_batch)
     mixup_lambdas = mixup_lambdas * batch_probs.float()
@@ -645,12 +647,17 @@ def random_cutmix_generator(
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator cutmix indexes and lambdas for a batch of inputs.
+
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
+        width (int): image width.
+        height (int): image height.
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
         beta (torch.Tensor, optional): max strength for cutmix images, ranged from (0., 1.).
             If None, it will be set to 1, which means no restrictions.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
 

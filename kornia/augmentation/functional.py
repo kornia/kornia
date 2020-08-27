@@ -914,15 +914,20 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
 
 def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
                 params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Apply mixup to images in a batch.
+    r"""Apply mixup to images in a batch. MixUp augmentation strategy: overlap images with different
+    alpha values.
+
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         labels (torch.Tensor): Label tensor with shape (B,).
         params (Dict[str, torch.Tensor]):
             - params['mixup_pairs']: Mixup indexes.
             - params['mixup_lambdas']: Lambda for the mixup strength.
+
     Returns:
-        torch.Tensor: Adjusted image.
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Raw labels, corresponding labels and lambdas for each mix, shape of :math:`(B, 3)`.
 
     Examples:
         >>> input = torch.stack([torch.eye(5).unsqueeze(dim=0), torch.ones(5, 5).unsqueeze(dim=0)])
@@ -960,16 +965,20 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
 
 def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
                  params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Apply cutmix to images in a batch.
+    r"""Apply cutmix to images in a batch. CutMix augmentation strategy: patches are cut and pasted
+    among training images where the ground truth labels are also mixed proportionally to the area of the patches
+
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         labels (torch.Tensor): Label tensor with shape (B,).
         params (Dict[str, torch.Tensor]):
             - params['mix_pairs']: Mixup indexes with shape (num_mixes, B).
             - params['crop_src']: Lambda for the mixup strength (num_mixes, B, 4, 2).
+
     Returns:
-        torch.Tensor: Adjusted image. (B, C, H, W)
-        torch.Tensor: Corresponding labels and lambdas for each mix. (num_mixes, B, 2)
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Corresponding labels and lambdas for each mix, shape of :math:`(num_mixes, B, 2)`.
 
     Examples:
         >>> input = torch.stack([torch.zeros(1, 5, 5), torch.ones(1, 5, 5)], dim=0)

@@ -208,7 +208,9 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
           coordinates must be in the x, y order.
 
     Returns:
-        (torch.Tensor, torch.Tensor): tensor containing the patches with shape BxN1xN2
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Boundingbox widths, shape of :math:`(B,)`.
 
     Example:
         >>> boxes = torch.tensor([[
