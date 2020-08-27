@@ -403,8 +403,10 @@ class RandomAffine(AugmentationBase):
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
-            randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+        scale (tuple, optional): scaling factor interval.
+            If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
+            If (a, b, c, d), the scale is randomly sampled from the range a <= scale_x <= b, c <= scale_y <= d.
+            Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
             If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
             will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
@@ -433,7 +435,7 @@ class RandomAffine(AugmentationBase):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float]],
         translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-        scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
         shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
@@ -447,7 +449,16 @@ class RandomAffine(AugmentationBase):
             self.translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
         self.scale: Optional[torch.Tensor] = None
         if scale is not None:
-            self.scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+            scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+            if len(scale) == 2:
+                self.scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+            elif len(scale) == 4:
+                self.scale = torch.stack([
+                    _range_bound(scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
+                    _range_bound(scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular')
+                ])
+            else:
+                raise ValueError("'scale' expected to be either 2 or 4 elements. Got {scale}")
         self.shear: Optional[torch.Tensor] = None
         if shear is not None:
             shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
