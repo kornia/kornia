@@ -638,7 +638,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.1 / pi)
+        f = ColorJitter(hue=0.1 / pi.item())
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -725,9 +725,9 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue_tensor(self, device):
+    def test_random_hue_list_batch(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.1 / pi, 0.1 / pi]))
+        f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -1458,7 +1458,7 @@ class TestRandomResizedCrop:
 class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, "\
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
             "border_type='constant', return_transform=False)"
         assert str(f) == repr
 
