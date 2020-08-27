@@ -28,12 +28,13 @@ def create_meshgrid(
     # generate coordinates
     xs: Optional[torch.Tensor] = None
     ys: Optional[torch.Tensor] = None
+
+    xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
+    ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+    # Fix TracerWarning
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=torch.float)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+        xs = (xs / (width - 1) - 0.5) * 2
+        ys = (ys / (height - 1) - 0.5) * 2
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
