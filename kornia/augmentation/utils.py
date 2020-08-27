@@ -190,5 +190,5 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
     return factor_bound
 
 
-def _shape_validation(param: torch.Tensor, shape: tuple, name: str) -> None:
+def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
     assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"

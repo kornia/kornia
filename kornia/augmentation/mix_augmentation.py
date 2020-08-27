@@ -4,11 +4,11 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.augmentation.augmentation import AugmentationBase
 from kornia.constants import Resample, BorderType
-import kornia.augmentation.functional as F
-import kornia.augmentation.random_generator as rg
-from kornia.augmentation.utils import (
+from . import functional as F
+from . import random_generator as rg
+from .augmentation import AugmentationBase
+from .utils import (
     _infer_batch_shape
 )
 
@@ -33,11 +33,11 @@ class MixAugmentation(AugmentationBase):
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
 
-    def forward(
-        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],  # type: ignore
+    def forward(  # type: ignore
+        self, input: torch.Tensor,
         label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None
-    ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]:  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -46,18 +46,7 @@ class MixAugmentation(AugmentationBase):
         else:
             self._params = params
 
-        if isinstance(input, tuple):
-            output = self.apply_transform(input[0], label, self._params)
-            transformation_matrix = self.compute_transformation(input[0], self._params)
-            if return_transform:
-                return output, input[1] @ transformation_matrix
-            else:
-                return output, input[1]
-
         output = self.apply_transform(input, label, self._params)
-        if return_transform:
-            transformation_matrix = self.compute_transformation(input, self._params)
-            return output, transformation_matrix
         return output
 
 
@@ -124,9 +113,6 @@ class RandomMixUp(MixAugmentation):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_mixup_generator(batch_shape[0], self.p, self.max_lambda, same_on_batch=self.same_on_batch)
-
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
@@ -203,14 +189,12 @@ class RandomCutMix(MixAugmentation):
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(p={self.p}, num_mix={num_mix}, beta={self.beta}"
+        return f"{self.__class__.__name__}(p={self.p}, num_mix={self.num_mix}, beta={self.beta}, "
+        f"height={self.height}, width={self.width}"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,
                                           num_mix=self.num_mix, beta=self.beta, same_on_batch=self.same_on_batch)
-
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
