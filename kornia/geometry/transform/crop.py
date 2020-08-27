@@ -187,7 +187,7 @@ def crop_by_boxes(tensor, src_box, dst_box,
     assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1, "cropping height and width" \
         f" must be exact same in a batch. Got height {bbox[0].unique()} and width {bbox[1].unique()}"
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[0].unique().item())),
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[1].unique().item())),
         flags=interpolation, align_corners=align_corners)
 
     # return in the original shape
