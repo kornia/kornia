@@ -309,8 +309,8 @@ class RandomErasing(AugmentationBase):
     ) -> None:
         super(RandomErasing, self).__init__(return_transform)
         self.p = p
-        self.scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
-        self.ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
+        self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.value: float = value
         self.same_on_batch = same_on_batch
 
@@ -364,8 +364,8 @@ class RandomPerspective(AugmentationBase):
     ) -> None:
         super(RandomPerspective, self).__init__(return_transform)
         self.p: float = p
-        self.distortion_scale = \
-            distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
+        self.distortion_scale = cast(torch.Tensor, distortion_scale) \
+            if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample: Resample
         if interpolation is not None:
             import warnings
@@ -438,7 +438,7 @@ class RandomAffine(AugmentationBase):
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomAffine, self).__init__(return_transform)
-        degrees = degrees if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
         self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
         self.translate: Optional[torch.Tensor] = None
         if translate is not None:
@@ -563,7 +563,7 @@ class RandomRotation(AugmentationBase):
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(return_transform)
-        degrees = degrees if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
         self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
         self.resample: Resample
         if interpolation is not None:
@@ -723,8 +723,8 @@ class RandomResizedCrop(AugmentationBase):
     ) -> None:
         super(RandomResizedCrop, self).__init__(return_transform)
         self.size = size
-        self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
-        self.ratio = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
+        self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.resample: Resample
         if interpolation is not None:
             import warnings
@@ -741,7 +741,7 @@ class RandomResizedCrop(AugmentationBase):
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)['size']
+        target_size: torch.Tensor = rg.random_crop_size_generator(self.size, self.scale, self.ratio)['size']
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch,
                                         align_corners=self.align_corners)
@@ -797,10 +797,11 @@ class RandomMotionBlur(AugmentationBase):
         super(RandomMotionBlur, self).__init__(return_transform)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
-        angle = angle if isinstance(angle, torch.Tensor) else torch.tensor(angle)
+        angle = cast(torch.Tensor, angle) if isinstance(angle, torch.Tensor) else torch.tensor(angle)
         self.angle = _range_bound(angle, 'angle', center=0., bounds=(-360, 360))
 
-        direction = direction if isinstance(direction, torch.Tensor) else torch.tensor(direction)
+        direction = \
+            cast(torch.Tensor, direction) if isinstance(direction, torch.Tensor) else torch.tensor(direction)
         self.direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
 
         self.border_type: BorderType = BorderType.get(border_type)
@@ -858,10 +859,12 @@ class RandomSolarize(AugmentationBase):
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)
 
-        thresholds = thresholds if isinstance(thresholds, torch.Tensor) else torch.tensor(thresholds)
+        thresholds = \
+            cast(torch.Tensor, thresholds) if isinstance(thresholds, torch.Tensor) else torch.tensor(thresholds)
         self.thresholds = _range_bound(thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
 
-        additions = additions if isinstance(additions, torch.Tensor) else torch.tensor(additions)
+        additions = \
+            cast(torch.Tensor, additions) if isinstance(additions, torch.Tensor) else torch.tensor(additions)
         self.additions = _range_bound(additions, 'additions', bounds=(-0.5, 0.5))
 
         self.same_on_batch = same_on_batch
@@ -913,9 +916,7 @@ class RandomPosterize(AugmentationBase):
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomPosterize, self).__init__(return_transform)
-
-        if not isinstance(bits, torch.Tensor):
-            bits = torch.tensor(bits)
+        bits = cast(torch.Tensor, bits) if isinstance(bits, torch.Tensor) else torch.tensor(bits)
         if len(bits.size()) == 0:
             self.bits = torch.tensor([bits, torch.tensor(8)], dtype=torch.float32)
         elif len(bits.size()) == 1 and bits.size(0) == 2:
@@ -981,7 +982,7 @@ class RandomSharpness(AugmentationBase):
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
-        sharpness = sharpness if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
+        sharpness = cast(torch.Tensor, sharpness) if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
         if sharpness.dim() == 0:
             self.sharpness = torch.tensor([0, sharpness], dtype=torch.float32)
         elif sharpness.dim() == 1 and sharpness.size(0) == 2:
