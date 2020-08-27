@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from typing import Union, Tuple
 
 import pytest
@@ -10,8 +11,55 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.constants import pi
-from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
+from kornia.augmentation import AugmentationBase, RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
+
+
+class TestAugmentationBase:
+
+    def test_forward(self, device):
+        torch.manual_seed(42)
+        input = torch.rand((2, 3, 4, 5)).to(device)
+        input_transform = torch.rand((2, 3, 3)).to(device)
+        expected_output = torch.rand((2, 3, 4, 5)).to(device)
+        expected_transform = torch.rand((2, 3, 3)).to(device)
+        augmentation = AugmentationBase(return_transform=False)
+
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
+                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
+                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+
+            # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
+            params = {"foo": 0}
+            generate_parameters.return_value = params
+            apply_transform.return_value = expected_output
+            compute_transformation.return_value = expected_transform
+            output = augmentation(input)
+            apply_transform.assert_called_once_with(input, params)
+            assert output is expected_output
+
+            # Calling the augmentation with a tensor and set return_transform shall
+            # return the expected tensor and transformation.
+            output, transformation = augmentation(input, return_transform=True)
+            assert output is expected_output
+            assert transformation is expected_transform
+
+            # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
+            params = {"bar": 1}
+            apply_transform.reset_mock()
+            generate_parameters.return_value = None
+            output = augmentation(input, params=params)
+            apply_transform.assert_called_once_with(input, params)
+            assert output is expected_output
+
+            # Calling the augmentation with a tensor,a transformation and set
+            # return_transform shall return the expected tensor and the proper
+            # transformation matrix.
+            expected_final_transformation = expected_transform @ input_transform
+            output, transformation = augmentation((input, input_transform), return_transform=True)
+            assert output is expected_output
+            assert torch.allclose(expected_final_transformation, transformation)
+            assert transformation.shape[0] == input.shape[0]
 
 
 class TestRandomHorizontalFlip:
