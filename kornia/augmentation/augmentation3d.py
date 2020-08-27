@@ -10,7 +10,9 @@ from kornia.augmentation import functional3d as F
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation import random_generator3d as rg3
 from kornia.augmentation.utils import (
-    _infer_batch_shape3d
+    _infer_batch_shape3d,
+    _tuple_range_reader,
+    _singular_range_check
 )
 
 
@@ -220,6 +222,7 @@ class RandomAffine3D(AugmentationBase3D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -243,19 +246,34 @@ class RandomAffine3D(AugmentationBase3D):
     """
 
     def __init__(
-        self, degrees: Union[float, Tuple[float, float, float]],
-        translate: Optional[Tuple[float, float, float]] = None, scale: Optional[Tuple[float, float]] = None,
-        shear: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
-                     Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
-                           Tuple[float, float], Tuple[float, float]]] = None,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
+                             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
+                      Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
+                            Tuple[float, float], Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomAffine3D, self).__init__(return_transform)
-        self.degrees = degrees
-        self.translate = translate
-        self.scale = scale
-        self.shear = shear
+        self.degrees = _tuple_range_reader(degrees, 3)
+        self.shear: Optional[torch.Tensor] = None
+        if shears is not None:
+            self.shear = _tuple_range_reader(shears, 6)
+
+        # check translation range
+        self.translate: Optional[torch.Tensor] = None
+        if translate is not None:
+            self.translate = translate if isinstance(translate, torch.Tensor) else torch.tensor(translate)
+            _singular_range_check(self.translate, 'translate', bounds=(0, 1), mode='3d')
+
+        # check scale range
+        self.scale: Optional[torch.Tensor] = None
+        if scale is not None:
+            self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+            _singular_range_check(self.scale, 'scale', bounds=(0, float('inf')), mode='2d')
+
         self.resample: Resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
@@ -301,6 +319,7 @@ class RandomRotation3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -330,7 +349,7 @@ class RandomRotation3D(AugmentationBase3D):
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation3D, self).__init__(return_transform)
-        self.degrees = degrees
+        self.degrees = _tuple_range_reader(degrees, 3)
         self.interpolation: Resample = Resample.get(interpolation)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners

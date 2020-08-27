@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -54,8 +54,8 @@ class MotionBlur(nn.Module):
 def motion_blur(
     input: torch.Tensor,
     kernel_size: int,
-    angle: float,
-    direction: float,
+    angle: Union[float, torch.Tensor],
+    direction: Union[float, torch.Tensor],
     border_type: str = 'constant'
 ) -> torch.Tensor:
     r"""
