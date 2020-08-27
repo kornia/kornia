@@ -307,7 +307,7 @@ def get_rotation_matrix2d(
         angle (Tensor): rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
             be the top-left corner).
-        scale (Tensor): scale factor for x, y scaling.
+        scale (Tensor): scale factor for x, y scaling with shape :math:`(B, 2)`
 
     Returns:
         Tensor: the affine matrix of 2D rotation.
