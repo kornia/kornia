@@ -28,13 +28,14 @@ It consists of a set of routines and differentiable modules to solve generic com
 
 .. image:: https://github.com/kornia/kornia/raw/master/docs/source/_static/img/hakuna_matata.gif
 
+.. image:: http://drive.google.com/uc?export=view&id=1BfElMzSsj5WtdBeWLLWGr8TxEqxE6-Cl
+
 Overview
 ========
 
 Inspired by *OpenCV*, this library is composed by a subset of packages containing operators that can be inserted within neural networks to train models to perform image transformations, epipolar geometry, depth estimation, and low-level image processing such as filtering and edge detection that operate directly on tensors.
 
 At a granular level, Kornia is a library that consists of the following components:
-
 
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | **Component**                                                                     | **Description**                                                                                                                       |
@@ -46,6 +47,8 @@ At a granular level, Kornia is a library that consists of the following componen
 | `kornia.color <https://kornia.readthedocs.io/en/latest/color.html>`_              | a set of routines to perform color space conversions                                                                                  |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | `kornia.contrib <https://kornia.readthedocs.io/en/latest/contrib.html>`_          | a compilation of user contrib and experimental operators                                                                              |
++-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
+| `kornia.enhance <https://kornia.readthedocs.io/en/latest/enhance.html>`_          | a module to perform normalization and intensity transformations                                                                       |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | `kornia.feature <https://kornia.readthedocs.io/en/latest/feature.html>`_          | a module to perform feature detection                                                                                                 |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
@@ -84,6 +87,28 @@ Installation
 .. code:: bash
 
     pip install git+https://github.com/kornia/kornia
+
+**Compatiblity table**
+
++--------------------------+--------------------------+---------------------------------+
+| ``torch``                | ``kornia``               | ``python``                      |
++==========================+==========================+=================================+
+| ``master`` / ``nightly`` | ``master``               | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.6.0``                | ``0.4.0``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.5.1``                | ``0.3.2``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.5.0``                | ``0.3.1``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.4.0``                | ``0.2.2``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.3.1``                | ``0.1.4``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.3.0``                | ``0.1.4``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
+| ``1.2.0``                | ``0.1.4``                | ``>=3.6``                       |
++--------------------------+--------------------------+---------------------------------+
 
 Examples
 ========

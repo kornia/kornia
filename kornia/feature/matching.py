@@ -110,7 +110,7 @@ def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
     match_dists = ratio[mask]
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=dm.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.cpu().view(-1, 1)], dim=1)
+    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 

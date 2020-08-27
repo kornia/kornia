@@ -3,14 +3,14 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.conversions import deg2rad
 from kornia.geometry.warp import (
-    normalize_homography, homography_warp
+    normalize_homography, homography_warp, normalize_homography3d
 )
-
-# TODO: move to utils or conversions
 from kornia.geometry.conversions import (
-    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography
+    deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography, convert_affinematrix_to_homography3d
+)
+from kornia.geometry.transform.projwarp import (
+    warp_projective, get_projective_transform
 )
 from kornia.testing import check_is_tensor
 
@@ -22,7 +22,8 @@ __all__ = [
     "remap",
     "invert_affine_transform",
     "angle_to_rotation_matrix",
-    "get_affine_matrix2d"
+    "get_affine_matrix2d",
+    "get_affine_matrix3d"
 ]
 
 
@@ -457,26 +458,204 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
 
 def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angle: torch.Tensor,
                         sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Composes affine matrix Bx3x3 from the components
+    r"""Composes affine matrix from the components.
+
+    Args:
+        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
+        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
+        sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
+
     Returns:
-        torch.Tensor: params to be passed to the affine transformation.
+        torch.Tensor: the affine transformation matrix :math:`(B, 2, 3)`.
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
 
-    if sx is not None:
-        x, y = torch.split(center, 1, dim=-1)
-        x = x.view(-1)
-        y = y.view(-1)
-        sx_tan = torch.tan(sx)  # type: ignore
-        sy_tan = torch.tan(sy)  # type: ignore
-        zeros = torch.zeros_like(sx)  # type: ignore
-        ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones, -sx_tan, sx_tan * x,  # type: ignore   # noqa: E241
-                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (-sx_tan * x + y)],  # noqa: E241
-                                dim=-1).view(-1, 2, 3)
-        shear_mat = convert_affinematrix_to_homography(shear_mat)
+    if any([s is not None for s in [sx, sy]]):
+        shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
     return transform_h
+
+
+def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
+    r"""Composes shear matrix Bx4x4 from the components.
+    Note: Ordered shearing, shear x-axis then y-axis
+
+    .. math::
+        \begin{bmatrix}
+            1 & b \\
+            a & ab + 1 \\
+        \end{bmatrix}
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+
+    Params:
+        center (torch.Tensor): shearing center coordinates of (x, y).
+        sx (torch.Tensor, optional): shearing degree along x axis.
+        sy (torch.Tensor, optional): shearing degree along y axis.
+
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sx = torch.randn(1)
+        >>> sx
+        tensor([1.5410])
+        >>> center = torch.tensor([[0., 0.]])  # Bx2
+        >>> get_shear_matrix2d(center, sx=sx)
+        tensor([[[  1.0000, -33.5468,   0.0000],
+                 [ -0.0000,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   1.0000]]])
+    """
+    sx = torch.tensor([0.]).repeat(center.size(0)) if sx is None else sx
+    sy = torch.tensor([0.]).repeat(center.size(0)) if sy is None else sy
+
+    x, y = torch.split(center, 1, dim=-1)
+    x, y = x.view(-1), y.view(-1)
+
+    sx_tan = torch.tan(sx)  # type: ignore
+    sy_tan = torch.tan(sy)  # type: ignore
+    ones = torch.ones_like(sx)  # type: ignore
+    shear_mat = torch.stack([
+        ones, -sx_tan, sx_tan * y,  # type: ignore   # noqa: E241
+        -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)  # noqa: E241
+    ], dim=-1).view(-1, 2, 3)
+    shear_mat = convert_affinematrix_to_homography(shear_mat)
+    return shear_mat
+
+
+def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angles: torch.Tensor,
+                        sxy: Optional[torch.Tensor] = None, sxz: Optional[torch.Tensor] = None,
+                        syx: Optional[torch.Tensor] = None, syz: Optional[torch.Tensor] = None,
+                        szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Composes 3d affine matrix from the components.
+
+    Args:
+        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 3)`.
+        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 3)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
+        sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
+        syx (torch.Tensor, optional): tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
+        syz (torch.Tensor, optional): tensor containing the shear factor in the yz-direction with shape :math:`(B)`.
+        szx (torch.Tensor, optional): tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
+        szy (torch.Tensor, optional): tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
+
+    Returns:
+        torch.Tensor: the 3d affine transformation matrix :math:`(B, 4, 4)`.
+    """
+    transform: torch.Tensor = get_projective_transform(center, -angles, scale)
+    transform[..., 3] += translations  # tx/ty/tz
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography3d(transform)
+    if any([s is not None for s in [sxy, sxz, syx, syz, szx, szy]]):
+        shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
+        transform_h = transform_h @ shear_mat
+    return transform_h
+
+
+def get_shear_matrix3d(
+    center: torch.Tensor,
+    sxy: Optional[torch.Tensor] = None, sxz: Optional[torch.Tensor] = None,
+    syx: Optional[torch.Tensor] = None, syz: Optional[torch.Tensor] = None,
+    szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None,
+):
+    r"""Composes shear matrix Bx4x4 from the components.
+    Note: Ordered shearing, shear x-axis then y-axis then z-axis.
+
+    .. math::
+        \begin{bmatrix}
+            1 & o & r & oy + rz \\
+            m & p & s & mx + py + sz -y \\
+            n & q & t & nx + qy + tz -z \\
+            0 & 0 & 0 & 1  \\
+        \end{bmatrix}
+        Where:
+        m = S_{xy}
+        n = S_{xz}
+        o = S_{yx}
+        p = S_{xy}S_{yx} + 1
+        q = S_{xz}S_{yx} + S_{yz}
+        r = S_{zx} + S_{yx}S_{zy}
+        s = S_{xy}S_{zx} + (S_{xy}S_{yx} + 1)S_{zy}
+        t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
+
+    Params:
+        center (torch.Tensor): shearing center coordinates of (x, y, z).
+        sxy (torch.Tensor, optional): shearing degree along x axis, towards y plane.
+        sxz (torch.Tensor, optional): shearing degree along x axis, towards z plane.
+        syx (torch.Tensor, optional): shearing degree along y axis, towards x plane.
+        syz (torch.Tensor, optional): shearing degree along y axis, towards z plane.
+        szx (torch.Tensor, optional): shearing degree along z axis, towards x plane.
+        szy (torch.Tensor, optional): shearing degree along z axis, towards y plane.
+
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sxy, sxz, syx, syz = torch.randn(4, 1)
+        >>> sxy, sxz, syx, syz
+        (tensor([1.5410]), tensor([-0.2934]), tensor([-2.1788]), tensor([0.5684]))
+        >>> center = torch.tensor([[0., 0., 0.]])  # Bx3
+        >>> get_shear_matrix3d(center, sxy=sxy, sxz=sxz, syx=syx, syz=syz)
+        tensor([[[  1.0000,  -1.4369,   0.0000,   0.0000],
+                 [-33.5468,  49.2039,   0.0000,   0.0000],
+                 [  0.3022,  -1.0729,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   0.0000,   1.0000]]])
+    """
+    sxy = torch.tensor([0.]).repeat(center.size(0)) if sxy is None else sxy
+    sxz = torch.tensor([0.]).repeat(center.size(0)) if sxz is None else sxz
+    syx = torch.tensor([0.]).repeat(center.size(0)) if syx is None else syx
+    syz = torch.tensor([0.]).repeat(center.size(0)) if syz is None else syz
+    szx = torch.tensor([0.]).repeat(center.size(0)) if szx is None else szx
+    szy = torch.tensor([0.]).repeat(center.size(0)) if szy is None else szy
+
+    x, y, z = torch.split(center, 1, dim=-1)
+    x, y, z = x.view(-1), y.view(-1), z.view(-1)
+    # Prepare parameters
+    sxy_tan = torch.tan(sxy)  # type: ignore
+    sxz_tan = torch.tan(sxz)  # type: ignore
+    syx_tan = torch.tan(syx)  # type: ignore
+    syz_tan = torch.tan(syz)  # type: ignore
+    szx_tan = torch.tan(szx)  # type: ignore
+    szy_tan = torch.tan(szy)  # type: ignore
+
+    # compute translation matrix
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
+        sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
+
+    m03 = m01 * y + m02 * z
+    m13 = m10 * x + m11 * y + m12 * z - y
+    m23 = m20 * x + m21 * y + m22 * z - z
+
+    # shear matrix is implemented with negative values
+    sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan = \
+        - sxy_tan, - sxz_tan, - syx_tan, - syz_tan, - szx_tan, - szy_tan
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
+        sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
+
+    shear_mat = torch.stack([
+        m00, m01, m02, m03,
+        m10, m11, m12, m13,
+        m20, m21, m22, m23
+    ], dim=-1).view(-1, 3, 4)
+    shear_mat = convert_affinematrix_to_homography3d(shear_mat)
+    return shear_mat
+
+
+def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+    zeros = torch.zeros_like(sxy_tan)  # type: ignore
+    ones = torch.ones_like(sxy_tan)  # type: ignore
+
+    m00, m10, m20 = ones, sxy_tan, sxz_tan
+    m01, m11, m21 = syx_tan, sxy_tan * syx_tan + ones, sxz_tan * syx_tan + syz_tan
+    m02 = syx_tan * szy_tan + szx_tan
+    m12 = sxy_tan * szx_tan + szy_tan * m11
+    m22 = sxz_tan * szx_tan + szy_tan * m21 + ones
+    return m00, m10, m20, m01, m11, m21, m02, m12, m22

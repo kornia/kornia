@@ -253,3 +253,42 @@ class TestHomographyWarper:
                 normalized_coordinates=normalized_coordinates)
 
             assert_allclose(patch_dst, patch_dst_jit)
+
+
+class TestHomographyNormalTransform:
+
+    def test_transform2d(self):
+        height, width = 2, 5
+        output = kornia.normal_transform_pixel(height, width)
+        expected = torch.tensor([[
+            [0.5, 0.0, -1.],
+            [0.0, 2.0, -1.],
+            [0.0, 0.0, 1.]]])
+        assert_allclose(output, expected)
+
+    def test_transform2d_apply(self):
+        height, width = 2, 5
+        input = torch.tensor([[0., 0.], [width - 1, height - 1]])
+        expected = torch.tensor([[-1., -1.], [1., 1.]])
+        transform = kornia.normal_transform_pixel(height, width)
+        output = kornia.transform_points(transform, input)
+        assert_allclose(output, expected)
+
+    def test_transform3d(self):
+        height, width, depth = 2, 6, 4
+        output = kornia.normal_transform_pixel3d(depth, height, width)
+        expected = torch.tensor([[
+            [0.4, 0.0, 0.0, -1.],
+            [0.0, 2.0, 0.0, -1.],
+            [0.0, 0.0, 0.6667, -1.],
+            [0.0, 0.0, 0.0, 1.],
+        ]])
+        assert_allclose(output, expected)
+
+    def test_transform3d_apply(self):
+        depth, height, width = 3, 2, 5
+        input = torch.tensor([[0., 0., 0.], [width - 1, height - 1, depth - 1]])
+        expected = torch.tensor([[-1., -1., -1.], [1., 1., 1.]])
+        transform = kornia.normal_transform_pixel3d(depth, height, width)
+        output = kornia.transform_points(transform, input)
+        assert_allclose(output, expected)

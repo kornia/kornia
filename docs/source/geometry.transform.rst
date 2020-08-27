@@ -1,5 +1,5 @@
 kornia.geometry.transform
-================================
+=========================
 
 .. currentmodule:: kornia.geometry.transform
 
@@ -11,11 +11,13 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: get_perspective_transform
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
+.. autofunction:: get_shear_matrix2d
+.. autofunction:: get_shear_matrix3d
+.. autofunction:: get_affine_matrix2d
+.. autofunction:: get_affine_matrix3d
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
-.. autofunction:: matrix_to_homogeneous
 .. autofunction:: projection_from_Rt
-.. autofunction:: normal_transform3d_pixel
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
 .. autofunction:: pyrdown
@@ -43,4 +45,3 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
-

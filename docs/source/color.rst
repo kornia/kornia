@@ -3,10 +3,7 @@ kornia.color
 
 .. currentmodule:: kornia.color
 
-The functions in this section perform various color space conversions and intensity transformations.
-
-Color Space Conversions
------------------------
+The functions in this section perform various color space conversions.
 
 .. autofunction:: rgb_to_bgr
 .. autofunction:: rgb_to_grayscale
@@ -37,25 +34,6 @@ Color Space Conversions
 .. autofunction:: xyz_to_rgb
 
 
-Intensity Transformations
--------------------------
-
-.. autofunction:: adjust_brightness
-.. autofunction:: adjust_contrast
-.. autofunction:: adjust_gamma
-.. autofunction:: adjust_hue
-.. autofunction:: adjust_saturation
-.. autofunction:: add_weighted
-
-.. autofunction:: normalize
-.. autofunction:: denormalize
-.. autofunction:: zca_mean
-.. autofunction:: zca_whiten
-.. autofunction:: linear_transform
-
-.. autofunction:: histogram
-.. autofunction:: histogram2d
-
 Modules
 -------
 
@@ -79,15 +57,3 @@ Modules
 .. autoclass:: LuvToRgb
 .. autoclass:: YcbcrToRgb
 .. autoclass:: RgbToYcbcr
-
-.. autoclass:: Normalize
-.. autoclass:: Denormalize
-.. autoclass:: ZCAWhitening
-    :members:
-
-.. autoclass:: AdjustBrightness
-.. autoclass:: AdjustContrast
-.. autoclass:: AdjustSaturation
-.. autoclass:: AdjustHue
-.. autoclass:: AdjustGamma
-.. autoclass:: AddWeighted
