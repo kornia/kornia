@@ -7,15 +7,13 @@ import torch
 from kornia.constants import Resample, BorderType
 from .utils import (
     _adapted_uniform,
-    _check_and_bound,
     _tuple_range_reader,
 )
 
 
 def random_rotation_generator3d(
     batch_size: int,
-    degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
-                   Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
+    degrees: torch.Tensor,
     interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
@@ -24,13 +22,7 @@ def random_rotation_generator3d(
 
     Args:
         batch_size (int): the tensor batch size.
-        degrees (float or tuple or list): Range of degrees to select from.
-            If degrees is a number, then yaw, pitch, roll will be generated from the range of (-degrees, +degrees).
-            If degrees is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
-            If degrees is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
-            and (-c, c).
-            If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
-            (a, b), (m, n) and (x, y).
+        degrees (torch.Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
         interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners (bool): interpolation flag. Default: False.
@@ -38,11 +30,10 @@ def random_rotation_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    _degrees = _tuple_range_reader(degrees, 3)
-
-    yaw = _adapted_uniform((batch_size,), _degrees[0][0], _degrees[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size,), _degrees[1][0], _degrees[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size,), _degrees[2][0], _degrees[2][1], same_on_batch)
+    assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
+    yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
 
     return dict(yaw=yaw,
                 pitch=pitch,
@@ -56,32 +47,25 @@ def random_affine_generator3d(
     depth: int,
     height: int,
     width: int,
-    degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
-                   Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-    translate: Optional[Tuple[float, float, float]] = None,
-    scale: Optional[Tuple[float, float]] = None,
-    shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
-                  Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
-                        Tuple[float, float], Tuple[float, float]]] = None,
+    degrees: torch.Tensor,
+    translate: Optional[torch.Tensor] = None,
+    scale: Optional[torch.Tensor] = None,
+    shears: Optional[torch.Tensor] = None,
     resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
     align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Get parameters for ``affine`` for a random affine transform.
+    r"""Get parameters for ```3d affine``` transformation random affine transform.
 
     Args:
         batch_size (int): the tensor batch size.
         depth (int) : height of the image.
         height (int) : height of the image.
         width (int): width of the image.
-        degrees (float or tuple): Range of degrees to select from.
-            If degrees is a number instead of sequence like (min, max), the range of degrees
-            will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
-            and vertical translations. For example translate=(a, b), then horizontal shift
-            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+        degrees (torch.Tensor): Ranges of degrees with shape (3, 2) for yaw, pitch and roll.
+        translate (torch.Tensor, optional):  maximum absolute fraction with shape (3,) for horizontal, vertical
+            and depthical translations. Will not translate by default.
+        scale (torch.Tensor, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
             If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be apllied.
@@ -98,68 +82,24 @@ def random_affine_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    degrees_tmp = _tuple_range_reader(degrees, 3)
-    shears_tmp: Optional[torch.Tensor]
-    if shears is not None:
-        shears_tmp = _tuple_range_reader(shears, 6)
-    else:
-        shears_tmp = None
-
-    # check translation range
-    if translate is not None:
-        assert isinstance(translate, (tuple, list)) and len(translate) == 3, \
-            "translate should be a list or tuple and it must be of length 3."
-        for t in translate:
-            if not (0.0 <= t <= 1.0):
-                raise ValueError("translation values should be between 0 and 1")
-
-    # check scale range
-    if scale is not None:
-        assert isinstance(scale, (tuple, list)) and len(scale) == 2, \
-            "scale should be a list or tuple and it must be of length 2."
-        for s in scale:
-            if s <= 0:
-                raise ValueError("scale values should be positive")
-
-    return _get_random_affine_params(
-        batch_size, depth, height, width, degrees_tmp, translate, scale, shears_tmp,
-        resample, same_on_batch, align_corners)
-
-
-def _get_random_affine_params(
-    batch_size: int,
-    depth: int,
-    height: int,
-    width: int,
-    degrees: torch.Tensor,
-    translate: Optional[Tuple[float, float, float]],
-    scales: Optional[Tuple[float, float]],
-    shears: Optional[torch.Tensor] = None,
-    resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-    same_on_batch: bool = False,
-    align_corners: bool = False
-) -> Dict[str, torch.Tensor]:
-    r"""Get parameters for ```3d affine``` transformation random affine transform.
-    The returned matrix is Bx4x4.
-
-    Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-    """
+    assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
     pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
     roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
     angles = torch.cat([yaw, pitch, roll], dim=-1).view((batch_size, -1))
 
     # compute tensor ranges
-    if scales is not None:
-        scale = _adapted_uniform((batch_size,), scales[0], scales[1], same_on_batch)
+    if scale is not None:
+        assert scale.shape == torch.Size([2]), f"'scale' must be the shape of (2). Got {scale.shape}."  # type: ignore
+        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch)
     else:
         scale = torch.ones(batch_size)
 
     if translate is not None:
-        max_dx: float = translate[0] * depth
-        max_dy: float = translate[1] * width
-        max_dz: float = translate[2] * height
+        assert translate.shape == torch.Size([3]), f"'translate' must be the shape of (2). Got {translate.shape}."
+        max_dx: torch.Tensor = translate[0] * depth
+        max_dy: torch.Tensor = translate[1] * width
+        max_dz: torch.Tensor = translate[2] * height
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),
@@ -173,6 +113,7 @@ def _get_random_affine_params(
     center = center.expand(batch_size, -1)
 
     if shears is not None:
+        assert shears.shape == torch.Size([6, 2]), f"'shears' must be the shape of (6, 2). Got {shears.shape}."
         sxy = _adapted_uniform((batch_size,), shears[0, 0], shears[0, 1], same_on_batch)
         sxz = _adapted_uniform((batch_size,), shears[1, 0], shears[1, 1], same_on_batch)
         syx = _adapted_uniform((batch_size,), shears[2, 0], shears[2, 1], same_on_batch)
