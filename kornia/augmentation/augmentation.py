@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.constants import Resample, BorderType
+from kornia.constants import Resample, BorderType, SamplePadding
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -412,6 +412,7 @@ class RandomAffine(AugmentationBase):
             x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in (shear[1][0], shear[1][1]) will be applied.
             Will not apply shear by default
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
@@ -435,7 +436,8 @@ class RandomAffine(AugmentationBase):
         scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
         shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
     ) -> None:
         super(RandomAffine, self).__init__(return_transform)
         degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
@@ -455,6 +457,7 @@ class RandomAffine(AugmentationBase):
                 _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
             ])
         self.resample: Resample = Resample.get(resample)
+        self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
@@ -466,7 +469,7 @@ class RandomAffine(AugmentationBase):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.degrees, self.translate, self.scale, self.shear,
-            self.resample, self.same_on_batch, self.align_corners)
+            self.resample, self.same_on_batch, self.align_corners, self.padding_mode)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation(input, params)
