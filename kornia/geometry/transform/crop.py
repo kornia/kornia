@@ -10,6 +10,8 @@ __all__ = [
     "crop_and_resize",
     "crop_by_boxes",
     "center_crop",
+    "bbox_to_mask",
+    "infer_box_shape"
 ]
 
 
@@ -181,9 +183,11 @@ def crop_by_boxes(tensor, src_box, dst_box,
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = _infer_bounding_box(dst_box)
+    bbox = infer_box_shape(dst_box)
+    assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1, "cropping height and width" \
+        f" must be exact same in a batch. Got height {bbox[0].unique()} and width {bbox[1].unique()}"
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())),
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[0].unique().item())),
         flags=interpolation, align_corners=align_corners)
 
     # return in the original shape
@@ -193,7 +197,7 @@ def crop_by_boxes(tensor, src_box, dst_box,
     return patches
 
 
-def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes.
 
     Args:
@@ -208,17 +212,22 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
 
     Example:
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
-        >>> _infer_bounding_box(boxes)
-        (2, 2)
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ], [
+        ...     [1., 1.],
+        ...     [3., 1.],
+        ...     [3., 2.],
+        ...     [1., 2.],
+        ... ]])  # 2x4x2
+        >>> infer_box_shape(boxes)
+        (tensor([2., 2.]), tensor([2., 3.]))
     """
     validate_bboxes(boxes)
-    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)[0]
-    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)[0]
+    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)
+    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)
     return (height, width)
 
 
@@ -229,10 +238,6 @@ def validate_bboxes(boxes: torch.Tensor) -> None:
     assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
         "Boxes must have be square, while get heights %s and %s" % \
         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
-    assert len((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique()) == 1, \
-        "Boxes can only have one widths, got %s" % str((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique())
-    assert len((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
-        "Boxes can only have one heights, got %s" % str((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique())
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
@@ -246,16 +251,17 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         ...        [1., 2.],
         ...   ]])  # 1x4x2
         >>> bbox_to_mask(boxes, 5, 5)
-        tensor([[0., 0., 0., 0., 0.],
-                [0., 1., 1., 1., 0.],
-                [0., 1., 1., 1., 0.],
-                [0., 0., 0., 0., 0.],
-                [0., 0., 0., 0., 0.]])
+        tensor([[[0., 0., 0., 0., 0.],
+                 [0., 1., 1., 1., 0.],
+                 [0., 1., 1., 1., 0.],
+                 [0., 0., 0., 0., 0.],
+                 [0., 0., 0., 0., 0.]]])
     """
     validate_bboxes(boxes)
     mask = torch.zeros((len(boxes), height, width))
 
     mask_out = []
+    # TODO: Looking for a vectorized way
     for m, box in zip(mask, boxes):
         m = m.index_fill(1, torch.arange(box[0, 0], box[1, 0] + 1, dtype=torch.long), torch.tensor(1))
         m = m.index_fill(0, torch.arange(box[1, 1], box[2, 1] + 1, dtype=torch.long), torch.tensor(1))
@@ -263,4 +269,4 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
         mask_out.append(m_out)
 
-    return torch.cat(mask_out, dim=0).float()
+    return torch.stack(mask_out, dim=0).float()

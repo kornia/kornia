@@ -23,7 +23,8 @@ from .augmentation3d import (
     RandomDepthicalFlip3D
 )
 from .mix_augmentation import (
-    RandomMixUp
+    RandomMixUp,
+    RandomCutMix
 )
 from kornia.color.normalize import (
     Normalize,
@@ -54,4 +55,5 @@ __all__ = [
     "RandomEqualize",
     "RandomMotionBlur",
     "RandomMixUp",
+    "RandomCutMix",
 ]

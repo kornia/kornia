@@ -188,3 +188,7 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
             f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
 
     return factor_bound
+
+
+def _shape_validation(param: torch.Tensor, shape: tuple, name: str) -> None:
+    assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"

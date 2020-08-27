@@ -137,6 +137,8 @@ Example for semantic segmentation using low-level randomness control:
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomEqualize
+.. autoclass:: RandomMixUp
+.. autoclass:: RandomCutMix
 
 Functional
 ----------

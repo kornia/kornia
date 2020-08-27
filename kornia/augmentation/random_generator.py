@@ -723,7 +723,8 @@ def random_sharpness_generator(
 def random_mixup_generator(
     batch_size: int,
     p: float = 0.5,
-    max_lambda: Optional[torch.Tensor] = None
+    max_lambda: Optional[torch.Tensor] = None,
+    same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generator mixup indexes and lambdas for a batch of inputs.
     Args:
@@ -731,6 +732,7 @@ def random_mixup_generator(
         p (flot): probability of applying mixup.
         max_lambda (torch.Tensor, optional): max strength for mixup images, ranged from (0., 1.).
             If None, it will be set to 1, which means no restrictions.
+        same_on_batch (bool): if to use exact params across the batch
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
 
@@ -743,7 +745,7 @@ def random_mixup_generator(
         max_lambda = torch.tensor(1.)
     batch_probs: torch.Tensor = random_prob_generator(batch_size, p)['batch_prob']
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
-    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, max_lambda, same_on_batch=False)
+    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size,), 0, max_lambda, same_on_batch=same_on_batch)
     mixup_lambdas = mixup_lambdas * batch_probs.float()
 
     return dict(
@@ -775,37 +777,36 @@ def random_cutmix_generator(
         >>> rng = torch.manual_seed(0)
         >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
-                [1, 2, 0]]), 'crop_src': tensor([[[[ 99,  71],
-                  [410,  71],
-                  [410, 382],
-                  [ 99, 382]],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 37,  26],
+                  [210,  26],
+                  [210, 199],
+                  [ 37, 199]],
         <BLANKLINE>
-                 [[117, 103],
-                  [397, 103],
-                  [397, 383],
-                  [117, 383]],
+                 [[  0,   0],
+                  [223,   0],
+                  [223, 223],
+                  [  0, 223]],
         <BLANKLINE>
-                 [[ 39, 158],
-                  [291, 158],
-                  [291, 410],
-                  [ 39, 410]]],
+                 [[  3,  13],
+                  [210,  13],
+                  [210, 220],
+                  [  3, 220]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 27,  41],
-                  [433,  41],
-                  [433, 447],
-                  [ 27, 447]],
+                [[[ 84, 127],
+                  [178, 127],
+                  [178, 221],
+                  [ 84, 221]],
         <BLANKLINE>
-                 [[ 81,  12],
-                  [424,  12],
-                  [424, 355],
-                  [ 81, 355]],
+                 [[ 56,   8],
+                  [207,   8],
+                  [207, 159],
+                  [ 56, 159]],
         <BLANKLINE>
-                 [[ 73,  53],
-                  [353,  53],
-                  [353, 333],
-                  [ 73, 333]]]]), 'cutmix_betas': tensor([[0.3952, 0.0000, 0.1333],
-                [0.8196, 0.5374, 0.0000]])}
+                 [[  0,   0],
+                  [223,   0],
+                  [223, 223],
+                  [  0, 223]]]])}
 
     """
     if beta is None:
@@ -813,39 +814,33 @@ def random_cutmix_generator(
     batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
+    cutmix_rate = torch.sqrt(1. - cutmix_betas * batch_probs)
 
-    cut_height = (cutmix_betas * height).long()
-    cut_width = (cutmix_betas * width).long()
+    cut_height = (cutmix_rate * height).long()
+    cut_width = (cutmix_rate * width).long()
 
-    x_start = _adapted_uniform((1,), torch.zeros_like(cutmix_betas), height - cut_height + 1, same_on_batch).long()
-    y_start = _adapted_uniform((1,), torch.zeros_like(cutmix_betas), width - cut_width + 1, same_on_batch).long()
+    x_start = _adapted_uniform((1,), torch.zeros_like(cutmix_rate), height - cut_height + 1, same_on_batch).long()
+    y_start = _adapted_uniform((1,), torch.zeros_like(cutmix_rate), width - cut_width + 1, same_on_batch).long()
 
     bbox = torch.tensor([[
         [0, 0],
-        [width - 1, 0],
-        [width - 1, height - 1],
-        [0, height - 1],
+        [0, 0],
+        [0, 0],
+        [0, 0],
     ]]).repeat(batch_size * num_mix, 1, 1)
 
     crop_src = bbox.clone()
     crop_src[:, :, 0] += x_start.view(-1, 1)
     crop_src[:, :, 1] += y_start.view(-1, 1)
-    crop_src[:, 1, 0] += cut_width
-    crop_src[:, 2, 0] += cut_width
-    crop_src[:, 2, 1] += cut_height
-    crop_src[:, 3, 1] += cut_height
+    crop_src[:, 1, 0] += cut_width - 1
+    crop_src[:, 2, 0] += cut_width - 1
+    crop_src[:, 2, 1] += cut_height - 1
+    crop_src[:, 3, 1] += cut_height - 1
 
     # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
     crop_src = crop_src.view(num_mix, batch_size, 4, 2)
-    # (B * num_mix) => (num_mix, B)
-    cutmix_betas = (cutmix_betas * batch_probs.float()).view(num_mix, batch_size)
-    # (B * num_mix * 2) => (num_mix, B, 2)
-    start_points = torch.stack([x_start.view(num_mix, batch_size), y_start.view(num_mix, batch_size)], dim=-1)
 
     return dict(
         mix_pairs=mix_pairs,
-        crop_src=crop_src,
-        cutmix_betas=cutmix_betas,
-        width=width,
-        height=height
+        crop_src=crop_src
     )
