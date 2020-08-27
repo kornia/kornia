@@ -72,7 +72,8 @@ class RandomMixUp(MixAugmentation):
     Args:
         p (float): probability for performing mixup. Default is 0.5.
         max_lambda (float or torch.Tensor, optional): max value of mixup strength. Default is 1.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        same_on_batch (bool): apply the same transformation across the batch.
+            This flag will not maintain permutation order. Default: False.
 
     Inputs:
         Tuple[torch.Tensor, torch.Tensor]:
@@ -156,7 +157,8 @@ class RandomCutMix(MixAugmentation):
         num_mix (int): cut mix times. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for beta distribution. It controls the cut size.
             If None, it will be set to 1.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        same_on_batch (bool): apply the same transformation across the batch.
+            This flag will not maintain permutation order. Default: False.
 
     Inputs:
         Tuple[torch.Tensor, torch.Tensor]:
@@ -186,7 +188,7 @@ class RandomCutMix(MixAugmentation):
                 [[[0.1332, 0.9346, 0.5936],
                   [0.8694, 0.5677, 0.7411],
                   [0.4294, 0.8854, 0.5739]]]]), tensor([[[0.0000, 0.0000, 0.4444],
-                 [1.0000, 1.0000, 1.0000]]]))
+                 [1.0000, 1.0000, 0.0000]]]))
     """
     def __init__(self, height: int, width: int, p: float = 0.5, num_mix: int = 1,
                  beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False) -> None:

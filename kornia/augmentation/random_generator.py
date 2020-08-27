@@ -665,36 +665,36 @@ def random_cutmix_generator(
         >>> rng = torch.manual_seed(0)
         >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
-                [1, 2, 0]]), 'crop_src': tensor([[[[ 37,  26],
-                  [210,  26],
-                  [210, 199],
-                  [ 37, 199]],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
+                  [209,  25],
+                  [209, 198],
+                  [ 36, 198]],
         <BLANKLINE>
-                 [[  0,   0],
-                  [223,   0],
-                  [223, 223],
-                  [  0, 223]],
+                 [[157, 137],
+                  [156, 137],
+                  [156, 136],
+                  [157, 136]],
         <BLANKLINE>
-                 [[  3,  13],
-                  [210,  13],
-                  [210, 220],
-                  [  3, 220]]],
+                 [[  3,  12],
+                  [210,  12],
+                  [210, 219],
+                  [  3, 219]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 84, 127],
-                  [178, 127],
-                  [178, 221],
-                  [ 84, 221]],
+                [[[ 83, 126],
+                  [177, 126],
+                  [177, 220],
+                  [ 83, 220]],
         <BLANKLINE>
-                 [[ 56,   8],
-                  [207,   8],
-                  [207, 159],
-                  [ 56, 159]],
+                 [[ 55,   8],
+                  [206,   8],
+                  [206, 159],
+                  [ 55, 159]],
         <BLANKLINE>
-                 [[  0,   0],
-                  [223,   0],
-                  [223, 223],
-                  [  0, 223]]]])}
+                 [[ 97,  70],
+                  [ 96,  70],
+                  [ 96,  69],
+                  [ 97,  69]]]])}
 
     """
     if beta is None:
@@ -702,13 +702,21 @@ def random_cutmix_generator(
     batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
-    cutmix_rate = torch.sqrt(1. - cutmix_betas * batch_probs)
+    cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
     cut_height = (cutmix_rate * height).long()
     cut_width = (cutmix_rate * width).long()
+    _gen_shape = (1,)
 
-    x_start = _adapted_uniform((1,), torch.zeros_like(cutmix_rate), height - cut_height + 1, same_on_batch).long()
-    y_start = _adapted_uniform((1,), torch.zeros_like(cutmix_rate), width - cut_width + 1, same_on_batch).long()
+    if same_on_batch:
+        _gen_shape = (cut_height.size(0),)
+        cut_height = cut_height[0]
+        cut_width = cut_width[0]
+
+    x_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height, same_on_batch).long()
+    y_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width, same_on_batch).long()
 
     bbox = torch.tensor([[
         [0, 0],
