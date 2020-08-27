@@ -3,7 +3,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 import torch.nn as nn
 
-from kornia.constants import Resample, BorderType, pi
+from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (
     get_perspective_transform,
     get_rotation_matrix2d,
@@ -489,6 +489,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
             - params['sx']: Shear param toward x-axis.
             - params['sy']: Shear param toward y-axis.
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['padding_mode']: Integer tensor, see SamplePadding enum.
             - params['align_corners']: Boolean tensor.
 
     Returns:
@@ -510,11 +511,13 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
     transform: torch.Tensor = compute_affine_transformation(input, params)
 
     resample_name: str = Resample(params['resample'].item()).name.lower()
+    padding_mode: str = SamplePadding(params['padding_mode'].item()).name.lower()
     align_corners: bool = cast(bool, params['align_corners'].item())
 
     out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],
                                          (height, width), resample_name,
-                                         align_corners=align_corners)
+                                         align_corners=align_corners,
+                                         padding_mode=padding_mode)
     return out_data.view_as(input)
 
 
