@@ -10,10 +10,6 @@ from torch.nn.modules.utils import _pair
 class ExtractTensorPatches(nn.Module):
     r"""Module that extract patches from tensors and stack them.
 
-    Applies a 2D convolution over an input tensor to extract patches and stack
-    them in the depth axis of the output tensor. The function applies a
-    Depthwise Convolution by applying the same kernel for all the input planes.
-
     In the simplest case, the output value of the operator with input size
     :math:`(B, C, H, W)` is :math:`(B, N, C, H_{out}, W_{out})`.
 
@@ -42,10 +38,10 @@ class ExtractTensorPatches(nn.Module):
           the height dimension, and the second `int` for the width dimension.
 
     Arguments:
-        window_size (Union[int, Tuple[int, int]]): the size of the convolving
-          kernel and the output patch size.
+        window_size (Union[int, Tuple[int, int]]): the size of the sliding
+          window and the output patch size.
         stride (Optional[Union[int, Tuple[int, int]]]): stride of the
-          convolution. Default is 1.
+          sliding window. Default is 1.
         padding (Optional[Union[int, Tuple[int, int]]]): Zero-padding added to
           both side of the input. Default is 0.
 
@@ -78,59 +74,44 @@ class ExtractTensorPatches(nn.Module):
         self.stride: Tuple[int, int] = _pair(stride)
         self.padding: Tuple[int, int] = _pair(padding)
 
-        # create base kernel
-        self.kernel: torch.Tensor = self.create_kernel(self.window_size)
-
-    @staticmethod
-    def create_kernel(
-            window_size: Tuple[int, int]) -> torch.Tensor:
-        r"""Creates a binary kernel to extract the patches. If the window size
-        is HxW will create a (H*W)xHxW kernel.
-        """
-        window_range: int = window_size[0] * window_size[1]
-        kernel: torch.Tensor = torch.zeros(window_range, window_range)
-        for i in range(window_range):
-            kernel[i, i] += 1.0
-        return kernel.view(window_range, 1, window_size[0], window_size[1])
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        if not torch.is_tensor(input):
-            raise TypeError("Input input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(input.shape))
-        # unpack shapes
-        batch_size, channels, height, width = input.shape
-
-        # run convolution 2d to extract patches
-        kernel: torch.Tensor = self.kernel.repeat(channels, 1, 1, 1)
-        kernel = kernel.to(input.device).to(input.dtype)
-        output_tmp: torch.Tensor = F.conv2d(
-            input,
-            kernel,
-            stride=self.stride,
-            padding=self.padding,
-            groups=channels)
-
-        # reshape the output tensor
-        output: torch.Tensor = output_tmp.view(
-            batch_size, channels, self.window_size[0], self.window_size[1], -1)
-        return output.permute(0, 4, 1, 2, 3)  # BxNxCxhxw
+        return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
 
 
 ######################
 # functional interface
 ######################
 
+def _extract_tensor_patchesnd(
+    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
+) -> torch.Tensor:
+    batch_size, num_channels = input.size()[:2]
+    dims = range(2, input.dim())
+    for dim, patch_size, stride in zip(dims, window_sizes, strides):
+        input = input.unfold(dim, patch_size, stride)
+    input = input.permute(0, *dims, 1, *[dim + len(dims) for dim in dims]).contiguous()
+    return input.view(batch_size, -1, num_channels, *window_sizes)
+
 
 def extract_tensor_patches(
-        input: torch.Tensor,
-        window_size: Union[int, Tuple[int, int]],
-        stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, Tuple[int, int]]] = 0) -> torch.Tensor:
+    input: torch.Tensor,
+    window_size: Union[int, Tuple[int, int]],
+    stride: Union[int, Tuple[int, int]] = 1,
+    padding: Union[int, Tuple[int, int]] = 0
+) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
     """
-    return ExtractTensorPatches(window_size, stride, padding)(input)
+    if not torch.is_tensor(input):
+        raise TypeError("Input input type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+    if not len(input.shape) == 4:
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
+                         .format(input.shape))
+
+    if padding:
+        pad_vert, pad_horz = _pair(padding)
+        input = F.pad(input, [pad_horz, pad_horz, pad_vert, pad_vert])
+
+    return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
