@@ -714,9 +714,9 @@ def random_cutmix_generator(
         cut_width = cut_width[0]
 
     x_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height, same_on_batch).long()
-    y_start = _adapted_uniform(
         _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width, same_on_batch).long()
+    y_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height, same_on_batch).long()
 
     bbox = torch.tensor([[
         [0, 0],
