@@ -18,11 +18,13 @@ __all__ = [
     "translate",
     "shear",
     "resize",
+    "rescale",
     "Scale",
     "Rotate",
     "Translate",
     "Shear",
     "Resize",
+    "Rescale",
     "Affine",
 ]
 
@@ -486,6 +488,52 @@ class Affine(nn.Module):
 
         matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
         return affine(input, matrix[..., :2, :3], align_corners=self.align_corners)
+
+
+def rescale(
+    input: torch.Tensor,
+    factor: Union[float, Tuple[float, float]],
+    interpolation: str = "bilinear",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    r"""Rescale the input torch.Tensor with the given factor.
+
+    See :class:`~kornia.Rescale` for details.
+    """
+    if isinstance(factor, float):
+        factor_vert = factor_horz = factor
+    else:
+        factor_vert, factor_horz = factor
+
+    height, width = input.size()[-2:]
+    size = (int(height * factor_vert), int(width * factor_horz))
+    return resize(input, size, interpolation=interpolation, align_corners=align_corners)
+
+
+class Rescale(nn.Module):
+    r"""Rescale the input torch.Tensor with the given factor.
+
+    Args:
+        factor (float, tuple(float, float)): Desired scaling factor in each direction. If scalar, the value is used
+            for both the x- and y-direction.
+        interpolation (str):  Algorithm used for upsampling. Can be one of ``"nearest"``, ``"linear"``, ``"bilinear"``,
+            ``"bicubic"``, ``"trilinear"``, or ``"area"``. Default: ``"bilinear"``.
+        align_corners(bool): Interpolation flag. Default: False. See :func:`~torch.nn.functional.interpolate` for
+            details.
+
+    Returns:
+        torch.Tensor: The rescaled tensor.
+    """
+    def __init__(
+        self, factor: Union[float, Tuple[float, float]], interpolation: str = "bilinear", align_corners: bool = False
+    ) -> None:
+        super().__init__()
+        self.factor: Union[float, Tuple[float, float]] = factor
+        self.interpolation: str = interpolation
+        self.align_corners: bool = align_corners
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
 
 
 class Rotate(nn.Module):
