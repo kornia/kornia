@@ -17,12 +17,12 @@ from kornia.augmentation import AugmentationBase, RandomHorizontalFlip, RandomVe
 
 class TestAugmentationBase:
 
-    def test_forward(self, device):
+    def test_forward(self, device, dtype):
         torch.manual_seed(42)
-        input = torch.rand((2, 3, 4, 5)).to(device)
-        input_transform = torch.rand((2, 3, 3)).to(device)
-        expected_output = torch.rand((2, 3, 4, 5)).to(device)
-        expected_transform = torch.rand((2, 3, 3)).to(device)
+        input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
+        input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
+        expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
+        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         augmentation = AugmentationBase(return_transform=False)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
@@ -60,6 +60,30 @@ class TestAugmentationBase:
             assert output is expected_output
             assert torch.allclose(expected_final_transformation, transformation)
             assert transformation.shape[0] == input.shape[0]
+
+    def test_gradcheck(self, device, dtype):
+        torch.manual_seed(42)
+
+        input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
+        output = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
+        input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
+        other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
+        output = utils.tensor_to_gradcheck_var(output)  # to var
+        other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
+
+        augmentation = AugmentationBase(return_transform=True)
+
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
+                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
+                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+
+            apply_transform.return_value = output
+            compute_transformation.return_value = other_transform
+
+            assert gradcheck(augmentation, ((input, input_transform)), raise_exception=True)
 
 
 class TestRandomHorizontalFlip:
