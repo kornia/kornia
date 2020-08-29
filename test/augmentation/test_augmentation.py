@@ -229,9 +229,9 @@ class TestRandomHorizontalFlip:
         assert (output == expected_output).all()
         # Transformed indices must not be out of bound
         assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
-                                        result_coordinates[0, 0, :] < input_coordinates.shape[-1])).all()
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
         assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
-                                        result_coordinates[0, 1, :] < input_coordinates.shape[-2])).all()
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
@@ -414,9 +414,9 @@ class TestRandomVerticalFlip:
         assert (output == expected_output).all()
         # Transformed indices must not be out of bound
         assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
-                                        result_coordinates[0, 0, :] < input_coordinates.shape[-1])).all()
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
         assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
-                                        result_coordinates[0, 1, :] < input_coordinates.shape[-2])).all()
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
