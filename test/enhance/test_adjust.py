@@ -639,7 +639,7 @@ class TestEqualize:
         assert_allclose(f(inputs), expected)
 
     def test_equalize_batch(self, device):
-        bs, channels, depth, height, width = 2, 3, 6, 20, 20
+        bs, channels, height, width = 2, 3, 20, 20
 
         inputs = self.build_input(channels, height, width, bs)
         inputs = inputs.to(device)
