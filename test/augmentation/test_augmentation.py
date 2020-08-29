@@ -220,6 +220,9 @@ class TestRandomHorizontalFlip:
 
         output, transform = f(input)
         result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
 
         # Tensors must have the same shapes and values
         assert output.shape == expected_output.shape
@@ -232,8 +235,8 @@ class TestRandomHorizontalFlip:
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
-        assert (output[..., result_coordinates[0, 1, :].long(), result_coordinates[0, 0, :].long()] ==
-                input[..., input_coordinates[0, 1, :].long(), input_coordinates[0, 0, :].long()]).all()
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -402,6 +405,9 @@ class TestRandomVerticalFlip:
 
         output, transform = f(input)
         result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
 
         # Tensors must have the same shapes and values
         assert output.shape == expected_output.shape
@@ -414,8 +420,8 @@ class TestRandomVerticalFlip:
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
-        assert (output[..., result_coordinates[0, 1, :].long(), result_coordinates[0, 0, :].long()] ==
-                input[..., input_coordinates[0, 1, :].long(), input_coordinates[0, 0, :].long()]).all()
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
