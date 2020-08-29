@@ -621,7 +621,7 @@ class TestEqualize:
         assert f(inputs).shape == torch.Size([bs, channels, height, width])
 
     def test_equalize(self, device):
-        bs, channels, depth, height, width = 1, 3, 6, 20, 20
+        bs, channels, height, width = 1, 3, 20, 20
 
         inputs = self.build_input(channels, height, width).squeeze(dim=0)
         inputs = inputs.to(device)
