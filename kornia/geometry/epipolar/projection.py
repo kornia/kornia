@@ -107,7 +107,7 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
     return K @ Rt
 
-def kRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Get the intrinsics, rotation-matrix and the camera-center.
 
     This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.

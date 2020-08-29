@@ -138,12 +138,12 @@ class TestProjectionsFromFundamental:
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(epi.projections_from_fundamental,
                          (F_mat,), raise_exception=True)
-q:
 
-class KRtFromProjection:
+
+class TestKRtFromProjection:
     def test_smoke(self, device, dtype):
         P = torch.randn(1, 3, 4, device=device, dtype=dtype)
-        K, R, t = epi.kRt_from_projection(P)
+        K, R, t = epi.KRt_from_projection(P)
         assert K.shape() == (1, 3, 3)
         assert R.shape() == (1, 3, 3)
         assert t.shape() == (1, 3, 1)
@@ -152,14 +152,40 @@ class KRtFromProjection:
     def test_shape(self, batch_size, device, dtype):
         B: int = batch_size
         P = torch.rand(B, 3, 3, device=device, dtype=dtype)
-        K, R, t = epi.kRt_from_projection(P)
+        K, R, t = epi.KRt_from_projection(P)
         assert K.shape() == (B, 3, 3)
         assert R.shape() == (B, 3, 3)
         assert t.shape() == (B, 3, 1)
 
     def test_simple(self, device, dtype):
-        pass
+        P = torch.Tensor([[
+            [232., 71., 267., 352.]
+            [280., 150., 140., 198.]
+            [158., 468., 237., 371.]
+        ]], device=device, dtype=dtype)
 
-    def test_simple(self, device, dtype):
-        pass
+        K_expected = torch.Tensor([[
+            [154.8365, 217.0313, 243.0576],
+            [0.0, 218.8586, 269.4455],
+            [0.0, 0.0, 547.8659]
+        ]], device=device, dtype=dtype)
 
+        R_expected = torch.Tensor([[
+            [-0.2499, -0.3690, 0.8952],
+            [0.9243, -0.3663, 0.1071],
+            [0.2884, 0.8542, 0.4326]
+        ]], device=device, dtype=dtype)
+
+        t_expected = torch.tensor([
+            [[0.0167], [-0.1426], [-1.2950]],
+        ], device=device, dtype=dtype)
+
+        K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
+        assert_allclose(K_estimated, K_expected)
+        assert_allclose(R_estimated, R_expected)
+        assert_allclose(t_estimated, t_expected)
+
+    def test_gradcheck(self, device):
+        P_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(epi.KRt_from_projection,
+                         (P_mat,), raise_exception=True)
