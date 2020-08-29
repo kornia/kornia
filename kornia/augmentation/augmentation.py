@@ -58,7 +58,7 @@ class AugmentationBase(nn.Module):
             output = self.apply_transform(input[0], self._params)
             transformation_matrix = self.compute_transformation(input[0], self._params)
             if return_transform:
-                return output, input[1] @ transformation_matrix
+                return output, transformation_matrix @ input[1]
             else:
                 return output, input[1]
 
