@@ -111,8 +111,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     # create rotation matrix
     angle_axis_rad: torch.Tensor = K.deg2rad(angles)
     rmat: torch.Tensor = K.angle_axis_to_rotation_matrix(angle_axis_rad)  # Bx3x3
-    scaling_matrix: torch.Tensor = torch.zeros((3, 3)).fill_diagonal_(1).repeat(rmat.size(0), 1, 1)
-    scaling_matrix = scaling_matrix * scales.unsqueeze(dim=2).repeat(1, 1, 3)
+    scaling_matrix: torch.Tensor = K.eye_like(3, rmat)
+    scaling_matrix = scaling_matrix * scales.unsqueeze(dim=1)
     rmat = rmat @ scaling_matrix.to(rmat)
 
     # define matrix to move forth and back to origin
