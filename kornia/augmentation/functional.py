@@ -252,7 +252,7 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
+            - params['batch_prob']: A boolean tensor indicating whether to transform an image in a batch.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
@@ -262,7 +262,7 @@ def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     to_flip = params['batch_prob'].to(input.device)
     trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w],
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
                                            [0, 1, 0],
                                            [0, 0, 1]])
     trans_mat[to_flip] = flip_mat.type_as(input)
@@ -300,7 +300,7 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
+            - params['batch_prob']: A boolean tensor indicating whether to transform an image in a batch.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
@@ -312,7 +312,7 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                           [0, -1, h],
+                                           [0, -1, h - 1],
                                            [0, 0, 1]])
 
     trans_mat[to_flip] = flip_mat.type_as(input)
