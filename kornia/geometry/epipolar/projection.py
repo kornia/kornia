@@ -107,19 +107,18 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
 
     return K @ Rt
 
+
 def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Get the intrinsics, rotation-matrix and the camera-center.
-
-    This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
-
+    r"""This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
         P (torch.Tensor): the projection matrix with shape :math:`(B, 3, 4)`.
 
     Returns:
-        torch.Tensor: The Camera matrix with shape :math:`(B, 3, 3)`.
-        torch.Tensor: The Rotation matrix with shape :math:`(B, 3, 3)`.
-        torch.Tensor: the Translation vector with shape :math:`(B, 3)`.
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        - The Camera matrix with shape :math:`(B, 3, 3)`.
+        - The Rotation matrix with shape :math:`(B, 3, 3)`.
+        - The Translation vector with shape :math:`(B, 3)`.
 
     """
 
@@ -130,7 +129,7 @@ def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     t = torch.matmul(-torch.inverse(submat_3x3), last_column).squeeze(-1)
 
     # Trick to turn QR-decomposition into RQ-decomposition
-    reverse = torch.Tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]]).unsqueeze(0)
+    reverse = torch.Tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
     submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
     ortho_mat, upper_mat = torch.qr(submat_3x3)
     ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
