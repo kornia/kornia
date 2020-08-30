@@ -28,7 +28,7 @@ It consists of a set of routines and differentiable modules to solve generic com
 
 .. image:: https://github.com/kornia/kornia/raw/master/docs/source/_static/img/hakuna_matata.gif
 
-.. image:: http://drive.google.com/uc?export=view&id=1BfElMzSsj5WtdBeWLLWGr8TxEqxE6-Cl
+.. image:: http://drive.google.com/uc?export=view&id=1KNwaanUdY1MynF0EYfyXjDM3ti09tzaq
 
 Overview
 ========

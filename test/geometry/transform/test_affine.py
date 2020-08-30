@@ -51,6 +51,33 @@ class TestResize:
         assert gradcheck(kornia.Resize(new_size), (input, ), raise_exception=True)
 
 
+class TestRescale:
+    def test_smoke(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (1.0, 1.0))
+        assert_allclose(input, output)
+
+    def test_upsize(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (3.0, 2.0))
+        assert output.shape == (1, 3, 9, 8)
+
+    def test_downsize(self, device):
+        input = torch.rand(1, 3, 9, 8, device=device)
+        output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0))
+        assert output.shape == (1, 3, 3, 4)
+
+    def test_one_param(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, 2.0)
+        assert output.shape == (1, 3, 6, 8)
+
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 3, 4).to(device)
+        input = utils.tensor_to_gradcheck_var(input)
+        assert gradcheck(kornia.Rescale(2.0), (input, ), raise_exception=True)
+
+
 class TestRotate:
     def test_angle90(self, device):
         # prepare input data
@@ -432,6 +459,77 @@ class TestShear:
 
 
 class TestAffine2d:
+    def test_affine_no_args(self):
+        with pytest.raises(RuntimeError):
+            kornia.Affine()
+
+    def test_affine_batch_size_mismatch(self, device):
+        with pytest.raises(RuntimeError):
+            angle = torch.rand(1, device=device)
+            translation = torch.rand(2, 2, device=device)
+            kornia.Affine(angle, translation)
+
+    def test_affine_rotate(self, device):
+        torch.manual_seed(0)
+        angle = torch.rand(1, device=device) * 90.0
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(angle=angle).to(device)
+        actual = transform(input)
+        expected = kornia.rotate(input, angle)
+        assert_allclose(actual, expected)
+
+    def test_affine_translate(self, device):
+        torch.manual_seed(0)
+        translation = torch.rand(1, 2, device=device) * 2.0
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(translation=translation).to(device)
+        actual = transform(input)
+        expected = kornia.translate(input, translation)
+        assert_allclose(actual, expected)
+
+    def test_affine_scale(self, device):
+        torch.manual_seed(0)
+        scale_factor = torch.rand(1, device=device) * 2.0
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(scale_factor=scale_factor).to(device)
+        actual = transform(input)
+        expected = kornia.scale(input, scale_factor)
+        assert_allclose(actual, expected)
+
+    @pytest.mark.skip(
+        "_compute_shear_matrix and get_affine_matrix2d yield different results. "
+        "See https://github.com/kornia/kornia/issues/629 for details."
+    )
+    def test_affine_shear(self, device):
+        torch.manual_seed(0)
+        shear = torch.rand(1, 2, device=device)
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(shear=shear).to(device)
+        actual = transform(input)
+        expected = kornia.shear(input, shear)
+        assert_allclose(actual, expected)
+
+    def test_affine_rotate_translate(self, device):
+        batch_size = 2
+
+        input = torch.tensor(
+            [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]], device=device
+        ).repeat(batch_size, 1, 1, 1)
+
+        angle = torch.tensor(180.0, device=device).repeat(batch_size)
+        translation = torch.tensor([1.0, 0.0]).repeat(batch_size, 1)
+
+        expected = torch.tensor(
+            [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0]]], device=device,
+        ).repeat(batch_size, 1, 1, 1)
+
+        transform = kornia.Affine(angle=angle, translation=translation, align_corners=True).to(device)
+        actual = transform(input)
+        assert_allclose(actual, expected)
 
     def test_compose_affine_matrix_3x3(self, device):
         """ To get parameters:
