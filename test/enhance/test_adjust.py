@@ -602,20 +602,18 @@ class TestAdjustBrightness:
 
 
 class TestEqualize:
-    def test_shape_equalize(self, device):
+    def test_shape_equalize(self, device, dtype):
         bs, channels, height, width = 1, 3, 4, 5
 
-        inputs = torch.ones(channels, height, width)
-        inputs = inputs.to(device)
+        inputs = torch.ones(channels, height, width, device=device, dtype=dtype)
         f = kornia.enhance.equalize
 
         assert f(inputs).shape == torch.Size([bs, channels, height, width])
 
-    def test_shape_equalize_batch(self, device):
+    def test_shape_equalize_batch(self, device, dtype):
         bs, channels, height, width = 2, 3, 4, 5
 
-        inputs = torch.ones(bs, channels, height, width)
-        inputs = inputs.to(device)
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
         f = kornia.enhance.equalize
 
         assert f(inputs).shape == torch.Size([bs, channels, height, width])
@@ -677,20 +675,18 @@ class TestEqualize:
 
 
 class TestEqualize3D:
-    def test_shape_equalize3d(self, device):
+    def test_shape_equalize3d(self, device, dtype):
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
-        inputs3d = torch.ones(channels, depth, height, width)
-        inputs3d = inputs3d.to(device)
+        inputs3d = torch.ones(channels, depth, height, width, device=device, dtype=dtype)
         f = kornia.enhance.equalize3d
 
         assert f(inputs3d).shape == torch.Size([bs, channels, depth, height, width])
 
-    def test_shape_equalize3d_batch(self, device):
+    def test_shape_equalize3d_batch(self, device, dtype):
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
 
-        inputs3d = torch.ones(bs, channels, depth, height, width)
-        inputs3d = inputs3d.to(device)
+        inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
         f = kornia.enhance.equalize3d
 
         assert f(inputs3d).shape == torch.Size([bs, channels, depth, height, width])

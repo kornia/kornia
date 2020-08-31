@@ -424,6 +424,8 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 # Code taken from: https://github.com/pytorch/vision/pull/796
 def _scale_channel(im):
     """Scale the data in the channel to implement equalize."""
+    im = im * 255
+
     # Compute the histogram of the image channel.
     histo = torch.histc(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
@@ -453,14 +455,14 @@ def _scale_channel(im):
 
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
-    """Implements Equalize function from PIL using PyTorch ops based on uint8 format:
+    r"""Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
     Args:
-        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes like :math:(C, H, W) or :math:(B, C, H, W) to equalize.
     Returns:
         torch.Tensor: Sharpened image or images.
     """
-    input = _to_bchw(input) * 255
+    input = _to_bchw(input)
 
     res = []
     for image in input:
@@ -471,15 +473,19 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
-def equalize3d(input: torch.Tensor):
-    """Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
+def equalize3d(input: torch.Tensor) -> torch.Tensor:
+    r"""Equalizes the values for a 3D volumetric tensor.
+
+    Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
+
     Args:
-        input (torch.Tensor): image tensor with shapes like (C, D, H, W) or (B, C, D, H, W) to equalize.
+    input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+
     Returns:
-        torch.Tensor: Sharpened image or images.
+    torch.Tensor: Sharpened image or images with same shape as the input.
     """
-    input = _transform_input3d(input) * 255.
+    input = _transform_input3d(input)
 
     res = []
     for volume in input:
