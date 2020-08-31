@@ -18,8 +18,12 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
 .. autofunction:: projection_from_Rt
+.. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
+.. autofunction:: bbox_to_mask
+.. autofunction:: infer_box_shape
+.. autofunction:: validate_bboxes
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
