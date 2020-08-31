@@ -11,8 +11,24 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.constants import pi
+<<<<<<< HEAD
 from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
+=======
+from kornia.augmentation import (
+    AugmentationBase,
+    ColorJitter,
+    RandomHorizontalFlip,
+    RandomVerticalFlip,
+    RandomErasing,
+    RandomEqualize,
+    RandomGrayscale,
+    RandomRotation,
+    RandomCrop,
+    RandomResizedCrop,
+    RandomMotionBlur
+)
+>>>>>>> Add tests to RandomEqualize and fix potential bug
 
 
 class TestRandomHorizontalFlip:
@@ -1556,3 +1572,105 @@ class TestRandomMotionBlur:
         }
         assert gradcheck(RandomMotionBlur(
             kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
+
+
+class TestRandomEqualize:
+
+    def smoke_test(self, device):
+        f = RandomEqualize(0.5)
+        repr = "RandomEqualize(p=0.5, return_transform=False)"
+        assert str(f) == repr
+
+    def test_random_equalize(self, device):
+        f = RandomEqualize(p=1.0, return_transform=True)
+        f1 = RandomEqualize(p=0., return_transform=True)
+        f2 = RandomEqualize(p=1.)
+        f3 = RandomEqualize(p=0.)
+
+        bs, channels, height, width = 1, 3, 20, 20
+
+        inputs = self.build_input(channels, height, width).squeeze(dim=0)
+        inputs.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ])
+        expected = self.build_input(channels, height, width, bs=1, row=row_expected)
+        expected = expected.to(device)
+
+        identity = torch.tensor(
+            [[1., 0., 0.],
+             [0., 1., 0.],
+             [0., 0., 1.]]
+        )  # 3 x 3
+        identity = identity.to(device)
+
+        assert_allclose(f(inputs)[0], expected)
+        assert_allclose(f(inputs)[1], identity)
+        assert_allclose(f1(inputs)[0], inputs)
+        assert_allclose(f1(inputs)[1], identity)
+        assert_allclose(f2(inputs), expected)
+        assert_allclose(f3(inputs), inputs)
+
+    def test_batch_random_equalize(self, device):
+        f = RandomEqualize(p=1.0, return_transform=True)
+        f1 = RandomEqualize(p=0., return_transform=True)
+        f2 = RandomEqualize(p=1.)
+        f3 = RandomEqualize(p=0.)
+
+        bs, channels, height, width = 2, 3, 20, 20
+
+        inputs = self.build_input(channels, height, width, bs)
+        inputs = inputs.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ])
+        expected = self.build_input(channels, height, width, bs, row=row_expected)
+        expected = expected.to(device)
+
+        identity = torch.tensor([
+            [[1., 0., 0.],
+             [0., 1., 0.],
+             [0., 0., 1.]],
+            [[1., 0., 0.],
+             [0., 1., 0.],
+             [0., 0., 1.],]
+        ])  # 2 x 3 x 3
+        identity = identity.to(device)
+
+        assert_allclose(f(inputs)[0], expected)
+        assert_allclose(f(inputs)[1], identity)
+        assert_allclose(f1(inputs)[0], inputs)
+        assert_allclose(f1(inputs)[1], identity)
+        assert_allclose(f2(inputs), expected)
+        assert_allclose(f3(inputs), inputs)
+
+    def test_same_on_batch(self, device):
+        f = RandomEqualize(p=0.5, same_on_batch=True)
+        input = torch.eye(4).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    def test_gradcheck(self, device):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True)
+
+    @staticmethod
+    def build_input(channels, height, width, bs=1, row=None):
+        if row is None:
+            row = torch.arange(width) / float(width)
+
+        channel = torch.stack([row] * height)
+        image = torch.stack([channel] * channels)
+        batch = torch.stack([image] * bs)
+
+        return batch
