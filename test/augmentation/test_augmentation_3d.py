@@ -15,7 +15,8 @@ from kornia.augmentation import (
     RandomHorizontalFlip3D,
     RandomVerticalFlip3D,
     RandomAffine3D,
-    RandomRotation3D
+    RandomRotation3D,
+    RandomEqualize3D
 )
 
 
@@ -759,3 +760,104 @@ class TestRandomRotation3D:
         input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+
+
+class TestRandomEqualize3D:
+
+    def smoke_test(self, device):
+        f = RandomEqualize3D(0.5)
+        repr = "RandomEqualize3D(p=0.5, return_transform=False)"
+        assert str(f) == repr
+
+    def test_random_equalize(self, device):
+        f = RandomEqualize3D(p=1.0, return_transform=True)
+        f1 = RandomEqualize3D(p=0., return_transform=True)
+        f2 = RandomEqualize3D(p=1.)
+        f3 = RandomEqualize3D(p=0.)
+
+        bs, channels, depth, height, width = 1, 3, 6, 10, 10
+
+        inputs3d = self.build_input(channels, depth, height, width).squeeze(dim=0)
+        inputs3d.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
+        ])
+        expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected)
+        expected = expected.to(device)
+
+        identity = torch.tensor(
+            [[1., 0., 0., 0.],
+             [0., 1., 0., 0.],
+             [0., 0., 1., 0.],
+             [0., 0., 0., 1.]]
+        )  # 4 x 4
+        identity = identity.to(device)
+
+        assert_allclose(f(inputs3d)[0], expected)
+        assert_allclose(f(inputs3d)[1], identity)
+        assert_allclose(f1(inputs3d)[0], inputs3d)
+        assert_allclose(f1(inputs3d)[1], identity)
+        assert_allclose(f2(inputs3d), expected)
+        assert_allclose(f3(inputs3d), inputs3d)
+
+    def test_batch_random_equalize(self, device):
+        f = RandomEqualize3D(p=1.0, return_transform=True)
+        f1 = RandomEqualize3D(p=0., return_transform=True)
+        f2 = RandomEqualize3D(p=1.)
+        f3 = RandomEqualize3D(p=0.)
+
+        bs, channels, depth, height, width = 2, 3, 6, 10, 10
+
+        inputs3d = self.build_input(channels, depth, height, width, bs)
+        inputs3d = inputs3d.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
+        ])
+        expected = self.build_input(channels, depth, height, width, bs, row=row_expected)
+        expected = expected.to(device)
+
+        identity = torch.tensor([
+            [[1., 0., 0., 0.],
+             [0., 1., 0., 0.],
+             [0., 0., 1., 0.],
+             [0., 0., 0., 1.]],
+             [[1., 0., 0., 0.],
+             [0., 1., 0., 0.],
+             [0., 0., 1., 0.],
+             [0., 0., 0., 1.]]
+        ])  # 2 x 4 x 4
+        identity = identity.to(device)
+
+        assert_allclose(f(inputs3d)[0], expected)
+        assert_allclose(f(inputs3d)[1], identity)
+        assert_allclose(f1(inputs3d)[0], inputs3d)
+        assert_allclose(f1(inputs3d)[1], identity)
+        assert_allclose(f2(inputs3d), expected)
+        assert_allclose(f3(inputs3d), inputs3d)
+
+    def test_same_on_batch(self, device):
+        f = RandomEqualize3D(p=0.5, same_on_batch=True)
+        input = torch.eye(4).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    def test_gradcheck(self, device):
+        torch.manual_seed(0)  # for random reproductibility
+
+        inputs3d = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
+        inputs3d = utils.tensor_to_gradcheck_var(inputs3d)  # to var
+        assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True)
+
+    @staticmethod
+    def build_input(channels, depth, height, width, bs=1, row=None):
+        if row is None:
+            row = torch.arange(width) / float(width)
+
+        channel = torch.stack([row] * height)
+        image = torch.stack([channel] * channels)
+        image3d = torch.stack([image] * depth).transpose(0, 1)
+        batch = torch.stack([image3d] * bs)
+
+        return batch

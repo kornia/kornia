@@ -362,4 +362,35 @@ class RandomRotation3D(AugmentationBase3D):
         return F.compute_rotate_tranformation3d(input, params)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.apply_rotation3d(input, params, self.flags)
+        return F.apply_rotation3d(input, params)
+
+
+class RandomEqualize3D(AugmentationBase3D):
+    r"""Random 3D equalization of a volumetric image.
+
+    Args:
+        p (float): probability of the image being equalized. Default value is 0.5
+
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+    """
+
+    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
+        super(RandomEqualize3D, self).__init__(return_transform)
+        self.p: float = p
+        self.same_on_batch = same_on_batch
+
+    def __repr__(self) -> str:
+        repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
+        return self.__class__.__name__ + repr
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation3d(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_equalize3d(input, params)
