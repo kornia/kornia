@@ -112,7 +112,7 @@ class TestRandomHorizontalFlip:
 
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[-1., 0., 4.],
+        expected_transform = torch.tensor([[-1., 0., 3.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
@@ -145,7 +145,7 @@ class TestRandomHorizontalFlip:
                                    [1., 1., 0.]]]])  # 1 x 1 x 3 x 3
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 2.],
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
@@ -187,7 +187,7 @@ class TestRandomHorizontalFlip:
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input = input.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 2.],
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
@@ -199,6 +199,44 @@ class TestRandomHorizontalFlip:
         assert(f(input)[1] == expected_transform_1).all()
         assert(f1(input)[0] == input).all()
         assert(f1(input)[1] == expected_transform).all()
+
+    def test_random_hflip_coord_check(self, device, dtype):
+
+        f = RandomHorizontalFlip(p=1.0, return_transform=True)
+
+        input = torch.tensor([[[[1., 2., 3., 4.],
+                                [5., 6., 7., 8.],
+                                [9., 10., 11., 12.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        input_coordinates = torch.tensor([[
+            [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],  # x coord
+            [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],  # y coord
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_output = torch.tensor([[[[4., 3., 2., 1.],
+                                          [8., 7., 6., 5.],
+                                          [12., 11., 10., 9.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        output, transform = f(input)
+        result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
+
+        # Tensors must have the same shapes and values
+        assert output.shape == expected_output.shape
+        assert (output == expected_output).all()
+        # Transformed indices must not be out of bound
+        assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
+        assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
+        # Values in the output tensor at the places of transformed indices must
+        # have the same value as the input tensor has at the corresponding
+        # positions
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -262,7 +300,7 @@ class TestRandomVerticalFlip:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[1., 0., 0.],
-                                           [0., -1., 3.],
+                                           [0., -1., 2.],
                                            [0., 0., 1.]])  # 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -294,7 +332,7 @@ class TestRandomVerticalFlip:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
+                                            [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -336,7 +374,7 @@ class TestRandomVerticalFlip:
         input = input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
+                                            [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -346,6 +384,44 @@ class TestRandomVerticalFlip:
         assert_allclose(f(input)[1], expected_transform_1)
         assert_allclose(f1(input)[0], input.squeeze())
         assert_allclose(f1(input)[1], expected_transform)
+
+    def test_random_vflip_coord_check(self, device, dtype):
+
+        f = RandomVerticalFlip(p=1.0, return_transform=True)
+
+        input = torch.tensor([[[[1., 2., 3., 4.],
+                                [5., 6., 7., 8.],
+                                [9., 10., 11., 12.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        input_coordinates = torch.tensor([[
+            [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],  # x coord
+            [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],  # y coord
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_output = torch.tensor([[[[9., 10., 11., 12.],
+                                          [5., 6., 7., 8.],
+                                          [1., 2., 3., 4.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        output, transform = f(input)
+        result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
+
+        # Tensors must have the same shapes and values
+        assert output.shape == expected_output.shape
+        assert (output == expected_output).all()
+        # Transformed indices must not be out of bound
+        assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
+        assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
+        # Values in the output tensor at the places of transformed indices must
+        # have the same value as the input tensor has at the corresponding
+        # positions
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
