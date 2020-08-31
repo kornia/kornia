@@ -269,7 +269,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([2.]).to(device)
+        scale_factor = torch.tensor([[2., 2.]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp).sum().item(), 12.25)
 
@@ -288,7 +288,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
@@ -307,7 +307,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5, 0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
@@ -326,13 +326,13 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self, device):
         # test parameters
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         scale_factor = utils.tensor_to_gradcheck_var(
             scale_factor, requires_grad=False)  # to var
 
@@ -345,7 +345,7 @@ class TestScale:
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width).to(device)
         trans = kornia.Scale(scale_factor)
@@ -564,7 +564,7 @@ class TestAffine2d:
         import math
         batch_size, ch, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)
-        scale, shear = 0.7785685905190581, [11.8235607082617, 7.06797949691645]
+        scale, shear = [0.7785685905190581, 0.7785685905190581], [11.8235607082617, 7.06797949691645]
         matrix_expected = T([[1.27536969, 4.26828945e-01, -3.2876e+01],
                              [2.18297196e-03, 1.29424165e+00, -1.1717e+01]])
         center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
@@ -572,7 +572,7 @@ class TestAffine2d:
         matrix_kornia = kornia.get_affine_matrix2d(
             T(translations).view(-1, 2),
             center,
-            T([scale]).view(-1),
+            T([scale]).view(-1, 2),
             T([angle]).view(-1),
             T([math.radians(shear[0])]).view(-1, 1),
             T([math.radians(shear[1])]).view(-1, 1))

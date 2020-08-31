@@ -209,8 +209,10 @@ class RandomAffine3D(AugmentationBase3D):
             horizontal shift will be randomly sampled in the range -img_width * b < dy < img_width * b.
             vertical shift will be randomly sampled in the range -img_height * b < dy < img_height * b.
             Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
-            randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+        scale (tuple, optional): scaling factor interval.
+            If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
+            If ((a, b), (c, d), (e, f)), the scale is randomly sampled from the range a <= scale_x <= b,
+            c <= scale_y <= d, e <= scale_z <= f. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
             If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be apllied.
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
@@ -249,7 +251,8 @@ class RandomAffine3D(AugmentationBase3D):
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
         translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
-        scale: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float],
+                        Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
         shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                       Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                             Tuple[float, float], Tuple[float, float]]] = None,
@@ -272,7 +275,13 @@ class RandomAffine3D(AugmentationBase3D):
         self.scale: Optional[torch.Tensor] = None
         if scale is not None:
             self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
-            _singular_range_check(self.scale, 'scale', bounds=(0, float('inf')), mode='2d')
+            if self.scale.shape == torch.Size([2]):
+                self.scale = self.scale.unsqueeze(0).repeat(3, 1)
+            elif self.scale.shape != torch.Size([3, 2]):
+                raise ValueError("'scale' shall be either shape (2) or (3, 2). Got {self.scale}")
+            _singular_range_check(self.scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
+            _singular_range_check(self.scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
+            _singular_range_check(self.scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
 
         self.resample: Resample = Resample.get(resample)
         self.same_on_batch = same_on_batch

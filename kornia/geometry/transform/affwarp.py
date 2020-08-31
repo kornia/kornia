@@ -59,7 +59,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 def _compute_rotation_matrix(angle: torch.Tensor,
                              center: torch.Tensor) -> torch.Tensor:
     """Computes a pure affine rotation matrix."""
-    scale: torch.Tensor = torch.ones_like(angle)
+    scale: torch.Tensor = torch.ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -101,7 +101,7 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 def _compute_scaling_matrix(scale: torch.Tensor,
                             center: torch.Tensor) -> torch.Tensor:
     """Computes affine matrix for scaling."""
-    angle: torch.Tensor = torch.zeros_like(scale)
+    angle: torch.Tensor = torch.zeros(scale.shape[:1])
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -305,6 +305,10 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
         raise TypeError("Input scale_factor type is not a torch.Tensor. Got {}"
                         .format(type(scale_factor)))
 
+    if len(scale_factor.shape) == 1:
+        # convert isotropic scaling to x-y direction
+        scale_factor = scale_factor.repeat(1, 2)
+
     # compute the tensor center
     if center is None:
         center = _compute_tensor_center(tensor)
@@ -312,7 +316,7 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     center = center.expand(tensor.shape[0], -1)
-    scale_factor = scale_factor.expand(tensor.shape[0])
+    scale_factor = scale_factor.expand(tensor.shape[0], 2)
     scaling_matrix: torch.Tensor = _compute_scaling_matrix(scale_factor, center)
 
     # warp using the affine transform
@@ -590,7 +594,9 @@ class Scale(nn.Module):
 
     Args:
         scale_factor (torch.Tensor): The scale factor apply. The tensor
-          must have a shape of (B), where B is batch size.
+          must have a shape of (B) or (B, 2), where B is batch size.
+          If (B), isotropic scaling will perform.
+          If (B, 2), x-y-direction specific scaling will perform.
         center (torch.Tensor): The center through which to scale. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.

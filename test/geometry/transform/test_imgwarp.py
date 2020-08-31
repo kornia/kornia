@@ -88,7 +88,7 @@ def test_rotation_matrix2d(batch_size, device):
     # generate input data
     center_base = torch.zeros(batch_size, 2).to(device)
     angle_base = torch.ones(batch_size).to(device)
-    scale_base = torch.ones(batch_size).to(device)
+    scale_base = torch.ones(batch_size, 2).to(device)
 
     # 90 deg rotation
     center = center_base
@@ -417,7 +417,7 @@ class TestInvertAffineTransform:
 
     def test_rot90(self, device):
         angle = torch.tensor([90.]).to(device)
-        scale = torch.tensor([1.]).to(device)
+        scale = torch.tensor([[1., 1.]]).to(device)
         center = torch.tensor([[0., 0.]]).to(device)
         expected = torch.tensor([[
             [0., -1., 0.],
@@ -429,7 +429,7 @@ class TestInvertAffineTransform:
 
     def test_rot90_batch(self, device):
         angle = torch.tensor([90.]).to(device)
-        scale = torch.tensor([1.]).to(device)
+        scale = torch.tensor([[1., 1.]]).to(device)
         center = torch.tensor([[0., 0.]]).to(device)
         expected = torch.tensor([[
             [0., -1., 0.],
