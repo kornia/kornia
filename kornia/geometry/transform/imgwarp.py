@@ -307,20 +307,20 @@ def get_rotation_matrix2d(
         angle (Tensor): rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
             be the top-left corner).
-        scale (Tensor): isotropic scale factor.
+        scale (Tensor): scale factor for x, y scaling with shape :math:`(B, 2)`
 
     Returns:
         Tensor: the affine matrix of 2D rotation.
 
     Shape:
-        - Input: :math:`(B, 2)`, :math:`(B)` and :math:`(B)`
+        - Input: :math:`(B, 2)`, :math:`(B)` and :math:`(B, 2)`
         - Output: :math:`(B, 2, 3)`
 
     Example:
         >>> center = torch.zeros(1, 2)
-        >>> scale = torch.ones(1)
+        >>> scale = torch.ones((1, 2))
         >>> angle = 45. * torch.ones(1)
-        >>> M = kornia.get_rotation_matrix2d(center, angle, scale)
+        >>> get_rotation_matrix2d(center, angle, scale)
         tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])
     """
@@ -339,14 +339,17 @@ def get_rotation_matrix2d(
     if not len(angle.shape) == 1:
         raise ValueError("Input angle must be a B tensor. Got {}"
                          .format(angle.shape))
-    if not len(scale.shape) == 1:
-        raise ValueError("Input scale must be a B tensor. Got {}"
+    if not (len(scale.shape) == 2 and scale.shape[1] == 2):
+        raise ValueError("Input scale must be a Bx2 tensor. Got {}"
                          .format(scale.shape))
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Got center {}, angle {} and scale {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
+    rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
+    scaling_matrix: torch.Tensor = torch.zeros((2, 2)).fill_diagonal_(1).repeat(rotation_matrix.size(0), 1, 1)
+    scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
+    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix.to(rotation_matrix)
     alpha: torch.Tensor = scaled_rotation[:, 0, 0]
     beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
@@ -463,7 +466,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
     Args:
         translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
         center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
-        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B, 2)`.
         sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
         sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
