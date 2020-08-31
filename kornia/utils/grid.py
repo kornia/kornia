@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Optional, Union
 
 import torch
+import kornia as K
 
 
 def create_meshgrid(
@@ -25,15 +26,19 @@ def create_meshgrid(
     Return:
         torch.Tensor: returns a grid tensor with shape :math:`(1, H, W, 2)`.
     """
-    # generate coordinates
-    xs: Optional[torch.Tensor] = None
-    ys: Optional[torch.Tensor] = None
+    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
+    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+    # Fix TracerWarning
+    # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
+    #       tensors will be generated.
+    # Below is the code using normalize_pixel_coordinates:
+    # base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys]), dim=2)
+    # if normalized_coordinates:
+    #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
+    # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=torch.float)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+        xs = (xs / (width - 1) - 0.5) * 2
+        ys = (ys / (height - 1) - 0.5) * 2
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([xs, ys])).transpose(1, 2)  # 2xHxW
@@ -64,17 +69,14 @@ def create_meshgrid3d(
     Return:
         torch.Tensor: returns a grid tensor with shape :math:`(1, D, H, W, 3)`.
     """
-    xs: Optional[torch.Tensor] = None
-    ys: Optional[torch.Tensor] = None
-    zs: Optional[torch.Tensor] = None
+    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
+    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+    zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=torch.float)
+    # Fix TracerWarning
     if normalized_coordinates:
-        xs = torch.linspace(-1, 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(-1, 1, height, device=device, dtype=torch.float)
-        zs = torch.linspace(-1, 1, depth, device=device, dtype=torch.float)
-    else:
-        xs = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
-        ys = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
-        zs = torch.linspace(0, depth - 1, depth, device=device, dtype=torch.float)
+        xs = (xs / (width - 1) - 0.5) * 2
+        ys = (ys / (height - 1) - 0.5) * 2
+        zs = (ys / (height - 1) - 0.5) * 2
     # generate grid by stacking coordinates
     base_grid: torch.Tensor = torch.stack(
         torch.meshgrid([zs, xs, ys])).transpose(1, 2)  # 3xHxW
