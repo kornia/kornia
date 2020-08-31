@@ -204,7 +204,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     validate_bboxes(src_box)
     validate_bboxes(dst_box)
 
-    if tensor.ndim not in [3, 4]:
+    if tensor.ndimension() not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.ndimension() == 3
