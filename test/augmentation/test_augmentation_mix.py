@@ -64,7 +64,7 @@ class TestRandomMixUp:
 
     def test_random_mixup_lam0(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp(lam=(0., 0.))
+        f = RandomMixUp(lambda_val=(0., 0.))
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
