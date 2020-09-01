@@ -958,9 +958,10 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
     input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
     labels_permute = labels.index_select(dim=0, index=params['mixup_pairs'].to(labels.device))
 
-    lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(input.device)
+    lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(labels.device)
     inputs = input * (1 - lam) + input_permute * lam
-    labels = torch.stack([labels.float(), labels_permute.float(), params['mixup_lambdas'].to(labels.device)], dim=-1)
+    labels = torch.stack([
+        labels.to(input.dtype), labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device)], dim=-1)
     return inputs, labels
 
 
@@ -1025,10 +1026,11 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
         input_permute = input.index_select(dim=0, index=pair.to(input.device))
         labels_permute = labels.index_select(dim=0, index=pair.to(labels.device))
         w, h = infer_box_shape(crop)
-        lam = w.float() * h.float() / (width * height)  # width_beta * height_beta
+        lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
         # compute mask to match input shape
         mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
         out_inputs[mask] = input_permute[mask]
-        out_labels.append(torch.stack([labels.float(), labels_permute.float(), lam.to(labels.device)], dim=1))
+        out_labels.append(torch.stack([
+            labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))
 
     return out_inputs, torch.stack(out_labels, dim=0)
