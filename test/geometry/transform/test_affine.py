@@ -491,7 +491,8 @@ class TestAffine2d:
 
     def test_affine_scale(self, device):
         torch.manual_seed(0)
-        scale_factor = torch.rand(1, device=device) * 2.0
+        _scale_factor = torch.rand(1, device=device) * 2.0
+        scale_factor = torch.stack([_scale_factor, _scale_factor], dim=1)
         input = torch.rand(1, 2, 3, 4, device=device)
 
         transform = kornia.Affine(scale_factor=scale_factor).to(device)
