@@ -472,7 +472,7 @@ class Affine(nn.Module):
         self.translation = translation
 
         if scale_factor is None:
-            scale_factor = torch.ones(batch_size)
+            scale_factor = torch.ones(batch_size, 2)
         self.scale_factor = scale_factor
 
         self.shear = shear
