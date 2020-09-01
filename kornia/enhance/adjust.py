@@ -430,7 +430,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
     """ Apply equalize on the input tensor.
-    
+
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
