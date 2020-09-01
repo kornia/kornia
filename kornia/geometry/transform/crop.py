@@ -164,6 +164,11 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
                   interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
     """A wrapper performs crop transform with bounding boxes.
 
+    Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
+    Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
+    So far, the ragged tensor is not supported by PyTorch right now. This function hereby requires the bounding boxes
+    in a batch must be rectangles with same width and height.
+
     Args:
         tensor (torch.Tensor): the input tensor with shape (C, H, W) or (B, C, H, W).
         src_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes

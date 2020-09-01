@@ -71,7 +71,7 @@ class RandomMixUp(MixAugmentation):
 
     Args:
         p (float): probability for performing mixup. Default is 0.5.
-        lam (float or torch.Tensor, optional): min-max value of mixup strength. Default is 0-1.
+        lambda_val (float or torch.Tensor, optional): min-max value of mixup strength. Default is 0-1.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
 
@@ -104,21 +104,22 @@ class RandomMixUp(MixAugmentation):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.1980],
                 [1.0000, 1.0000, 0.4162]]))
     """
-    def __init__(self, p: float = 1.0, lam: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+    def __init__(self, p: float = 1.0, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  same_on_batch: bool = False) -> None:
         super(RandomMixUp, self).__init__()
         self.p = p
-        if lam is None:
-            self.lam = torch.tensor([0, 1.])
+        if lambda_val is None:
+            self.lambda_val = torch.tensor([0, 1.])
         else:
-            self.lam = cast(torch.Tensor, lam) if isinstance(lam, torch.Tensor) else torch.tensor(lam)
+            self.lambda_val = \
+                cast(torch.Tensor, lambda_val) if isinstance(lambda_val, torch.Tensor) else torch.tensor(lambda_val)
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(p={self.p}, lam={self.lam}, same_on_batch={self.same_on_batch}"
+        return f"{self.__class__.__name__}(p={self.p}, lambda_val={self.lambda_val}, same_on_batch={self.same_on_batch}"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_mixup_generator(batch_shape[0], self.p, self.lam, same_on_batch=self.same_on_batch)
+        return rg.random_mixup_generator(batch_shape[0], self.p, self.lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
