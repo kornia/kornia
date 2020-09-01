@@ -23,7 +23,9 @@ __all__ = [
     "invert_affine_transform",
     "angle_to_rotation_matrix",
     "get_affine_matrix2d",
-    "get_affine_matrix3d"
+    "get_affine_matrix3d",
+    "get_shear_matrix2d",
+    "get_shear_matrix3d"
 ]
 
 
@@ -486,17 +488,16 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
 
 def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
     r"""Composes shear matrix Bx4x4 from the components.
-    Note: Ordered shearing, shear x-axis then y-axis
+
+    Note: Ordered shearing, shear x-axis then y-axis.
 
     .. math::
         \begin{bmatrix}
             1 & b \\
             a & ab + 1 \\
         \end{bmatrix}
-    Returns:
-        torch.Tensor: params to be passed to the affine transformation.
 
-    Params:
+    Args:
         center (torch.Tensor): shearing center coordinates of (x, y).
         sx (torch.Tensor, optional): shearing degree along x axis.
         sy (torch.Tensor, optional): shearing degree along y axis.
