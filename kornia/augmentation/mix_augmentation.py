@@ -71,7 +71,7 @@ class RandomMixUp(MixAugmentation):
 
     Args:
         p (float): probability for performing mixup. Default is 0.5.
-        max_lambda (float or torch.Tensor, optional): max value of mixup strength. Default is 1.
+        lam (float or torch.Tensor, optional): min-max value of mixup strength. Default is 0-1.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
 
@@ -104,22 +104,21 @@ class RandomMixUp(MixAugmentation):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.1980],
                 [1.0000, 1.0000, 0.4162]]))
     """
-    def __init__(self, p: float = 1.0, max_lambda: Optional[Union[torch.Tensor, float]] = None,
+    def __init__(self, p: float = 1.0, lam: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  same_on_batch: bool = False) -> None:
         super(RandomMixUp, self).__init__()
         self.p = p
-        if max_lambda is None:
-            self.max_lambda = torch.tensor(1.)
+        if lam is None:
+            self.lam = torch.tensor([0, 1.])
         else:
-            self.max_lambda = \
-                cast(torch.Tensor, max_lambda) if isinstance(max_lambda, torch.Tensor) else torch.tensor(max_lambda)
+            self.lam = cast(torch.Tensor, lam) if isinstance(lam, torch.Tensor) else torch.tensor(lam)
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(p={self.p}, max_lambda={self.max_lambda}, same_on_batch={self.same_on_batch}"
+        return f"{self.__class__.__name__}(p={self.p}, lam={self.lam}, same_on_batch={self.same_on_batch}"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_mixup_generator(batch_shape[0], self.p, self.max_lambda, same_on_batch=self.same_on_batch)
+        return rg.random_mixup_generator(batch_shape[0], self.p, self.lam, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
@@ -155,8 +154,10 @@ class RandomCutMix(MixAugmentation):
         width (int): the width of the input image.
         p (float): probability for performing cutmix. Default is 0.5.
         num_mix (int): cut mix times. Default is 1.
-        beta (float or torch.Tensor, optional): hyperparameter for beta distribution. It controls the cut size.
+        beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
+        cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+            If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
 
@@ -191,6 +192,7 @@ class RandomCutMix(MixAugmentation):
                  [1.0000, 1.0000, 0.0000]]]))
     """
     def __init__(self, height: int, width: int, p: float = 0.5, num_mix: int = 1,
+                 cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False) -> None:
         super(RandomCutMix, self).__init__()
         self.height = height
@@ -201,15 +203,21 @@ class RandomCutMix(MixAugmentation):
             self.beta = torch.tensor(1.)
         else:
             self.beta = cast(torch.Tensor, beta) if isinstance(beta, torch.Tensor) else torch.tensor(beta)
+        if cut_size is None:
+            self.cut_size = torch.tensor([0., 1.])
+        else:
+            self.cut_size = \
+                cast(torch.Tensor, cut_size) if isinstance(cut_size, torch.Tensor) else torch.tensor(cut_size)
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.p}, num_mix={self.num_mix}, beta={self.beta}, "
-        f"height={self.height}, width={self.width}, same_on_batch={self.same_on_batch}"
+        f"cut_size={self.cut_size}, height={self.height}, width={self.width}, same_on_batch={self.same_on_batch}"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,
-                                          num_mix=self.num_mix, beta=self.beta, same_on_batch=self.same_on_batch)
+                                          cut_size=self.cut_size, num_mix=self.num_mix, beta=self.beta,
+                                          same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
