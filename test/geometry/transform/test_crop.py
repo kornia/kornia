@@ -20,7 +20,7 @@ class TestBoundingBoxInferring:
         ]]).to(device)
         expected_height = 2
         expected_width = 3
-        h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
+        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
         assert (h, w) == (expected_height, expected_width)
 
     def test_bounding_boxes_dim_inferring_batch(self, device):
@@ -37,8 +37,8 @@ class TestBoundingBoxInferring:
         ]]).to(device)
         expected_height = 2
         expected_width = 3
-        h, w = kornia.geometry.transform.crop._infer_bounding_box(boxes)
-        assert (h, w) == (expected_height, expected_width)
+        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
+        assert (h.unique().item(), w.unique().item()) == (expected_height, expected_width)
 
     @pytest.mark.skip(reason="Crashes with pytorch internal error")
     #  RuntimeError: isDifferentiableType(variable.scalar_type()) INTERNAL ASSERT FAILED at
