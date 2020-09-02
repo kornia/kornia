@@ -25,6 +25,10 @@ from .augmentation3d import (
     RandomRotation3D,
     RandomAffine3D
 )
+from .mix_augmentation import (
+    RandomMixUp,
+    RandomCutMix
+)
 from kornia.enhance.normalize import (
     Normalize,
     Denormalize
@@ -50,6 +54,8 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
+    "RandomMixUp",
+    "RandomCutMix",
     "AugmentationBase3D",
     "RandomDepthicalFlip3D",
     "RandomVerticalFlip3D",

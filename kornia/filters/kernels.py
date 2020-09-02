@@ -1,4 +1,4 @@
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, cast
 
 import torch
 import torch.nn as nn
@@ -478,14 +478,20 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
         raise TypeError("ksize must be an odd integer >= than 3")
 
     if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor(angle)
+        angle = torch.tensor([angle])
 
-    assert angle.dim() == 0, f"angle must be a 0-dim tensor. Got {angle}."
+    angle = cast(torch.Tensor, angle)
+    if angle.dim() == 0:
+        angle = angle.unsqueeze(dim=0)
+    assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor(direction)
+        direction = torch.tensor([direction])
 
-    assert direction.dim() == 0, f"direction must be a 0-dim tensor. Got {direction}."
+    direction = cast(torch.Tensor, direction)
+    if direction.dim() == 0:
+        direction = direction.unsqueeze(dim=0)
+    assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range

@@ -1,7 +1,7 @@
 from typing import Tuple, Union, List, cast, Optional
 
 import torch
-from torch.distributions import Uniform
+from torch.distributions import Uniform, Beta
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
@@ -111,18 +111,84 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
     return input.shape[channel_index] == number
 
 
-def _adapted_uniform(shape: Union[Tuple, torch.Size], low: Union[torch.Tensor, int, float],
-                     high: Union[torch.Tensor, int, float], same_on_batch=False) -> torch.Tensor:
-    r""" The uniform function that accepts 'same_on_batch'.
+def _adapted_uniform(
+    shape: Union[Tuple, torch.Size],
+    low: Union[float, int, torch.Tensor],
+    high: Union[float, int, torch.Tensor],
+    same_on_batch=False
+) -> torch.Tensor:
+    r""" The uniform sampling function that accepts 'same_on_batch'.
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
     """
     if not isinstance(low, torch.Tensor):
-        low = torch.tensor(low).float()
+        low = torch.tensor(low, dtype=torch.float32)
     if not isinstance(high, torch.Tensor):
-        high = torch.tensor(high).float()
+        high = torch.tensor(high, dtype=torch.float32)
     dist = Uniform(low, high)
     if same_on_batch:
         return dist.rsample((1, *shape[1:])).repeat(shape[0])
     else:
         return dist.rsample(shape)
+
+
+def _adapted_beta(
+    shape: Union[Tuple, torch.Size],
+    a: Union[float, int, torch.Tensor],
+    b: Union[float, int, torch.Tensor],
+    same_on_batch=False
+) -> torch.Tensor:
+    r""" The beta sampling function that accepts 'same_on_batch'.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
+    By default, same_on_batch is set to False.
+    """
+    if not isinstance(a, torch.Tensor):
+        a = torch.tensor(a, dtype=torch.float32)
+    if not isinstance(b, torch.Tensor):
+        b = torch.tensor(b, dtype=torch.float32)
+    dist = Beta(a, b)
+    if same_on_batch:
+        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+    else:
+        return dist.rsample(shape)
+
+
+def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
+                     center: float = 0., bounds: Tuple[float, float] = (0, float('inf'))) -> torch.Tensor:
+    r"""Check inputs and compute the corresponding factor bounds
+    """
+    factor_bound: torch.Tensor
+    if not isinstance(factor, torch.Tensor):
+        factor = torch.tensor(factor, dtype=torch.float32)
+
+    if factor.dim() == 0:
+        _center = torch.tensor(center, dtype=torch.float32)
+
+        if factor < 0:
+            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor.item()}")
+
+        factor_bound = torch.tensor([_center - factor, _center + factor], dtype=torch.float32)
+        # Should be something other than clamp
+        # Currently, single value factor will not out of scope as long as the user provided it.
+        factor_bound = torch.clamp(factor_bound, bounds[0], bounds[1])
+
+    elif factor.shape[0] == 2 and factor.dim() == 1:
+
+        if not bounds[0] <= factor[0] or not bounds[1] >= factor[1]:
+            raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {factor}.")
+
+        if not bounds[0] <= factor[0] <= factor[1] <= bounds[1]:
+            raise ValueError(f"{name}[0] should be smaller than {name}[1] got {factor}")
+
+        factor_bound = factor
+
+    else:
+
+        raise TypeError(
+            f"The {name} should be a float number or a tuple with length 2 whose values move between {bounds}.")
+
+    return factor_bound
+
+
+def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
+    assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"
