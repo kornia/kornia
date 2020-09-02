@@ -14,7 +14,9 @@ from kornia.geometry import (
     warp_affine,
     hflip,
     vflip,
-    deg2rad
+    deg2rad,
+    bbox_to_mask,
+    infer_box_shape
 )
 from kornia.color import rgb_to_grayscale
 from kornia.enhance import (
@@ -32,7 +34,7 @@ from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from . import random_generator as rg
-from .utils import _transform_input, _validate_input_shape, _validate_input_dtype, _range_bound
+from .utils import _transform_input, _validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -908,3 +910,127 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     for image, prob in zip(input, params['batch_prob']):
         res.append(equalize(image) if prob else image)
     return torch.cat(res, dim=0)
+
+
+def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
+                params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Apply mixup to images in a batch.
+
+    MixUp augmentation strategy: overlap images with different alpha values.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        labels (torch.Tensor): Label tensor with shape (B,).
+        params (Dict[str, torch.Tensor]):
+            - params['mixup_pairs']: Mixup indexes.
+            - params['mixup_lambdas']: Lambda for the mixup strength.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Raw labels, corresponding labels and lambdas for each mix, shape of :math:`(B, 3)`.
+
+    Examples:
+        >>> input = torch.stack([torch.eye(5).unsqueeze(dim=0), torch.ones(5, 5).unsqueeze(dim=0)])
+        >>> labels = torch.tensor([0, 1])
+        >>> params = dict(mixup_pairs=torch.tensor([1, 0]), mixup_lambdas=torch.tensor([0.5, 0.9]))
+        >>> out_img, out_label = apply_mixup(input, labels, params)
+        >>> out_img
+        tensor([[[[1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
+                  [0.5000, 1.0000, 0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 1.0000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000, 1.0000, 0.5000],
+                  [0.5000, 0.5000, 0.5000, 0.5000, 1.0000]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[1.0000, 0.1000, 0.1000, 0.1000, 0.1000],
+                  [0.1000, 1.0000, 0.1000, 0.1000, 0.1000],
+                  [0.1000, 0.1000, 1.0000, 0.1000, 0.1000],
+                  [0.1000, 0.1000, 0.1000, 1.0000, 0.1000],
+                  [0.1000, 0.1000, 0.1000, 0.1000, 1.0000]]]])
+        >>> out_label
+        tensor([[0.0000, 1.0000, 0.5000],
+                [1.0000, 0.0000, 0.9000]])
+
+    """
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
+    labels_permute = labels.index_select(dim=0, index=params['mixup_pairs'].to(labels.device))
+
+    lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(labels.device)
+    inputs = input * (1 - lam) + input_permute * lam
+    labels = torch.stack([
+        labels.to(input.dtype), labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device)], dim=-1)
+    return inputs, labels
+
+
+def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
+                 params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Apply cutmix to images in a batch.
+
+    CutMix augmentation strategy: patches are cut and pasted among training images where the ground
+    truth labels are also mixed proportionally to the area of the patches.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        labels (torch.Tensor): Label tensor with shape (B,).
+        params (Dict[str, torch.Tensor]):
+            - params['mix_pairs']: Mixup indexes with shape (num_mixes, B).
+            - params['crop_src']: Lambda for the mixup strength (num_mixes, B, 4, 2).
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Adjusted image, shape of :math:`(B, C, H, W)`.
+        - Corresponding labels and lambdas for each mix, shape of :math:`(num_mixes, B, 2)`.
+
+    Examples:
+        >>> input = torch.stack([torch.zeros(1, 5, 5), torch.ones(1, 5, 5)], dim=0)
+        >>> labels = torch.tensor([0, 1])
+        >>> params = {'mix_pairs': torch.tensor([[1, 0]]), 'crop_src': torch.tensor([[[
+        ...        [1., 1.],
+        ...        [2., 1.],
+        ...        [2., 2.],
+        ...        [1., 2.]],
+        ...       [[1., 1.],
+        ...        [3., 1.],
+        ...        [3., 2.],
+        ...        [1., 2.]]]])}
+        >>> apply_cutmix(input, labels, params)
+        (tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 1., 1., 0., 0.],
+                  [0., 1., 1., 0., 0.],
+                  [0., 0., 0., 0., 0.],
+                  [0., 0., 0., 0., 0.]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[1., 1., 1., 1., 1.],
+                  [1., 0., 0., 0., 1.],
+                  [1., 0., 0., 0., 1.],
+                  [1., 1., 1., 1., 1.],
+                  [1., 1., 1., 1., 1.]]]]), tensor([[[0.0000, 1.0000, 0.1600],
+                 [1.0000, 0.0000, 0.2400]]]))
+    """
+    input = _transform_input(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    height, width = input.size(2), input.size(3)
+    num_mixes = params['mix_pairs'].size(0)
+    batch_size = params['mix_pairs'].size(1)
+
+    _shape_validation(params['mix_pairs'], [num_mixes, batch_size], 'mix_pairs')
+    _shape_validation(params['crop_src'], [num_mixes, batch_size, 4, 2], 'crop_src')
+
+    out_inputs = input.clone()
+    out_labels = []
+    for pair, crop in zip(params['mix_pairs'], params['crop_src']):
+        input_permute = input.index_select(dim=0, index=pair.to(input.device))
+        labels_permute = labels.index_select(dim=0, index=pair.to(labels.device))
+        w, h = infer_box_shape(crop)
+        lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
+        # compute mask to match input shape
+        mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+        out_inputs[mask] = input_permute[mask]
+        out_labels.append(torch.stack([
+            labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))
+
+    return out_inputs, torch.stack(out_labels, dim=0)

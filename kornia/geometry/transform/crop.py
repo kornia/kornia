@@ -10,6 +10,8 @@ __all__ = [
     "crop_and_resize",
     "crop_by_boxes",
     "center_crop",
+    "bbox_to_mask",
+    "infer_box_shape"
 ]
 
 
@@ -26,6 +28,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
           coordinates must be in the x, y order.
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
+        interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
           https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
@@ -89,6 +92,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
           (B, C, H, W).
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
+        interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
           https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
     Returns:
@@ -156,15 +160,55 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
                          align_corners)
 
 
-def crop_by_boxes(tensor, src_box, dst_box,
-                  interpolation: str = 'bilinear',
-                  align_corners: bool = False) -> torch.Tensor:
+def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
+                  interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
     """A wrapper performs crop transform with bounding boxes.
+
+    Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
+    Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
+    So far, the ragged tensor is not supported by PyTorch right now. This function hereby requires the bounding boxes
+    in a batch must be rectangles with same width and height.
+
+    Args:
+        tensor (torch.Tensor): the input tensor with shape (C, H, W) or (B, C, H, W).
+        src_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+            to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
+            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
+        dst_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+            to be placed. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
+            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
+        interpolation (str): Interpolation flag. Default: 'bilinear'.
+        align_corners (bool): mode for grid_generation. Default: False. See
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+
+    Returns:
+        torch.Tensor: the output tensor with patches.
+
+    Examples:
+        >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 4, 4))
+        >>> src_box = torch.tensor([[
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]])  # 1x4x2
+        >>> dst_box = torch.tensor([[
+        ...     [0., 0.],
+        ...     [1., 0.],
+        ...     [1., 1.],
+        ...     [0., 1.],
+        ... ]])  # 1x4x2
+        >>> crop_by_boxes(input, src_box, dst_box, align_corners=True)
+        tensor([[[ 5.0000,  6.0000],
+                 [ 9.0000, 10.0000]]])
 
     Note:
         If the src_box is smaller than dst_box, the following error will be thrown.
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
+    validate_bboxes(src_box)
+    validate_bboxes(dst_box)
+
     if tensor.ndimension() not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
     # warping needs data in the shape of BCHW
@@ -178,9 +222,11 @@ def crop_by_boxes(tensor, src_box, dst_box,
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
-    bbox = _infer_bounding_box(dst_box)
+    bbox = infer_box_shape(dst_box)
+    assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1, "cropping height and width" \
+        f" must be exact same in a batch. Got height {bbox[0].unique()} and width {bbox[1].unique()}"
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0].int().data.item()), int(bbox[1].int().data.item())),
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[1].unique().item())),
         flags=interpolation, align_corners=align_corners)
 
     # return in the original shape
@@ -190,7 +236,7 @@ def crop_by_boxes(tensor, src_box, dst_box,
     return patches
 
 
-def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Auto-infer the output sizes.
 
     Args:
@@ -201,29 +247,90 @@ def _infer_bounding_box(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor
           coordinates must be in the x, y order.
 
     Returns:
-        (torch.Tensor, torch.Tensor): tensor containing the patches with shape BxN1xN2
+        Tuple[torch.Tensor, torch.Tensor]:
+        - Bounding box heights, shape of :math:`(B,)`.
+        - Boundingbox widths, shape of :math:`(B,)`.
 
     Example:
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
-        >>> _infer_bounding_box(boxes)
-        (2, 2)
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ], [
+        ...     [1., 1.],
+        ...     [3., 1.],
+        ...     [3., 2.],
+        ...     [1., 2.],
+        ... ]])  # 2x4x2
+        >>> infer_box_shape(boxes)
+        (tensor([2., 2.]), tensor([2., 3.]))
+    """
+    validate_bboxes(boxes)
+    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)
+    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)
+    return (height, width)
+
+
+def validate_bboxes(boxes: torch.Tensor) -> None:
+    """Validate if a bounding box usable or not.
+
+    This function checks if the boxes are rectangular or not.
+
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the
+          bounding boxes to be extracted. The tensor must have the shape
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right, bottom-left. The
+          coordinates must be in the x, y order.
     """
     assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
-        "Boxes must have be square, while get widths %s and %s" % \
+        "Boxes must have be rectangular, while get widths %s and %s" % \
         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
     assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
-        "Boxes must have be square, while get heights %s and %s" % \
+        "Boxes must have be rectangular, while get heights %s and %s" % \
         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
-    assert len((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique()) == 1, \
-        "Boxes can only have one widths, got %s" % str((boxes[:, 1, 0] - boxes[:, 0, 0] + 1).unique())
-    assert len((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique()) == 1, \
-        "Boxes can only have one heights, got %s" % str((boxes[:, 2, 1] - boxes[:, 0, 1] + 1).unique())
 
-    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)[0]
-    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)[0]
-    return (height, width)
+
+def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
+    """Convert bounding boxes to masks. Covered area is 1. and the remaining is 0.
+
+    Args:
+        boxes (torch.Tensor): a tensor containing the coordinates of the
+          bounding boxes to be extracted. The tensor must have the shape
+          of Bx4x2, where each box is defined in the following (clockwise)
+          order: top-left, top-right, bottom-right, bottom-left. The
+          coordinates must be in the x, y order.
+        width (int): width of the masked image.
+        height (int): height of the masked image.
+
+    Returns:
+        torch.Tensor: the output mask tensor.
+
+    Examples:
+        >>> boxes = torch.tensor([[
+        ...        [1., 1.],
+        ...        [3., 1.],
+        ...        [3., 2.],
+        ...        [1., 2.],
+        ...   ]])  # 1x4x2
+        >>> bbox_to_mask(boxes, 5, 5)
+        tensor([[[0., 0., 0., 0., 0.],
+                 [0., 1., 1., 1., 0.],
+                 [0., 1., 1., 1., 0.],
+                 [0., 0., 0., 0., 0.],
+                 [0., 0., 0., 0., 0.]]])
+    """
+    validate_bboxes(boxes)
+    mask = torch.zeros((len(boxes), height, width))
+
+    mask_out = []
+    # TODO: Looking for a vectorized way
+    for m, box in zip(mask, boxes):
+        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.unsqueeze(dim=0)
+        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
+        mask_out.append(m_out)
+
+    return torch.stack(mask_out, dim=0).float()

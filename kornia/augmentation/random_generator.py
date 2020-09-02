@@ -7,7 +7,8 @@ import torch
 from kornia.constants import Resample, BorderType, SamplePadding
 from .utils import (
     _adapted_uniform,
-    _joint_range_check
+    _adapted_beta,
+    _joint_range_check,
 )
 
 
@@ -600,4 +601,158 @@ def random_sharpness_generator(
 
     return dict(
         sharpness_factor=sharpness_factor
+    )
+
+
+def random_mixup_generator(
+    batch_size: int,
+    p: float = 0.5,
+    lambda_val: Optional[torch.Tensor] = None,
+    same_on_batch: bool = False
+) -> Dict[str, torch.Tensor]:
+    r"""Generator mixup indexes and lambdas for a batch of inputs.
+
+    Args:
+        batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
+        p (flot): probability of applying mixup.
+        lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
+            If None, it will be set to tensor([0., 1.]), which means no restrictions.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> random_mixup_generator(5, 0.7)
+        {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
+    """
+    if lambda_val is None:
+        lambda_val = torch.tensor([0., 1.])
+    _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
+
+    batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
+    mixup_pairs: torch.Tensor = torch.randperm(batch_size)
+    mixup_lambdas: torch.Tensor = _adapted_uniform(
+        (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
+    mixup_lambdas = mixup_lambdas * batch_probs.float()
+
+    return dict(
+        mixup_pairs=mixup_pairs,
+        mixup_lambdas=mixup_lambdas
+    )
+
+
+def random_cutmix_generator(
+    batch_size: int,
+    width: int,
+    height: int,
+    p: float = 0.5,
+    num_mix: int = 1,
+    beta: Optional[torch.Tensor] = None,
+    cut_size: Optional[torch.Tensor] = None,
+    same_on_batch: bool = False
+) -> Dict[str, torch.Tensor]:
+    r"""Generator cutmix indexes and lambdas for a batch of inputs.
+
+    Args:
+        batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
+        width (int): image width.
+        height (int): image height.
+        p (float): probability of applying cutmix.
+        num_mix (int): number of images to mix with. Default is 1.
+        beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+            If None, it will be set to 1.
+        cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+            If None, it will be set to [0, 1], which means no restriction.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
+        {'mix_pairs': tensor([[2, 0, 1],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
+                  [209,  25],
+                  [209, 198],
+                  [ 36, 198]],
+        <BLANKLINE>
+                 [[157, 137],
+                  [156, 137],
+                  [156, 136],
+                  [157, 136]],
+        <BLANKLINE>
+                 [[  3,  12],
+                  [210,  12],
+                  [210, 219],
+                  [  3, 219]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[ 83, 126],
+                  [177, 126],
+                  [177, 220],
+                  [ 83, 220]],
+        <BLANKLINE>
+                 [[ 55,   8],
+                  [206,   8],
+                  [206, 159],
+                  [ 55, 159]],
+        <BLANKLINE>
+                 [[ 97,  70],
+                  [ 96,  70],
+                  [ 96,  69],
+                  [ 97,  69]]]])}
+
+    """
+    if beta is None:
+        beta = torch.tensor(1.)
+    if cut_size is None:
+        cut_size = torch.tensor([0., 1.])
+    _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
+
+    batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
+    mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
+    cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
+    # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
+    # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
+    cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
+    cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
+
+    cut_height = (cutmix_rate * height).long()
+    cut_width = (cutmix_rate * width).long()
+    _gen_shape = (1,)
+
+    if same_on_batch:
+        _gen_shape = (cut_height.size(0),)
+        cut_height = cut_height[0]
+        cut_width = cut_width[0]
+
+    x_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width, same_on_batch).long()
+    y_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height, same_on_batch).long()
+
+    bbox = torch.tensor([[
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+    ]]).repeat(batch_size * num_mix, 1, 1)
+
+    crop_src = bbox.clone()
+    crop_src[:, :, 0] += x_start.view(-1, 1)
+    crop_src[:, :, 1] += y_start.view(-1, 1)
+    crop_src[:, 1, 0] += cut_width - 1
+    crop_src[:, 2, 0] += cut_width - 1
+    crop_src[:, 2, 1] += cut_height - 1
+    crop_src[:, 3, 1] += cut_height - 1
+
+    # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
+    crop_src = crop_src.view(num_mix, batch_size, 4, 2)
+
+    return dict(
+        mix_pairs=mix_pairs,
+        crop_src=crop_src
     )

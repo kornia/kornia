@@ -13,6 +13,8 @@ from kornia.augmentation.utils.helpers import (
     _validate_shape,
     _validate_input_shape,
     _adapted_uniform,
+    _adapted_beta,
+    _shape_validation,
 )
 
 __all__ = [
@@ -24,6 +26,8 @@ __all__ = [
     "_validate_shape",
     "_validate_input_shape",
     "_adapted_uniform",
+    "_adapted_beta",
+    "_shape_validation",
     "_range_bound",
     "_joint_range_check",
     "_singular_range_check",
