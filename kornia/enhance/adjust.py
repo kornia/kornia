@@ -464,7 +464,6 @@ def _scale_channel(im):
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
-    
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
