@@ -378,7 +378,7 @@ def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> to
     return torch.cat(res, dim=0)
 
 
-def compute_intensity_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def compute_intensity_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
 
     Args:
