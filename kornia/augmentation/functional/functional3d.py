@@ -354,7 +354,7 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     return trans_mat
 
 
-def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
     Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
