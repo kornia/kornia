@@ -1,6 +1,7 @@
 from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
+import kornia
 
 from kornia.constants import Resample, BorderType, pi
 from kornia.enhance.adjust import equalize3d
@@ -356,7 +357,6 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
 
 def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
-    Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
@@ -367,7 +367,7 @@ def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> to
                 batch_prob is [True, True, False, False].
 
     Returns:
-        torch.Tensor: The equalized input.
+        torch.Tensor: The equalized input. :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
@@ -392,5 +392,5 @@ def compute_intensity_transformation3d(input: torch.Tensor, params: Dict[str, to
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    identity: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+    identity: torch.Tensor = kornia.eye_like(4, input)
     return identity

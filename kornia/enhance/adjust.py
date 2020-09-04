@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.augmentation.utils import _transform_input3d
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.constants import pi
 
 
@@ -495,7 +494,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
     torch.Tensor: Sharpened image or images with same shape as the input.
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
 
     res = []
     for volume in input:

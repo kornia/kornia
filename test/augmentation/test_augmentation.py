@@ -1600,12 +1600,7 @@ class TestRandomEqualize:
         expected = self.build_input(channels, height, width, bs=1, row=row_expected)
         expected = expected.to(device)
 
-        identity = torch.tensor(
-            [[1., 0., 0.],
-             [0., 1., 0.],
-             [0., 0., 1.]]
-        )  # 3 x 3
-        identity = identity.to(device)
+        identity = torch.eye(3, device=device)  # 3 x 3
 
         assert_allclose(f(inputs)[0], expected)
         assert_allclose(f(inputs)[1], identity)
@@ -1633,15 +1628,7 @@ class TestRandomEqualize:
         expected = self.build_input(channels, height, width, bs, row=row_expected)
         expected = expected.to(device)
 
-        identity = torch.tensor([
-            [[1., 0., 0.],
-             [0., 1., 0.],
-             [0., 0., 1.]],
-            [[1., 0., 0.],
-             [0., 1., 0.],
-             [0., 0., 1.],]
-        ])  # 2 x 3 x 3
-        identity = identity.to(device)
+        identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
 
         assert_allclose(f(inputs)[0], expected)
         assert_allclose(f(inputs)[1], identity)
