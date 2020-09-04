@@ -278,6 +278,18 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
+    def to(self, *args, **kwargs) -> 'PinholeCamera':
+        return PinholeCamera(
+            self.intrinsics.to(*args, **kwargs),
+            self.extrinsics.to(*args, **kwargs),
+            self.height.to(*args, **kwargs),
+            self.width.to(*args, **kwargs),
+        )
+
+    @property
+    def device(self) -> torch.device:
+        return self.intrinsics.device
+
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
