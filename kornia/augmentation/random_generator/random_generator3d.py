@@ -5,27 +5,23 @@ import math
 import torch
 
 from kornia.constants import Resample, BorderType
-from .utils import (
+from kornia.augmentation.utils import (
     _adapted_uniform,
     _tuple_range_reader,
 )
 
 
-def random_rotation_generator3d(
+def rotation_params_generator3d(
     batch_size: int,
     degrees: torch.Tensor,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
-    same_on_batch: bool = False,
-    align_corners: bool = False
+    same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:
         batch_size (int): the tensor batch size.
         degrees (torch.Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners (bool): interpolation flag. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -37,12 +33,10 @@ def random_rotation_generator3d(
 
     return dict(yaw=yaw,
                 pitch=pitch,
-                roll=roll,
-                interpolation=torch.tensor(Resample.get(interpolation).value),
-                align_corners=torch.tensor(align_corners))
+                roll=roll)
 
 
-def random_affine_generator3d(
+def affine_params_generator3d(
     batch_size: int,
     depth: int,
     height: int,
@@ -51,9 +45,7 @@ def random_affine_generator3d(
     translate: Optional[torch.Tensor] = None,
     scale: Optional[torch.Tensor] = None,
     shears: Optional[torch.Tensor] = None,
-    resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
-    align_corners: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```3d affine``` transformation random affine transform.
 
@@ -74,10 +66,7 @@ def random_affine_generator3d(
             will be applied.
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: False.See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -136,6 +125,4 @@ def random_affine_generator3d(
                 syx=syx,
                 syz=syz,
                 szx=szx,
-                szy=szy,
-                resample=torch.tensor(Resample.get(resample).value),
-                align_corners=torch.tensor(align_corners))
+                szy=szy)

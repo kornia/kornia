@@ -46,10 +46,12 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_hflip(input, params)
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+
+    output = input.clone()
+    output[to_apply] = apply_hflip(input[to_apply])
     if return_transform:
-        return output, compute_hflip_transformation(input, params)
+        return output, compute_hflip_transformation(input)
     return output
 
 
@@ -62,10 +64,12 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_vflip(input, params)
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+
+    output = input.clone()
+    output[to_apply] = apply_vflip(input[to_apply])
     if return_transform:
-        return output, compute_vflip_transformation(input, params)
+        return output, compute_vflip_transformation(input)
     return output
 
 
@@ -87,9 +91,9 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     _saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
     _hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
     params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
-    output = apply_color_jitter(input, params)
+    output = apply_color_jitter(input, params['params'], params['flags'])
     if return_transform:
-        return output, compute_intensity_transformation(input, params)
+        return output, compute_intensity_transformation(input)
     return output
 
 
@@ -101,11 +105,12 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     """
     input = _transform_input(input)
     batch_size, _, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
+    to_apply = rg.random_prob_generator(batch_size, p=p)
 
-    output = apply_grayscale(input, params)
+    output = input.clone()
+    output[to_apply] = apply_grayscale(input[to_apply])
     if return_transform:
-        return output, compute_intensity_transformation(input, params)
+        return output, compute_intensity_transformation(input)
     return output
 
 
@@ -224,14 +229,12 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     return output
 
 
-def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
 
     Returns:
         torch.Tensor: The horizontally flipped input
@@ -240,76 +243,57 @@ def apply_hflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.T
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    flipped: torch.Tensor = input.clone()
-
-    to_flip = params['batch_prob'].to(input.device)
-    flipped[to_flip] = hflip(input[to_flip])
-
-    return flipped
+    return hflip(input)
 
 
-def compute_hflip_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor indicating whether to transform an image in a batch.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    to_flip = params['batch_prob'].to(input.device)
     trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
                                            [0, 1, 0],
                                            [0, 0, 1]])
-    trans_mat[to_flip] = flip_mat.type_as(input)
 
-    return trans_mat
+    return flip_mat.type_as(input)
 
 
-def apply_vflip(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).\
 
     Returns:
         torch.Tensor: The vertically flipped input
     """
-    # TODO: params validation
 
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    flipped: torch.Tensor = input.clone()
-    to_flip = params['batch_prob'].to(input.device)
-    flipped[to_flip] = vflip(input[to_flip])
-
-    return flipped
+    return vflip(input)
 
 
-def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor indicating whether to transform an image in a batch.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    to_flip = params['batch_prob'].to(input.device)
     trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
     h: int = input.shape[-2]
@@ -317,12 +301,10 @@ def compute_vflip_transformation(input: torch.Tensor, params: Dict[str, torch.Te
                                            [0, -1, h - 1],
                                            [0, 0, 1]])
 
-    trans_mat[to_flip] = flip_mat.type_as(input)
-
-    return trans_mat
+    return flip_mat.type_as(input)
 
 
-def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
@@ -333,8 +315,9 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
             - params['contrast_factor']: The contrast factor.
             - params['hue_factor']: The hue factor.
             - params['saturation_factor']: The saturation factor.
+        flags (Dict[str, torch.Tensor]):
             - params['order']: The order of applying color transforms.
-              0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
+            0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
 
     Returns:
         torch.Tensor: The color jitterred input
@@ -352,20 +335,18 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     ]
 
     jittered = input
-    for idx in params['order'].tolist():
+    for idx in flags['order'].tolist():
         t = transforms[idx]
         jittered = t(jittered)
 
     return jittered
 
 
-def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def compute_intensity_transformation(input: torch.Tensor):
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor that indicating whether if to transform an image in a batch.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`. Returns identity transformations.
@@ -376,20 +357,16 @@ def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torc
     return identity
 
 
-def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor that indicating whether if to transform an image in a batch.
 
     Returns:
         torch.Tensor: The grayscaled input
     """
-    # TODO: params validation
-
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
@@ -398,24 +375,22 @@ def apply_grayscale(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
 
     grayscale: torch.Tensor = input.clone()
 
-    to_gray = params['batch_prob'].to(input.device)
-
-    grayscale[to_gray] = rgb_to_grayscale(input[to_gray])
+    grayscale = rgb_to_grayscale(input)
 
     return grayscale
 
 
-def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the orignal image with shape Bx4x2.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx4x2.
+        flags (Dict[str, torch.Tensor]):
             - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['align_corners']: Boolean tensor.
 
@@ -436,21 +411,18 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
 
     out_data: torch.Tensor = x_data.clone()
 
-    # process valid samples
-    mask: torch.Tensor = params['batch_prob'].to(input.device)
-
     # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
     # TODO: this if statement is super weird and sum here is not the propeer way to check
     # it's valid. In addition, 'interpolation' shouldn't be a reason to get into the branch.
 
-    if bool(mask.sum() > 0) and ('interpolation' in params):
+    if bool(mask.sum() > 0) and ('interpolation' in flags):
         # apply the computed transform
         height, width = x_data.shape[-2:]
-        resample_name: str = Resample(params['interpolation'].item()).name.lower()
-        align_corners: bool = cast(bool, params['align_corners'].item())
+        resample_name: str = Resample(flags['interpolation'].item()).name.lower()
+        align_corners: bool = cast(bool, flags['align_corners'].item())
 
-        out_data[mask] = warp_perspective(
-            x_data[mask], transform[mask], (height, width),
+        out_data = warp_perspective(
+            x_data, transform, (height, width),
             flags=resample_name, align_corners=align_corners)
 
     return out_data.view_as(input)
@@ -462,7 +434,6 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor thatindicating whether if to transform an image in a batch.
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the orignal image with shape Bx4x2.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
@@ -478,7 +449,7 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     return transform
 
 
-def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Random affine transformation of the image keeping center invariant.
 
     Args:
@@ -490,6 +461,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
             - params['scale']: Scaling params.
             - params['sx']: Shear param toward x-axis.
             - params['sy']: Shear param toward y-axis.
+        flags (Dict[str, torch.Tensor]):
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['padding_mode']: Integer tensor, see SamplePadding enum.
             - params['align_corners']: Boolean tensor.
@@ -512,9 +484,9 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.
     # concatenate transforms
     transform: torch.Tensor = compute_affine_transformation(input, params)
 
-    resample_name: str = Resample(params['resample'].item()).name.lower()
-    padding_mode: str = SamplePadding(params['padding_mode'].item()).name.lower()
-    align_corners: bool = cast(bool, params['align_corners'].item())
+    resample_name: str = Resample(flags['resample'].item()).name.lower()
+    padding_mode: str = SamplePadding(flags['padding_mode'].item()).name.lower()
+    align_corners: bool = cast(bool, flags['align_corners'].item())
 
     out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],
                                          (height, width), resample_name,
@@ -536,7 +508,6 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
             - params['sx']: Shear param toward x-axis.
             - params['sy']: Shear param toward y-axis.
             - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
-            - params['align_corners']: Boolean tensor.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
@@ -550,7 +521,7 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
     return transform
 
 
-def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
@@ -558,6 +529,9 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['degrees']: degree to be applied.
+        flags (Dict[str, torch.Tensor]):
+            - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
 
     Returns:
         torch.Tensor: The cropped input
@@ -566,15 +540,15 @@ def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
-    resample_mode: str = Resample(params['interpolation'].item()).name.lower()
-    align_corners: bool = cast(bool, params['align_corners'].item())
+    resample_mode: str = Resample(flags['interpolation'].item()).name.lower()
+    align_corners: bool = cast(bool, flags['align_corners'].item())
 
     transformed: torch.Tensor = rotate(input, angles, mode=resample_mode, align_corners=align_corners)
 
     return transformed
 
 
-def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
@@ -601,7 +575,7 @@ def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Te
     return trans_mat
 
 
-def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
     Order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
 
@@ -610,6 +584,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Te
         params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 4, 2)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 4, 2)`.
+        flags (Dict[str, torch.Tensor]):
             - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
             - params['align_corners']: Boolean tensor.
 
@@ -619,14 +594,14 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Te
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    resample_mode: str = Resample.get(params['interpolation'].item()).name.lower()  # type: ignore
-    align_corners: bool = cast(bool, params['align_corners'].item())
+    resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
+    align_corners: bool = cast(bool, flags['align_corners'].item())
 
     return crop_by_boxes(
         input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
-def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]):
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
@@ -897,8 +872,6 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-        params (Dict[str, torch.Tensor]):
-            - params['p']: Probability.
 
     Returns:
         torch.Tensor: Adjusted image.
@@ -906,10 +879,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    res = []
-    for image, prob in zip(input, params['batch_prob']):
-        res.append(equalize(image) if prob else image)
-    return torch.cat(res, dim=0)
+    return equalize(image)
 
 
 def apply_mixup(input: torch.Tensor, labels: torch.Tensor,

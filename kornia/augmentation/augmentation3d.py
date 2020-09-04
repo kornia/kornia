@@ -8,20 +8,24 @@ from kornia.constants import Resample, BorderType
 from kornia.augmentation.augmentation import AugmentationBase
 from kornia.augmentation import functional3d as F
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation import random_generator3d as rg3
 from kornia.augmentation.utils import (
     _infer_batch_shape3d,
+    _transform_input3d,
     _tuple_range_reader,
     _singular_range_check
 )
 
 
 class AugmentationBase3D(AugmentationBase):
-    def __init__(self, return_transform: bool = False) -> None:
-        super(AugmentationBase3D, self).__init__(return_transform=return_transform)
+    def __init__(self, p: float, return_transform: bool = False, same_one_batch: bool = False) -> None:
+        super(AugmentationBase3D, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
         return _infer_batch_shape3d(input)
+
+    def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
+        return _transform_input3d(input)
 
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
@@ -62,13 +66,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip3D, self).__init__(return_transform)
-        self.p: float = p
-        self.same_on_batch = same_on_batch
-
-    def __repr__(self) -> str:
-        repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
-        return self.__class__.__name__ + repr
+        super(RandomHorizontalFlip3D, self).__init__(p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
@@ -117,13 +115,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomVerticalFlip3D, self).__init__(return_transform)
-        self.p: float = p
-        self.same_on_batch = same_on_batch
-
-    def __repr__(self) -> str:
-        repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
-        return self.__class__.__name__ + repr
+        super(RandomVerticalFlip3D, self).__init__(p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
@@ -173,16 +165,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomDepthicalFlip3D, self).__init__(return_transform)
-        self.p: float = p
-        self.same_on_batch = same_on_batch
-
-    def __repr__(self) -> str:
-        repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
-        return self.__class__.__name__ + repr
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+        super(RandomDepthicalFlip3D, self).__init__(p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_dflip_transformation3d(input, params)
@@ -259,7 +242,7 @@ class RandomAffine3D(AugmentationBase3D):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
-        super(RandomAffine3D, self).__init__(return_transform)
+        super(RandomAffine3D, self).__init__(p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.degrees = _tuple_range_reader(degrees, 3)
         self.shear: Optional[torch.Tensor] = None
         if shears is not None:
@@ -284,17 +267,15 @@ class RandomAffine3D(AugmentationBase3D):
             _singular_range_check(self.scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
 
         self.resample: Resample = Resample.get(resample)
-        self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
-        f"resample={self.resample.name}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch} "
-        f"align_corners={self.align_corners}"
-        return self.__class__.__name__ + repr
+        f"resample={self.resample.name}, align_corners={self.align_corners}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg3.random_affine_generator3d(
+        return rg.random_affine_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.degrees,
             self.translate, self.scale, self.shear, self.resample, self.same_on_batch, self.align_corners)
 
@@ -357,21 +338,18 @@ class RandomRotation3D(AugmentationBase3D):
         interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
-        super(RandomRotation3D, self).__init__(return_transform)
+        super(RandomRotation3D, self).__init__(p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.degrees = _tuple_range_reader(degrees, 3)
         self.interpolation: Resample = Resample.get(interpolation)
-        self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
-        repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, "
-        f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch}), "
-        f"align_corners={self.align_corners}"
-        return self.__class__.__name__ + repr
+        repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, align_corners={self.align_corners}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg3.random_rotation_generator3d(batch_shape[0], self.degrees, self.interpolation,
-                                               self.same_on_batch, self.align_corners)
+        return rg.random_rotation_generator3d(batch_shape[0], self.degrees, self.interpolation,
+                                              self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation3d(input, params)

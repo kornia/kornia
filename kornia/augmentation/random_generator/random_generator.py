@@ -5,14 +5,14 @@ import math
 import torch
 
 from kornia.constants import Resample, BorderType, SamplePadding
-from .utils import (
+from kornia.augmentation.utils import (
     _adapted_uniform,
     _adapted_beta,
     _joint_range_check,
 )
 
 
-def random_color_jitter_generator(
+def color_jitter_params_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,
     contrast: Optional[torch.Tensor] = None,
@@ -24,11 +24,11 @@ def random_color_jitter_generator(
 
     Args:
         batch_size (int): the number of images.
-        brightness (torch.Tensor, optional): Default value is 0
-        contrast (torch.Tensor, optional): Default value is 0
-        saturation (torch.Tensor, optional): Default value is 0
-        hue (torch.Tensor, optional): Default value is 0
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        brightness (torch.Tensor, optional): Default value is 0.
+        contrast (torch.Tensor, optional): Default value is 0.
+        saturation (torch.Tensor, optional): Default value is 0.
+        hue (torch.Tensor, optional): Default value is 0.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -51,17 +51,16 @@ def random_color_jitter_generator(
     return dict(brightness_factor=brightness_factor,
                 contrast_factor=contrast_factor,
                 hue_factor=hue_factor,
-                saturation_factor=saturation_factor,
-                order=torch.randperm(4))
+                saturation_factor=saturation_factor)
 
 
-def random_prob_generator(
+def prob_params_generator(
         batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
     r"""Generator random probabilities for a batch of inputs.
 
     Args:
         batch_size (int): the number of images.
-        p (float): probability of the image being flipped or grayscaled. Default value is 0.5
+        p (float): probability to generate an 1-d binary mask. Default value is 0.5.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
@@ -78,15 +77,12 @@ def random_prob_generator(
     return dict(batch_prob=batch_prob)
 
 
-def random_perspective_generator(
+def perspective_params_generator(
     batch_size: int,
     height: int,
     width: int,
-    p: float,
     distortion_scale: torch.Tensor,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
-    align_corners: bool = False,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``perspective`` for a random perspective transform.
 
@@ -94,20 +90,14 @@ def random_perspective_generator(
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        p (float): probability of the image being applied perspective.
         distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
         params (Dict[str, torch.Tensor])
     """
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
         f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
-
-    batch_prob: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
 
     start_points: torch.Tensor = torch.tensor([[
         [0., 0],
@@ -131,14 +121,11 @@ def random_perspective_generator(
     ]])
     end_points = start_points + factor * rand_val * pts_norm
 
-    return dict(batch_prob=batch_prob,
-                start_points=start_points,
-                end_points=end_points,
-                interpolation=torch.tensor(Resample.get(interpolation).value),
-                align_corners=torch.tensor(align_corners))
+    return dict(start_points=start_points,
+                end_points=end_points)
 
 
-def random_affine_generator(
+def affine_params_generator(
     batch_size: int,
     height: int,
     width: int,
@@ -146,10 +133,7 @@ def random_affine_generator(
     translate: Optional[torch.Tensor] = None,
     scale: Optional[torch.Tensor] = None,
     shear: Optional[torch.Tensor] = None,
-    resample: Union[str, int, Resample] = Resample.BILINEAR.name,
     same_on_batch: bool = False,
-    align_corners: bool = False,
-    padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``affine`` for a random affine transform.
 
@@ -172,11 +156,7 @@ def random_affine_generator(
             range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
             a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
             Will not apply shear by default
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: False.See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
-        padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -223,27 +203,20 @@ def random_affine_generator(
                 scale=scale,
                 angle=angle,
                 sx=sx,
-                sy=sy,
-                resample=torch.tensor(Resample.get(resample).value),
-                padding_mode=torch.tensor(SamplePadding.get(padding_mode).value),
-                align_corners=torch.tensor(align_corners))
+                sy=sy)
 
 
-def random_rotation_generator(
+def rotation_params_generator(
     batch_size: int,
     degrees: torch.Tensor,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
-    same_on_batch: bool = False,
-    align_corners: bool = False
+    same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
     Args:
         batch_size (int): the tensor batch size.
         degrees (torch.Tensor): range of degrees with shape (2) to select from.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners (bool): interpolation flag. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -252,19 +225,15 @@ def random_rotation_generator(
 
     degrees = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
-    return dict(degrees=degrees,
-                interpolation=torch.tensor(Resample.get(interpolation).value),
-                align_corners=torch.tensor(align_corners))
+    return dict(degrees=degrees)
 
 
-def random_crop_generator(
+def crop_params_generator(
     batch_size: int,
     input_size: Tuple[int, int],
     size: Union[Tuple[int, int], torch.Tensor],
     resize_to: Optional[Tuple[int, int]] = None,
-    interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
-    same_on_batch: bool = False,
-    align_corners: bool = False
+    same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
 
@@ -273,9 +242,7 @@ def random_crop_generator(
         input_size (tuple): Input image shape, like (h, w).
         size (tuple): Desired size of the crop operation, like (h, w).
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners (bool): interpolation flag. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -312,12 +279,10 @@ def random_crop_generator(
         ]]).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
-                dst=crop_dst,
-                interpolation=torch.tensor(Resample.get(interpolation).value),
-                align_corners=torch.tensor(align_corners))
+                dst=crop_dst)
 
 
-def random_crop_size_generator(
+def crop_size_params_generator(
     size: Tuple[int, int],
     scale: torch.Tensor,
     ratio: torch.Tensor,
@@ -365,11 +330,10 @@ def random_crop_size_generator(
     return dict(size=torch.stack([h, w]))
 
 
-def random_rectangles_params_generator(
+def rectangles_params_generator(
     batch_size: int,
     height: int,
     width: int,
-    p: float,
     scale: torch.Tensor,
     ratio: torch.Tensor,
     value: float = 0.,
@@ -381,7 +345,6 @@ def random_rectangles_params_generator(
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        p (float): probability of applying random earaing.
         scale (torch.Tensor): range of size of the origin size cropped. Shape (2).
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
         value (float): value to be filled in the erased area.
@@ -393,7 +356,6 @@ def random_rectangles_params_generator(
     _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
     _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
-    batch_prob = random_prob_generator(batch_size, p, same_on_batch)['batch_prob']
     zeros = torch.zeros((batch_size,))
     images_area = height * width
     target_areas = _adapted_uniform(
@@ -422,8 +384,8 @@ def random_rectangles_params_generator(
     xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(width) - widths + 1).float()).int()
     ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(height) - heights + 1).float()).int()
 
-    return dict(widths=torch.where(batch_prob, widths, zeros.to(widths.dtype)),
-                heights=torch.where(batch_prob, heights, zeros.to(widths.dtype)),
+    return dict(widths=widths,
+                heights=heights,
                 xs=xs,
                 ys=ys,
                 values=torch.tensor([value] * batch_size))
@@ -433,8 +395,7 @@ def center_crop_params_generator(
     batch_size: int,
     height: int,
     width: int,
-    size: Tuple[int, int],
-    align_corners: bool = False
+    size: Tuple[int, int]
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
@@ -486,17 +447,14 @@ def center_crop_params_generator(
         [0, dst_h - 1],
     ]]).expand(points_src.shape[0], -1, -1)
     return dict(src=points_src,
-                dst=points_dst,
-                interpolation=torch.tensor(Resample.BILINEAR.value),
-                align_corners=torch.tensor(align_corners))
+                dst=points_dst)
 
 
-def random_motion_blur_generator(
+def motion_blur_params_generator(
     batch_size: int,
     kernel_size: Union[int, Tuple[int, int]],
     angle: torch.Tensor,
     direction: torch.Tensor,
-    border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
     same_on_batch: bool = True
 ) -> Dict[str, torch.Tensor]:
 
@@ -520,11 +478,10 @@ def random_motion_blur_generator(
 
     return dict(ksize_factor=ksize_factor,
                 angle_factor=angle_factor,
-                direction_factor=direction_factor,
-                border_type=torch.tensor(BorderType.get(border_type).value))
+                direction_factor=direction_factor)
 
 
-def random_solarize_generator(
+def solarize_params_generator(
     batch_size: int,
     thresholds: torch.Tensor = torch.tensor([0.4, 0.6]),
     additions: torch.Tensor = torch.tensor([-0.1, 0.1]),
@@ -558,7 +515,7 @@ def random_solarize_generator(
     )
 
 
-def random_posterize_generator(
+def posterize_params_generator(
     batch_size: int,
     bits: torch.Tensor = torch.tensor(3),
     same_on_batch: bool = False
@@ -580,7 +537,7 @@ def random_posterize_generator(
     )
 
 
-def random_sharpness_generator(
+def sharpness_params_generator(
     batch_size: int,
     sharpness: torch.Tensor = torch.tensor([0, 1.]),
     same_on_batch: bool = False
@@ -604,9 +561,8 @@ def random_sharpness_generator(
     )
 
 
-def random_mixup_generator(
+def mixup_params_generator(
     batch_size: int,
-    p: float = 0.5,
     lambda_val: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
@@ -624,18 +580,16 @@ def random_mixup_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> random_mixup_generator(5, 0.7)
+        >>> random_mixup_params_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
     if lambda_val is None:
         lambda_val = torch.tensor([0., 1.])
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
-    mixup_lambdas = mixup_lambdas * batch_probs.float()
 
     return dict(
         mixup_pairs=mixup_pairs,
@@ -643,11 +597,10 @@ def random_mixup_generator(
     )
 
 
-def random_cutmix_generator(
+def cutmix_params_generator(
     batch_size: int,
     width: int,
     height: int,
-    p: float = 0.5,
     num_mix: int = 1,
     beta: Optional[torch.Tensor] = None,
     cut_size: Optional[torch.Tensor] = None,
@@ -659,7 +612,6 @@ def random_cutmix_generator(
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
         width (int): image width.
         height (int): image height.
-        p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
@@ -672,7 +624,7 @@ def random_cutmix_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
+        >>> random_cutmix_params_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
                 [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
                   [209,  25],
@@ -712,13 +664,11 @@ def random_cutmix_generator(
         cut_size = torch.tensor([0., 1.])
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
     # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
-    cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
     cut_height = (cutmix_rate * height).long()
     cut_width = (cutmix_rate * width).long()

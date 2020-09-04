@@ -23,14 +23,14 @@ class TestAugmentationBase:
         input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        augmentation = AugmentationBase(return_transform=False)
+        augmentation = AugmentationBase(return_transform=False, p=1.)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
                 patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
                 patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
 
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
-            params = {"foo": 0}
+            params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
             generate_parameters.return_value = params
             apply_transform.return_value = expected_output
             compute_transformation.return_value = expected_transform
@@ -45,7 +45,7 @@ class TestAugmentationBase:
             assert transformation is expected_transform
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
-            params = {"bar": 1}
+            params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'bar': 1}}
             apply_transform.reset_mock()
             generate_parameters.return_value = None
             output = augmentation(input, params=params)
@@ -74,7 +74,7 @@ class TestAugmentationBase:
         output = utils.tensor_to_gradcheck_var(output)  # to var
         other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
-        augmentation = AugmentationBase(return_transform=True)
+        augmentation = AugmentationBase(return_transform=True, p=1.)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
                 patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
@@ -993,7 +993,7 @@ class TestRectangleRandomErasing:
         aspect_ratio_range = (.3, .5)
 
         rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
-        rect_params = rand_rec.generate_parameters(batch_shape)
+        rect_params = rand_rec.__forward_parameters__(batch_shape)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)
@@ -1242,8 +1242,8 @@ class TestRandomRotation:
         # This is included in doctest
         torch.manual_seed(0)  # for random reproductibility
 
-        f = RandomRotation(degrees=45.0, return_transform=True)
-        f1 = RandomRotation(degrees=45.0)
+        f = RandomRotation(degrees=45.0, return_transform=True, p=1.)
+        f1 = RandomRotation(degrees=45.0, p=1.)
 
         input = torch.tensor([[1., 0., 0., 2.],
                               [0., 0., 0., 0.],
@@ -1262,10 +1262,10 @@ class TestRandomRotation:
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_2 = torch.tensor([[0.1322, 0.0000, 0.7570, 0.2644],
-                                   [0.3785, 0.0000, 0.4166, 0.0000],
-                                   [0.0000, 0.6309, 1.5910, 1.2371],
-                                   [0.0000, 0.1444, 0.3177, 0.6499]])  # 1 x 4 x 4
+        expected_2 = torch.tensor([[[[0.0000, 0.3180, 0.0044, 0.0000],
+                                     [0.0015, 0.3215, 0.0000, 0.6360],
+                                     [0.1192, 1.2018, 0.9564, 0.0087],
+                                     [0.0823, 1.0058, 0.9526, 0.0000]]]])  # 1 x 4 x 4
         expected_2 = expected_2.to(device)
 
         out, mat = f(input)
@@ -1277,7 +1277,7 @@ class TestRandomRotation:
 
         torch.manual_seed(0)  # for random reproductibility
 
-        f = RandomRotation(degrees=45.0, return_transform=True)
+        f = RandomRotation(degrees=45.0, return_transform=True, p=1.)
 
         input = torch.tensor([[[[1., 0., 0., 2.],
                                 [0., 0., 0., 0.],
@@ -1321,12 +1321,12 @@ class TestRandomRotation:
         torch.manual_seed(0)  # for random reproductibility
 
         f = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(10.4, return_transform=True),
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, p=1.),
+            RandomRotation(10.4, return_transform=True, p=1.),
         )
         f1 = nn.Sequential(
-            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True),
-            RandomRotation(10.4),
+            RandomRotation(torch.tensor([-45.0, 90]), return_transform=True, p=1.),
+            RandomRotation(10.4, p=1.),
         )
 
         input = torch.tensor([[1., 0., 0., 2.],
@@ -1335,19 +1335,19 @@ class TestRandomRotation:
                               [0., 0., 1., 2.]])  # 4 x 4
         input = input.to(device)
 
-        expected = torch.tensor([[[0.1314, 0.1050, 0.6649, 0.2628],
-                                  [0.3234, 0.0202, 0.4256, 0.1671],
-                                  [0.0525, 0.5976, 1.5199, 1.1306],
-                                  [0.0000, 0.1453, 0.3224, 0.5796]]])  # 1 x 4 x 4
+        expected = torch.tensor([[[[0.1790, 0.0430, 0.5372, 0.3580],
+                                   [0.2686, 0.0725, 0.3722, 0.1130],
+                                   [0.0498, 0.6968, 1.4953, 0.8549],
+                                   [0.0268, 0.1821, 0.5466, 0.6627]]]])  # 1 x 4 x 4
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[0.8864, 0.4629, -0.5240],
-                                            [-0.4629, 0.8864, 0.8647],
+        expected_transform = torch.tensor([[[0.9726, 0.2323, -0.3075],
+                                            [-0.2323, 0.9726, 0.3896],
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_transform_2 = torch.tensor([[[0.8381, -0.5455, 1.0610],
-                                              [0.5455, 0.8381, -0.5754],
+        expected_transform_2 = torch.tensor([[[0.9981, -0.0610, 0.0943],
+                                              [0.0610, 0.9981, -0.0887],
                                               [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform_2 = expected_transform_2.to(device)
 
@@ -1393,12 +1393,12 @@ class TestRandomRotation:
 
         input = torch.rand((3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+        assert gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.), (input, ), raise_exception=True)
 
 
 class TestRandomCrop:
     def smoke_test(self, device):
-        f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False)
+        f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, p=1.)
         repr = "RandomCrop(crop_size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False,\
             return_transform=False)"
         assert str(f) == repr
@@ -1414,7 +1414,7 @@ class TestRandomCrop:
             [3., 4., 5.],
             [6., 7., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True)
+        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1431,13 +1431,13 @@ class TestRandomCrop:
             [0., 1., 2.],
             [3., 4., 5.],
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True)
+        rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
 
     def test_same_on_batch(self, device):
-        f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True, align_corners=True)
+        f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True, align_corners=True, p=1.)
         input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
@@ -1457,7 +1457,7 @@ class TestRandomCrop:
             [0., 0., 0.],
             [1., 2., 0.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=1, align_corners=True)
+        rc = RandomCrop(size=(2, 3), padding=1, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1477,7 +1477,7 @@ class TestRandomCrop:
             [1., 2., 10.],
             [4., 5., 10.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1497,7 +1497,7 @@ class TestRandomCrop:
             [8., 8., 8.],
             [1., 2., 8.]
         ]]]).to(device)
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True)
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1512,7 +1512,7 @@ class TestRandomCrop:
             [9., 9., 9.],
             [0., 1., 2.]
         ]]).repeat(batch_size, 1, 1, 1).to(device)
-        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True)
+        rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True, p=1.)
         out = rc(inp)
 
         assert_allclose(out, expected)
@@ -1521,7 +1521,7 @@ class TestRandomCrop:
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3)).to(device)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop(size=(3, 3)), (inp, ), raise_exception=True)
+        assert gradcheck(RandomCrop(size=(3, 3), p=1.), (inp, ), raise_exception=True)
 
 
 class TestRandomResizedCrop:
@@ -1542,13 +1542,15 @@ class TestRandomResizedCrop:
         expected = torch.tensor(
             [[[[5.3750, 5.8750, 4.5938],
                [6.3437, 6.7812, 5.2500]]]]).to(device)
-        rrc = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
+        rrc = RandomResizedCrop(
+            size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
 
     def test_same_on_batch(self, device):
-        f = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0), same_on_batch=True)
+        f = RandomResizedCrop(
+            size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0), same_on_batch=True)
         input = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
@@ -1600,14 +1602,15 @@ class TestRandomResizedCrop:
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomResizedCrop(size=(3, 3), scale=(1., 1.), ratio=(1., 1.)), (inp, ), raise_exception=True)
+        assert gradcheck(RandomResizedCrop(
+            size=(3, 3), scale=(1., 1.), ratio=(1., 1.)), (inp, ), raise_exception=True)
 
 
 class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', return_transform=False)"
+            "border_type='constant', p=0.5, return_transform=False, same_on_batch=True)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):
@@ -1616,10 +1619,14 @@ class TestRandomMotionBlur:
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
         params = {
-            'ksize_factor': torch.tensor(31),
-            'angle_factor': torch.tensor(30.),
-            'direction_factor': torch.tensor(-0.5),
-            'border_type': torch.tensor([0]),
+            'batch_prob': torch.tensor([True]),
+            'params': {
+                'ksize_factor': torch.tensor([31]),
+                'angle_factor': torch.tensor([30.]),
+                'direction_factor': torch.tensor([-0.5]),
+                'border_type': torch.tensor([0]),
+            },
+            'flags': {}
         }
         assert gradcheck(RandomMotionBlur(
-            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5)), (inp, params), raise_exception=True)
+            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
