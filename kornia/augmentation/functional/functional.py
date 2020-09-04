@@ -33,8 +33,14 @@ from kornia.enhance import (
 from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
-from . import random_generator as rg
-from .utils import _transform_input, _validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation
+import kornia.augmentation.random_generator as rg
+from kornia.augmentation.utils import (
+    _transform_input,
+    _validate_input_shape,
+    _validate_input_dtype,
+    _range_bound,
+    _shape_validation
+)
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False

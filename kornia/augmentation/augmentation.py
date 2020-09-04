@@ -1,23 +1,20 @@
 from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 
 import torch
-import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding
+from .base import AugmentationBase2D
 from . import functional as F
 from . import random_generator as rg
 from .random_generator import AugParamDict
 from .utils import (
-    _infer_batch_shape,
-    _transform_input,
-    _validate_input_dtype,
     _range_bound,
     _singular_range_check
 )
 
 
-class RandomHorizontalFlip(AugmentationBase):
+class RandomHorizontalFlip(AugmentationBase2D):
 
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
@@ -60,7 +57,7 @@ class RandomHorizontalFlip(AugmentationBase):
         return F.apply_hflip(input)
 
 
-class RandomVerticalFlip(AugmentationBase):
+class RandomVerticalFlip(AugmentationBase2D):
 
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
@@ -102,7 +99,7 @@ class RandomVerticalFlip(AugmentationBase):
         return F.apply_vflip(input)
 
 
-class ColorJitter(AugmentationBase):
+class ColorJitter(AugmentationBase2D):
 
     r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
@@ -164,7 +161,7 @@ class ColorJitter(AugmentationBase):
         return F.apply_color_jitter(input, params['params'], params['flags'])
 
 
-class RandomGrayscale(AugmentationBase):
+class RandomGrayscale(AugmentationBase2D):
     r"""Random Grayscale transformation according to a probability p value
 
     Args:
@@ -208,7 +205,7 @@ class RandomGrayscale(AugmentationBase):
         return F.apply_grayscale(input)
 
 
-class RandomErasing(AugmentationBase):
+class RandomErasing(AugmentationBase2D):
     r"""
     Erases a random selected rectangle for each image in the batch, putting the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
@@ -258,7 +255,7 @@ class RandomErasing(AugmentationBase):
         return F.apply_erase_rectangles(input, params['params'])
 
 
-class RandomPerspective(AugmentationBase):
+class RandomPerspective(AugmentationBase2D):
     r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
 
     Args:
@@ -316,7 +313,7 @@ class RandomPerspective(AugmentationBase):
         return F.apply_perspective(input, params['params'], params['flags'])
 
 
-class RandomAffine(AugmentationBase):
+class RandomAffine(AugmentationBase2D):
     r"""Random affine transformation of the image keeping center invariant.
 
     Args:
@@ -413,7 +410,7 @@ class RandomAffine(AugmentationBase):
         return F.apply_affine(input, params['params'], params['flags'])
 
 
-class CenterCrop(AugmentationBase):
+class CenterCrop(AugmentationBase2D):
     r"""Crops the given torch.Tensor at the center.
 
     Args:
@@ -462,7 +459,7 @@ class CenterCrop(AugmentationBase):
         return F.apply_crop(input, params['params'], params['flags'])
 
 
-class RandomRotation(AugmentationBase):
+class RandomRotation(AugmentationBase2D):
 
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
@@ -531,7 +528,7 @@ class RandomRotation(AugmentationBase):
         return F.apply_rotation(input, params['params'], params['flags'])
 
 
-class RandomCrop(AugmentationBase):
+class RandomCrop(AugmentationBase2D):
     r"""Random Crop on given size.
 
     Args:
@@ -627,7 +624,7 @@ class RandomCrop(AugmentationBase):
         return super().forward(input, params, return_transform)
 
 
-class RandomResizedCrop(AugmentationBase):
+class RandomResizedCrop(AugmentationBase2D):
     r"""Random Crop on given size and resizing the cropped patch to another.
 
     Args:
@@ -691,7 +688,7 @@ class RandomResizedCrop(AugmentationBase):
         return F.apply_crop(input, params['params'], params['flags'])
 
 
-class RandomMotionBlur(AugmentationBase):
+class RandomMotionBlur(AugmentationBase2D):
     r"""Blurs a tensor using the motion filter. Same transformation happens across batches.
 
     Args:
@@ -761,7 +758,7 @@ class RandomMotionBlur(AugmentationBase):
         return F.apply_motion_blur(input, params['params'])
 
 
-class RandomSolarize(AugmentationBase):
+class RandomSolarize(AugmentationBase2D):
     r""" Solarize given tensor image or a batch of tensor images randomly.
 
     Args:
@@ -821,7 +818,7 @@ class RandomSolarize(AugmentationBase):
         return F.apply_solarize(input, params['params'])
 
 
-class RandomPosterize(AugmentationBase):
+class RandomPosterize(AugmentationBase2D):
     r""" Posterize given tensor image or a batch of tensor images randomly.
 
     Args:
@@ -877,7 +874,7 @@ class RandomPosterize(AugmentationBase):
         return F.apply_posterize(input, params['params'])
 
 
-class RandomSharpness(AugmentationBase):
+class RandomSharpness(AugmentationBase2D):
     r""" Sharpen given tensor image or a batch of tensor images randomly.
 
     Args:
@@ -942,7 +939,7 @@ class RandomSharpness(AugmentationBase):
         return F.apply_sharpness(input, params['params'])
 
 
-class RandomEqualize(AugmentationBase):
+class RandomEqualize(AugmentationBase2D):
     r""" Equalize given tensor image or a batch of tensor images randomly.
 
     Args:

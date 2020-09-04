@@ -1,18 +1,14 @@
 from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 
 import torch
-import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
-from kornia.augmentation.augmentation import AugmentationBase
+from .base import AugmentationBase3D
 from kornia.augmentation import functional as F
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation.random_generator import AugParamDict
 from kornia.augmentation.utils import (
-    _infer_batch_shape3d,
-    _transform_input3d,
-    _validate_input_dtype,
     _tuple_range_reader,
     _singular_range_check
 )

@@ -2,8 +2,8 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
 
-from . import random_generator as rg
-from .utils import _transform_input3d, _validate_input_dtype
+import kornia.augmentation.random_generator as rg
+from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
 from kornia.constants import Resample, BorderType, pi
 from kornia.geometry.transform.affwarp import (
     _compute_rotation_matrix3d, _compute_tensor_center3d
@@ -64,7 +64,7 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     return output
 
 
-def apply_hflip3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply horizontal flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
     Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
@@ -81,16 +81,12 @@ def apply_hflip3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch
     return torch.flip(input, [-1])
 
 
-def compute_hflip_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
             :math:`(*, C, D, H, W)`.
-        params (Dict[str, torch.Tensor]):
-            - params['batch_prob']: A boolean tensor that indicating whether if to transform an image in a batch.
-                Example: With input batchsize of 4, only the first two tensors will be transformed if
-                batch_prob is [True, True, False, False].
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`

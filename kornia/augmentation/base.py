@@ -1,10 +1,18 @@
 from typing import Tuple, Union, Optional
 
 import torch
+import torch.nn as nn
 
 from . import functional as F
 from . import random_generator as rg
 from .random_generator import AugParamDict
+from .utils import (
+    _infer_batch_shape,
+    _infer_batch_shape3d,
+    _transform_input,
+    _transform_input3d,
+    _validate_input_dtype,
+)
 
 
 class AugmentationBase(nn.Module):

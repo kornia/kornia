@@ -7,13 +7,13 @@ from torch.nn.functional import pad
 from kornia.constants import Resample, BorderType
 from . import functional as F
 from . import random_generator as rg
-from .augmentation import AugmentationBase
+from .base import AugmentationBase2D
 from .utils import (
     _infer_batch_shape
 )
 
 
-class MixAugmentation(AugmentationBase):
+class MixAugmentation(AugmentationBase2D):
     r"""MixAugmentation base class for customized augmentation implementations. For any augmentation,
     the implementation of "generate_parameters" and "apply_transform" are required while the
     "compute_transformation" is only required when passing "return_transform" as True.
