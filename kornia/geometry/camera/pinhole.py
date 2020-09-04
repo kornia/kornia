@@ -34,8 +34,8 @@ class PinholeCamera:
         self._check_valid([intrinsics, extrinsics, height, width])
         self._check_valid_params(intrinsics, "intrinsics")
         self._check_valid_params(extrinsics, "extrinsics")
-        self._check_valid_shape(height, "height")
-        self._check_valid_shape(width, "width")
+        self._check_valid_shape_and_type(height, "height")
+        self._check_valid_shape_and_type(width, "width")
         # set class attributes
         self.height: torch.Tensor = height
         self.width: torch.Tensor = width
@@ -59,12 +59,17 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_valid_shape(
+    def _check_valid_shape_and_type(
             data: torch.Tensor,
             data_name: str) -> bool:
         if not len(data.shape) == 1:
             raise ValueError("Argument {0} shape must be in the following shape"
                              " B. Got {1}".format(data_name, data.shape))
+
+        if not torch.is_floating_point(data):
+            raise ValueError("Argument {0} shape must be of floating point "
+                             "type. Got {1}".format(data_name, data.dtype))
+            
         return True
 
     @property
