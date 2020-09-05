@@ -132,7 +132,7 @@ def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     t = torch.matmul(-torch.inverse(submat_3x3), last_column).squeeze(-1)
 
     # Trick to turn QR-decomposition into RQ-decomposition
-    reverse = torch.Tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
+    reverse = torch.tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
     submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
     ortho_mat, upper_mat = torch.qr(submat_3x3)
     ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))

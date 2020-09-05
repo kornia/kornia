@@ -113,6 +113,36 @@ class TestProjectionFromKRt:
         P_estimated = epi.projection_from_KRt(K, R, t)
         assert_allclose(P_estimated, P_expected)
 
+    def test_krt_from_projection(self, device, dtype):
+        P = torch.tensor([[
+            [10., 0., 30., 100.],
+            [0., 20., 40., 160.],
+            [0., 0., 1., 3.],
+        ]], device=device, dtype=dtype)
+
+        K_expected = torch.tensor([[
+            [10., 0., 30.],
+            [0., 20., 40.],
+            [0., 0., 1.],
+        ]], device=device, dtype=dtype)
+
+        R_expected = torch.tensor([[
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ]], device=device, dtype=dtype)
+
+        t_expected = torch.tensor([
+            [[1.], [2.], [3.]],
+        ], device=device, dtype=dtype)
+
+        K_estimated, R_estimated, t_estimated = epi.KRt_from_projection(P)
+        assert_allclose(K_expected, K_estimated)
+        assert_allclose(R_expected, R_estimated)
+        assert_allclose(t_expected, t_estimated)
+
+
+
     def test_gradcheck(self, device):
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         R = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
@@ -184,6 +214,32 @@ class TestKRtFromProjection:
         assert_allclose(K_estimated, K_expected)
         assert_allclose(R_estimated, R_expected)
         assert_allclose(t_estimated, t_expected)
+
+    def test_projection_from_krt(self, device, dtype):
+        K = torch.tensor([[
+            [154.8365, 217.0313, 243.0576],
+            [0.0, 218.8586, 269.4455],
+            [0.0, 0.0, 547.8659]
+        ]], device=device, dtype=dtype)
+
+        R = torch.tensor([[
+            [-0.2499, -0.3690, 0.8952],
+            [0.9243, -0.3663, 0.1071],
+            [0.2884, 0.8542, 0.4326]
+        ]], device=device, dtype=dtype)
+
+        t = torch.tensor([
+            [[0.0167], [-0.1426], [-1.2950]],
+        ], device=device, dtype=dtype)
+
+        P_expected = torch.tensor([[
+            [232., 71., 267., 352.]
+            [280., 150., 140., 198.]
+            [158., 468., 237., 371.]
+        ]], device=device, dtype=dtype)
+
+        P_estimated = epi.projection_from_KRt(K, R, t)
+        assert_allclose(P_expected, P_expected)
 
     def test_gradcheck(self, device):
         P_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
