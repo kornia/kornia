@@ -4,6 +4,7 @@ import math
 
 import torch
 
+from . import params_generator as rg
 from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation.utils import (
     _adapted_uniform,
@@ -52,29 +53,6 @@ def color_jitter_params_generator(
                 contrast_factor=contrast_factor,
                 hue_factor=hue_factor,
                 saturation_factor=saturation_factor)
-
-
-def prob_params_generator(
-        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
-    r"""Generator random probabilities for a batch of inputs.
-
-    Args:
-        batch_size (int): the number of images.
-        p (float): probability to generate an 1-d binary mask. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
-
-    Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-    """
-
-    if not isinstance(p, float):
-        raise TypeError(f"The probability should be a float number. Got {type(p)}")
-
-    probs: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
-
-    batch_prob: torch.Tensor = (probs < p)
-
-    return dict(batch_prob=batch_prob)
 
 
 def perspective_params_generator(
@@ -563,6 +541,7 @@ def sharpness_params_generator(
 
 def mixup_params_generator(
     batch_size: int,
+    p: float = 0.5,
     lambda_val: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
@@ -580,16 +559,18 @@ def mixup_params_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> random_mixup_params_generator(5, 0.7)
+        >>> mixup_params_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
     if lambda_val is None:
         lambda_val = torch.tensor([0., 1.])
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
+    batch_probs: torch.Tensor = rg.random_prob_generator(batch_size, p, same_on_batch=same_on_batch)
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
+    mixup_lambdas = mixup_lambdas * batch_probs.float()
 
     return dict(
         mixup_pairs=mixup_pairs,
@@ -601,6 +582,7 @@ def cutmix_params_generator(
     batch_size: int,
     width: int,
     height: int,
+    p: float = 0.5,
     num_mix: int = 1,
     beta: Optional[torch.Tensor] = None,
     cut_size: Optional[torch.Tensor] = None,
@@ -612,6 +594,7 @@ def cutmix_params_generator(
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
         width (int): image width.
         height (int): image height.
+        p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
@@ -624,7 +607,7 @@ def cutmix_params_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> random_cutmix_params_generator(3, 224, 224, p=0.5, num_mix=2)
+        >>> cutmix_params_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
                 [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
                   [209,  25],
@@ -664,11 +647,13 @@ def cutmix_params_generator(
         cut_size = torch.tensor([0., 1.])
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
 
+    batch_probs: torch.Tensor = rg.random_prob_generator(batch_size * num_mix, p, same_on_batch)
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
     # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
+    cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
     cut_height = (cutmix_rate * height).long()
     cut_width = (cutmix_rate * width).long()

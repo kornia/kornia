@@ -5,55 +5,16 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
+from kornia.augmentation.random_generator import AugParamDict
 from . import functional as F
 from . import random_generator as rg
-from .base import AugmentationBase2D
+from .base import MixAugmentationBase
 from .utils import (
     _infer_batch_shape
 )
 
 
-class MixAugmentation(AugmentationBase2D):
-    r"""MixAugmentation base class for customized augmentation implementations. For any augmentation,
-    the implementation of "generate_parameters" and "apply_transform" are required while the
-    "compute_transformation" is only required when passing "return_transform" as True.
-
-    In "apply_transform", both input and label tensors are required.
-
-    Args:
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-
-    """
-    def __init__(self, p: float, same_on_batch: bool = False):
-        super(MixAugmentation, self).__init__(p=p, return_transform=False, same_on_batch=same_on_batch)
-
-    def __repr__(self) -> str:
-        return f"p={self.p}, same_on_batch={self.same_on_batch}"
-
-    def apply_transform(self, input: torch.Tensor, label: torch.Tensor,     # type: ignore
-                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
-        raise NotImplementedError
-
-    def forward(  # type: ignore
-        self, input: torch.Tensor,
-        label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,
-        return_transform: Optional[bool] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if return_transform is None:
-            return_transform = self.return_transform
-        if params is None:
-            batch_shape = self.infer_batch_shape(input)
-            self._params = self.generate_parameters(batch_shape)
-        else:
-            self._params = params
-
-        output = self.apply_transform(input, label, self._params)
-        return output
-
-
-class RandomMixUp(MixAugmentation):
+class RandomMixUp(MixAugmentationBase):
     r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
@@ -120,20 +81,20 @@ class RandomMixUp(MixAugmentation):
         repr = f"lambda_val={self.lambda_val}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
         return rg.random_mixup_generator(batch_shape[0], self.p, self.lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
-                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
-        return F.apply_mixup(input, label, params)
+                        params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        return F.apply_mixup(input, label, params['params'])
 
 
-class RandomCutMix(MixAugmentation):
+class RandomCutMix(MixAugmentationBase):
     r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
     <https://arxiv.org/pdf/1905.04899.pdf>`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(num_mixes, B, 3)` tensor that contains (label_permuted_batch, lambda)
+    while the labels is a :math:`(B, num_mixes, 3)` tensor that contains (label_permuted_batch, lambda)
     for each cutmix. The implementation referred to `https://github.com/clovaai/CutMix-PyTorch`.
 
     The onehot label may be computed as :
@@ -172,7 +133,7 @@ class RandomCutMix(MixAugmentation):
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(num_mix, B, 3)`.
+        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
@@ -216,11 +177,11 @@ class RandomCutMix(MixAugmentation):
         f"height={self.height}, width={self.width}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,
                                           cut_size=self.cut_size, num_mix=self.num_mix, beta=self.beta,
                                           same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
-                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
-        return F.apply_cutmix(input, label, params)
+                        params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        return F.apply_cutmix(input, label, params['params'])

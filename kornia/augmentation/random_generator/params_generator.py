@@ -21,7 +21,6 @@ from .random_generator import (
     motion_blur_params_generator,
     perspective_params_generator,
     posterize_params_generator,
-    prob_params_generator,
     rectangles_params_generator,
     rotation_params_generator,
     sharpness_params_generator,
@@ -410,7 +409,7 @@ def random_mixup_generator(
         >>> random_mixup_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
-    params = mixup_params_generator(batch_size, lambda_val=lambda_val, same_on_batch=same_on_batch)
+    params = mixup_params_generator(batch_size, p=p, lambda_val=lambda_val, same_on_batch=same_on_batch)
 
     return AugParamDict(dict(params=params))
 
@@ -479,6 +478,6 @@ def random_cutmix_generator(
 
     """
     params = cutmix_params_generator(
-        batch_size, width, height, num_mix=num_mix, beta=beta, cut_size=cut_size, same_on_batch=same_on_batch)
+        batch_size, width, height, p=p, num_mix=num_mix, beta=beta, cut_size=cut_size, same_on_batch=same_on_batch)
 
     return AugParamDict(dict(params=params))

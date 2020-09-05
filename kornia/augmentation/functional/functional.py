@@ -927,7 +927,6 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
         >>> out_label
         tensor([[0.0000, 1.0000, 0.5000],
                 [1.0000, 0.0000, 0.9000]])
-
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
