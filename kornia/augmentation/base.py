@@ -40,9 +40,11 @@ class BasicAugmentationBase(nn.Module):
 
     def __forward_parameters__(self, batch_shape: torch.Size) -> AugParamDict:
         _params = self.generate_parameters(batch_shape)
+        if _params is None:
+            _params = {"batch_prob": None, "params": {}, "flags": {}}
         _params.update({'flags': _params['flags'] if 'flags' in _params else {}})
         _params.update({'params': _params['params'] if 'params' in _params else {}})
-        _params.update({'batch_prob': _params['batch_prob'] if 'batch_prob' in _params else {}})
+        _params.update({'batch_prob': _params['batch_prob'] if 'batch_prob' in _params else None})
         return AugParamDict(dict(batch_prob=_params['batch_prob'], params=_params['params'], flags=_params['flags']))
 
     def forward(self, input: torch.Tensor, params: Optional[AugParamDict] = None,  # type: ignore
@@ -93,10 +95,8 @@ class AugmentationBase(BasicAugmentationBase):
             return in_tensor
 
     def __forward_parameters__(self, batch_shape: torch.Size) -> AugParamDict:
-        _params = self.generate_parameters(batch_shape)
-        _params.update({'flags': _params['flags'] if 'flags' in _params else {}})
-        _params.update({'params': _params['params'] if 'params' in _params else {}})
-        if "batch_prob" not in _params:
+        _params = super().__forward_parameters__(batch_shape)
+        if _params["batch_prob"] is None:
             batch_prob = rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
         else:
             batch_prob = _params['batch_prob']
