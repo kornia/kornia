@@ -123,6 +123,9 @@ def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     """
 
     assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
+    assert len(P.shape) == 3
+
+    epsilon = torch.tensor([0.00001], device=P.device, dtype=P.dtype)
 
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
@@ -136,8 +139,10 @@ def KRt_from_projection(P: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
 
     # Turning the `upper_mat's` diagonal elements to positive.
-    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1)
-    signs = diagonals / diagonals.abs()
+    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1) + epsilon
+    signs = torch.sign(diagonals)
+    prods = torch.prod(signs, -1)
+    signs[:, 2] = prods
     signs_mat = torch.diag_embed(signs)
 
     K = torch.matmul(upper_mat, signs_mat)
