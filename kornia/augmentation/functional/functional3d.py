@@ -26,7 +26,7 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     input = _transform_input3d(input)
     batch_size, _, d, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_hflip3d(input, params)
+    output = apply_hflip3d(input)
     if return_transform:
         raise NotImplementedError
     return output
@@ -42,7 +42,7 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     input = _transform_input3d(input)
     batch_size, _, d, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_vflip3d(input, params)
+    output = apply_vflip3d(input)
     if return_transform:
         raise NotImplementedError
     return output
@@ -58,7 +58,7 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     input = _transform_input3d(input)
     batch_size, _, d, h, w = input.size()
     params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_dflip3d(input, params)
+    output = apply_dflip3d(input)
     if return_transform:
         raise NotImplementedError
     return output

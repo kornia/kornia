@@ -1,4 +1,4 @@
-from typing import Tuple, Union, Optional
+from typing import Tuple, Union, Optional, cast
 
 import torch
 import torch.nn as nn
@@ -83,6 +83,9 @@ class AugmentationBase(BasicAugmentationBase):
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
+    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+        raise NotImplementedError
+
     def __forward_input__(
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -103,9 +106,9 @@ class AugmentationBase(BasicAugmentationBase):
         return AugParamDict(dict(batch_prob=batch_prob, params=_params['params'], flags=_params['flags']))
 
     def ___forward_transform___(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                                params: Optional[AugParamDict] = None,  # type: ignore
-                                return_transform: Optional[bool] = None
+                                params: AugParamDict = None, return_transform: bool = None# type: ignore
                                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+        in_transformation: Optional[torch.Tensor]
         if isinstance(input, tuple):
             in_tensor = input[0]
             in_transformation = input[1]
@@ -152,9 +155,6 @@ class AugmentationBase2D(AugmentationBase):
     def identity_matrix(self, input) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        raise NotImplementedError
-
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[AugParamDict] = None,  # type: ignore
                 return_transform: Optional[bool] = None
@@ -164,6 +164,7 @@ class AugmentationBase2D(AugmentationBase):
         if params is None:
             batch_shape = self.infer_batch_shape(input)
             params = self.__forward_parameters__(batch_shape)
+        params = cast(AugParamDict, params)
         self._params = params
 
         to_apply = self._params['batch_prob']
@@ -172,7 +173,7 @@ class AugmentationBase2D(AugmentationBase):
 
         # Situations that do not need to use to_apply
         # Smart selective forward
-        selective_params = dict(params)
+        selective_params: AugParamDict = dict(params)  # type: ignore
         for k, v in selective_params['params'].items():
             selective_params['params'].update({k: v[to_apply]})
 
@@ -183,7 +184,7 @@ class AugmentationBase2D(AugmentationBase):
         if to_apply.unique() == torch.tensor([False]):
             partial_out = in_target
         else:
-            partial_out = self.___forward_transform___(
+            partial_out = self.___forward_transform___(  # type: ignore
                 (in_target[0][to_apply], in_target[1][to_apply]), selective_params, return_transform)
 
         if len(to_apply.unique()) == 1:
@@ -247,9 +248,9 @@ class MixAugmentationBase(BasicAugmentationBase):
                         params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
 
-    def forward(self, input: torch.Tensor, label: torch.Tensor,
-                params: Optional[AugParamDict] = None,  # type: ignore
-                ) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    def forward(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
+                params: Optional[AugParamDict] = None,
+                ) -> Tuple[torch.Tensor, torch.Tensor]:
         if params is None:
             batch_shape = self.infer_batch_shape(input)
             params = self.__forward_parameters__(batch_shape)

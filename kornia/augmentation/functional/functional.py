@@ -34,6 +34,7 @@ from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 import kornia.augmentation.random_generator as rg
+from kornia.augmentation.random_generator.types import AugParamDict
 from kornia.augmentation.utils import (
     _transform_input,
     _validate_input_shape,
@@ -134,11 +135,11 @@ def random_perspective(input: torch.Tensor,
     batch_size, _, height, width = input.size()
     distortion_scale =  \
         distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
-    params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
-        batch_size, height, width, p, distortion_scale)
-    output = apply_perspective(input, params)
+    params: AugParamDict = rg.random_perspective_generator(
+        batch_size, height, width, distortion_scale)
+    output = apply_perspective(input, params['params'], params['flags'])
     if return_transform:
-        transform = compute_perspective_transformation(input, params)
+        transform = compute_perspective_transformation(input, params['params'])
         return output, transform
     return output
 
@@ -174,9 +175,9 @@ def random_affine(input: torch.Tensor,
             torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
             _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
         ])
-    params: Dict[str, torch.Tensor] = rg.random_affine_generator(
+    params: AugParamDict = rg.random_affine_generator(
         batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
-    output = apply_affine(input, params)
+    output = apply_affine(input, params['params'], params['flags'])
     if return_transform:
         transform = compute_affine_transformation(input, params)
         return output, transform
@@ -210,11 +211,11 @@ def random_rectangle_erase(
     _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
     _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
     params = rg.random_rectangles_params_generator(
-        b, h, w, p, _scale, _ratio
+        b, h, w, _scale, _ratio
     )
     output = apply_erase_rectangles(input, params)
     if return_transform:
-        return output, compute_intensity_transformation(input, params)
+        return output, compute_intensity_transformation(input)
     return output
 
 
@@ -229,7 +230,7 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     batch_size, _, _, _ = input.size()
     _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
     params = rg.random_rotation_generator(batch_size, degrees=_degrees)
-    output = apply_rotation(input, params)
+    output = apply_rotation(input, params['params'], params['flags'])
     if return_transform:
         return output, compute_rotate_tranformation(input, params)
     return output
@@ -417,19 +418,14 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor], flag
 
     out_data: torch.Tensor = x_data.clone()
 
-    # TODO: look for a workaround for this hack. In CUDA it fails when no elements found.
-    # TODO: this if statement is super weird and sum here is not the propeer way to check
-    # it's valid. In addition, 'interpolation' shouldn't be a reason to get into the branch.
+    # apply the computed transform
+    height, width = x_data.shape[-2:]
+    resample_name: str = Resample(flags['interpolation'].item()).name.lower()
+    align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    if bool(mask.sum() > 0) and ('interpolation' in flags):
-        # apply the computed transform
-        height, width = x_data.shape[-2:]
-        resample_name: str = Resample(flags['interpolation'].item()).name.lower()
-        align_corners: bool = cast(bool, flags['align_corners'].item())
-
-        out_data = warp_perspective(
-            x_data, transform, (height, width),
-            flags=resample_name, align_corners=align_corners)
+    out_data = warp_perspective(
+        x_data, transform, (height, width),
+        flags=resample_name, align_corners=align_corners)
 
     return out_data.view_as(input)
 
@@ -885,7 +881,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    return equalize(image)
+    return equalize(input)
 
 
 def apply_mixup(input: torch.Tensor, labels: torch.Tensor,

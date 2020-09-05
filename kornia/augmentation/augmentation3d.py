@@ -222,7 +222,7 @@ class RandomAffine3D(AugmentationBase3D):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        p: float = 0.5, translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[Union[torch.Tensor, Tuple[float, float],
                         Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
         shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
@@ -324,7 +324,7 @@ class RandomRotation3D(AugmentationBase3D):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        p: float = 0.5, interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
