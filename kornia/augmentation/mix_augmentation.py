@@ -15,23 +15,26 @@ from .utils import (
 
 
 class RandomMixUp(MixAugmentationBase):
-    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
+    r"""Implemention for mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
-    each image. The implementation is on top of `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py`.
+    each image. The implementation is on top of https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py.
     The loss and accuracy are computed as:
-        ```
+
+    .. code-block:: python
+
         def loss_mixup(y, logits):
             criterion = F.cross_entropy
             loss_a = criterion(logits, y[:, 0].long(), reduction='none')
             loss_b = criterion(logits, y[:, 1].long(), reduction='none')
             return ((1 - y[:, 2]) * loss_a + y[:, 2] * loss_b).mean()
 
+    .. code-block:: python
+
         def acc_mixup(y, logits):
             pred = torch.argmax(logits, dim=1).to(y.device)
             return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
-        ```
 
     Args:
         p (float): probability for performing mixup. Default is 0.5.
@@ -90,19 +93,22 @@ class RandomMixUp(MixAugmentationBase):
 
 
 class RandomCutMix(MixAugmentationBase):
-    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
-    <https://arxiv.org/pdf/1905.04899.pdf>`.
+    r"""Implemention of CutMix augmentation.
 
-    The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(B, num_mixes, 3)` tensor that contains (label_permuted_batch, lambda)
-    for each cutmix. The implementation referred to `https://github.com/clovaai/CutMix-PyTorch`.
+    CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
+    <https://arxiv.org/pdf/1905.04899.pdf>. The function returns (inputs, labels), in which the inputs
+    is the tensor that contains the mixup images while the labels is a :math:`(B, num_mixes, 3)` tensor
+    that contains (label_permuted_batch, lambda) for each cutmix. The implementation referred to
+    https://github.com/clovaai/CutMix-PyTorch. The onehot label may be computed as:
 
-    The onehot label may be computed as :
-        ```
+    .. code-block:: python
+
         def onehot(size, target):
             vec = torch.zeros(size, dtype=torch.float32)
             vec[target] = 1.
             return vec
+
+    .. code-block:: python
 
         def cutmix_label(labels, out_labels, size):
             lb_onehot = onehot(size, labels)
@@ -111,7 +117,6 @@ class RandomCutMix(MixAugmentationBase):
                 label_permuted_onehot = onehot(size, label_permuted_batch)
                 lb_onehot = lb_onehot * lam + label_permuted_onehot * (1. - lam)
             return lb_onehot
-        ```
 
     Args:
         height (int): the width of the input image.
@@ -155,6 +160,7 @@ class RandomCutMix(MixAugmentationBase):
                   [0.4294, 0.8854, 0.5739]]]]), tensor([[[0.0000, 0.0000, 0.4444],
                  [1.0000, 1.0000, 0.0000]]]))
     """
+
     def __init__(self, height: int, width: int, p: float = 0.5, num_mix: int = 1,
                  cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False) -> None:

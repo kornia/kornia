@@ -11,11 +11,10 @@ class TestRandomProbGen:
 
         halfs = random_prob_generator(batch_size=batch_size, p=.5)
         expected_halfs = [False, False, True, False, True, False, True, False]
-        zeros = random_prob_generator(batch_size=batch_size, p=0.)['batch_prob']
-        ones = random_prob_generator(batch_size=batch_size, p=1.)['batch_prob']
+        zeros = random_prob_generator(batch_size=batch_size, p=0.)
+        ones = random_prob_generator(batch_size=batch_size, p=1.)
 
-        assert list(halfs.keys()) == ['batch_prob'], "Redundant keys found apart from `batch_prob`"
-        assert (halfs['batch_prob'] == torch.tensor(expected_halfs)).long().sum() == batch_size
+        assert (halfs == torch.tensor(expected_halfs)).long().sum() == batch_size
         assert (zeros == torch.tensor([False] * batch_size)).long().sum() == batch_size
         assert (ones == torch.tensor([True] * batch_size)).long().sum() == batch_size
 
@@ -23,11 +22,11 @@ class TestRandomProbGen:
         batch_size = 8
 
         torch.manual_seed(42)
-        falses = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        falses = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)
         assert (falses == torch.tensor([False] * batch_size)).long().sum() == batch_size
 
         torch.manual_seed(0)
-        trues = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)['batch_prob']
+        trues = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)
         assert (trues == torch.tensor([True] * batch_size)).long().sum() == batch_size
 
 
@@ -36,9 +35,12 @@ class TestColorJitterGen:
     def test_color_jitter_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_generator(
+        _jitter_params = random_color_jitter_generator(
             batch_size, brightness=torch.tensor([0.8, 1.2]), contrast=torch.tensor([0.7, 1.3]),
             saturation=torch.tensor([0.6, 1.4]), hue=torch.tensor([-0.1, 0.1]))
+        jitter_params = _jitter_params['params']
+        jitter_flags = _jitter_params['flags']
+
         expected_jitter_params = {
             'brightness_factor': torch.tensor([
                 1.15290772914886474609375, 1.16600155830383300781250, 0.95314550399780273437500,
@@ -57,9 +59,9 @@ class TestColorJitterGen:
         }
 
         assert set(list(jitter_params.keys())) == set([
-            'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']), \
+            'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor']), \
             "Redundant keys found apart from \
-                'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order"
+                'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor'"
         assert (jitter_params['brightness_factor'] == expected_jitter_params['brightness_factor']) \
             .long().sum() == batch_size
         assert (jitter_params['contrast_factor'] == expected_jitter_params['contrast_factor']) \
@@ -68,14 +70,16 @@ class TestColorJitterGen:
             .long().sum() == batch_size
         assert (jitter_params['saturation_factor'] == expected_jitter_params['saturation_factor']) \
             .long().sum() == batch_size
-        assert (jitter_params['order'] == expected_jitter_params['order']).long().sum() == 4
+        assert (jitter_flags['order'] == expected_jitter_params['order']).long().sum() == 4
 
     def test_color_jitter_tuple_gen(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params_tuple = random_color_jitter_generator(
+        _jitter_params_tuple = random_color_jitter_generator(
             batch_size, brightness=torch.tensor([0.8, 1.2]), contrast=torch.tensor([0.7, 1.3]),
             saturation=torch.tensor([0.6, 1.4]), hue=torch.tensor([-0.1, 0.1]))
+        jitter_params_tuple = _jitter_params_tuple['params']
+        jitter_flags_tuple = _jitter_params_tuple['flags']
 
         expected_jitter_params_tuple = {
             'brightness_factor': torch.tensor([
@@ -93,10 +97,10 @@ class TestColorJitterGen:
                 1.0377532243728638, 0.6049283742904663, 1.3612436056137085, 0.6602127552032471]),
             'order': torch.tensor([3, 2, 0, 1])
         }
-        assert set(list(expected_jitter_params_tuple.keys())) == set([
-            'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']), \
+        assert set(list(jitter_params_tuple.keys())) == set([
+            'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor']), \
             "Redundant keys found apart from \
-                'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order"
+                'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor'"
         assert (jitter_params_tuple['brightness_factor'] == expected_jitter_params_tuple['brightness_factor']) \
             .long().sum() == batch_size
         assert (jitter_params_tuple['contrast_factor'] == expected_jitter_params_tuple['contrast_factor']) \
@@ -105,14 +109,16 @@ class TestColorJitterGen:
             .long().sum() == batch_size
         assert (jitter_params_tuple['saturation_factor'] == expected_jitter_params_tuple['saturation_factor']) \
             .long().sum() == batch_size
-        assert (jitter_params_tuple['order'] == expected_jitter_params_tuple['order']).long().sum() == 4
+        assert (jitter_flags_tuple['order'] == expected_jitter_params_tuple['order']).long().sum() == 4
 
     def test_random_prob_gen_same_on_batch(self):
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = random_color_jitter_generator(
+        _jitter_params = random_color_jitter_generator(
             batch_size, brightness=torch.tensor([0.8, 1.2]), contrast=torch.tensor([0.7, 1.3]),
             saturation=torch.tensor([0.6, 1.4]), hue=torch.tensor([-0.1, 0.1]), same_on_batch=True)
+        jitter_params = _jitter_params['params']
+        jitter_flags = _jitter_params['flags']
 
         expected_res = {
             'brightness_factor': torch.tensor([1.15290772914886474609375] * batch_size),
@@ -125,4 +131,4 @@ class TestColorJitterGen:
         assert (jitter_params['contrast_factor'] == expected_res['contrast_factor']).long().sum() == batch_size
         assert (jitter_params['saturation_factor'] == expected_res['saturation_factor']).long().sum() == batch_size
         assert (jitter_params['hue_factor'] == expected_res['hue_factor']).long().sum() == batch_size
-        assert (jitter_params['order'] == expected_res['order']).long().sum() == 4
+        assert (jitter_flags['order'] == expected_res['order']).long().sum() == 4

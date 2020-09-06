@@ -1,7 +1,7 @@
 from .base import (
-    AugmentationBase,
     AugmentationBase2D,
     AugmentationBase3D,
+    MixAugmentationBase
 )
 from .augmentation import (
     CenterCrop,
@@ -38,7 +38,6 @@ from kornia.enhance.normalize import (
 )
 
 __all__ = [
-    "AugmentationBase",
     "AugmentationBase2D",
     "CenterCrop",
     "ColorJitter",
@@ -58,6 +57,7 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
+    "MixAugmentationBase",
     "RandomMixUp",
     "RandomCutMix",
     "AugmentationBase3D",

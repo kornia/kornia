@@ -33,7 +33,9 @@ def random_rotation_generator3d(
         align_corners (bool): interpolation flag. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = rotation_params_generator3d(batch_size, degrees=degrees, same_on_batch=same_on_batch)
     flags = dict(
@@ -82,7 +84,9 @@ def random_affine_generator3d(
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = rotation_params_generator3d(batch_size, degrees=degrees, same_on_batch=same_on_batch)
     flags = dict(

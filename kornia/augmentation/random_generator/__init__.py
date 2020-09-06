@@ -1,3 +1,3 @@
-from .params_generator import *
-from .params_generator3d import *
+from .params_wrapper import *
+from .params_wrapper3d import *
 from .types import AugParamDict

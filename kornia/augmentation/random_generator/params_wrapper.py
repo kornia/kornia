@@ -12,6 +12,7 @@ from kornia.augmentation.utils import (
 )
 from .types import AugParamDict
 from .random_generator import (
+    prob_params_generator,
     affine_params_generator,
     color_jitter_params_generator,
     crop_params_generator,
@@ -29,6 +30,21 @@ from .random_generator import (
 )
 
 
+def random_prob_generator(
+        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> torch.Tensor:
+    r"""Generate random probabilities for a batch of inputs.
+
+    Args:
+        batch_size (int): the number of images.
+        p (float): probability to generate an 1-d binary mask. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        torch.Tensor: parameters to be passed for transformation.
+    """
+    return prob_params_generator(batch_size, p, same_on_batch)['batch_prob']
+
+
 def random_color_jitter_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,
@@ -37,7 +53,7 @@ def random_color_jitter_generator(
     hue: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator random color jiter parameters for a batch of images.
+    r"""Generate random color jiter parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -48,36 +64,15 @@ def random_color_jitter_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = color_jitter_params_generator(
         batch_size, brightness, contrast, saturation, hue, same_on_batch)
     flags = dict(order=torch.randperm(4))
 
     return AugParamDict(dict(params=params, flags=flags))
-
-
-def random_prob_generator(
-        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> torch.Tensor:
-    r"""Generator random probabilities for a batch of inputs.
-
-    Args:
-        batch_size (int): the number of images.
-        p (float): probability to generate an 1-d binary mask. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
-
-    Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-    """
-
-    if not isinstance(p, float):
-        raise TypeError(f"The probability should be a float number. Got {type(p)}")
-
-    probs: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
-
-    batch_prob: torch.Tensor = (probs < p)
-
-    return batch_prob
 
 
 def random_perspective_generator(
@@ -102,7 +97,9 @@ def random_perspective_generator(
         https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
 
     Returns:
-        params (Dict[str, torch.Tensor])
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = perspective_params_generator(
         batch_size, height, width, distortion_scale=distortion_scale, same_on_batch=same_on_batch)
@@ -154,7 +151,9 @@ def random_affine_generator(
         padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = affine_params_generator(
         batch_size, height, width, degrees=degrees, translate=translate, scale=scale, shear=shear,
@@ -185,7 +184,9 @@ def random_rotation_generator(
         align_corners (bool): interpolation flag. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = rotation_params_generator(batch_size, degrees=degrees, same_on_batch=same_on_batch)
     flags = dict(
@@ -217,7 +218,9 @@ def random_crop_generator(
         align_corners (bool): interpolation flag. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = crop_params_generator(
         batch_size, input_size, size, resize_to=resize_to, same_on_batch=same_on_batch)
@@ -244,7 +247,9 @@ def random_crop_size_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = crop_size_params_generator(size, scale, ratio, same_on_batch)
     return AugParamDict(dict(params=params))
@@ -259,7 +264,7 @@ def random_rectangles_params_generator(
     value: float = 0.,
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Get parameters for ```erasing``` transformation for erasing transform
+    r"""Get parameters for ```erasing``` transformation for erasing transform.
 
     Args:
         batch_size (int): the tensor batch size.
@@ -271,7 +276,9 @@ def random_rectangles_params_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = rectangles_params_generator(
         batch_size, height, width, scale=scale, ratio=ratio, value=value, same_on_batch=same_on_batch)
@@ -294,7 +301,9 @@ def center_crop_generator(
         size (tuple): Desired output size of the crop, like (h, w).
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
     """
     params = center_crop_params_generator(
         batch_size, height, width, size=size)
@@ -313,7 +322,23 @@ def random_motion_blur_generator(
     border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
     same_on_batch: bool = True
 ) -> AugParamDict:
+    r"""Get parameters for motion blur.
 
+    Args:
+        batch_size (int): the tensor batch size.
+        kernel_size (int or (int, int)): motion kernel width and height (odd and positive).
+        angle (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
+        direction (torch.Tensor): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with
+            angle provided via angle), while higher values towards 1.0 will point the motion
+            blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
+            - params['flags']: static flags for the transformation.
+    """
     params = motion_blur_params_generator(
         batch_size, kernel_size, angle, direction=direction, same_on_batch=same_on_batch)
     flags = dict(border_type=torch.tensor(BorderType.get(border_type).value))
@@ -327,8 +352,10 @@ def random_solarize_generator(
     additions: torch.Tensor = torch.tensor([-0.1, 0.1]),
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,
-    we add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0
+    r"""Generate random solarize parameters for a batch of images.
+
+    For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the pixel value
+    to be between 0 and 1.0
 
     Args:
         batch_size (int): the number of images.
@@ -338,7 +365,8 @@ def random_solarize_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
     """
     params = solarize_params_generator(
         batch_size, thresholds=thresholds, additions=additions, same_on_batch=same_on_batch)
@@ -351,7 +379,7 @@ def random_posterize_generator(
     bits: torch.Tensor = torch.tensor(3),
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator random posterize parameters for a batch of images.
+    r"""Generate random posterize parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -359,7 +387,8 @@ def random_posterize_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
     """
     params = posterize_params_generator(batch_size, bits=bits, same_on_batch=same_on_batch)
 
@@ -371,7 +400,7 @@ def random_sharpness_generator(
     sharpness: torch.Tensor = torch.tensor([0, 1.]),
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator random sharpness parameters for a batch of images.
+    r"""Generate random sharpness parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -379,7 +408,8 @@ def random_sharpness_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
     """
     params = sharpness_params_generator(batch_size, sharpness=sharpness, same_on_batch=same_on_batch)
 
@@ -392,7 +422,7 @@ def random_mixup_generator(
     lambda_val: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator mixup indexes and lambdas for a batch of inputs.
+    r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
@@ -402,7 +432,8 @@ def random_mixup_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -424,7 +455,7 @@ def random_cutmix_generator(
     cut_size: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> AugParamDict:
-    r"""Generator cutmix indexes and lambdas for a batch of inputs.
+    r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
@@ -439,7 +470,8 @@ def random_cutmix_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, Dict[str, torch.Tensor]]: parameters to be passed for transformation.
+            - params['params']: element-wise parameters generated.
 
     Examples:
         >>> rng = torch.manual_seed(0)

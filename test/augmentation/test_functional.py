@@ -14,79 +14,60 @@ from kornia.augmentation import ColorJitter
 
 class TestHorizontalFlipFn:
 
-    def test_random_hflip(self):
-        flip_param_0 = {'batch_prob': torch.tensor(False)}
-        flip_param_1 = {'batch_prob': torch.tensor(True)}
-
+    def test_random_hflip(self, device, dtype):
         input = torch.tensor([[0., 0., 0., 0.],
                               [0., 0., 0., 0.],
-                              [0., 0., 1., 2.]])  # 3 x 4
+                              [0., 0., 1., 2.]], device=device, dtype=dtype)  # 3 x 4
 
         expected = torch.tensor([[0., 0., 0., 0.],
                                  [0., 0., 0., 0.],
-                                 [2., 1., 0., 0.]])  # 3 x 4
+                                 [2., 1., 0., 0.]], device=device, dtype=dtype)  # 3 x 4
 
-        assert (F.apply_hflip(input, params=flip_param_0) == input).all()
-        assert (F.apply_hflip(input, params=flip_param_1) == expected).all()
+        assert (F.apply_hflip(input) == expected).all()
 
-    def test_batch_random_hflip(self):
+    def test_batch_random_hflip(self, device, dtype):
         batch_size = 5
-        flip_param_0 = {'batch_prob': torch.tensor([False] * 5)}
-        flip_param_1 = {'batch_prob': torch.tensor([True] * 5)}
-
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
-                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+                                [0., 1., 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
 
         expected = torch.tensor([[[[0., 0., 0.],
                                    [0., 0., 0.],
-                                   [1., 1., 0.]]]])  # 1 x 1 x 3 x 3
+                                   [1., 1., 0.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
 
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected = expected.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
-
-        assert (F.apply_hflip(input, params=flip_param_0) == input).all()
-        assert (F.apply_hflip(input, params=flip_param_1) == expected).all()
+        assert (F.apply_hflip(input) == expected).all()
 
 
 class TestVerticalFlipFn:
 
-    def test_random_vflip(self, device):
-
-        flip_param_0 = {'batch_prob': torch.tensor(False)}
-        flip_param_1 = {'batch_prob': torch.tensor(True)}
-
+    def test_random_vflip(self, device, dtype):
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]])  # 3 x 3
-        input.to(device)
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor([[0., 1., 1.],
                                  [0., 0., 0.],
-                                 [0., 0., 0.]])  # 3 x 3
+                                 [0., 0., 0.]], device=device, dtype=dtype)  # 3 x 3
 
-        assert (F.apply_vflip(input, params=flip_param_0) == input).all()
-        assert (F.apply_vflip(input, params=flip_param_1) == expected).all()
+        assert (F.apply_vflip(input) == expected).all()
 
-    def test_batch_random_vflip(self, device):
+    def test_batch_random_vflip(self, device, dtype):
         batch_size = 5
-        flip_param_0 = {'batch_prob': torch.tensor([False] * 5)}
-        flip_param_1 = {'batch_prob': torch.tensor([True] * 5)}
 
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
-                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
-        input.to(device)
+                                [0., 1., 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
 
         expected = torch.tensor([[[[0., 1., 1.],
                                    [0., 0., 0.],
-                                   [0., 0., 0.]]]])  # 1 x 1 x 3 x 3
+                                   [0., 0., 0.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
 
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected = expected.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
 
-        assert (F.apply_vflip(input, params=flip_param_0) == input).all()
-        assert (F.apply_vflip(input, params=flip_param_1) == expected).all()
+        assert (F.apply_vflip(input) == expected).all()
 
 
 class TestColorJitter:
@@ -98,6 +79,8 @@ class TestColorJitter:
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
             'hue_factor': torch.tensor(0.),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -105,7 +88,7 @@ class TestColorJitter:
 
         expected = input
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
 
     def test_color_jitter_batch(self):
         batch_size = 2
@@ -114,13 +97,15 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
             'hue_factor': torch.tensor([0.] * batch_size),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
         expected = input
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_brightness(self):
         torch.manual_seed(42)
@@ -129,6 +114,8 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -162,7 +149,7 @@ class TestColorJitter:
                                    [0.7660, 0.6660, 0.5660],
                                    [0.8660, 0.9660, 1.0000]]]])  # 1 x 1 x 3 x 3
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected)
 
     def test_random_contrast(self):
         torch.manual_seed(42)
@@ -171,6 +158,8 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -204,7 +193,7 @@ class TestColorJitter:
                                    [0.7102, 0.5919, 0.4735],
                                    [0.8286, 0.9470, 1.0000]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_saturation(self):
         torch.manual_seed(42)
@@ -213,6 +202,8 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([0.9026, 1.1175]),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -254,7 +245,7 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_hue(self):
         torch.manual_seed(42)
@@ -263,6 +254,8 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([-0.0438 / 2 / pi, 0.0404 / 2 / pi]),
             'saturation_factor': torch.tensor([1., 1.]),
+        }
+        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -302,13 +295,12 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
 
 
 class TestRandomGrayscale:
 
     def test_opencv_true(self, device):
-        grayscale_params = {'batch_prob': torch.tensor([True])}
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
                               [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
                               [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
@@ -347,36 +339,10 @@ class TestRandomGrayscale:
                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
         expected = expected.to(device)
 
-        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
-
-    def test_opencv_false(self, device):
-        grayscale_params = {'batch_prob': torch.tensor([False])}
-        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
-
-                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
-
-                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
-        data = data.to(device)
-
-        expected = data
-
-        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data).repeat(1, 3, 1, 1), expected)
 
     def test_opencv_true_batch(self, device):
         batch_size = 4
-        grayscale_params = {'batch_prob': torch.tensor([True] * batch_size)}
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
                               [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
                               [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
@@ -418,34 +384,7 @@ class TestRandomGrayscale:
         expected = expected.to(device)
         expected = expected.unsqueeze(0).repeat(batch_size, 1, 1, 1)
 
-        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
-
-    def test_opencv_false_batch(self, device):
-        batch_size = 4
-        grayscale_params = {'batch_prob': torch.tensor([False] * batch_size)}
-        data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
-                              [0.1251704, 0.8020709, 0.8933256, 0.9170977, 0.1497008],
-                              [0.2711633, 0.1111478, 0.0783281, 0.2771807, 0.5487481],
-                              [0.0086008, 0.8288748, 0.9647092, 0.8922020, 0.7614344],
-                              [0.2898048, 0.1282895, 0.7621747, 0.5657831, 0.9918593]],
-
-                             [[0.5414237, 0.9962701, 0.8947155, 0.5900949, 0.9483274],
-                              [0.0468036, 0.3933847, 0.8046577, 0.3640994, 0.0632100],
-                              [0.6171775, 0.8624780, 0.4126036, 0.7600935, 0.7279997],
-                              [0.4237089, 0.5365476, 0.5591233, 0.1523191, 0.1382165],
-                              [0.8932794, 0.8517839, 0.7152701, 0.8983801, 0.5905426]],
-
-                             [[0.2869580, 0.4700376, 0.2743714, 0.8135023, 0.2229074],
-                              [0.9306560, 0.3734594, 0.4566821, 0.7599275, 0.7557513],
-                              [0.7415742, 0.6115875, 0.3317572, 0.0379378, 0.1315770],
-                              [0.8692724, 0.0809556, 0.7767404, 0.8742208, 0.1522012],
-                              [0.7708948, 0.4509611, 0.0481175, 0.2358997, 0.6900532]]])
-        data = data.to(device)
-        data = data.unsqueeze(0).repeat(batch_size, 1, 1, 1)
-
-        expected = data
-
-        assert_allclose(F.apply_grayscale(data, grayscale_params), expected)
+        assert_allclose(F.apply_grayscale(data).repeat(1, 3, 1, 1), expected)
 
 
 class TestRandomRectangleEarasing:

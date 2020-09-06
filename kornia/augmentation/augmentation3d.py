@@ -15,8 +15,8 @@ from kornia.augmentation.utils import (
 
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
-
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
+
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
@@ -52,7 +52,8 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomHorizontalFlip3D, self).__init__(p=p, return_transform=return_transform,
+                                                     same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
         return AugParamDict(dict(params={}, flags={}))
@@ -65,8 +66,8 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
 
 
 class RandomVerticalFlip3D(AugmentationBase3D):
-
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
+
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
@@ -114,8 +115,8 @@ class RandomVerticalFlip3D(AugmentationBase3D):
 
 
 class RandomDepthicalFlip3D(AugmentationBase3D):
-
     r"""Depthically flip a tensor image or a batch of tensor images randomly with a given probability.
+
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
@@ -276,8 +277,8 @@ class RandomAffine3D(AugmentationBase3D):
 
 
 class RandomRotation3D(AugmentationBase3D):
-
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+
     Input should be a tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module

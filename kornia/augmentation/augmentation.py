@@ -15,8 +15,8 @@ from .utils import (
 
 
 class RandomHorizontalFlip(AugmentationBase2D):
-
     r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
@@ -44,6 +44,7 @@ class RandomHorizontalFlip(AugmentationBase2D):
                  [0., 0., 1.]]]))
 
     """
+
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
@@ -58,8 +59,8 @@ class RandomHorizontalFlip(AugmentationBase2D):
 
 
 class RandomVerticalFlip(AugmentationBase2D):
-
     r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
@@ -86,6 +87,7 @@ class RandomVerticalFlip(AugmentationBase2D):
                  [ 0.,  0.,  1.]]]))
 
     """
+
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
@@ -100,8 +102,8 @@ class RandomVerticalFlip(AugmentationBase2D):
 
 
 class ColorJitter(AugmentationBase2D):
-
     r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
@@ -162,7 +164,7 @@ class ColorJitter(AugmentationBase2D):
 
 
 class RandomGrayscale(AugmentationBase2D):
-    r"""Random Grayscale transformation according to a probability p value
+    r"""Random Grayscale transformation according to a probability p value.
 
     Args:
         p (float): probability of the image to be transformed to grayscale. Default value is 0.1
@@ -206,8 +208,8 @@ class RandomGrayscale(AugmentationBase2D):
 
 
 class RandomErasing(AugmentationBase2D):
-    r"""
-    Erases a random selected rectangle for each image in the batch, putting the value to zero.
+    r"""Erases a random selected rectangle for each image in the batch, putting the value to zero.
+
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
     sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
     between [ratio[0], ratio[1])
@@ -307,7 +309,7 @@ class RandomPerspective(AugmentationBase2D):
             self.resample, self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.compute_perspective_transformation(input, params)
+        return F.compute_perspective_transformation(input, params['params'])
 
     def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
         return F.apply_perspective(input, params['params'], params['flags'])
@@ -404,7 +406,7 @@ class RandomAffine(AugmentationBase2D):
             self.resample, self.same_on_batch, self.align_corners, self.padding_mode)
 
     def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.compute_affine_transformation(input, params)
+        return F.compute_affine_transformation(input, params['params'])
 
     def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
         return F.apply_affine(input, params['params'], params['flags'])
@@ -460,8 +462,8 @@ class CenterCrop(AugmentationBase2D):
 
 
 class RandomRotation(AugmentationBase2D):
-
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module

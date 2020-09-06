@@ -15,9 +15,6 @@ from kornia.augmentation import ColorJitter
 class TestHorizontalFlipFn:
 
     def test_random_hflip(self, device):
-        flip_param_0 = {'batch_prob': torch.tensor(False)}
-        flip_param_1 = {'batch_prob': torch.tensor(True)}
-
         input = torch.tensor([[0., 0., 0., 0.],
                               [0., 0., 0., 0.],
                               [0., 0., 1., 2.]])  # 3 x 4
@@ -27,17 +24,10 @@ class TestHorizontalFlipFn:
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
-        identity = torch.tensor([[1., 0., 0.],
-                                 [0., 1., 0.],
-                                 [0., 0., 1.]])  # 3 x 3
-
-        assert (F.compute_hflip_transformation(input, params=flip_param_0) == identity).all()
-        assert (F.compute_hflip_transformation(input, params=flip_param_1) == expected_transform).all()
+        assert (F.compute_hflip_transformation(input) == expected_transform).all()
 
     def test_batch_random_hflip(self, device):
         batch_size = 5
-        flip_param_0 = {'batch_prob': torch.tensor([False] * 5)}
-        flip_param_1 = {'batch_prob': torch.tensor([True] * 5)}
 
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
@@ -48,24 +38,15 @@ class TestHorizontalFlipFn:
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
 
-        identity = torch.tensor([[[1., 0., 0.],
-                                  [0., 1., 0.],
-                                  [0., 0., 1.]]])  # 1 x 3 x 3
-
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
-        identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F.compute_hflip_transformation(input, params=flip_param_0) == identity).all()
-        assert (F.compute_hflip_transformation(input, params=flip_param_1) == expected_transform).all()
+        assert (F.compute_hflip_transformation(input) == expected_transform).all()
 
 
 class TestVerticalFlipFn:
 
     def test_random_vflip(self, device):
-
-        flip_param_0 = {'batch_prob': torch.tensor(False)}
-        flip_param_1 = {'batch_prob': torch.tensor(True)}
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -76,17 +57,10 @@ class TestVerticalFlipFn:
                                            [0., -1., 2.],
                                            [0., 0., 1.]])  # 3 x 3
 
-        identity = torch.tensor([[1., 0., 0.],
-                                 [0., 1., 0.],
-                                 [0., 0., 1.]])  # 3 x 3
-
-        assert (F.compute_vflip_transformation(input, params=flip_param_0) == identity).all()
-        assert (F.compute_vflip_transformation(input, params=flip_param_1) == expected_transform).all()
+        assert (F.compute_vflip_transformation(input) == expected_transform).all()
 
     def test_batch_random_vflip(self, device):
         batch_size = 5
-        flip_param_0 = {'batch_prob': torch.tensor([False] * 5)}
-        flip_param_1 = {'batch_prob': torch.tensor([True] * 5)}
 
         input = torch.tensor([[[[0., 0., 0.],
                                 [0., 0., 0.],
@@ -97,16 +71,10 @@ class TestVerticalFlipFn:
                                             [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
 
-        identity = torch.tensor([[[1., 0., 0.],
-                                  [0., 1., 0.],
-                                  [0., 0., 1.]]])  # 1 x 3 x 3
-
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
-        identity = identity.repeat(batch_size, 1, 1)  # 5 x 3 x 3
 
-        assert (F.compute_vflip_transformation(input, params=flip_param_0) == identity).all()
-        assert (F.compute_vflip_transformation(input, params=flip_param_1) == expected_transform).all()
+        assert (F.compute_vflip_transformation(input) == expected_transform).all()
 
 
 class TestIntensityTransformation:
@@ -117,7 +85,7 @@ class TestIntensityTransformation:
 
         expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
 
-        assert_allclose(F.compute_intensity_transformation(input, {}), expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.compute_intensity_transformation(input), expected_transform, atol=1e-4, rtol=1e-5)
 
     def test_intensity_transformation_batch(self):
         batch_size = 2
@@ -126,7 +94,7 @@ class TestIntensityTransformation:
 
         expected_transform = torch.eye(3).unsqueeze(0).expand((batch_size, 3, 3))  # 2 x 3 x 3
 
-        assert_allclose(F.compute_intensity_transformation(input, {}), expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.compute_intensity_transformation(input), expected_transform, atol=1e-4, rtol=1e-5)
 
 
 class TestPerspective:

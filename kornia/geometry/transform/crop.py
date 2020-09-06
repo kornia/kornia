@@ -11,7 +11,8 @@ __all__ = [
     "crop_by_boxes",
     "center_crop",
     "bbox_to_mask",
-    "infer_box_shape"
+    "infer_box_shape",
+    "validate_bboxes"
 ]
 
 

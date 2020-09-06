@@ -51,15 +51,8 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
-    input = _transform_input(input)
-    batch_size, _, h, w = input.size()
-    to_apply = rg.random_prob_generator(batch_size, p=p)
-
-    output = input.clone()
-    output[to_apply] = apply_hflip(input[to_apply])
-    if return_transform:
-        return output, compute_hflip_transformation(input)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomHorizontalFlip`")
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -69,15 +62,8 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
-    input = _transform_input(input)
-    batch_size, _, h, w = input.size()
-    to_apply = rg.random_prob_generator(batch_size, p=p)
-
-    output = input.clone()
-    output[to_apply] = apply_vflip(input[to_apply])
-    if return_transform:
-        return output, compute_vflip_transformation(input)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomVerticalFlip`")
 
 
 def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
@@ -91,17 +77,8 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.random_generator.random_color_jitter_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
-    input = _transform_input(input)
-    batch_size, _, h, w = input.size()
-    _brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
-    _contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
-    _saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
-    _hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
-    params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
-    output = apply_color_jitter(input, params['params'], params['flags'])
-    if return_transform:
-        return output, compute_intensity_transformation(input)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `ColorJitter`")
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
@@ -110,15 +87,8 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
-    input = _transform_input(input)
-    batch_size, _, h, w = input.size()
-    to_apply = rg.random_prob_generator(batch_size, p=p)
-
-    output = input.clone()
-    output[to_apply] = apply_grayscale(input[to_apply])
-    if return_transform:
-        return output, compute_intensity_transformation(input)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomGrayscale`")
 
 
 def random_perspective(input: torch.Tensor,
@@ -130,18 +100,8 @@ def random_perspective(input: torch.Tensor,
     See :func:`~kornia.augmentation.random_generator.random_perspective_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
-
-    input = _transform_input(input)
-    batch_size, _, height, width = input.size()
-    distortion_scale =  \
-        distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
-    params: AugParamDict = rg.random_perspective_generator(
-        batch_size, height, width, distortion_scale)
-    output = apply_perspective(input, params['params'], params['flags'])
-    if return_transform:
-        transform = compute_perspective_transformation(input, params['params'])
-        return output, transform
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomPerspective`")
 
 
 def random_affine(input: torch.Tensor,
@@ -156,32 +116,8 @@ def random_affine(input: torch.Tensor,
     See :func:`~kornia.augmentation.random_generator.random_affine_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
-
-    input = _transform_input(input)
-    batch_size, _, height, width = input.size()
-
-    _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
-    _translate: Optional[torch.Tensor] = None
-    _scale: Optional[torch.Tensor] = None
-    _shear: Optional[torch.Tensor] = None
-    if translate is not None:
-        _translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
-    if scale is not None:
-        _scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
-    if shear is not None:
-        _shear = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
-        _shear = torch.stack([
-            _range_bound(_shear if _shear.dim() == 0 else _shear[:2], 'shear-x', 0, (-360, 360)),
-            torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
-            _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
-        ])
-    params: AugParamDict = rg.random_affine_generator(
-        batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
-    output = apply_affine(input, params['params'], params['flags'])
-    if return_transform:
-        transform = compute_affine_transformation(input, params)
-        return output, transform
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomAffine`")
 
 
 def random_rectangle_erase(
@@ -191,9 +127,8 @@ def random_rectangle_erase(
         ratio: Tuple[float, float] = (0.3, 3.3),
         return_transform: bool = False
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""
-    Function that erases a random selected rectangle for each image in the batch, putting
-    the value to zero.
+    r"""Erase a random selected rectangle for each image in the batch, putting the value to zero.
+
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
     sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
     between [aspect_ratio_range[0], aspect_ratio_range[1])
@@ -206,17 +141,8 @@ def random_rectangle_erase(
     See :func:`~kornia.augmentation.random_generator.random_rectangles_params_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_erase_rectangles` for details.
     """
-    input = _transform_input(input)
-    b, _, h, w = input.size()
-    _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
-    _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
-    params = rg.random_rectangles_params_generator(
-        b, h, w, _scale, _ratio
-    )
-    output = apply_erase_rectangles(input, params)
-    if return_transform:
-        return output, compute_intensity_transformation(input)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomRectangleErase`")
 
 
 def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
@@ -226,18 +152,13 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.random_generator.random_rotation_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
-    input = _transform_input(input)
-    batch_size, _, _, _ = input.size()
-    _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
-    params = rg.random_rotation_generator(batch_size, degrees=_degrees)
-    output = apply_rotation(input, params['params'], params['flags'])
-    if return_transform:
-        return output, compute_rotate_tranformation(input, params)
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomRotation`")
 
 
 def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
+
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
@@ -246,7 +167,6 @@ def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The horizontally flipped input
     """
-
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
@@ -275,6 +195,7 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
 
 def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
+
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
@@ -283,7 +204,6 @@ def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The vertically flipped input
     """
-
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
@@ -311,8 +231,11 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.type_as(input)
 
 
-def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_color_jitter(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
+
     Input should be a tensor of shape (H, W), (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
@@ -324,7 +247,7 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor], fla
             - params['saturation_factor']: The saturation factor.
         flags (Dict[str, torch.Tensor]):
             - params['order']: The order of applying color transforms.
-            0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
+              0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
 
     Returns:
         torch.Tensor: The color jitterred input
@@ -366,6 +289,7 @@ def compute_intensity_transformation(input: torch.Tensor):
 
 def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
+
     Input should be a tensor of shape (3, H, W) or a batch of tensors :math:`(*, 3, H, W)`.
 
     Args:
@@ -387,7 +311,9 @@ def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     return grayscale
 
 
-def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_perspective(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
@@ -404,27 +330,23 @@ def apply_perspective(input: torch.Tensor, params: Dict[str, torch.Tensor], flag
     Returns:
         torch.Tensor: Perspectively transformed tensor.
     """
-
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    # arrange input data
-    x_data: torch.Tensor = input.view(-1, *input.shape[-3:])
-
-    _, _, height, width = x_data.shape
+    _, _, height, width = input.shape
 
     # compute the homography between the input points
     transform: torch.Tensor = compute_perspective_transformation(input, params)
 
-    out_data: torch.Tensor = x_data.clone()
+    out_data: torch.Tensor = input.clone()
 
     # apply the computed transform
-    height, width = x_data.shape[-2:]
+    height, width = input.shape[-2:]
     resample_name: str = Resample(flags['interpolation'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
     out_data = warp_perspective(
-        x_data, transform, (height, width),
+        input, transform, (height, width),
         flags=resample_name, align_corners=align_corners)
 
     return out_data.view_as(input)
@@ -471,7 +393,6 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
     Returns:
         torch.Tensor: The transfromed input
     """
-
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -523,8 +444,11 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
     return transform
 
 
-def apply_rotation(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_rotation(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
@@ -579,6 +503,7 @@ def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Te
 
 def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
+
     Order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
 
     Args:
@@ -623,9 +548,9 @@ def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Ten
 
 
 def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    r"""
-    Generate a {0, 1} mask with drawed rectangle having parameters defined by params
-    and size by input.size()
+    r"""Apply rectangle erase by params.
+
+    Generate a {0, 1} mask with drawed rectangle having parameters defined by params and size by input.size()
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
@@ -670,7 +595,9 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
 
 
 def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    """ Wrapper for adjust_brightness for Torchvision-like param settings.
+    """Apply brightness adjustment.
+
+    Wrapper for adjust_brightness for Torchvision-like param settings.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
@@ -691,7 +618,9 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
 
 def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    """Wrapper for adjust_contrast for Torchvision-like param settings.
+    """Apply contrast adjustment.
+
+    Wrapper for adjust_contrast for Torchvision-like param settings.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
@@ -712,7 +641,9 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) 
 
 
 def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    """Wrapper for adjust_saturation for Torchvision-like param settings.
+    """Apply saturation adjustment.
+
+    Wrapper for adjust_saturation for Torchvision-like param settings.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
@@ -733,7 +664,9 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
 
 
 def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    """Wrapper for adjust_hue for Torchvision-like param settings.
+    """Apply hue adjustment.
+
+    Wrapper for adjust_hue for Torchvision-like param settings.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
@@ -776,7 +709,7 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
 
 
 def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    r"""Perform motion blur on an image
+    r"""Perform motion blur on an image.
 
     The input image is expected to be in the range of [0, 1].
 

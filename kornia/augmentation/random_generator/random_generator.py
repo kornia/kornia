@@ -4,13 +4,35 @@ import math
 
 import torch
 
-from . import params_generator as rg
 from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation.utils import (
+    _adapted_sampling,
     _adapted_uniform,
     _adapted_beta,
     _joint_range_check,
 )
+
+
+def prob_params_generator(
+        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    r"""Generate random probabilities for a batch of inputs.
+
+    Args:
+        batch_size (int): the number of images.
+        p (float): probability to generate an 1-d binary mask. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+    """
+    if not isinstance(p, float):
+        raise TypeError(f"The probability should be a float number. Got {type(p)}")
+
+    probs: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
+
+    batch_prob: torch.Tensor = (probs < p)
+
+    return dict(batch_prob=batch_prob)
 
 
 def color_jitter_params_generator(
@@ -21,7 +43,7 @@ def color_jitter_params_generator(
     hue: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator random color jiter parameters for a batch of images.
+    r"""Generate random color jiter parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -88,9 +110,11 @@ def perspective_params_generator(
     fx = distortion_scale * width / 2
     fy = distortion_scale * height / 2
 
-    factor = torch.tensor([fx, fy]).view(-1, 1, 2)
+    factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
 
-    rand_val: torch.Tensor = _adapted_uniform((batch_size, 4, 2), 0, 1, same_on_batch)
+    # TODO: This line somehow breaks the gradcheck
+    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch)
+
     pts_norm = torch.tensor([[
         [1, 1],
         [-1, 1],
@@ -224,7 +248,7 @@ def crop_params_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-     """
+    """
     x_diff = input_size[1] - size[1]
     y_diff = input_size[0] - size[0]
 
@@ -317,7 +341,7 @@ def rectangles_params_generator(
     value: float = 0.,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Get parameters for ```erasing``` transformation for erasing transform
+    r"""Get parameters for ```erasing``` transformation for erasing transform.
 
     Args:
         batch_size (int): the tensor batch size.
@@ -386,7 +410,6 @@ def center_crop_params_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
@@ -435,7 +458,21 @@ def motion_blur_params_generator(
     direction: torch.Tensor,
     same_on_batch: bool = True
 ) -> Dict[str, torch.Tensor]:
+    r"""Get parameters for motion blur.
 
+    Args:
+        batch_size (int): the tensor batch size.
+        kernel_size (int or (int, int)): motion kernel width and height (odd and positive).
+        angle (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
+        direction (torch.Tensor): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with
+            angle provided via angle), while higher values towards 1.0 will point the motion
+            blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+    """
     _joint_range_check(angle, 'angle')
     _joint_range_check(direction, 'direction')
 
@@ -465,8 +502,10 @@ def solarize_params_generator(
     additions: torch.Tensor = torch.tensor([-0.1, 0.1]),
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator random solarize parameters for a batch of images. For each pixel in the image less than threshold,
-    we add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0
+    r"""Generate random solarize parameters for a batch of images.
+
+    For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the pixel value
+    to be between 0 and 1.0
 
     Args:
         batch_size (int): the number of images.
@@ -498,7 +537,7 @@ def posterize_params_generator(
     bits: torch.Tensor = torch.tensor(3),
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator random posterize parameters for a batch of images.
+    r"""Generate random posterize parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -520,7 +559,7 @@ def sharpness_params_generator(
     sharpness: torch.Tensor = torch.tensor([0, 1.]),
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator random sharpness parameters for a batch of images.
+    r"""Generate random sharpness parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
@@ -545,7 +584,7 @@ def mixup_params_generator(
     lambda_val: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator mixup indexes and lambdas for a batch of inputs.
+    r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
@@ -566,7 +605,7 @@ def mixup_params_generator(
         lambda_val = torch.tensor([0., 1.])
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = rg.random_prob_generator(batch_size, p, same_on_batch=same_on_batch)
+    batch_probs: torch.Tensor = prob_params_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
@@ -588,7 +627,7 @@ def cutmix_params_generator(
     cut_size: Optional[torch.Tensor] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
-    r"""Generator cutmix indexes and lambdas for a batch of inputs.
+    r"""Generate cutmix indexes and lambdas for a batch of inputs.
 
     Args:
         batch_size (int): the number of images. If batchsize == 1, the output will be as same as the input.
@@ -647,7 +686,7 @@ def cutmix_params_generator(
         cut_size = torch.tensor([0., 1.])
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = rg.random_prob_generator(batch_size * num_mix, p, same_on_batch)
+    batch_probs: torch.Tensor = prob_params_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:

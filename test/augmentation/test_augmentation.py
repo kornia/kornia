@@ -959,7 +959,7 @@ class TestColorJitter:
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.color_jitter, (input, ), raise_exception=True)
+        assert gradcheck(kornia.augmentation.ColorJitter(1.), (input, ), raise_exception=True)
 
 
 class TestRectangleRandomErasing:
@@ -998,7 +998,7 @@ class TestRectangleRandomErasing:
         aspect_ratio_range = (.3, .5)
 
         rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
-        rect_params = rand_rec.__forward_parameters__(batch_shape)
+        rect_params = rand_rec.__forward_parameters__(batch_shape, 1.0, False)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)
@@ -1088,8 +1088,8 @@ class TestRandomGrayscale:
                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
         expected = expected.to(device)
 
-        img_gray = kornia.random_grayscale(data, p=1.)
-        assert_allclose(img_gray, expected)
+        img_gray = kornia.augmentation.RandomGrayscale(p=1.)(data)
+        assert_allclose(img_gray.repeat(1, 3, 1, 1), expected)
 
     def test_opencv_false(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
@@ -1113,7 +1113,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.random_grayscale(data, p=0.)
+        img_gray = kornia.augmentation.RandomGrayscale(p=0.)(data)
         assert_allclose(img_gray, expected)
 
     def test_opencv_true_batch(self, device):
@@ -1158,8 +1158,8 @@ class TestRandomGrayscale:
         expected = expected.to(device)
         expected = expected.unsqueeze(0).repeat(4, 1, 1, 1)
 
-        img_gray = kornia.random_grayscale(data, p=1.)
-        assert_allclose(img_gray, expected)
+        img_gray = kornia.augmentation.RandomGrayscale(p=1.)(data)
+        assert_allclose(img_gray.repeat(1, 3, 1, 1), expected)
 
     def test_opencv_false_batch(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
@@ -1184,7 +1184,7 @@ class TestRandomGrayscale:
 
         expected = data
 
-        img_gray = kornia.random_grayscale(data, p=0.)
+        img_gray = kornia.augmentation.RandomGrayscale(p=0.)(data)
         assert_allclose(img_gray, expected)
 
     def test_random_grayscale_sequential_batch(self, device):
@@ -1205,8 +1205,8 @@ class TestRandomGrayscale:
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.random_grayscale, (input, 0.), raise_exception=True)
-        assert gradcheck(kornia.random_grayscale, (input, 1.), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomGrayscale(1.), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomGrayscale(0.), (input,), raise_exception=True)
 
 
 class TestCenterCrop:
@@ -1615,7 +1615,7 @@ class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', p=0.5, same_on_batch=True, return_transform=False)"
+            "border_type='constant', p=0.5, return_transform=False, same_on_batch=True)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):

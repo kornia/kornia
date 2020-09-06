@@ -23,13 +23,8 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip3d` for details.
     """
-    input = _transform_input3d(input)
-    batch_size, _, d, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_hflip3d(input)
-    if return_transform:
-        raise NotImplementedError
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomHorizontalFlip3D`")
 
 
 def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -39,13 +34,8 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional3d.apply_vflip3d` for details.
     """
-    input = _transform_input3d(input)
-    batch_size, _, d, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_vflip3d(input)
-    if return_transform:
-        raise NotImplementedError
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomVerticalFlip3D`")
 
 
 def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -55,17 +45,13 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional3d.apply_dflip3d` for details.
     """
-    input = _transform_input3d(input)
-    batch_size, _, d, h, w = input.size()
-    params = rg.random_prob_generator(batch_size, p=p)
-    output = apply_dflip3d(input)
-    if return_transform:
-        raise NotImplementedError
-    return output
+    raise NotImplementedError(
+        f"functional random augmentation is deprecated. Please use `RandomDepthicalFlip3D`")
 
 
 def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply horizontal flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
+
     Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
     Args:
@@ -105,6 +91,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
 
 def apply_vflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
+
     Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
     Args:
@@ -145,6 +132,7 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
 
 def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply depthical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
+
     Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
 
     Args:
@@ -222,7 +210,6 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     Returns:
         torch.Tensor: The transfromed input
     """
-
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
@@ -279,6 +266,7 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
 def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                      flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
     Args:
