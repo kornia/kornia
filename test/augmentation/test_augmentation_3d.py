@@ -51,7 +51,7 @@ class TestRandomHorizontalFlip3D:
 
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[-1., 0., 0., 4.],
+        expected_transform = torch.tensor([[-1., 0., 0., 3.],
                                            [0., 1., 0., 0.],
                                            [0., 0., 1., 0.],
                                            [0., 0., 0., 1.]])  # 4 x 4
@@ -78,15 +78,15 @@ class TestRandomHorizontalFlip3D:
 
         input = torch.tensor([[[[[0., 0., 0.],
                                  [0., 0., 0.],
-                                 [0., 1., 1.]]]]])  # 1 x 1 x 4 x 4
+                                 [0., 1., 1.]]]]])  # 1 x 1 x 1 x 3 x 3
         input = input.to(device)
 
         expected = torch.tensor([[[[[0., 0., 0.],
                                     [0., 0., 0.],
-                                    [1., 1., 0.]]]]])  # 1 x 1 x 4 x 4
+                                    [1., 1., 0.]]]]])  # 1 x 1 x 1 x 3 x 3
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 0., 2.],
                                             [0., 1., 0., 0.],
                                             [0., 0., 1., 0.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
@@ -130,7 +130,7 @@ class TestRandomHorizontalFlip3D:
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input = input.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 0., 2.],
                                             [0., 1., 0., 0.],
                                             [0., 0., 1., 0.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
@@ -212,7 +212,7 @@ class TestRandomVerticalFlip3D:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[1., 0., 0., 0.],
-                                           [0., -1., 0., 3.],
+                                           [0., -1., 0., 2.],
                                            [0., 0., 1., 0.],
                                            [0., 0., 0., 1.]])  # 4 x 4
         expected_transform = expected_transform.to(device)
@@ -246,7 +246,7 @@ class TestRandomVerticalFlip3D:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0., 0.],
-                                            [0., -1., 0., 3.],
+                                            [0., -1., 0., 2.],
                                             [0., 0., 1., 0.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
         expected_transform = expected_transform.to(device)
@@ -290,7 +290,7 @@ class TestRandomVerticalFlip3D:
         input = input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0., 0.],
-                                            [0., -1., 0., 3.],
+                                            [0., -1., 0., 2.],
                                             [0., 0., 1., 0.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
         expected_transform = expected_transform.to(device)
@@ -371,7 +371,7 @@ class TestRandomDepthicalFlip3D:
 
         expected_transform = torch.tensor([[1., 0., 0., 0.],
                                            [0., 1., 0., 0.],
-                                           [0., 0., -1., 2.],
+                                           [0., 0., -1., 1.],
                                            [0., 0., 0., 1.]])  # 4 x 4
         expected_transform = expected_transform.to(device)
 
@@ -412,7 +412,7 @@ class TestRandomDepthicalFlip3D:
 
         expected_transform = torch.tensor([[[1., 0., 0., 0.],
                                             [0., 1., 0., 0.],
-                                            [0., 0., -1., 2.],
+                                            [0., 0., -1., 1.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
         expected_transform = expected_transform.to(device)
 
@@ -459,7 +459,7 @@ class TestRandomDepthicalFlip3D:
 
         expected_transform = torch.tensor([[[1., 0., 0., 0.],
                                             [0., 1., 0., 0.],
-                                            [0., 0., -1., 2.],
+                                            [0., 0., -1., 1.],
                                             [0., 0., 0., 1.]]])  # 1 x 4 x 4
         expected_transform = expected_transform.to(device)
 
