@@ -252,7 +252,7 @@ class RandomAffine3D(AugmentationBase3D):
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
         translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[Union[torch.Tensor, Tuple[float, float],
-                        Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
+                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
         shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                       Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                             Tuple[float, float], Tuple[float, float]]] = None,

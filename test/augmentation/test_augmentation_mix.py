@@ -79,7 +79,7 @@ class TestRandomMixUp:
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[:, 0] == label).all()
-        assert (out_label[:, 1] == torch.tensor([0, 1])).all()
+        assert (out_label[:, 1] == torch.tensor([0, 1], device=device)).all()
         assert_allclose(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
@@ -172,8 +172,8 @@ class TestRandomCutMix:
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[0, :, 0] == label).all()
-        assert (out_label[0, :, 1] == torch.tensor([0, 1])).all()
-        assert (out_label[0, :, 2] == torch.tensor([0., 0.])).all()
+        assert (out_label[0, :, 1] == torch.tensor([0, 1], device=device)).all()
+        assert (out_label[0, :, 2] == torch.tensor([0., 0.], device=device)).all()
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
@@ -196,9 +196,9 @@ class TestRandomCutMix:
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[:, :, 0] == label).all()
-        assert (out_label[:, :, 1] == torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]])).all()
+        assert (out_label[:, :, 1] == torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]], device=device)).all()
         assert_allclose(out_label[:, :, 2], torch.tensor([[0., 0.], [0., 0.], [0., 0.0833], [0., 0.], [0.5, 0.3333]],
-                        device=device, dtype=dtype), rtol=1e-4, atol=1e-4)
+                                                         device=device, dtype=dtype), rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
