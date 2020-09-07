@@ -835,9 +835,9 @@ class TestRandomEqualize3D:
         assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True)
 
     @staticmethod
-    def build_input(channels, depth, height, width, bs=1, row=None):
+    def build_input(channels, depth, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
         if row is None:
-            row = torch.arange(width) / float(width)
+            row = torch.arange(width, device=device, dtype=dtype) / float(width)
 
         channel = torch.stack([row] * height)
         image = torch.stack([channel] * channels)
