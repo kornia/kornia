@@ -490,10 +490,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-    input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes like :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)` to equalize.
 
     Returns:
-    torch.Tensor: Sharpened image or images with same shape as the input.
+        torch.Tensor: Sharpened image or images with same shape as the input.
     """
     input = _to_bcdhw(input)
 
