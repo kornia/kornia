@@ -769,7 +769,7 @@ class TestRandomEqualize3D:
         repr = "RandomEqualize3D(p=0.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_equalize(self, device):
+    def test_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0, return_transform=True)
         f1 = RandomEqualize3D(p=0., return_transform=True)
         f2 = RandomEqualize3D(p=1.)
@@ -778,15 +778,15 @@ class TestRandomEqualize3D:
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
         inputs3d = self.build_input(channels, depth, height, width).squeeze(dim=0)
-        inputs3d.to(device)
+        inputs3d.to(device).to(dtype)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
-        ])
+        ], device=device, dtype=dtype)
         expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected)
         expected = expected.to(device)
 
-        identity = torch.eye(4, device=device)
+        identity = torch.eye(4, device=device, dtype=dtype)
 
         assert_allclose(f(inputs3d)[0], expected)
         assert_allclose(f(inputs3d)[1], identity)
