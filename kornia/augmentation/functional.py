@@ -475,12 +475,13 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     perspective_transform: torch.Tensor = get_perspective_transform(
         params['start_points'], params['end_points']).type_as(input)
-    identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+
+    transform: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
     to_transform = params['batch_prob'].to(input.device)
 
-    transform: torch.Tensor = torch.where(to_transform.reshape(input.shape[0], 1, 1),perspective_transform,identity)
-    
+    transform[to_transform] = perspective_transform[to_transform]
+
     return transform
 
 
