@@ -522,7 +522,7 @@ class TestAffine2d:
         ).repeat(batch_size, 1, 1, 1)
 
         angle = torch.tensor(180.0, device=device).repeat(batch_size)
-        translation = torch.tensor([1.0, 0.0]).repeat(batch_size, 1)
+        translation = torch.tensor([1.0, 0.0], device=device).repeat(batch_size, 1)
 
         expected = torch.tensor(
             [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0]]], device=device,
