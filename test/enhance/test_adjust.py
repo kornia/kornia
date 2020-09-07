@@ -628,7 +628,7 @@ class TestEqualize:
             0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
             0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
             1.0000, 1.0000
-        ])
+        ], device=device)
         expected = self.build_input(channels, height, width, bs=1, row=row_expected)
         expected = expected.to(device)
 
@@ -646,7 +646,7 @@ class TestEqualize:
             0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
             0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
             1.0000, 1.0000
-        ])
+        ], device=device)
         expected = self.build_input(channels, height, width, bs, row=row_expected)
         expected = expected.to(device)
 
@@ -695,11 +695,11 @@ class TestEqualize3D:
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
         inputs3d = self.build_input(channels, depth, height, width).squeeze(dim=0)
-        inputs3d.to(device)
+        inputs3d = inputs3d.to(device)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
-        ])
+        ], device=device)
         expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected)
         expected = expected.to(device)
 
@@ -715,7 +715,7 @@ class TestEqualize3D:
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
-        ])
+        ], device=device)
         expected = self.build_input(channels, depth, height, width, bs, row=row_expected)
         expected = expected.to(device)
 

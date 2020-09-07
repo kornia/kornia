@@ -445,7 +445,7 @@ def _scale_channel(im):
         # and then normalization by step.
         lut = (torch.cumsum(histo, 0) + (step // 2)) // step
         # Shift lut, prepending with 0.
-        lut = torch.cat([torch.zeros(1), lut[:-1]])
+        lut = torch.cat([torch.zeros(1, device=lut.device), lut[:-1]])
         # Clip the counts to be in range.  This is done
         # in the C code for image.point.
         return torch.clamp(lut, 0, 255)
