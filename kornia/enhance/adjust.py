@@ -468,7 +468,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-        input (torch.Tensor): image tensor with shapes like :math:(C, H, W) or :math:(B, C, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
     Returns:
         torch.Tensor: Sharpened image or images.
     """
