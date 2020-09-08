@@ -763,8 +763,7 @@ class TestRandomRotation3D:
 
 
 class TestRandomEqualize3D:
-
-    def smoke_test(self, device):
+    def smoke_test(self, device, dtype):
         f = RandomEqualize3D(0.5)
         repr = "RandomEqualize3D(p=0.5, return_transform=False)"
         assert str(f) == repr
@@ -777,13 +776,14 @@ class TestRandomEqualize3D:
 
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
-        inputs3d = self.build_input(channels, depth, height, width).squeeze(dim=0)
+        inputs3d = self.build_input(channels, depth, height, width, device=device, dtype=dtype).squeeze(dim=0)
         inputs3d.to(device).to(dtype)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
         ], device=device, dtype=dtype)
-        expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected)
+        expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected,
+                                    device=device, dtype=dtype)
         expected = expected.to(device)
 
         identity = torch.eye(4, device=device, dtype=dtype)
@@ -795,7 +795,7 @@ class TestRandomEqualize3D:
         assert_allclose(f2(inputs3d), expected)
         assert_allclose(f3(inputs3d), inputs3d)
 
-    def test_batch_random_equalize(self, device):
+    def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0, return_transform=True)
         f1 = RandomEqualize3D(p=0., return_transform=True)
         f2 = RandomEqualize3D(p=1.)
@@ -803,13 +803,14 @@ class TestRandomEqualize3D:
 
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
 
-        inputs3d = self.build_input(channels, depth, height, width, bs)
+        inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
         inputs3d = inputs3d.to(device)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
         ])
-        expected = self.build_input(channels, depth, height, width, bs, row=row_expected)
+        expected = self.build_input(channels, depth, height, width, bs, row=row_expected,
+                                    device=device, dtype=dtype)
         expected = expected.to(device)
 
         identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
@@ -821,16 +822,17 @@ class TestRandomEqualize3D:
         assert_allclose(f2(inputs3d), expected)
         assert_allclose(f3(inputs3d), inputs3d)
 
-    def test_same_on_batch(self, device):
+    def test_same_on_batch(self, device, dtype):
         f = RandomEqualize3D(p=0.5, same_on_batch=True)
-        input = torch.eye(4).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
+        input = torch.eye(4, device=device, dtype=dtype)
+        input = input.unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
-        inputs3d = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
+        inputs3d = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         inputs3d = utils.tensor_to_gradcheck_var(inputs3d)  # to var
         assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True)
 

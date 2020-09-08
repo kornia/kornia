@@ -1575,13 +1575,12 @@ class TestRandomMotionBlur:
 
 
 class TestRandomEqualize:
-
-    def smoke_test(self, device):
+    def smoke_test(self, device, dtype):
         f = RandomEqualize(0.5)
         repr = "RandomEqualize(p=0.5, return_transform=False)"
         assert str(f) == repr
 
-    def test_random_equalize(self, device):
+    def test_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0, return_transform=True)
         f1 = RandomEqualize(p=0., return_transform=True)
         f2 = RandomEqualize(p=1.)
@@ -1589,7 +1588,7 @@ class TestRandomEqualize:
 
         bs, channels, height, width = 1, 3, 20, 20
 
-        inputs = self.build_input(channels, height, width).squeeze(dim=0)
+        inputs = self.build_input(channels, height, width, device=device, dtype=dtype).squeeze(dim=0)
         inputs.to(device)
 
         row_expected = torch.tensor([
@@ -1597,7 +1596,8 @@ class TestRandomEqualize:
             0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
             1.0000, 1.0000
         ])
-        expected = self.build_input(channels, height, width, bs=1, row=row_expected)
+        expected = self.build_input(channels, height, width, bs=1, row=row_expected,
+                                    device=device, dtype=dtype)
         expected = expected.to(device)
 
         identity = torch.eye(3, device=device)  # 3 x 3
@@ -1609,7 +1609,7 @@ class TestRandomEqualize:
         assert_allclose(f2(inputs), expected)
         assert_allclose(f3(inputs), inputs)
 
-    def test_batch_random_equalize(self, device):
+    def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize(p=1.0, return_transform=True)
         f1 = RandomEqualize(p=0., return_transform=True)
         f2 = RandomEqualize(p=1.)
@@ -1617,7 +1617,7 @@ class TestRandomEqualize:
 
         bs, channels, height, width = 2, 3, 20, 20
 
-        inputs = self.build_input(channels, height, width, bs)
+        inputs = self.build_input(channels, height, width, bs, device=device, dtype=dtype)
         inputs = inputs.to(device)
 
         row_expected = torch.tensor([
@@ -1625,7 +1625,8 @@ class TestRandomEqualize:
             0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
             1.0000, 1.0000
         ])
-        expected = self.build_input(channels, height, width, bs, row=row_expected)
+        expected = self.build_input(channels, height, width, bs, row=row_expected,
+                                    device=device, dtype=dtype)
         expected = expected.to(device)
 
         identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
@@ -1637,24 +1638,25 @@ class TestRandomEqualize:
         assert_allclose(f2(inputs), expected)
         assert_allclose(f3(inputs), inputs)
 
-    def test_same_on_batch(self, device):
+    def test_same_on_batch(self, device, dtype):
         f = RandomEqualize(p=0.5, same_on_batch=True)
-        input = torch.eye(4).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
+        input = torch.eye(4, device=device, dtype=dtype)
+        input = input.unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
 
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
+        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True)
 
     @staticmethod
-    def build_input(channels, height, width, bs=1, row=None):
+    def build_input(channels, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
         if row is None:
-            row = torch.arange(width) / float(width)
+            row = torch.arange(width, device=device, dtype=dtype) / float(width)
 
         channel = torch.stack([row] * height)
         image = torch.stack([channel] * channels)
