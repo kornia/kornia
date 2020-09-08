@@ -30,14 +30,15 @@ class TestAugmentationBase:
                 patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
 
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
-            params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
+            params = {'params': {}, 'flags': {'foo': 0}}
             generate_parameters.return_value = params
             apply_transform.return_value = expected_output
             compute_transformation.return_value = expected_transform
             output = augmentation(input)
             # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
             # Not an easy fix, happens on verifying torch.tensor([True, True])
-            # apply_transform.assert_called_once_with(input, params)
+            # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
+            # apply_transform.assert_called_once_with(input, _params)
             assert output is expected_output
 
             # Calling the augmentation with a tensor and set return_transform shall
@@ -47,13 +48,14 @@ class TestAugmentationBase:
             assert_allclose(transformation, expected_transform)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
-            params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'bar': 1}}
+            params = {'params': {}, 'flags': {'bar': 1}}
             apply_transform.reset_mock()
             generate_parameters.return_value = None
             output = augmentation(input, params=params)
             # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
             # Not an easy fix, happens on verifying torch.tensor([True, True])
-            # apply_transform.assert_called_once_with(input, params)
+            # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
+            # apply_transform.assert_called_once_with(input, _params)
             assert output is expected_output
 
             # Calling the augmentation with a tensor,a transformation and set
@@ -998,7 +1000,7 @@ class TestRectangleRandomErasing:
         aspect_ratio_range = (.3, .5)
 
         rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
-        rect_params = rand_rec.__forward_parameters__(batch_shape, 1.0, False)
+        rect_params = rand_rec.__forward_parameters__(batch_shape, 1.0, False, 'element')
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)
@@ -1615,7 +1617,7 @@ class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', p=0.5, return_transform=False, same_on_batch=True)"
+            "border_type='constant', p=0.5, same_on_batch=True, return_transform=False)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):

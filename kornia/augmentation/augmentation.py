@@ -554,7 +554,7 @@ class RandomCrop(AugmentationBase2D):
     r"""Random Crop on given size.
 
     Args:
-        p (float): probability of applying the transformation. Default value is 0.5.
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
         size (tuple): Desired output size of the crop, like (h, w).
         padding (int or sequence, optional): Optional padding on each border
             of the image. Default is None, i.e no padding. If a sequence of length
@@ -586,11 +586,12 @@ class RandomCrop(AugmentationBase2D):
 
     def __init__(
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
-        pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant', p: float = 0.5,
+        pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0
     ) -> None:
-        super(RandomCrop, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomCrop, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_mode='batch')
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -650,6 +651,7 @@ class RandomResizedCrop(AugmentationBase2D):
     r"""Random Crop on given size and resizing the cropped patch to another.
 
     Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
@@ -678,10 +680,11 @@ class RandomResizedCrop(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False
+        align_corners: bool = False, p: float = 1.
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
-        super(RandomResizedCrop, self).__init__(p=1., return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomResizedCrop, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_mode='batch')
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)

@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import torch
 try:
-    from typing import TypedDict # type: ignore  # >=3.8  
+    from typing import TypedDict  # type: ignore  # >=3.8  
 except ImportError:
     from mypy_extensions import TypedDict  # type: ignore  # <=3.7
 
