@@ -469,7 +469,6 @@ class TestAffine2d:
             translation = torch.rand(2, 2, device=device)
             kornia.Affine(angle, translation)
 
-          
     def test_affine_rotate(self, device):
         # TODO: Remove when #666 is implemented
         if device.type == 'cuda':
@@ -537,9 +536,9 @@ class TestAffine2d:
         # TODO: Remove when #666 is implemented
         if device.type == 'cuda':
             pytest.skip(
-                    "Currently breaks in CUDA."
-                    "See https://github.com/kornia/kornia/issues/666"
-                )
+                "Currently breaks in CUDA."
+                "See https://github.com/kornia/kornia/issues/666"
+            )
         batch_size = 2
 
         input = torch.tensor(
