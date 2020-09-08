@@ -7,7 +7,6 @@ from kornia.constants import Resample, BorderType
 from .base import AugmentationBase3D
 from kornia.augmentation import functional as F
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation.random_generator import AugParamDict
 from kornia.augmentation.utils import (
     _tuple_range_reader,
     _singular_range_check
@@ -58,10 +57,10 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_hflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_hflip3d(input)
 
 
@@ -107,10 +106,10 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_vflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_vflip3d(input)
 
 
@@ -157,10 +156,10 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_dflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_dflip3d(input)
 
 
@@ -271,11 +270,11 @@ class RandomAffine3D(AugmentationBase3D):
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.degrees,
             self.translate, self.scale, self.shear, self.same_on_batch)
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.compute_affine_transformation3d(input, params['params'])
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_affine_transformation3d(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.apply_affine3d(input, params['params'], self.flags)
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_affine3d(input, params, self.flags)
 
 
 class RandomRotation3D(AugmentationBase3D):
@@ -349,8 +348,8 @@ class RandomRotation3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rotation_generator3d(batch_shape[0], self.degrees, self.same_on_batch)
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.compute_rotate_tranformation3d(input, params['params'])
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_rotate_tranformation3d(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
-        return F.apply_rotation3d(input, params['params'], self.flags)
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_rotation3d(input, params, self.flags)

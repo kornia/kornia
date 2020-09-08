@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from . import functional as F
 from . import random_generator as rg
-from .random_generator import AugParamDict
 from .utils import (
     _infer_batch_shape,
     _infer_batch_shape3d,
@@ -53,16 +52,19 @@ class _BasicAugmentationBase(nn.Module):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
-    def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def __smart_param_gen__(self, batch_shape: torch.Size, to_apply: Optional[torch.Tensor] = None) -> AugParamDict:
+    def __smart_param_gen__(
+            self, batch_shape: torch.Size, to_apply: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         _params = self.generate_parameters(torch.Size((torch.sum(to_apply), *batch_shape[1:])))
         if _params is None:
             _params = {}
-        return AugParamDict(dict(batch_prob=to_apply, params=_params))
+        _params['batch_prob'] = to_apply
+        return _params
 
-    def __forward_parameters__(self, batch_shape: torch.Size, p: float, same_on_batch: bool, p_mode: str) -> AugParamDict:
+    def __forward_parameters__(
+            self, batch_shape: torch.Size, p: float, same_on_batch: bool, p_mode: str) -> Dict[str, torch.Tensor]:
         if p == 1:
             batch_prob = torch.tensor([True]).repeat(batch_shape[0])
         elif p == 0:
@@ -77,12 +79,12 @@ class _BasicAugmentationBase(nn.Module):
         # selectively param gen
         return self.__smart_param_gen__(batch_shape, batch_prob)
 
-    def apply_func(self, input: torch.Tensor, params: AugParamDict,
+    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor],
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
-    def forward(self, input: torch.Tensor, params: Optional[AugParamDict] = None,  # type: ignore
+    def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         if params is None:
             batch_shape = self.infer_batch_shape(input)
@@ -121,7 +123,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
     def __infer_input__(
@@ -136,7 +138,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             return in_tensor, None
 
     def apply_func(self, in_tensor: torch.Tensor, in_transform: Optional[torch.Tensor],
-                   params: AugParamDict, return_transform: bool = False
+                   params: Dict[str, torch.Tensor], return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         to_apply = params['batch_prob']
 
@@ -167,7 +169,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         return output
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                params: Optional[AugParamDict] = None,  # type: ignore
+                params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         in_tensor, in_transform = self.__infer_input__(input)
@@ -259,11 +261,11 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return _transform_input(input)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,     # type: ignore
-                        params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
+                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
 
     def forward(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
-                params: Optional[AugParamDict] = None,
+                params: Optional[Dict[str, torch.Tensor]] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_tensor = self.__infer_input__(input)
         if params is None:

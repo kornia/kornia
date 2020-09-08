@@ -5,7 +5,6 @@ import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
-from kornia.augmentation.random_generator import AugParamDict
 from . import functional as F
 from . import random_generator as rg
 from .base import MixAugmentationBase
@@ -88,8 +87,8 @@ class RandomMixUp(MixAugmentationBase):
         return rg.random_mixup_generator(batch_shape[0], self.p, self.lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
-                        params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
-        return F.apply_mixup(input, label, params['params'])
+                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        return F.apply_mixup(input, label, params)
 
 
 class RandomCutMix(MixAugmentationBase):
@@ -189,5 +188,5 @@ class RandomCutMix(MixAugmentationBase):
                                           same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
-                        params: AugParamDict) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
-        return F.apply_cutmix(input, label, params['params'])
+                        params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        return F.apply_cutmix(input, label, params)

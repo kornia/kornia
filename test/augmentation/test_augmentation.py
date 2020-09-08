@@ -1627,13 +1627,10 @@ class TestRandomMotionBlur:
         # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
         params = {
             'batch_prob': torch.tensor([True]),
-            'params': {
-                'ksize_factor': torch.tensor([31]),
-                'angle_factor': torch.tensor([30.]),
-                'direction_factor': torch.tensor([-0.5]),
-                'border_type': torch.tensor([0]),
-            },
-            'flags': {}
+            'ksize_factor': torch.tensor([31]),
+            'angle_factor': torch.tensor([30.]),
+            'direction_factor': torch.tensor([-0.5]),
+            'border_type': torch.tensor([0]),
         }
         assert gradcheck(RandomMotionBlur(
             kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)

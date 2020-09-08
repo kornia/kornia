@@ -34,7 +34,6 @@ from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 import kornia.augmentation.random_generator as rg
-from kornia.augmentation.random_generator.types import AugParamDict
 from kornia.augmentation.utils import (
     _transform_input,
     _validate_input_shape,
