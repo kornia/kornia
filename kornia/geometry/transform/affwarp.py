@@ -528,6 +528,7 @@ class Rescale(nn.Module):
     Returns:
         torch.Tensor: The rescaled tensor.
     """
+
     def __init__(
         self, factor: Union[float, Tuple[float, float]], interpolation: str = "bilinear", align_corners: bool = False
     ) -> None:
