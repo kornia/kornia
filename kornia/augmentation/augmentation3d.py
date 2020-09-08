@@ -54,7 +54,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         <BLANKLINE>
                   [[0., 0., 1.],
                    [0., 1., 0.],
-                   [1., 0., 0.]]]]]), tensor([[[-1.,  0.,  0.,  3.],
+                   [1., 0., 0.]]]]]), tensor([[[-1.,  0.,  0.,  2.],
                  [ 0.,  1.,  0.,  0.],
                  [ 0.,  0.,  1.,  0.],
                  [ 0.,  0.,  0.,  1.]]]))
@@ -111,7 +111,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                   [[0., 0., 1.],
                    [0., 1., 0.],
                    [1., 0., 0.]]]]]), tensor([[[ 1.,  0.,  0.,  0.],
-                 [ 0., -1.,  0.,  3.],
+                 [ 0., -1.,  0.,  2.],
                  [ 0.,  0.,  1.,  0.],
                  [ 0.,  0.,  0.,  1.]]]))
     """
@@ -167,7 +167,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
                    [0., 1., 0.],
                    [0., 0., 1.]]]]]), tensor([[[ 1.,  0.,  0.,  0.],
                  [ 0.,  1.,  0.,  0.],
-                 [ 0.,  0., -1.,  3.],
+                 [ 0.,  0., -1.,  2.],
                  [ 0.,  0.,  0.,  1.]]]))
 
     """
@@ -252,7 +252,7 @@ class RandomAffine3D(AugmentationBase3D):
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
         translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[Union[torch.Tensor, Tuple[float, float],
-                        Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
+                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
         shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                       Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                             Tuple[float, float], Tuple[float, float]]] = None,
