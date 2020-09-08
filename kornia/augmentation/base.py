@@ -29,8 +29,11 @@ class _BasicAugmentationBase(nn.Module):
     def __repr__(self) -> str:
         return f"same_on_batch={self.same_on_batch}"
 
-    def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-        raise NotImplementedError
+    def __infer_input__(
+        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        in_tensor = self.transform_tensor(input)
+        return in_tensor
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Standardize input tensors."""
@@ -92,116 +95,77 @@ class _AugmentationBase(_BasicAugmentationBase):
     def compute_transformation(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
         raise NotImplementedError
 
-    def __forward_input__(
+    def __infer_input__(
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if isinstance(input, tuple):
             in_tensor = self.transform_tensor(input[0])
             in_transformation = input[1]
             return (in_tensor, in_transformation)
         else:
             in_tensor = self.transform_tensor(input)
-            return in_tensor
+            return in_tensor, None
 
     def __forward_parameters__(self, batch_shape: torch.Size, p: float, same_on_batch: bool
                                ) -> AugParamDict:  # type: ignore
-        _params = super().__forward_parameters__(batch_shape)
-        if _params["batch_prob"] is None:
-            batch_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
+        if p == 1:
+            batch_prob = torch.tensor([True]).repeat(batch_shape[0])
+        elif p == 0:
+            batch_prob = torch.tensor([False]).repeat(batch_shape[0])
         else:
-            batch_prob = _params['batch_prob']
+            batch_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
+        # selectively param gen
+        _params = super().__forward_parameters__(
+            torch.Size((torch.sum(batch_prob), *batch_shape[1:])))
         return AugParamDict(dict(batch_prob=batch_prob, params=_params['params'], flags=_params['flags']))
 
-    def ___forward_transform___(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],  # type: ignore
-                                params: AugParamDict, return_transform: bool
-                                ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        in_transformation: Optional[torch.Tensor]
-        if isinstance(input, tuple):
-            in_tensor = input[0]
-            in_transformation = input[1]
-        else:
-            in_tensor = input[0]
-            in_transformation = None
-
-        output = self.apply_transform(in_tensor, params)
-        if return_transform:
-            transformation_matrix = self.compute_transformation(in_tensor, params)
-            out_t = transformation_matrix if in_transformation is None else transformation_matrix @ in_transformation
-            return output, out_t
-
-        if in_transformation is not None:
-            return output, in_transformation
-        return output
-
-    def apply_func(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+    def apply_func(self, in_tensor: torch.Tensor, in_transform: Optional[torch.Tensor],
                    params: AugParamDict, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        input = self.__forward_input__(input)
-        return self.___forward_transform___(input, params, return_transform)
+        to_apply = params['batch_prob']
+
+        # if no augmentation needed
+        if torch.sum(to_apply) == 0:
+            output = in_tensor
+            if return_transform:
+                trans_matrix = self.identity_matrix(in_tensor)
+        # if all data needs to be augmented
+        elif torch.sum(to_apply) == len(to_apply):
+            output = self.apply_transform(in_tensor, params)
+            if return_transform:
+                trans_matrix = self.compute_transformation(in_tensor, params)
+        else:
+            output = in_tensor.clone()
+            output[to_apply] = self.apply_transform(in_tensor[to_apply], params)
+            if return_transform:
+                trans_matrix = self.identity_matrix(in_tensor)
+                trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
+
+        if return_transform:
+            out_transformation = trans_matrix if in_transform is None else trans_matrix @ in_transform
+            return output, out_transformation
+
+        if in_transform is not None:
+            return output, in_transform
+
+        return output
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[AugParamDict] = None,  # type: ignore
                 return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+        in_tensor, in_transform = self.__infer_input__(input)
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
-            batch_shape = self.infer_batch_shape(input)
+            batch_shape = in_tensor.shape
             params = self.__forward_parameters__(batch_shape, self.p, self.same_on_batch)
         self._params = params
 
-        return self.apply_func(input, self._params, return_transform)
+        return self.apply_func(in_tensor, in_transform, self._params, return_transform)
 
 
-class _SmartFowardAugmentationBase(_AugmentationBase):
-    r"""Smartly select the input and params to apply augmentations regarding the probability."""
-
-    def apply_func(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                   params: AugParamDict, return_transform: bool = False
-                   ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-
-        to_apply = params['batch_prob']
-
-        in_target = self.__forward_input__(input)
-
-        # Situations that do not need to use to_apply
-        # Smart selective forward
-        selective_params: AugParamDict = dict(params)  # type: ignore
-        for k, v in selective_params['params'].items():
-            selective_params['params'].update({k: v[to_apply]})
-
-        if not isinstance(in_target, tuple):
-            in_target = (in_target, self.identity_matrix(in_target))
-
-        # No need to go through the process if no data needs to apply augmentation
-        if len(to_apply.unique()) == 1 and to_apply.unique() == torch.tensor([False]):
-            partial_out = in_target
-        else:
-            partial_out = self.___forward_transform___(  # type: ignore
-                (in_target[0][to_apply], in_target[1][to_apply]), selective_params, return_transform)
-
-        if len(to_apply.unique()) == 1:
-            # if True, avoid ragged tensor if methods like cropping is used
-            # if False, avoid zero-dim in batch dimension
-            out_tensor = partial_out[0]
-        else:
-            out_tensor = in_target[0].clone()
-            out_tensor[to_apply] = partial_out[0]
-
-        if isinstance(input, tuple) or return_transform:
-            if len(to_apply.unique()) == 1:
-                # if True, avoid ragged tensor if methods like cropping is used
-                # if False, avoid zero-dim in batch dimension
-                out_transformation = partial_out[1]
-            else:
-                out_transformation = in_target[1].clone()
-                out_transformation[to_apply] = partial_out[1]
-            return (out_tensor, out_transformation)
-
-        return out_tensor
-
-
-class AugmentationBase2D(_SmartFowardAugmentationBase):
+class AugmentationBase2D(_AugmentationBase):
     r"""AugmentationBase2D base class for customized augmentation implementations.
 
     For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required while the
@@ -216,12 +180,8 @@ class AugmentationBase2D(_SmartFowardAugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
     """
 
-    def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-        """Return the shape of the input. Accepts tuple or tensor."""
-        return _infer_batch_shape(input)
-
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
-        """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
+        """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
@@ -230,7 +190,7 @@ class AugmentationBase2D(_SmartFowardAugmentationBase):
         return F.compute_intensity_transformation(input)
 
 
-class AugmentationBase3D(_SmartFowardAugmentationBase):
+class AugmentationBase3D(_AugmentationBase):
     r"""AugmentationBase3D base class for customized augmentation implementations.
 
     For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required while the
@@ -244,10 +204,6 @@ class AugmentationBase3D(_SmartFowardAugmentationBase):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
     """
-
-    def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-        """Return the shape of the input. Accepts tuple or tensor."""
-        return _infer_batch_shape3d(input)
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
@@ -278,11 +234,8 @@ class MixAugmentationBase(_BasicAugmentationBase):
     def __repr__(self) -> str:
         return f"p={self.p}, " + super().__repr__()
 
-    def infer_batch_shape(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-        return _infer_batch_shape(input)
-
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
-        """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
+        """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
@@ -293,11 +246,10 @@ class MixAugmentationBase(_BasicAugmentationBase):
     def forward(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                 params: Optional[AugParamDict] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
+        in_tensor = self.__infer_input__(input)
         if params is None:
-            batch_shape = self.infer_batch_shape(input)
+            batch_shape = in_tensor.shape
             params = self.__forward_parameters__(batch_shape)
         self._params = params
 
-        input = self.transform_tensor(input)
-
-        return self.apply_transform(input, label, self._params)
+        return self.apply_transform(in_tensor, label, self._params)

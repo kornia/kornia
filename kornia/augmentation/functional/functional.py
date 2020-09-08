@@ -184,13 +184,12 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
                                            [0, 1, 0],
                                            [0, 0, 1]])
 
-    return flip_mat.type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
 
 
 def apply_vflip(input: torch.Tensor) -> torch.Tensor:
@@ -221,14 +220,13 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
                                            [0, -1, h - 1],
                                            [0, 0, 1]])
 
-    return flip_mat.type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
 
 
 def apply_color_jitter(

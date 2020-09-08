@@ -79,7 +79,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    trans_mat: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w],
                                            [0, 1, 0, 0],
@@ -119,7 +119,6 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    trans_mat: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
@@ -175,7 +174,6 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    trans_mat: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
     d: int = input.shape[-3]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],

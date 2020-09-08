@@ -1267,10 +1267,10 @@ class TestRandomRotation:
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_2 = torch.tensor([[[[0.0000, 0.3180, 0.0044, 0.0000],
-                                     [0.0015, 0.3215, 0.0000, 0.6360],
-                                     [0.1192, 1.2018, 0.9564, 0.0087],
-                                     [0.0823, 1.0058, 0.9526, 0.0000]]]])  # 1 x 4 x 4
+        expected_2 = torch.tensor([[[[0.1322, 0.0000, 0.7570, 0.2644],
+                                     [0.3785, 0.0000, 0.4166, 0.0000],
+                                     [0.0000, 0.6309, 1.5910, 1.2371],
+                                     [0.0000, 0.1444, 0.3177, 0.6499]]]])  # 1 x 4 x 4
         expected_2 = expected_2.to(device)
 
         out, mat = f(input)
@@ -1340,19 +1340,19 @@ class TestRandomRotation:
                               [0., 0., 1., 2.]])  # 4 x 4
         input = input.to(device)
 
-        expected = torch.tensor([[[[0.1790, 0.0430, 0.5372, 0.3580],
-                                   [0.2686, 0.0725, 0.3722, 0.1130],
-                                   [0.0498, 0.6968, 1.4953, 0.8549],
-                                   [0.0268, 0.1821, 0.5466, 0.6627]]]])  # 1 x 4 x 4
+        expected = torch.tensor([[[[0.1314, 0.1050, 0.6649, 0.2628],
+                                   [0.3234, 0.0202, 0.4256, 0.1671],
+                                   [0.0525, 0.5976, 1.5199, 1.1306],
+                                   [0.0000, 0.1453, 0.3224, 0.5796]]]])  # 1 x 4 x 4
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[0.9726, 0.2323, -0.3075],
-                                            [-0.2323, 0.9726, 0.3896],
+        expected_transform = torch.tensor([[[0.8864, 0.4629, -0.5240],
+                                            [-0.4629, 0.8864, 0.8647],
                                             [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
-        expected_transform_2 = torch.tensor([[[0.9981, -0.0610, 0.0943],
-                                              [0.0610, 0.9981, -0.0887],
+        expected_transform_2 = torch.tensor([[[0.8381, -0.5455, 1.0610],
+                                              [0.5455, 0.8381, -0.5754],
                                               [0.0000, 0.0000, 1.0000]]])  # 1 x 3 x 3
         expected_transform_2 = expected_transform_2.to(device)
 
