@@ -83,7 +83,7 @@ class TestRandomPerspective:
         out_perspective = kornia.augmentation.RandomPerspective()(x_data)
         assert out_perspective.shape == x_data.shape
 
-    def test_no_transform_module(self, device):
+    def test_transform_module_should_return_identity(self, device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
@@ -96,7 +96,7 @@ class TestRandomPerspective:
         assert_allclose(out_perspective[0], x_data)
         assert_allclose(out_perspective[1], torch.eye(3, device=device))
 
-    def test_transform_module(self, device):
+    def test_transform_module_should_return_expected_transform(self, device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
