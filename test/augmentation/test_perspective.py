@@ -83,11 +83,10 @@ class TestRandomPerspective:
         out_perspective = kornia.augmentation.RandomPerspective()(x_data)
         assert out_perspective.shape == x_data.shape
 
-    def test_transform_module(self, device):
+    def test_no_transform_module(self, device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        # Don't transform
         out_perspective = kornia.augmentation.RandomPerspective(p=0.0,
                                                                 return_transform=True)(x_data)
         assert isinstance(out_perspective, tuple)
@@ -97,25 +96,29 @@ class TestRandomPerspective:
         assert_allclose(out_perspective[0], x_data)
         assert_allclose(out_perspective[1], torch.eye(3, device=device))
 
-        # Transform
-        expected_output = torch.tensor([[[[0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000],
-                                          [0.0000000000, 0.1055026501, 0.0857384056, 0.2782993317, 0.0000000000],
-                                          [0.0000000000, 0.3638386726, 0.1095530614, 0.1557811201, 0.0000000000],
-                                          [0.0000000000, 0.1458998173, 0.0858400986, 0.0172647052, 0.0000000000]],
+    def test_transform_module(self, device):
+        torch.manual_seed(0)
+        x_data = torch.rand(1, 2, 4, 5).to(device)
 
-                                         [[0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000],
-                                          [0.0000000000, 0.1449079216, 0.4070233405, 0.2801249027, 0.0000000000],
-                                          [0.0000000000, 0.3177912235, 0.2025497705, 0.1243757755, 0.0000000000],
-                                          [0.0000000000, 0.0187442005, 0.1653917283, 0.0454043336, 0.0000000000]]]],
+        expected_output = torch.tensor([[[[0.0000000000, 0.0000000000, 0.0000000000, 0.0197417457, 0.0429493971],
+                                          [0.0000000000, 0.5632190704, 0.5321710110, 0.3676981330, 0.1430126727],
+                                          [0.0000000000, 0.3082636893, 0.4031507671, 0.1760708243, 0.0000000000],
+                                          [0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000]],
+
+                                         [[0.0000000000, 0.0000000000, 0.0000000000, 0.1189093292, 0.0585946590],
+                                          [0.0000000000, 0.7087295055, 0.5419756770, 0.3995491862, 0.0863459259],
+                                          [0.0000000000, 0.2694899142, 0.5981453061, 0.5887590051, 0.0000000000],
+                                          [0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000]]]],
                                        device=device, dtype=x_data.dtype)
 
-        expected_transform = torch.tensor([[[0.4054609537, -0.1098810509, 1.0247254372],
-                                            [-0.1291774511, 0.5699824691, 0.9970665574],
-                                            [-0.0384063981, -0.0208518617, 1.0000000000]]],
+        expected_transform = torch.tensor([[[1.0522739887, 0.3492536247, 0.3045728207],
+                                            [-0.1066057906, 1.0426188707, 0.5845923424],
+                                            [0.0350575559, 0.1213315651, 1.0000000000]]],
                                           device=device, dtype=x_data.dtype)
 
         out_perspective = kornia.augmentation.RandomPerspective(p=1.0,
                                                                 return_transform=True)(x_data)
+
         assert isinstance(out_perspective, tuple)
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
