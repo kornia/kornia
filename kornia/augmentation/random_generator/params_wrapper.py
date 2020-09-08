@@ -42,7 +42,7 @@ def random_prob_generator(
     Returns:
         torch.Tensor: parameters to be passed for transformation.
     """
-    return prob_params_generator(batch_size, p, same_on_batch)['batch_prob']
+    return prob_params_generator(batch_size, p, same_on_batch)
 
 
 def random_color_jitter_generator(

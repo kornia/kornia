@@ -79,8 +79,6 @@ class TestColorJitter:
             'contrast_factor': torch.tensor(1.),
             'saturation_factor': torch.tensor(1.),
             'hue_factor': torch.tensor(0.),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -88,7 +86,7 @@ class TestColorJitter:
 
         expected = input
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_color_jitter_batch(self):
         batch_size = 2
@@ -97,15 +95,13 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1.] * batch_size),
             'saturation_factor': torch.tensor([1.] * batch_size),
             'hue_factor': torch.tensor([0.] * batch_size),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
         input = torch.rand(batch_size, 3, 5, 5)  # 2 x 3 x 5 x 5
         expected = input
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_brightness(self):
         torch.manual_seed(42)
@@ -114,8 +110,6 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -149,7 +143,7 @@ class TestColorJitter:
                                    [0.7660, 0.6660, 0.5660],
                                    [0.8660, 0.9660, 1.0000]]]])  # 1 x 1 x 3 x 3
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected)
 
     def test_random_contrast(self):
         torch.manual_seed(42)
@@ -158,8 +152,6 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([0.9531, 1.1837]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([1., 1.]),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -193,7 +185,7 @@ class TestColorJitter:
                                    [0.7102, 0.5919, 0.4735],
                                    [0.8286, 0.9470, 1.0000]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_saturation(self):
         torch.manual_seed(42)
@@ -202,8 +194,6 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([0., 0.]),
             'saturation_factor': torch.tensor([0.9026, 1.1175]),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
 
@@ -245,7 +235,7 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
     def test_random_hue(self):
         torch.manual_seed(42)
@@ -254,8 +244,6 @@ class TestColorJitter:
             'contrast_factor': torch.tensor([1., 1.]),
             'hue_factor': torch.tensor([-0.0438 / 2 / pi, 0.0404 / 2 / pi]),
             'saturation_factor': torch.tensor([1., 1.]),
-        }
-        jitter_flags = {
             'order': torch.tensor([2, 3, 0, 1])
         }
         input = torch.tensor([[[[0.1, 0.2, 0.3],
@@ -295,7 +283,7 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]])
 
-        assert_allclose(F.apply_color_jitter(input, jitter_param, jitter_flags), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input, jitter_param), expected, atol=1e-4, rtol=1e-5)
 
 
 class TestRandomGrayscale:

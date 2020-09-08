@@ -11,7 +11,7 @@ from kornia.augmentation.utils import (
 )
 
 
-def rotation_params_generator3d(
+def random_rotation_generator3d(
     batch_size: int,
     degrees: torch.Tensor,
     same_on_batch: bool = False
@@ -36,7 +36,7 @@ def rotation_params_generator3d(
                 roll=roll)
 
 
-def affine_params_generator3d(
+def random_affine_generator3d(
     batch_size: int,
     depth: int,
     height: int,

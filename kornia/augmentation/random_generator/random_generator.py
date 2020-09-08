@@ -13,8 +13,8 @@ from kornia.augmentation.utils import (
 )
 
 
-def prob_params_generator(
-        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+def random_prob_generator(
+        batch_size: int, p: float = 0.5, same_on_batch: bool = False) -> torch.Tensor:
     r"""Generate random probabilities for a batch of inputs.
 
     Args:
@@ -23,7 +23,7 @@ def prob_params_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        torch.Tensor: parameters to be passed for transformation.
     """
     if not isinstance(p, float):
         raise TypeError(f"The probability should be a float number. Got {type(p)}")
@@ -32,10 +32,10 @@ def prob_params_generator(
 
     batch_prob: torch.Tensor = (probs < p)
 
-    return dict(batch_prob=batch_prob)
+    return batch_prob
 
 
-def color_jitter_params_generator(
+def random_color_jitter_generator(
     batch_size: int,
     brightness: Optional[torch.Tensor] = None,
     contrast: Optional[torch.Tensor] = None,
@@ -74,10 +74,11 @@ def color_jitter_params_generator(
     return dict(brightness_factor=brightness_factor,
                 contrast_factor=contrast_factor,
                 hue_factor=hue_factor,
-                saturation_factor=saturation_factor)
+                saturation_factor=saturation_factor,
+                order=torch.randperm(4))
 
 
-def perspective_params_generator(
+def random_perspective_generator(
     batch_size: int,
     height: int,
     width: int,
@@ -127,7 +128,7 @@ def perspective_params_generator(
                 end_points=end_points)
 
 
-def affine_params_generator(
+def random_affine_generator(
     batch_size: int,
     height: int,
     width: int,
@@ -208,7 +209,7 @@ def affine_params_generator(
                 sy=sy)
 
 
-def rotation_params_generator(
+def random_rotation_generator(
     batch_size: int,
     degrees: torch.Tensor,
     same_on_batch: bool = False
@@ -230,7 +231,7 @@ def rotation_params_generator(
     return dict(degrees=degrees)
 
 
-def crop_params_generator(
+def random_crop_generator(
     batch_size: int,
     input_size: Tuple[int, int],
     size: Union[Tuple[int, int], torch.Tensor],
@@ -284,7 +285,7 @@ def crop_params_generator(
                 dst=crop_dst)
 
 
-def crop_size_params_generator(
+def random_crop_size_generator(
     size: Tuple[int, int],
     scale: torch.Tensor,
     ratio: torch.Tensor,
@@ -332,7 +333,7 @@ def crop_size_params_generator(
     return dict(size=torch.stack([h, w]))
 
 
-def rectangles_params_generator(
+def random_rectangles_params_generator(
     batch_size: int,
     height: int,
     width: int,
@@ -393,7 +394,7 @@ def rectangles_params_generator(
                 values=torch.tensor([value] * batch_size))
 
 
-def center_crop_params_generator(
+def center_crop_generator(
     batch_size: int,
     height: int,
     width: int,
@@ -451,7 +452,7 @@ def center_crop_params_generator(
                 dst=points_dst)
 
 
-def motion_blur_params_generator(
+def random_motion_blur_generator(
     batch_size: int,
     kernel_size: Union[int, Tuple[int, int]],
     angle: torch.Tensor,
@@ -496,7 +497,7 @@ def motion_blur_params_generator(
                 direction_factor=direction_factor)
 
 
-def solarize_params_generator(
+def random_solarize_generator(
     batch_size: int,
     thresholds: torch.Tensor = torch.tensor([0.4, 0.6]),
     additions: torch.Tensor = torch.tensor([-0.1, 0.1]),
@@ -532,7 +533,7 @@ def solarize_params_generator(
     )
 
 
-def posterize_params_generator(
+def random_posterize_generator(
     batch_size: int,
     bits: torch.Tensor = torch.tensor(3),
     same_on_batch: bool = False
@@ -554,7 +555,7 @@ def posterize_params_generator(
     )
 
 
-def sharpness_params_generator(
+def random_sharpness_generator(
     batch_size: int,
     sharpness: torch.Tensor = torch.tensor([0, 1.]),
     same_on_batch: bool = False
@@ -578,7 +579,7 @@ def sharpness_params_generator(
     )
 
 
-def mixup_params_generator(
+def random_mixup_generator(
     batch_size: int,
     p: float = 0.5,
     lambda_val: Optional[torch.Tensor] = None,
@@ -598,14 +599,14 @@ def mixup_params_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> mixup_params_generator(5, 0.7)
+        >>> mixup_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
     if lambda_val is None:
         lambda_val = torch.tensor([0., 1.])
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = prob_params_generator(batch_size, p, same_on_batch=same_on_batch)['batch_prob']
+    batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
@@ -617,7 +618,7 @@ def mixup_params_generator(
     )
 
 
-def cutmix_params_generator(
+def random_cutmix_generator(
     batch_size: int,
     width: int,
     height: int,
@@ -646,7 +647,7 @@ def cutmix_params_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> cutmix_params_generator(3, 224, 224, p=0.5, num_mix=2)
+        >>> cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
                 [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
                   [209,  25],
@@ -686,7 +687,7 @@ def cutmix_params_generator(
         cut_size = torch.tensor([0., 1.])
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
 
-    batch_probs: torch.Tensor = prob_params_generator(batch_size * num_mix, p, same_on_batch)['batch_prob']
+    batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:

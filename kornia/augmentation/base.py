@@ -1,4 +1,4 @@
-from typing import Tuple, Union, Optional, cast
+from typing import Tuple, Union, Optional, Dict, cast
 import logging
 
 import torch
@@ -50,20 +50,17 @@ class _BasicAugmentationBase(nn.Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
     def apply_transform(self, input: torch.Tensor, params: AugParamDict) -> torch.Tensor:
         raise NotImplementedError
 
-    def __get_param_dict__(self, batch_shape: torch.Size, to_apply: Optional[torch.Tensor] = None) -> AugParamDict:
+    def __smart_param_gen__(self, batch_shape: torch.Size, to_apply: Optional[torch.Tensor] = None) -> AugParamDict:
         _params = self.generate_parameters(torch.Size((torch.sum(to_apply), *batch_shape[1:])))
         if _params is None:
-            _params = {"params": {}, "flags": {}}
-        assert 'batch_prob' not in _params, f"Unexpected `batch_prob` found in params. Got {_params}."
-        _params.update({'flags': _params['flags'] if 'flags' in _params else {}})
-        _params.update({'params': _params['params'] if 'params' in _params else {}})
-        return AugParamDict(dict(batch_prob=to_apply, params=_params['params'], flags=_params['flags']))
+            _params = {}
+        return AugParamDict(dict(batch_prob=to_apply, params=_params))
 
     def __forward_parameters__(self, batch_shape: torch.Size, p: float, same_on_batch: bool, p_mode: str) -> AugParamDict:
         if p == 1:
@@ -78,7 +75,7 @@ class _BasicAugmentationBase(nn.Module):
             else:
                 raise ValueError(f"`p_mode` must be either `batch` or `element`. Got {p_mode}.")
         # selectively param gen
-        return self.__get_param_dict__(batch_shape, batch_prob)
+        return self.__smart_param_gen__(batch_shape, batch_prob)
 
     def apply_func(self, input: torch.Tensor, params: AugParamDict,
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:

@@ -230,7 +230,7 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
 
 
 def apply_color_jitter(
-    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+    input: torch.Tensor, params: Dict[str, torch.Tensor]
 ) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
 
@@ -243,7 +243,6 @@ def apply_color_jitter(
             - params['contrast_factor']: The contrast factor.
             - params['hue_factor']: The hue factor.
             - params['saturation_factor']: The saturation factor.
-        flags (Dict[str, torch.Tensor]):
             - params['order']: The order of applying color transforms.
               0 is brightness, 1 is contrast, 2 is saturation, 4 is hue.
 
@@ -263,7 +262,7 @@ def apply_color_jitter(
     ]
 
     jittered = input
-    for idx in flags['order'].tolist():
+    for idx in params['order'].tolist():
         t = transforms[idx]
         jittered = t(jittered)
 
@@ -706,7 +705,8 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     return transformed
 
 
-def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                      flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform motion blur on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -720,7 +720,8 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
               Lower values towards -1.0 will point the motion blur towards the back (with
               angle provided via angle), while higher values towards 1.0 will point the motion
               blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
-            - params['border_type']: the padding mode to be applied before convolving.
+        flags (Dict[str, torch.Tensor]):
+            - flags['border_type']: the padding mode to be applied before convolving.
               CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Returns:
@@ -733,7 +734,7 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> t
     kernel_size: int = cast(int, params['ksize_factor'].item())
     angle = params['angle_factor']
     direction = params['direction_factor']
-    border_type: str = cast(str, BorderType(params['border_type'].item()).name.lower())
+    border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
 
     return motion_blur(input, kernel_size, angle, direction, border_type)
 

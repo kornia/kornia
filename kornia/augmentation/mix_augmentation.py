@@ -84,7 +84,7 @@ class RandomMixUp(MixAugmentationBase):
         repr = f"lambda_val={self.lambda_val}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_mixup_generator(batch_shape[0], self.p, self.lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
@@ -183,7 +183,7 @@ class RandomCutMix(MixAugmentationBase):
         f"height={self.height}, width={self.width}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> AugParamDict:
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,
                                           cut_size=self.cut_size, num_mix=self.num_mix, beta=self.beta,
                                           same_on_batch=self.same_on_batch)
