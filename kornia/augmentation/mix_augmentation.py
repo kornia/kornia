@@ -26,6 +26,7 @@ class MixAugmentation(AugmentationBase):
                                       wont be concatenated.
 
     """
+
     def __init__(self):
         super(MixAugmentation, self).__init__(return_transform=False)
 
@@ -104,6 +105,7 @@ class RandomMixUp(MixAugmentation):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.1980],
                 [1.0000, 1.0000, 0.4162]]))
     """
+
     def __init__(self, p: float = 1.0, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  same_on_batch: bool = False) -> None:
         super(RandomMixUp, self).__init__()
@@ -192,6 +194,7 @@ class RandomCutMix(MixAugmentation):
                   [0.4294, 0.8854, 0.5739]]]]), tensor([[[0.0000, 0.0000, 0.4444],
                  [1.0000, 1.0000, 0.0000]]]))
     """
+
     def __init__(self, height: int, width: int, p: float = 0.5, num_mix: int = 1,
                  cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False) -> None:
