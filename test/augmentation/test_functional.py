@@ -327,7 +327,7 @@ class TestRandomGrayscale:
                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
         expected = expected.to(device)
 
-        assert_allclose(F.apply_grayscale(data).repeat(1, 3, 1, 1), expected)
+        assert_allclose(F.apply_grayscale(data), expected)
 
     def test_opencv_true_batch(self, device):
         batch_size = 4
@@ -372,7 +372,7 @@ class TestRandomGrayscale:
         expected = expected.to(device)
         expected = expected.unsqueeze(0).repeat(batch_size, 1, 1, 1)
 
-        assert_allclose(F.apply_grayscale(data).repeat(1, 3, 1, 1), expected)
+        assert_allclose(F.apply_grayscale(data), expected)
 
 
 class TestRandomRectangleEarasing:

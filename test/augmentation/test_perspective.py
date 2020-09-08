@@ -57,7 +57,7 @@ class TestRandomPerspective:
         x_data = torch.rand(1, 2, 8, 9).to(device)
 
         out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, 0.5, return_transform=False)(x_data)
+            0.5, p=0.5, return_transform=False)(x_data)
 
         assert out_perspective.shape == x_data.shape
 
@@ -65,7 +65,7 @@ class TestRandomPerspective:
         x_data = torch.rand(2, 2, 8, 9).to(device)
 
         out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, 0.5, return_transform=False)(x_data)
+            0.5, p=0.5, return_transform=False)(x_data)
 
         assert out_perspective.shape == x_data.shape
 
@@ -73,7 +73,7 @@ class TestRandomPerspective:
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
         out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, 0.5, return_transform=True)(x_data)
+            0.5, p=0.5, return_transform=True)(x_data)
 
         assert isinstance(out_perspective, tuple)
         assert len(out_perspective) == 2
@@ -100,7 +100,7 @@ class TestRandomPerspective:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomPerspective(0.), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomPerspective(p=0.), (input,), raise_exception=True)
 
 
 class TestRandomAffine:
@@ -135,4 +135,4 @@ class TestRandomAffine:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAffine(0.), (input, ), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.), (input, ), raise_exception=True)

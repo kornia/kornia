@@ -302,7 +302,8 @@ def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
 
     grayscale: torch.Tensor = input.clone()
 
-    grayscale = rgb_to_grayscale(input)
+    # Make sure it returns (*, 3, H, W)
+    grayscale[:] = rgb_to_grayscale(input)
 
     return grayscale
 

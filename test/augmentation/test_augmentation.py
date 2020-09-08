@@ -961,7 +961,7 @@ class TestColorJitter:
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.ColorJitter(1.), (input, ), raise_exception=True)
+        assert gradcheck(kornia.augmentation.ColorJitter(p=1.), (input, ), raise_exception=True)
 
 
 class TestRectangleRandomErasing:
@@ -1091,7 +1091,7 @@ class TestRandomGrayscale:
         expected = expected.to(device)
 
         img_gray = kornia.augmentation.RandomGrayscale(p=1.)(data)
-        assert_allclose(img_gray.repeat(1, 3, 1, 1), expected)
+        assert_allclose(img_gray, expected)
 
     def test_opencv_false(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
@@ -1161,7 +1161,7 @@ class TestRandomGrayscale:
         expected = expected.unsqueeze(0).repeat(4, 1, 1, 1)
 
         img_gray = kornia.augmentation.RandomGrayscale(p=1.)(data)
-        assert_allclose(img_gray.repeat(1, 3, 1, 1), expected)
+        assert_allclose(img_gray, expected)
 
     def test_opencv_false_batch(self, device):
         data = torch.tensor([[[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
