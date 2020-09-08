@@ -85,7 +85,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w],
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1],
                                            [0, 1, 0, 0],
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
@@ -126,7 +126,7 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
-                                           [0, -1, 0, h],
+                                           [0, -1, 0, h - 1],
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
 
@@ -182,7 +182,7 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     d: int = input.shape[-3]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
                                            [0, 1, 0, 0],
-                                           [0, 0, -1, d],
+                                           [0, 0, -1, d - 1],
                                            [0, 0, 0, 1]])
 
     return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
