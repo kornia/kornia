@@ -2,8 +2,6 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
 
-import kornia.augmentation.random_generator as rg
-from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
 from kornia.constants import Resample, BorderType, pi
 from kornia.geometry.transform.affwarp import (
     _compute_rotation_matrix3d, _compute_tensor_center3d
@@ -15,6 +13,12 @@ from kornia.geometry import (
     deg2rad
 )
 
+from .. import random_generator as rg
+from ..utils import (
+    _transform_input3d,
+    _validate_input_dtype
+)
+
 
 def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -24,7 +28,7 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional.apply_hflip3d` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomHorizontalFlip3D`")
+        "functional random augmentation is deprecated. Please use `RandomHorizontalFlip3D`")
 
 
 def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -35,7 +39,7 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional3d.apply_vflip3d` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomVerticalFlip3D`")
+        "functional random augmentation is deprecated. Please use `RandomVerticalFlip3D`")
 
 
 def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -46,7 +50,7 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional3d.apply_dflip3d` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomDepthicalFlip3D`")
+        "functional random augmentation is deprecated. Please use `RandomDepthicalFlip3D`")
 
 
 def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
@@ -284,7 +288,7 @@ def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     pitch: torch.Tensor = params["pitch"].type_as(input)
     roll: torch.Tensor = params["roll"].type_as(input)
 
-    resample_mode: str = Resample(flags['interpolation'].item()).name.lower()
+    resample_mode: str = Resample(flags['resample'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
     transformed: torch.Tensor = rotate3d(input, yaw, pitch, roll, mode=resample_mode, align_corners=align_corners)

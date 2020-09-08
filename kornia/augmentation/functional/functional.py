@@ -33,8 +33,8 @@ from kornia.enhance import (
 from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
-import kornia.augmentation.random_generator as rg
-from kornia.augmentation.utils import (
+from .. import random_generator as rg
+from ..utils import (
     _transform_input,
     _validate_input_shape,
     _validate_input_dtype,
@@ -51,7 +51,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomHorizontalFlip`")
+        "functional random augmentation is deprecated. Please use `RandomHorizontalFlip`")
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -62,7 +62,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomVerticalFlip`")
+        "functional random augmentation is deprecated. Please use `RandomVerticalFlip`")
 
 
 def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
@@ -77,7 +77,7 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `ColorJitter`")
+        "functional random augmentation is deprecated. Please use `ColorJitter`")
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
@@ -87,7 +87,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomGrayscale`")
+        "functional random augmentation is deprecated. Please use `RandomGrayscale`")
 
 
 def random_perspective(input: torch.Tensor,
@@ -100,7 +100,7 @@ def random_perspective(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomPerspective`")
+        "functional random augmentation is deprecated. Please use `RandomPerspective`")
 
 
 def random_affine(input: torch.Tensor,
@@ -116,7 +116,7 @@ def random_affine(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomAffine`")
+        "functional random augmentation is deprecated. Please use `RandomAffine`")
 
 
 def random_rectangle_erase(
@@ -141,7 +141,7 @@ def random_rectangle_erase(
     See :func:`~kornia.augmentation.functional.apply_erase_rectangles` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomRectangleErase`")
+        "functional random augmentation is deprecated. Please use `RandomRectangleErase`")
 
 
 def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
@@ -152,7 +152,7 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
     raise NotImplementedError(
-        f"functional random augmentation is deprecated. Please use `RandomRotation`")
+        "functional random augmentation is deprecated. Please use `RandomRotation`")
 
 
 def apply_hflip(input: torch.Tensor) -> torch.Tensor:

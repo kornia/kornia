@@ -70,6 +70,7 @@ class RandomMixUp(MixAugmentationBase):
                   [0.4550, 0.5725, 0.4980]]]]), tensor([[0.0000, 0.0000, 0.1980],
                 [1.0000, 1.0000, 0.4162]]))
     """
+
     def __init__(self, p: float = 1.0, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  same_on_batch: bool = False) -> None:
         super(RandomMixUp, self).__init__(p=p, same_on_batch=same_on_batch)

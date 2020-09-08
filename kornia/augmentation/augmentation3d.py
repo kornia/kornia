@@ -5,9 +5,9 @@ from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType
 from .base import AugmentationBase3D
-from kornia.augmentation import functional as F
-from kornia.augmentation import random_generator as rg
-from kornia.augmentation.utils import (
+from . import functional as F
+from . import random_generator as rg
+from .utils import (
     _tuple_range_reader,
     _singular_range_check
 )
@@ -201,7 +201,7 @@ class RandomAffine3D(AugmentationBase3D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
-        >>> aug = RandomAffine3D((15., 20., 20.), return_transform=True)
+        >>> aug = RandomAffine3D((15., 20., 20.), p=1., return_transform=True)
         >>> aug(input)
         (tensor([[[[[0.4503, 0.4763, 0.1680],
                    [0.2029, 0.4267, 0.3515],
@@ -255,14 +255,16 @@ class RandomAffine3D(AugmentationBase3D):
             _singular_range_check(self.scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(self.scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
 
+        self.resample = Resample.get(resample)
+        self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
-            resample=torch.tensor(Resample.get(resample).value),
+            resample=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
         )
 
     def __repr__(self) -> str:
-        repr = f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
-        f"resample={self.resample.name}, align_corners={self.align_corners}"
+        repr = (f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
+                f"resample={self.resample.name}, align_corners={self.align_corners}")
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
@@ -305,7 +307,7 @@ class RandomRotation3D(AugmentationBase3D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
-        >>> aug = RandomRotation3D((15., 20., 20.), return_transform=True)
+        >>> aug = RandomRotation3D((15., 20., 20.), p=1.0, return_transform=True)
         >>> aug(input)
         (tensor([[[[[0.4963, 0.5013, 0.2314],
                    [0.1015, 0.3624, 0.4779],
@@ -336,8 +338,11 @@ class RandomRotation3D(AugmentationBase3D):
             import warnings
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
+
+        self.resample = Resample.get(resample)
+        self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
-            resample=torch.tensor(Resample.get(resample).value),
+            resample=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
         )
 

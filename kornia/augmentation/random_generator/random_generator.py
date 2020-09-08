@@ -5,7 +5,7 @@ import math
 import torch
 
 from kornia.constants import Resample, BorderType, SamplePadding
-from kornia.augmentation.utils import (
+from ..utils import (
     _adapted_sampling,
     _adapted_uniform,
     _adapted_beta,
@@ -599,7 +599,7 @@ def random_mixup_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> mixup_generator(5, 0.7)
+        >>> random_mixup_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
     if lambda_val is None:
@@ -647,7 +647,7 @@ def random_cutmix_generator(
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
+        >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
                 [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
                   [209,  25],

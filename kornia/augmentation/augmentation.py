@@ -31,7 +31,7 @@ class AugmentationBase(AugmentationBase2D):
     def __init__(self, p: float, return_transform: bool = False, same_on_batch: bool = False) -> None:
         super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         raise DeprecationWarning(
-            f"`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
+            "`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
 
 
 class RandomHorizontalFlip(AugmentationBase2D):
@@ -54,7 +54,7 @@ class RandomHorizontalFlip(AugmentationBase2D):
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],
         ...                         [0., 1., 1.]]]])
-        >>> seq = nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True),
+        >>> seq = torch.nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True),
         ...                     RandomHorizontalFlip(p=1.0, return_transform=True))
         >>> seq(input)
         (tensor([[[[0., 0., 0.],
@@ -103,7 +103,7 @@ class RandomVerticalFlip(AugmentationBase2D):
         (tensor([[[[0., 1., 1.],
                   [0., 0., 0.],
                   [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
-                 [ 0., -1.,  3.],
+                 [ 0., -1.,  2.],
                  [ 0.,  0.,  1.]]]))
 
     """
@@ -140,7 +140,7 @@ class ColorJitter(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 3, 3, 3)
-        >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1)
+        >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> aug(inputs)
         tensor([[[[0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993],
@@ -156,11 +156,11 @@ class ColorJitter(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 1., brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
+        self, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-        return_transform: bool = False, same_on_batch: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, p: float = 1.
     ) -> None:
         super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
@@ -187,11 +187,11 @@ class RandomGrayscale(AugmentationBase2D):
     r"""Random Grayscale transformation according to a probability p value.
 
     Args:
-        p (float): probability of the image to be transformed to grayscale. Default value is 0.1
+        p (float): probability of the image to be transformed to grayscale. Default value is 0.1.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -199,14 +199,6 @@ class RandomGrayscale(AugmentationBase2D):
         >>> rec_er = RandomGrayscale(p=1.0)
         >>> rec_er(inputs)
         tensor([[[[-1.1344, -0.1330,  0.1517],
-                  [-0.0791,  0.6711, -0.1413],
-                  [-0.1717, -0.9023,  0.0819]],
-        <BLANKLINE>
-                 [[-1.1344, -0.1330,  0.1517],
-                  [-0.0791,  0.6711, -0.1413],
-                  [-0.1717, -0.9023,  0.0819]],
-        <BLANKLINE>
-                 [[-1.1344, -0.1330,  0.1517],
                   [-0.0791,  0.6711, -0.1413],
                   [-0.1717, -0.9023,  0.0819]]]])
     """
@@ -243,14 +235,14 @@ class RandomErasing(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = RandomErasing(1.0, (.4, .8), (.3, 1/.3))
+        >>> rec_er = RandomErasing(0.5, (.4, .8), (.3, 1/.3))
         >>> rec_er(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
                   [1., 0., 0.]]]])
     """
-    # Note: Extra params, inplace=False in Torchvision.
 
+    # Note: Extra params, inplace=False in Torchvision.
     def __init__(
             self, p: float = 0.5, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
             ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
@@ -294,7 +286,7 @@ class RandomPerspective(AugmentationBase2D):
         >>> inputs= torch.tensor([[[[1., 0., 0.],
         ...                         [0., 1., 0.],
         ...                         [0., 0., 1.]]]])
-        >>> aug = RandomPerspective(0.5, 1.0)
+        >>> aug = RandomPerspective(0.5, p=0.5)
         >>> aug(inputs)
         tensor([[[[0.0000, 0.2289, 0.0000],
                   [0.0000, 0.4800, 0.0000],
@@ -302,11 +294,11 @@ class RandomPerspective(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 0.5, distortion_scale: Union[torch.Tensor, float] = 0.5,
+        self, distortion_scale: Union[torch.Tensor, float] = 0.5,
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False
+        align_corners: bool = False, p: float = 0.5
     ) -> None:
         super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.distortion_scale = cast(torch.Tensor, distortion_scale) \
@@ -371,7 +363,7 @@ class RandomAffine(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3)
-        >>> aug = RandomAffine((-15., 20.), return_transform=True)
+        >>> aug = RandomAffine((-15., 20.), return_transform=True, p=1.)
         >>> aug(input)
         (tensor([[[[0.3961, 0.7310, 0.1574],
                   [0.1781, 0.3074, 0.5648],
@@ -381,13 +373,13 @@ class RandomAffine(AugmentationBase2D):
     """
 
     def __init__(
-        self, degrees: Union[torch.Tensor, float, Tuple[float, float]], p: float = 0.5,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float]],
         translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
         scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
         shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
-        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name, p: float = 0.5
     ) -> None:
         super(RandomAffine, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
@@ -455,10 +447,10 @@ class CenterCrop(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3)
-        >>> aug = CenterCrop(2)
+        >>> aug = CenterCrop(2, p=1.)
         >>> aug(inputs)
-        tensor([[[[-0.1425, -1.1266],
-                  [-0.0373, -0.6562]]]])
+        tensor([[[[ 0.1829, -1.2388],
+                  [ 0.1813, -0.5911]]]])
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], align_corners: bool = True,
@@ -524,7 +516,7 @@ class RandomRotation(AugmentationBase2D):
         ...                       [0., 0., 0., 0.],
         ...                       [0., 1., 2., 0.],
         ...                       [0., 0., 1., 2.]])
-        >>> seq = RandomRotation(degrees=45.0, return_transform=True)
+        >>> seq = RandomRotation(degrees=45.0, return_transform=True, p=1.)
         >>> seq(input)
         (tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
                   [0.0000, 0.0029, 0.0000, 0.0176],
@@ -537,9 +529,9 @@ class RandomRotation(AugmentationBase2D):
 
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
-        p: float = 0.5, interpolation: Optional[Union[str, int, Resample]] = None,
+        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 0.5
     ) -> None:
         super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
@@ -598,7 +590,7 @@ class RandomCrop(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3)
-        >>> aug = RandomCrop((2, 2))
+        >>> aug = RandomCrop((2, 2), p=1.)
         >>> aug(inputs)
         tensor([[[[-0.6562, -1.0009],
                   [ 0.2223, -0.5507]]]])
@@ -690,7 +682,7 @@ class RandomResizedCrop(AugmentationBase2D):
         >>> inputs = torch.tensor([[[0., 1., 2.],
         ...                         [3., 4., 5.],
         ...                         [6., 7., 8.]]])
-        >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
+        >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1.)
         >>> aug(inputs)
         tensor([[[[3.7500, 4.7500, 5.7500],
                   [5.2500, 6.2500, 7.2500],
@@ -763,10 +755,10 @@ class RandomMotionBlur(AugmentationBase2D):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples::
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
+        >>> motion_blur = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
         tensor([[[[0.2972, 0.5154, 0.4153, 0.1641, 0.1765],
                   [0.3045, 0.6160, 0.6123, 0.6701, 0.4225],
@@ -779,8 +771,8 @@ class RandomMotionBlur(AugmentationBase2D):
             self, kernel_size: Union[int, Tuple[int, int]],
             angle: Union[torch.Tensor, float, Tuple[float, float]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
-            p: float = 0.5, border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-            return_transform: bool = False
+            border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            return_transform: bool = False, p: float = 0.5
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=True)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
@@ -813,7 +805,7 @@ class RandomMotionBlur(AugmentationBase2D):
 
 
 class RandomSolarize(AugmentationBase2D):
-    r""" Solarize given tensor image or a batch of tensor images randomly.
+    r"""Solarize given tensor image or a batch of tensor images randomly.
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -834,7 +826,7 @@ class RandomSolarize(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> solarize = RandomSolarize(0.1, 0.1)
+        >>> solarize = RandomSolarize(0.1, 0.1, p=1.)
         >>> solarize(input)
         tensor([[[[0.4132, 0.1412, 0.1790, 0.2226, 0.3980],
                   [0.2754, 0.4194, 0.0130, 0.4538, 0.2771],
@@ -844,11 +836,11 @@ class RandomSolarize(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 0.5, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        self, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        same_on_batch: bool = False, return_transform: bool = False
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
     ) -> None:
-        super(RandomSolarize, self).__init__(return_transform)
+        super(RandomSolarize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
         thresholds = \
             cast(torch.Tensor, thresholds) if isinstance(thresholds, torch.Tensor) else torch.tensor(thresholds)
@@ -873,7 +865,7 @@ class RandomSolarize(AugmentationBase2D):
 
 
 class RandomPosterize(AugmentationBase2D):
-    r""" Posterize given tensor image or a batch of tensor images randomly.
+    r"""Posterize given tensor image or a batch of tensor images randomly.
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -890,10 +882,10 @@ class RandomPosterize(AugmentationBase2D):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples::
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> posterize = RandomPosterize(3)
+        >>> posterize = RandomPosterize(3, p=1.)
         >>> posterize(input)
         tensor([[[[0.4706, 0.7529, 0.0627, 0.1255, 0.2824],
                   [0.6275, 0.4706, 0.8784, 0.4392, 0.6275],
@@ -903,8 +895,8 @@ class RandomPosterize(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 0.5, bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
-        same_on_batch: bool = False, return_transform: bool = False
+        self, bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
     ) -> None:
         super(RandomPosterize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         bits = cast(torch.Tensor, bits) if isinstance(bits, torch.Tensor) else torch.tensor(bits)
@@ -930,7 +922,7 @@ class RandomPosterize(AugmentationBase2D):
 
 
 class RandomSharpness(AugmentationBase2D):
-    r""" Sharpen given tensor image or a batch of tensor images randomly.
+    r"""Sharpen given tensor image or a batch of tensor images randomly.
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -943,10 +935,10 @@ class RandomSharpness(AugmentationBase2D):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples::
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> sharpness = RandomSharpness(1.)
+        >>> sharpness = RandomSharpness(1., p=1.)
         >>> sharpness(input)
         tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.7720, 0.9537, 0.7566, 0.6323],
@@ -968,8 +960,8 @@ class RandomSharpness(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 0.5, sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
-        same_on_batch: bool = False, return_transform: bool = False
+        self, sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
     ) -> None:
         super(RandomSharpness, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         sharpness = cast(torch.Tensor, sharpness) if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
@@ -995,7 +987,7 @@ class RandomSharpness(AugmentationBase2D):
 
 
 class RandomEqualize(AugmentationBase2D):
-    r""" Equalize given tensor image or a batch of tensor images randomly.
+    r"""Equalize given tensor image or a batch of tensor images randomly.
 
     Args:
         p (float): Probability to equalize an image. Default value is 0.5
@@ -1007,10 +999,10 @@ class RandomEqualize(AugmentationBase2D):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples::
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
-        >>> equalize = RandomEqualize(1.)
+        >>> equalize = RandomEqualize(p=1.)
         >>> equalize(input)
         tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
@@ -1020,12 +1012,15 @@ class RandomEqualize(AugmentationBase2D):
     """
 
     def __init__(
-        self, p: float = 0.5, same_on_batch: bool = False, return_transform: bool = False
+        self, same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
     ) -> None:
         super(RandomEqualize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
