@@ -273,7 +273,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def apply_func(self, in_tensor: torch.Tensor, label: torch.Tensor,  # type: ignore
-                   params: Dict[str, torch.Tensor]) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+                   params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         to_apply = params['batch_prob']
 
         # if no augmentation needed

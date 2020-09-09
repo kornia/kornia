@@ -103,7 +103,7 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
     output = apply_color_jitter(input, params)
     if return_transform:
-        return output, compute_intensity_transformation(input, params)
+        return output, compute_intensity_transformation(input)
     return output
 
 
@@ -141,8 +141,9 @@ def random_perspective(input: torch.Tensor,
     to_apply = rg.random_prob_generator(batch_size, p=p)
     if to_apply.sum().item() > 0:
         params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
-            to_apply.sum().item(), height, width, distortion_scale)
-        output[to_apply] = apply_perspective(input[to_apply], params)
+            int(to_apply.sum().item()), height, width, distortion_scale)
+        output[to_apply] = apply_perspective(input[to_apply], params, {
+            'interpolation': torch.tensor(0), 'align_corners': torch.tensor(True)})
     if return_transform:
         r_mat = compute_intensity_transformation(input)
         r_mat[to_apply] = compute_perspective_transformation(input[to_apply], params)
@@ -181,8 +182,11 @@ def random_affine(input: torch.Tensor,
             _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
         ])
     params: Dict[str, torch.Tensor] = rg.random_affine_generator(
-        batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
-    output = apply_affine(input, params)
+        batch_size, height, width, _degrees, _translate, _scale, _shear)
+    output = apply_affine(input, params, {
+        'resample': torch.tensor(Resample.get(resample).value),
+        'padding_mode': torch.tensor(0),
+        'align_corners': torch.tensor(True)})
     if return_transform:
         transform = compute_affine_transformation(input, params)
         return output, transform
@@ -211,18 +215,18 @@ def random_rectangle_erase(
     """
     __deprecation_warning("random_rectangle_erase", "kornia.augmentation.RandomRectangleErase")
     input = _transform_input(input)
-    b, _, h, w = input.size()
+    batch_size, _, h, w = input.size()
     _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
     _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
     to_apply = rg.random_prob_generator(batch_size, p=p)
     output = input.clone()
     if to_apply.sum().item() > 0:
         params = rg.random_rectangles_params_generator(
-            to_apply.sum().item(), h, w, _scale, _ratio
+            int(to_apply.sum().item()), h, w, _scale, _ratio
         )
         output[to_apply] = apply_erase_rectangles(input[to_apply], params)
     if return_transform:
-        return output, compute_intensity_transformation(input, params)
+        return output, compute_intensity_transformation(input)
     return output
 
 
@@ -237,7 +241,8 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     batch_size, _, _, _ = input.size()
     _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
     params = rg.random_rotation_generator(batch_size, degrees=_degrees)
-    output = apply_rotation(input, params)
+    output = apply_rotation(input, params, {
+        'interpolation': torch.tensor(0), 'resample': torch.tensor(True)})
     if return_transform:
         return output, compute_rotate_tranformation(input, params)
     return output
@@ -515,7 +520,6 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
             - params['scale']: Scaling params.
             - params['sx']: Shear param toward x-axis.
             - params['sy']: Shear param toward y-axis.
-            - params['resample']: Integer tensor. NEAREST = 0, BILINEAR = 1.
 
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
