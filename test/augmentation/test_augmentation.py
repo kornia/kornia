@@ -1589,7 +1589,6 @@ class TestRandomEqualize:
         bs, channels, height, width = 1, 3, 20, 20
 
         inputs = self.build_input(channels, height, width, device=device, dtype=dtype).squeeze(dim=0)
-        inputs.to(device)
 
         row_expected = torch.tensor([
             0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
@@ -1598,9 +1597,8 @@ class TestRandomEqualize:
         ])
         expected = self.build_input(channels, height, width, bs=1, row=row_expected,
                                     device=device, dtype=dtype)
-        expected = expected.to(device)
 
-        identity = torch.eye(3, device=device)  # 3 x 3
+        identity = kornia.eye_like(3, expected)  # 3 x 3
 
         assert_allclose(f(inputs)[0], expected)
         assert_allclose(f(inputs)[1], identity)
@@ -1618,7 +1616,6 @@ class TestRandomEqualize:
         bs, channels, height, width = 2, 3, 20, 20
 
         inputs = self.build_input(channels, height, width, bs, device=device, dtype=dtype)
-        inputs = inputs.to(device)
 
         row_expected = torch.tensor([
             0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
@@ -1627,7 +1624,6 @@ class TestRandomEqualize:
         ])
         expected = self.build_input(channels, height, width, bs, row=row_expected,
                                     device=device, dtype=dtype)
-        expected = expected.to(device)
 
         identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
 
@@ -1662,4 +1658,4 @@ class TestRandomEqualize:
         image = torch.stack([channel] * channels)
         batch = torch.stack([image] * bs)
 
-        return batch
+        return batch.to(device, dtype)

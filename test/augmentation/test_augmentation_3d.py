@@ -777,16 +777,14 @@ class TestRandomEqualize3D:
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
         inputs3d = self.build_input(channels, depth, height, width, device=device, dtype=dtype).squeeze(dim=0)
-        inputs3d.to(device).to(dtype)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
         ], device=device, dtype=dtype)
         expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected,
                                     device=device, dtype=dtype)
-        expected = expected.to(device)
 
-        identity = torch.eye(4, device=device, dtype=dtype)
+        identity = kornia.eye_like(4, expected)
 
         assert_allclose(f(inputs3d)[0], expected)
         assert_allclose(f(inputs3d)[1], identity)
@@ -804,14 +802,12 @@ class TestRandomEqualize3D:
         bs, channels, depth, height, width = 2, 3, 6, 10, 10
 
         inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
-        inputs3d = inputs3d.to(device)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
         ])
         expected = self.build_input(channels, depth, height, width, bs, row=row_expected,
                                     device=device, dtype=dtype)
-        expected = expected.to(device)
 
         identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
 
@@ -846,4 +842,4 @@ class TestRandomEqualize3D:
         image3d = torch.stack([image] * depth).transpose(0, 1)
         batch = torch.stack([image3d] * bs)
 
-        return batch
+        return batch.to(device, dtype)
