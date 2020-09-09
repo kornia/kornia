@@ -200,8 +200,9 @@ class TestRandomCutMix:
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[:, :, 0] == label).all()
         assert (out_label[:, :, 1] == torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]])).all()
-        assert_allclose(out_label[:, :, 2], torch.tensor([[0.0833, 0.3333], [0., 0.1667], [0.5, 0.0833], [0.0833, 0.], [0.5, 0.3333]],
-                                                         device=device, dtype=dtype), rtol=1e-4, atol=1e-4)
+        assert_allclose(out_label[:, :, 2], torch.tensor(
+            [[0.0833, 0.3333], [0., 0.1667], [0.5, 0.0833], [0.0833, 0.], [0.5, 0.3333]],
+            device=device, dtype=dtype), rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
