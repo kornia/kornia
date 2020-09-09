@@ -1,5 +1,6 @@
 from typing import Tuple, List, Union, Dict, cast, Optional
 
+import kornia as K
 import torch
 import torch.nn as nn
 
@@ -473,8 +474,15 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     """
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    transform: torch.Tensor = get_perspective_transform(
+    perspective_transform: torch.Tensor = get_perspective_transform(
         params['start_points'], params['end_points']).type_as(input)
+
+    transform: torch.Tensor = K.eye_like(3, input)
+
+    to_transform = params['batch_prob'].to(input.device)
+
+    transform[to_transform] = perspective_transform[to_transform]
+
     return transform
 
 
