@@ -19,7 +19,7 @@ from ..utils import (
     _validate_input_dtype
 )
 
-from . import __deprecation_warning
+from .__temp__ import __deprecation_warning
 
 
 def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
@@ -33,7 +33,7 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
-    output[to_apply] = apply_hflip3d(input[to_apply], params)
+    output[to_apply] = apply_hflip3d(input[to_apply])
     if return_transform:
         r_mat = compute_intensity_transformation3d(input)
         r_mat[to_apply] = compute_hflip_transformation3d(input[to_apply])
@@ -52,7 +52,7 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
-    output[to_apply] = apply_vflip3d(input[to_apply], params)
+    output[to_apply] = apply_vflip3d(input[to_apply])
     if return_transform:
         r_mat = compute_intensity_transformation3d(input)
         r_mat[to_apply] = compute_vflip_transformation3d(input[to_apply])
@@ -71,7 +71,7 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
-    output[to_apply] = apply_dflip3d(input[to_apply], params)
+    output[to_apply] = apply_dflip3d(input[to_apply])
     if return_transform:
         r_mat = compute_intensity_transformation3d(input)
         r_mat[to_apply] = compute_dflip_transformation3d(input[to_apply])

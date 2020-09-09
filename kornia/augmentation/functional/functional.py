@@ -42,7 +42,7 @@ from ..utils import (
     _shape_validation
 )
 
-from . import __deprecation_warning
+from .__temp__ import __deprecation_warning
 
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
