@@ -685,6 +685,8 @@ def random_cutmix_generator(
         beta = torch.tensor(1.)
     if cut_size is None:
         cut_size = torch.tensor([0., 1.])
+    assert num_mix >= 1 and isinstance(num_mix, (int,)), \
+        f"`num_mix` must be an integer greater than 1. Got {num_mix}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
 
     batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)

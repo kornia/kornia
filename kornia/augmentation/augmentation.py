@@ -465,9 +465,9 @@ class CenterCrop(AugmentationBase2D):
                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
                  return_transform: bool = False, p: float = 1.) -> None:
         # same_on_batch is always True for CenterCrop
-        # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(CenterCrop, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=True, p_mode='batch')
+            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
         self.size = size
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -610,8 +610,9 @@ class RandomCrop(AugmentationBase2D):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0
     ) -> None:
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_mode='batch')
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -707,7 +708,7 @@ class RandomResizedCrop(AugmentationBase2D):
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_mode='batch')
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)

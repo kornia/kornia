@@ -21,7 +21,7 @@ class TestRandomMixUp:
 
     def test_random_mixup_p1(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp()
+        f = RandomMixUp(p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -44,7 +44,7 @@ class TestRandomMixUp:
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp(p=0.)
+        f = RandomMixUp(p=0., p_batch=0.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -58,13 +58,11 @@ class TestRandomMixUp:
         out_image, out_label = f(input, label)
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert (out_label[:, 0] == label).all()
-        assert (out_label[:, 1] == torch.tensor([0, 1], device=device, dtype=dtype)).all()
-        assert_allclose(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        assert (out_label == label).all()
 
     def test_random_mixup_lam0(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp(lambda_val=(0., 0.))
+        f = RandomMixUp(lambda_val=(0., 0.), p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -84,7 +82,7 @@ class TestRandomMixUp:
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp(same_on_batch=True)
+        f = RandomMixUp(same_on_batch=True, p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -152,13 +150,12 @@ class TestRandomCutMix:
         out_image, out_label = f(input, label)
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert (out_label[0, :, 0] == label).all()
-        assert (out_label[0, :, 1] == torch.tensor([0, 1], device=device, dtype=dtype)).all()
-        assert (out_label[0, :, 2] == torch.tensor([0., 0.], device=device, dtype=dtype)).all()
+        assert (out_label == label).all()
 
     def test_random_mixup_beta0(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(beta=0., width=4, height=3)
+        # beta 0 => resample 0.5 area
+        f = RandomCutMix(beta=0., width=4, height=3, p=1., p_batch=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -166,18 +163,24 @@ class TestRandomCutMix:
         ])
         label = torch.tensor([1, 0], device=device)
 
-        expected = input.clone()
+        expected = torch.tensor([[[[1., 0., 0., 1.],
+                                   [1., 0., 0., 1.],
+                                   [1., 1., 1., 1.]]],
+                                 [[[1., 1., 0., 0.],
+                                   [1., 1., 0., 0.],
+                                   [0., 0., 0., 0.]]]], device=device, dtype=dtype)
 
         out_image, out_label = f(input, label)
 
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[0, :, 0] == label).all()
         assert (out_label[0, :, 1] == torch.tensor([0, 1])).all()
-        assert (out_label[0, :, 2] == torch.tensor([0., 0.])).all()
+        # cut area = 4 / 12
+        assert_allclose(out_label[0, :, 2], torch.tensor([0.3333, 0.3333]))
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(width=4, height=3, num_mix=5)
+        f = RandomCutMix(width=4, height=3, num_mix=5, p=1., p_batch=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -197,12 +200,12 @@ class TestRandomCutMix:
         assert_allclose(out_image, expected, rtol=1e-4, atol=1e-4)
         assert (out_label[:, :, 0] == label).all()
         assert (out_label[:, :, 1] == torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]])).all()
-        assert_allclose(out_label[:, :, 2], torch.tensor([[0., 0.], [0., 0.], [0., 0.0833], [0., 0.], [0.5, 0.3333]],
+        assert_allclose(out_label[:, :, 2], torch.tensor([[0.0833, 0.3333], [0., 0.1667], [0.5, 0.0833], [0.0833, 0.], [0.5, 0.3333]],
                                                          device=device, dtype=dtype), rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomCutMix(same_on_batch=True, width=4, height=3)
+        f = RandomCutMix(same_on_batch=True, width=4, height=3, p=1., p_batch=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),

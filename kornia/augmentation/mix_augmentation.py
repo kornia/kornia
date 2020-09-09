@@ -37,6 +37,9 @@ class RandomMixUp(MixAugmentationBase):
 
     Args:
         p (float): probability for performing mixup. Default is 0.5.
+            This param controls if to apply the augmentation for the batch.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         lambda_val (float or torch.Tensor, optional): min-max value of mixup strength. Default is 0-1.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
@@ -71,9 +74,9 @@ class RandomMixUp(MixAugmentationBase):
                 [1.0000, 1.0000, 0.4162]]))
     """
 
-    def __init__(self, p: float = 1.0, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-                 same_on_batch: bool = False) -> None:
-        super(RandomMixUp, self).__init__(p=p, same_on_batch=same_on_batch)
+    def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+                 same_on_batch: bool = False, p: float = 1.0, p_batch: float = 1.0) -> None:
+        super(RandomMixUp, self).__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch)
         if lambda_val is None:
             self.lambda_val = torch.tensor([0, 1.])
         else:
@@ -122,6 +125,9 @@ class RandomCutMix(MixAugmentationBase):
         height (int): the width of the input image.
         width (int): the width of the input image.
         p (float): probability for performing cutmix. Default is 0.5.
+            This param controls if to apply the augmentation for the batch.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         num_mix (int): cut mix times. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
@@ -161,10 +167,11 @@ class RandomCutMix(MixAugmentationBase):
                  [1.0000, 1.0000, 0.0000]]]))
     """
 
-    def __init__(self, height: int, width: int, p: float = 0.5, num_mix: int = 1,
+    def __init__(self, height: int, width: int, num_mix: int = 1,
                  cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-                 beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False) -> None:
-        super(RandomCutMix, self).__init__(p=p, same_on_batch=same_on_batch)
+                 beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False,
+                 p: float = 0.5, p_batch: float = 1.) -> None:
+        super(RandomCutMix, self).__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch)
         self.height = height
         self.width = width
         self.num_mix = num_mix

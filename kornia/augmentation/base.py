@@ -21,20 +21,18 @@ class _BasicAugmentationBase(nn.Module):
     Plain augmentation base class without the functionality of transformation matrix calculations.
 
     Args:
-        p (float): probability for applying an augmentation.
-        p_mode ('batch' or 'element'): control the behaviour of probablities generation. Default: 'element'.
-            If 'batch', param p will control if to augment the whole batch or not.
-            If 'element', param p will control if to augment a batch element-wisely.
+        p (float): probability for applying an augmentation. This param controls the augmentation
+                   probabilities element-wisely.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __init__(self, p: float = 0.5, same_on_batch: bool = False, p_mode: str = 'element') -> None:
+    def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False) -> None:
         super(_BasicAugmentationBase, self).__init__()
         self.p = p
+        self.p_batch = p_batch
         self.same_on_batch = same_on_batch
-        if p_mode not in ['batch', 'element']:
-            raise ValueError(f"`p_mode` must be either `batch` or `element`. Got {p_mode}.")
-        self.p_mode = p_mode
 
     def __repr__(self) -> str:
         return f"p={self.p}, same_on_batch={self.same_on_batch}"
@@ -65,19 +63,24 @@ class _BasicAugmentationBase(nn.Module):
         return _params
 
     def __forward_parameters__(
-            self, batch_shape: torch.Size, p: float, same_on_batch: bool, p_mode: str) -> Dict[str, torch.Tensor]:
+            self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool) -> Dict[str, torch.Tensor]:
         batch_prob: torch.Tensor
-        if p == 1:
-            batch_prob = torch.tensor([True] * batch_shape[0])
-        elif p == 0:
-            batch_prob = torch.tensor([False] * batch_shape[0])
+        if p_batch == 1:
+            batch_prob = torch.tensor([True])
+        elif p_batch == 0:
+            batch_prob = torch.tensor([False])
         else:
-            if p_mode == 'element':
-                batch_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
-            elif p_mode == 'batch':
-                batch_prob = rg.random_prob_generator(1, p, same_on_batch).repeat(batch_shape[0])
+            batch_prob = rg.random_prob_generator(1, p_batch, same_on_batch)
+
+        if batch_prob.sum().item() == 1:
+            elem_prob: torch.Tensor
+            if p == 1:
+                elem_prob = torch.tensor([True] * batch_shape[0])
+            elif p == 0:
+                elem_prob = torch.tensor([False] * batch_shape[0])
             else:
-                raise ValueError(f"`p_mode` must be either `batch` or `element`. Got {p_mode}.")
+                elem_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
+            batch_prob = batch_prob * elem_prob
         # selectively param gen
         return self.__selective_param_gen__(batch_shape, batch_prob)
 
@@ -91,7 +94,7 @@ class _BasicAugmentationBase(nn.Module):
         in_tensor = self.__infer_input__(input)
         batch_shape = in_tensor.shape
         if params is None:
-            params = self.__forward_parameters__(batch_shape, self.p, self.same_on_batch, self.p_mode)
+            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         self._params = params
 
         return self.apply_func(input, self._params)
@@ -105,9 +108,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     Args:
         p (float): probability for applying an augmentation. This param controls the augmentation probabilities
                    element-wisely for a batch.
-        p_mode ('batch' or 'element'): control the behaviour of probablities generation. Default: 'element'.
-            If 'batch', param p will control if to augment the whole batch or not.
-            If 'element', param p will control if to augment a batch element-wisely.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
@@ -115,9 +117,10 @@ class _AugmentationBase(_BasicAugmentationBase):
     """
 
     def __init__(self, p: float, return_transform: bool = False, same_on_batch: bool = False,
-                 p_mode: str = 'element') -> None:
-        super(_AugmentationBase, self).__init__(p, same_on_batch=same_on_batch, p_mode=p_mode)
+                 p_batch: float = 1.) -> None:
+        super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
         self.p = p
+        self.p_batch = p_batch
         self.return_transform = return_transform
 
     def __repr__(self) -> str:
@@ -180,7 +183,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
-            params = self.__forward_parameters__(batch_shape, self.p, self.same_on_batch, self.p_mode)
+            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
@@ -198,9 +201,8 @@ class AugmentationBase2D(_AugmentationBase):
     Args:
         p (float): probability for applying an augmentation. This param controls the augmentation probabilities
                    element-wisely for a batch.
-        p_mode ('batch' or 'element'): control the behaviour of probablities generation. Default: 'element'.
-            If 'batch', param p will control if to augment the whole batch or not.
-            If 'element', param p will control if to augment a batch element-wisely.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
@@ -226,6 +228,8 @@ class AugmentationBase3D(_AugmentationBase):
     Args:
         p (float): probability for applying an augmentation. This param controls the augmentation probabilities
                    element-wisely for a batch.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
@@ -243,20 +247,21 @@ class AugmentationBase3D(_AugmentationBase):
 
 
 class MixAugmentationBase(_BasicAugmentationBase):
-    r"""MixAugmentationBase base class for customized augmentation implementations.
+    r"""MixAugmentationBase base class for customized mix augmentation implementations.
 
     For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required.
     "apply_transform" will need to handle the probabilities internally.
 
     Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
+        p (float): probability for applying an augmentation.
+            This param controls if to apply the augmentation for the batch.
+        p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
+                         probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __init__(self, p: float, same_on_batch: bool = False) -> None:
-        # TODO: Have another p for batch mode?
-        super(MixAugmentationBase, self).__init__(p, same_on_batch=same_on_batch, p_mode='element')
+    def __init__(self, p: float, p_batch: float, same_on_batch: bool = False) -> None:
+        super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
@@ -267,13 +272,29 @@ class MixAugmentationBase(_BasicAugmentationBase):
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore
         raise NotImplementedError
 
+    def apply_func(self, in_tensor: torch.Tensor, label: torch.Tensor,  # type: ignore
+                   params: Dict[str, torch.Tensor]) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        to_apply = params['batch_prob']
+
+        # if no augmentation needed
+        if torch.sum(to_apply) == 0:
+            output = in_tensor
+        # if all data needs to be augmented
+        elif torch.sum(to_apply) == len(to_apply):
+            output, label = self.apply_transform(in_tensor, label, params)
+        else:
+            raise ValueError(
+                "Mix augmentations must be performed batch-wisely. Element-wise augmentation is not supported.")
+
+        return output, label
+
     def forward(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                 params: Optional[Dict[str, torch.Tensor]] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_tensor = self.__infer_input__(input)
         if params is None:
             batch_shape = in_tensor.shape
-            params = self.__forward_parameters__(batch_shape, 1., self.same_on_batch, self.p_mode)
+            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         self._params = params
 
-        return self.apply_transform(in_tensor, label, self._params)
+        return self.apply_func(in_tensor, label, self._params)
