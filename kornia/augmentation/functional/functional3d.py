@@ -19,38 +19,64 @@ from ..utils import (
     _validate_input_dtype
 )
 
+from . import __deprecation_warning
+
 
 def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip3d` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomHorizontalFlip3D`")
+    __deprecation_warning("random_hflip3d", "kornia.augmentation.RandomHorizontalFlip3D")
+    input = _transform_input3d(input)
+    batch_size, _, d, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_hflip3d(input[to_apply], params)
+    if return_transform:
+        r_mat = compute_intensity_transformation3d(input)
+        r_mat[to_apply] = compute_hflip_transformation3d(input[to_apply])
+        return output, r_mat
+    return output
 
 
 def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional3d.apply_vflip3d` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomVerticalFlip3D`")
+    __deprecation_warning("random_vflip3d", "kornia.augmentation.RandomVerticalFlip3D")
+    input = _transform_input3d(input)
+    batch_size, _, d, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_vflip3d(input[to_apply], params)
+    if return_transform:
+        r_mat = compute_intensity_transformation3d(input)
+        r_mat[to_apply] = compute_vflip_transformation3d(input[to_apply])
+        return output, r_mat
+    return output
 
 
 def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional3d.apply_dflip3d` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomDepthicalFlip3D`")
+    __deprecation_warning("random_dflip3d", "kornia.augmentation.RandomDepthicalFlip3D")
+    input = _transform_input3d(input)
+    batch_size, _, d, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_dflip3d(input[to_apply], params)
+    if return_transform:
+        r_mat = compute_intensity_transformation3d(input)
+        r_mat[to_apply] = compute_dflip_transformation3d(input[to_apply])
+        return output, r_mat
+    return output
 
 
 def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:

@@ -42,27 +42,45 @@ from ..utils import (
     _shape_validation
 )
 
+from . import __deprecation_warning
+
 
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomHorizontalFlip`")
+    __deprecation_warning("random_hflip", "kornia.augmentation.RandomHorizontalFlip")
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_hflip(input[to_apply])
+    if return_transform:
+        r_mat = compute_intensity_transformation(input)
+        r_mat[to_apply] = compute_hflip_transformation(input[to_apply])
+        return output, r_mat
+    return output
 
 
 def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomVerticalFlip`")
+    __deprecation_warning("random_vflip", "kornia.augmentation.RandomVerticalFlip")
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_vflip(input[to_apply])
+    if return_transform:
+        r_mat = compute_intensity_transformation(input)
+        r_mat[to_apply] = compute_vflip_transformation(input[to_apply])
+        return output, r_mat
+    return output
 
 
 def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
@@ -72,22 +90,38 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
                  return_transform: bool = False
                  ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_color_jitter_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `ColorJitter`")
+    __deprecation_warning("color_jitter", "kornia.augmentation.ColorJitter")
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
+    _brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+    _contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+    _saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+    _hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+    params = rg.random_color_jitter_generator(batch_size, _brightness, _contrast, _saturation, _hue)
+    output = apply_color_jitter(input, params)
+    if return_transform:
+        return output, compute_intensity_transformation(input, params)
+    return output
 
 
 def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool = False):
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_prob_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomGrayscale`")
+    __deprecation_warning("random_grayscale", "kornia.augmentation.RandomGrayscale")
+    input = _transform_input(input)
+    batch_size, _, h, w = input.size()
+    output = input.clone()
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output[to_apply] = apply_grayscale(input[to_apply])
+    if return_transform:
+        r_mat = compute_intensity_transformation(input)
+        return output, r_mat
+    return output
 
 
 def random_perspective(input: torch.Tensor,
@@ -95,12 +129,25 @@ def random_perspective(input: torch.Tensor,
                        p: float = 0.5,
                        return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_perspective_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomPerspective`")
+    __deprecation_warning("random_perspective", "kornia.augmentation.RandomPerspective")
+    input = _transform_input(input)
+    batch_size, _, height, width = input.size()
+    output = input.clone()
+    distortion_scale =  \
+        distortion_scale if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    if to_apply.sum().item() > 0:
+        params: Dict[str, torch.Tensor] = rg.random_perspective_generator(
+            to_apply.sum().item(), height, width, distortion_scale)
+        output[to_apply] = apply_perspective(input[to_apply], params)
+    if return_transform:
+        r_mat = compute_intensity_transformation(input)
+        r_mat[to_apply] = compute_perspective_transformation(input[to_apply], params)
+        return output, r_mat
+    return output
 
 
 def random_affine(input: torch.Tensor,
@@ -111,12 +158,35 @@ def random_affine(input: torch.Tensor,
                   resample: Union[str, int, Resample] = Resample.BILINEAR.name,
                   return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_affine_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomAffine`")
+    __deprecation_warning("random_affine", "kornia.augmentation.RandomAffine")
+    input = _transform_input(input)
+    batch_size, _, height, width = input.size()
+
+    _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    _translate: Optional[torch.Tensor] = None
+    _scale: Optional[torch.Tensor] = None
+    _shear: Optional[torch.Tensor] = None
+    if translate is not None:
+        _translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+    if scale is not None:
+        _scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+    if shear is not None:
+        _shear = cast(torch.Tensor, shear) if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+        _shear = torch.stack([
+            _range_bound(_shear if _shear.dim() == 0 else _shear[:2], 'shear-x', 0, (-360, 360)),
+            torch.tensor([0, 0]) if _shear.dim() == 0 or len(_shear) == 2 else
+            _range_bound(_shear[2:], 'shear-y', 0, (-360, 360))
+        ])
+    params: Dict[str, torch.Tensor] = rg.random_affine_generator(
+        batch_size, height, width, _degrees, _translate, _scale, _shear, resample)
+    output = apply_affine(input, params)
+    if return_transform:
+        transform = compute_affine_transformation(input, params)
+        return output, transform
+    return output
 
 
 def random_rectangle_erase(
@@ -126,33 +196,51 @@ def random_rectangle_erase(
         ratio: Tuple[float, float] = (0.3, 3.3),
         return_transform: bool = False
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-    r"""Erase a random selected rectangle for each image in the batch, putting the value to zero.
-
+    r"""
+    Function that erases a random selected rectangle for each image in the batch, putting
+    the value to zero.
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
     sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
     between [aspect_ratio_range[0], aspect_ratio_range[1])
-
     Args:
         input (torch.Tensor): input images.
         scale (Tuple[float, float]): range of proportion of erased area against input image.
         ratio (Tuple[float, float]): range of aspect ratio of erased area.
-
     See :func:`~kornia.augmentation.random_generator.random_rectangles_params_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_erase_rectangles` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomRectangleErase`")
+    __deprecation_warning("random_rectangle_erase", "kornia.augmentation.RandomRectangleErase")
+    input = _transform_input(input)
+    b, _, h, w = input.size()
+    _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+    _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
+    to_apply = rg.random_prob_generator(batch_size, p=p)
+    output = input.clone()
+    if to_apply.sum().item() > 0:
+        params = rg.random_rectangles_params_generator(
+            to_apply.sum().item(), h, w, _scale, _ratio
+        )
+        output[to_apply] = apply_erase_rectangles(input[to_apply], params)
+    if return_transform:
+        return output, compute_intensity_transformation(input, params)
+    return output
 
 
 def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
                     return_transform: bool = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Generate params and apply operation on input tensor.
-
     See :func:`~kornia.augmentation.random_generator.random_rotation_generator` for details.
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
-    raise NotImplementedError(
-        "functional random augmentation is deprecated. Please use `RandomRotation`")
+    __deprecation_warning("random_rotation", "kornia.augmentation.RandomRotation")
+    input = _transform_input(input)
+    batch_size, _, _, _ = input.size()
+    _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+    params = rg.random_rotation_generator(batch_size, degrees=_degrees)
+    output = apply_rotation(input, params)
+    if return_transform:
+        return output, compute_rotate_tranformation(input, params)
+    return output
 
 
 def apply_hflip(input: torch.Tensor) -> torch.Tensor:
