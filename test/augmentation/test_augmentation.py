@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from typing import Union, Tuple
 
 import pytest
@@ -10,8 +11,79 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.constants import pi
-from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
+from kornia.augmentation import AugmentationBase, RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
+
+
+class TestAugmentationBase:
+
+    def test_forward(self, device, dtype):
+        torch.manual_seed(42)
+        input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
+        input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
+        expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
+        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
+        augmentation = AugmentationBase(return_transform=False)
+
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
+                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
+                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+
+            # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
+            params = {"foo": 0}
+            generate_parameters.return_value = params
+            apply_transform.return_value = expected_output
+            compute_transformation.return_value = expected_transform
+            output = augmentation(input)
+            apply_transform.assert_called_once_with(input, params)
+            assert output is expected_output
+
+            # Calling the augmentation with a tensor and set return_transform shall
+            # return the expected tensor and transformation.
+            output, transformation = augmentation(input, return_transform=True)
+            assert output is expected_output
+            assert transformation is expected_transform
+
+            # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
+            params = {"bar": 1}
+            apply_transform.reset_mock()
+            generate_parameters.return_value = None
+            output = augmentation(input, params=params)
+            apply_transform.assert_called_once_with(input, params)
+            assert output is expected_output
+
+            # Calling the augmentation with a tensor,a transformation and set
+            # return_transform shall return the expected tensor and the proper
+            # transformation matrix.
+            expected_final_transformation = expected_transform @ input_transform
+            output, transformation = augmentation((input, input_transform), return_transform=True)
+            assert output is expected_output
+            assert torch.allclose(expected_final_transformation, transformation)
+            assert transformation.shape[0] == input.shape[0]
+
+    def test_gradcheck(self, device, dtype):
+        torch.manual_seed(42)
+
+        input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
+        output = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
+        input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
+        other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
+
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
+        output = utils.tensor_to_gradcheck_var(output)  # to var
+        other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
+
+        augmentation = AugmentationBase(return_transform=True)
+
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
+                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
+                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
+
+            apply_transform.return_value = output
+            compute_transformation.return_value = other_transform
+
+            assert gradcheck(augmentation, ((input, input_transform)), raise_exception=True)
 
 
 class TestRandomHorizontalFlip:
@@ -40,7 +112,7 @@ class TestRandomHorizontalFlip:
 
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[-1., 0., 4.],
+        expected_transform = torch.tensor([[-1., 0., 3.],
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
@@ -73,7 +145,7 @@ class TestRandomHorizontalFlip:
                                    [1., 1., 0.]]]])  # 1 x 1 x 3 x 3
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 2.],
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
@@ -115,7 +187,7 @@ class TestRandomHorizontalFlip:
                                 [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input = input.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 3.],
+        expected_transform = torch.tensor([[[-1., 0., 2.],
                                             [0., 1., 0.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
@@ -127,6 +199,44 @@ class TestRandomHorizontalFlip:
         assert(f(input)[1] == expected_transform_1).all()
         assert(f1(input)[0] == input).all()
         assert(f1(input)[1] == expected_transform).all()
+
+    def test_random_hflip_coord_check(self, device, dtype):
+
+        f = RandomHorizontalFlip(p=1.0, return_transform=True)
+
+        input = torch.tensor([[[[1., 2., 3., 4.],
+                                [5., 6., 7., 8.],
+                                [9., 10., 11., 12.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        input_coordinates = torch.tensor([[
+            [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],  # x coord
+            [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],  # y coord
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_output = torch.tensor([[[[4., 3., 2., 1.],
+                                          [8., 7., 6., 5.],
+                                          [12., 11., 10., 9.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        output, transform = f(input)
+        result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
+
+        # Tensors must have the same shapes and values
+        assert output.shape == expected_output.shape
+        assert (output == expected_output).all()
+        # Transformed indices must not be out of bound
+        assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
+        assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
+        # Values in the output tensor at the places of transformed indices must
+        # have the same value as the input tensor has at the corresponding
+        # positions
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -190,7 +300,7 @@ class TestRandomVerticalFlip:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[1., 0., 0.],
-                                           [0., -1., 3.],
+                                           [0., -1., 2.],
                                            [0., 0., 1.]])  # 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -222,7 +332,7 @@ class TestRandomVerticalFlip:
         expected = expected.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
+                                            [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -264,7 +374,7 @@ class TestRandomVerticalFlip:
         input = input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 3.],
+                                            [0., -1., 2.],
                                             [0., 0., 1.]]])  # 1 x 3 x 3
         expected_transform = expected_transform.to(device)
 
@@ -274,6 +384,44 @@ class TestRandomVerticalFlip:
         assert_allclose(f(input)[1], expected_transform_1)
         assert_allclose(f1(input)[0], input.squeeze())
         assert_allclose(f1(input)[1], expected_transform)
+
+    def test_random_vflip_coord_check(self, device, dtype):
+
+        f = RandomVerticalFlip(p=1.0, return_transform=True)
+
+        input = torch.tensor([[[[1., 2., 3., 4.],
+                                [5., 6., 7., 8.],
+                                [9., 10., 11., 12.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        input_coordinates = torch.tensor([[
+            [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],  # x coord
+            [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],  # y coord
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_output = torch.tensor([[[[9., 10., 11., 12.],
+                                          [5., 6., 7., 8.],
+                                          [1., 2., 3., 4.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 4
+
+        output, transform = f(input)
+        result_coordinates = transform @ input_coordinates
+        # NOTE: without rounding it might produce unexpected results
+        input_coordinates = input_coordinates.round().long()
+        result_coordinates = result_coordinates.round().long()
+
+        # Tensors must have the same shapes and values
+        assert output.shape == expected_output.shape
+        assert (output == expected_output).all()
+        # Transformed indices must not be out of bound
+        assert (torch.torch.logical_and(result_coordinates[0, 0, :] >= 0,
+                                        result_coordinates[0, 0, :] < input.shape[-1])).all()
+        assert (torch.torch.logical_and(result_coordinates[0, 1, :] >= 0,
+                                        result_coordinates[0, 1, :] < input.shape[-2])).all()
+        # Values in the output tensor at the places of transformed indices must
+        # have the same value as the input tensor has at the corresponding
+        # positions
+        assert (output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]] ==
+                input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]]).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -638,7 +786,7 @@ class TestColorJitter:
 
     def test_random_hue(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=0.1 / pi)
+        f = ColorJitter(hue=0.1 / pi.item())
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -725,9 +873,9 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected)
 
-    def test_random_hue_tensor(self, device):
+    def test_random_hue_list_batch(self, device):
         torch.manual_seed(42)
-        f = ColorJitter(hue=torch.tensor([-0.1 / pi, 0.1 / pi]))
+        f = ColorJitter(hue=[-0.1 / pi.item(), 0.1 / pi.item()])
 
         input = torch.tensor([[[[0.1, 0.2, 0.3],
                                 [0.6, 0.5, 0.4],
@@ -1458,7 +1606,7 @@ class TestRandomResizedCrop:
 class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, "\
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
             "border_type='constant', return_transform=False)"
         assert str(f) == repr
 

@@ -148,6 +148,8 @@ Example for semantic segmentation using low-level randomness control:
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomEqualize
+.. autoclass:: RandomMixUp
+.. autoclass:: RandomCutMix
 .. autoclass:: RandomDepthicalFlip3D
 .. autoclass:: RandomHorizontalFlip3D
 .. autoclass:: RandomVerticalFlip3D

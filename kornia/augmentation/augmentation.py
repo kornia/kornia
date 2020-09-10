@@ -4,12 +4,13 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.constants import Resample, BorderType
+from kornia.constants import Resample, BorderType, SamplePadding
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
-    _adapted_uniform,
-    _infer_batch_shape
+    _infer_batch_shape,
+    _range_bound,
+    _singular_range_check
 )
 
 
@@ -57,7 +58,7 @@ class AugmentationBase(nn.Module):
             output = self.apply_transform(input[0], self._params)
             transformation_matrix = self.compute_transformation(input[0], self._params)
             if return_transform:
-                return output, input[1] @ transformation_matrix
+                return output, transformation_matrix @ input[1]
             else:
                 return output, input[1]
 
@@ -99,12 +100,10 @@ class RandomHorizontalFlip(AugmentationBase):
 
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False,
-                 align_corners: bool = False) -> None:
+    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
         super(RandomHorizontalFlip, self).__init__(return_transform)
         self.p: float = p
         self.same_on_batch = same_on_batch
-        self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(p={self.p}, return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
@@ -145,7 +144,7 @@ class RandomVerticalFlip(AugmentationBase):
         (tensor([[[[0., 1., 1.],
                   [0., 0., 0.],
                   [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
-                 [ 0., -1.,  3.],
+                 [ 0., -1.,  2.],
                  [ 0.,  0.,  1.]]]))
 
     """
@@ -210,10 +209,10 @@ class ColorJitter(AugmentationBase):
         return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(ColorJitter, self).__init__(return_transform)
-        self.brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = brightness
-        self.contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = contrast
-        self.saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = saturation
-        self.hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = hue
+        self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
+        self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
+        self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
+        self.hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -304,13 +303,14 @@ class RandomErasing(AugmentationBase):
     # Note: Extra params, inplace=False in Torchvision.
 
     def __init__(
-            self, p: float = 0.5, scale: Tuple[float, float] = (0.02, 0.33), ratio: Tuple[float, float] = (0.3, 3.3),
+            self, p: float = 0.5, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+            ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
             value: float = 0., return_transform: bool = False, same_on_batch: bool = False
     ) -> None:
         super(RandomErasing, self).__init__(return_transform)
         self.p = p
-        self.scale: Tuple[float, float] = scale
-        self.ratio: Tuple[float, float] = ratio
+        self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.value: float = value
         self.same_on_batch = same_on_batch
 
@@ -337,10 +337,11 @@ class RandomPerspective(AugmentationBase):
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5
         distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -355,27 +356,34 @@ class RandomPerspective(AugmentationBase):
     """
 
     def __init__(
-        self, distortion_scale: float = 0.5, p: float = 0.5,
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        self, distortion_scale: Union[torch.Tensor, float] = 0.5, p: float = 0.5,
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(return_transform)
         self.p: float = p
-        self.distortion_scale: float = distortion_scale
-        self.interpolation: Resample = Resample.get(interpolation)
+        self.distortion_scale = cast(torch.Tensor, distortion_scale) \
+            if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
-        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, interpolation={self.interpolation.name}, "
+        repr = f"(distortion_scale={self.distortion_scale}, p={self.p}, interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.p, self.distortion_scale,
-            self.interpolation, self.same_on_batch, self.align_corners)
+            self.resample, self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation(input, params)
@@ -395,18 +403,22 @@ class RandomAffine(AugmentationBase):
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
-            randomly sampled from the range a <= scale <= b. Will keep original scale by default.
+        scale (tuple, optional): scaling factor interval.
+            If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
+            If (a, b, c, d), the scale is randomly sampled from the range a <= scale_x <= b, c <= scale_y <= d.
+            Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
             If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
             will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
+            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 2 tuples, then
+            x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in (shear[1][0], shear[1][1]) will be applied.
             Will not apply shear by default
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -421,17 +433,42 @@ class RandomAffine(AugmentationBase):
     """
 
     def __init__(
-        self, degrees: Union[float, Tuple[float, float]], translate: Optional[Tuple[float, float]] = None,
-        scale: Optional[Tuple[float, float]] = None, shear: Optional[Union[float, Tuple[float, float]]] = None,
+        self, degrees: Union[torch.Tensor, float, Tuple[float, float]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
+        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
     ) -> None:
         super(RandomAffine, self).__init__(return_transform)
-        self.degrees = degrees
-        self.translate = translate
-        self.scale = scale
-        self.shear = shear
+        degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+        self.translate: Optional[torch.Tensor] = None
+        if translate is not None:
+            self.translate = _range_bound(translate, 'translate', bounds=(0, 1), check='singular')
+        self.scale: Optional[torch.Tensor] = None
+        if scale is not None:
+            scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+            if len(scale) == 2:
+                self.scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+            elif len(scale) == 4:
+                self.scale = torch.stack([
+                    _range_bound(scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
+                    _range_bound(scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular')
+                ])
+            else:
+                raise ValueError("'scale' expected to be either 2 or 4 elements. Got {scale}")
+        self.shear: Optional[torch.Tensor] = None
+        if shear is not None:
+            shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
+            self.shear = torch.stack([
+                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+                torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2 else
+                _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+            ])
         self.resample: Resample = Resample.get(resample)
+        self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
@@ -443,7 +480,7 @@ class RandomAffine(AugmentationBase):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.degrees, self.translate, self.scale, self.shear,
-            self.resample, self.same_on_batch, self.align_corners)
+            self.resample, self.same_on_batch, self.align_corners, self.padding_mode)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation(input, params)
@@ -514,6 +551,7 @@ class RandomRotation(AugmentationBase):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -534,22 +572,29 @@ class RandomRotation(AugmentationBase):
 
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(return_transform)
-        self.degrees = degrees
-        self.interpolation: Resample = Resample.get(interpolation)
+        degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
+        self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
-        repr = f"(degrees={self.degrees}, interpolation={self.interpolation.name}, "
+        repr = f"(degrees={self.degrees}, interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.interpolation,
+        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.resample,
                                             self.same_on_batch, self.align_corners)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -576,10 +621,12 @@ class RandomCrop(AugmentationBase):
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -593,6 +640,7 @@ class RandomCrop(AugmentationBase):
     def __init__(
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
     ) -> None:
         super(RandomCrop, self).__init__(return_transform)
@@ -601,18 +649,21 @@ class RandomCrop(AugmentationBase):
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(crop_size={self.size}, padding={self.padding}, fill={self.fill}, "
-        f"pad_if_needed={self.pad_if_needed}, padding_mode=${self.padding_mode}, "
+        f"pad_if_needed={self.pad_if_needed}, padding_mode={self.padding_mode}, "
+        f"interpolation={self.resample.name}, "
         f"return_transform={self.return_transform}, same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
-                                        same_on_batch=self.same_on_batch, align_corners=self.align_corners)
+                                        interpolation=self.resample, same_on_batch=self.same_on_batch,
+                                        align_corners=self.align_corners)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
@@ -657,11 +708,12 @@ class RandomResizedCrop(AugmentationBase):
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        align_corners(bool): interpolation flag. Default: False.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -676,30 +728,35 @@ class RandomResizedCrop(AugmentationBase):
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale: Tuple[float, float] = (0.08, 1.0),
-        ratio: Tuple[float, float] = (3. / 4., 4. / 3.),
-        interpolation: Union[str, int, Resample] = Resample.BILINEAR.name,
+        self, size: Tuple[int, int], scale: Union[torch.Tensor, Tuple[float, float]] = (0.08, 1.0),
+        ratio: Union[torch.Tensor, Tuple[float, float]] = (3. / 4., 4. / 3.),
+        interpolation: Optional[Union[str, int, Resample]] = None,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False
     ) -> None:
         super(RandomResizedCrop, self).__init__(return_transform)
         self.size = size
-        self.scale = scale
-        self.ratio = ratio
-        self.interpolation: Resample = Resample.get(interpolation)
+        self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
+        self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
+        self.resample: Resample
+        if interpolation is not None:
+            import warnings
+            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
+            self.resample = Resample.get(interpolation)
+        self.resample = Resample.get(resample)
         self.same_on_batch = same_on_batch
         self.align_corners = align_corners
 
     def __repr__(self) -> str:
         repr = f"(size={self.size}, resize_to={self.scale}, resize_to={self.ratio}, "
-        f"interpolation={self.interpolation.name}, return_transform={self.return_transform}, "
+        f"interpolation={self.resample.name}, return_transform={self.return_transform}, "
         f"same_on_batch={self.same_on_batch})"
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        target_size = rg.random_crop_size_generator(self.size, self.scale, self.ratio)
-        _target_size = (int(target_size[0].data.item()), int(target_size[1].data.item()))
-        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), _target_size,
+        target_size: torch.Tensor = rg.random_crop_size_generator(self.size, self.scale, self.ratio)['size']
+        return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch,
                                         align_corners=self.align_corners)
 
@@ -737,24 +794,30 @@ class RandomMotionBlur(AugmentationBase):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5)
         >>> motion_blur(input)
-        tensor([[[[0.2761, 0.5200, 0.3753, 0.2423, 0.2193],
-                  [0.3275, 0.5502, 0.5738, 0.5400, 0.3883],
-                  [0.2132, 0.3857, 0.3056, 0.2520, 0.1890],
-                  [0.3016, 0.6172, 0.6487, 0.4331, 0.2770],
-                  [0.3865, 0.6221, 0.5538, 0.4862, 0.4206]]]])
+        tensor([[[[0.2972, 0.5154, 0.4153, 0.1641, 0.1765],
+                  [0.3045, 0.6160, 0.6123, 0.6701, 0.4225],
+                  [0.1914, 0.3224, 0.2456, 0.1485, 0.1799],
+                  [0.2974, 0.6258, 0.6399, 0.4802, 0.1939],
+                  [0.3919, 0.6911, 0.6984, 0.5462, 0.5357]]]])
     """
 
     def __init__(
             self, kernel_size: Union[int, Tuple[int, int]],
-            angle: Union[float, Tuple[float, float]],
-            direction: Union[float, Tuple[float, float]],
+            angle: Union[torch.Tensor, float, Tuple[float, float]],
+            direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(return_transform)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
-        self.angle: Union[float, Tuple[float, float]] = angle
-        self.direction: Union[float, Tuple[float, float]] = direction
+
+        angle = cast(torch.Tensor, angle) if isinstance(angle, torch.Tensor) else torch.tensor(angle)
+        self.angle = _range_bound(angle, 'angle', center=0., bounds=(-360, 360))
+
+        direction = \
+            cast(torch.Tensor, direction) if isinstance(direction, torch.Tensor) else torch.tensor(direction)
+        self.direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
+
         self.border_type: BorderType = BorderType.get(border_type)
 
     def __repr__(self) -> str:
@@ -809,8 +872,15 @@ class RandomSolarize(AugmentationBase):
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(return_transform)
-        self.thresholds = thresholds
-        self.additions = additions
+
+        thresholds = \
+            cast(torch.Tensor, thresholds) if isinstance(thresholds, torch.Tensor) else torch.tensor(thresholds)
+        self.thresholds = _range_bound(thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
+
+        additions = \
+            cast(torch.Tensor, additions) if isinstance(additions, torch.Tensor) else torch.tensor(additions)
+        self.additions = _range_bound(additions, 'additions', bounds=(-0.5, 0.5))
+
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -860,7 +930,14 @@ class RandomPosterize(AugmentationBase):
         same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomPosterize, self).__init__(return_transform)
-        self.bits = bits
+        bits = cast(torch.Tensor, bits) if isinstance(bits, torch.Tensor) else torch.tensor(bits)
+        if len(bits.size()) == 0:
+            self.bits = torch.tensor([bits, torch.tensor(8)], dtype=torch.float32)
+        elif len(bits.size()) == 1 and bits.size(0) == 2:
+            self.bits = torch.tensor([bits[0], bits[1]], dtype=torch.float32)
+        else:
+            raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
+
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:
@@ -915,11 +992,17 @@ class RandomSharpness(AugmentationBase):
     """
 
     def __init__(
-        self, sharpness: Union[float, Tuple[float, float], torch.Tensor] = 0.5, same_on_batch: bool = False,
-        return_transform: bool = False
+        self, sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
+        same_on_batch: bool = False, return_transform: bool = False
     ) -> None:
         super(RandomSharpness, self).__init__(return_transform)
-        self.sharpness = sharpness
+        sharpness = cast(torch.Tensor, sharpness) if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
+        if sharpness.dim() == 0:
+            self.sharpness = torch.tensor([0, sharpness], dtype=torch.float32)
+        elif sharpness.dim() == 1 and sharpness.size(0) == 2:
+            self.sharpness = torch.tensor([sharpness[0], sharpness[1]], dtype=torch.float32)
+        else:
+            raise ValueError(f"'sharpness' must be a scalar or a length 2 tensor. Got {sharpness}.")
         self.same_on_batch = same_on_batch
 
     def __repr__(self) -> str:

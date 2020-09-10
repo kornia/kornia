@@ -28,12 +28,54 @@ class TestResize:
         out = kornia.resize(inp, 10)
         assert out.shape == (1, 3, 25, 10)
 
+    def test_one_param_long(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, 10, side="long")
+        assert out.shape == (1, 3, 10, 4)
+
+    def test_one_param_vert(self, device):
+        inp = torch.rand(1, 3, 5, 2).to(device)
+        out = kornia.resize(inp, 10, side="vert")
+        assert out.shape == (1, 3, 10, 4)
+
+    def test_one_param_horz(self, device):
+        inp = torch.rand(1, 3, 2, 5).to(device)
+        out = kornia.resize(inp, 10, side="horz")
+        assert out.shape == (1, 3, 4, 10)
+
     def test_gradcheck(self, device):
         # test parameters
         new_size = 4
         input = torch.rand(1, 2, 3, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.Resize(new_size), (input, ), raise_exception=True)
+
+
+class TestRescale:
+    def test_smoke(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (1.0, 1.0))
+        assert_allclose(input, output)
+
+    def test_upsize(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, (3.0, 2.0))
+        assert output.shape == (1, 3, 9, 8)
+
+    def test_downsize(self, device):
+        input = torch.rand(1, 3, 9, 8, device=device)
+        output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0))
+        assert output.shape == (1, 3, 3, 4)
+
+    def test_one_param(self, device):
+        input = torch.rand(1, 3, 3, 4, device=device)
+        output = kornia.rescale(input, 2.0)
+        assert output.shape == (1, 3, 6, 8)
+
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 3, 4).to(device)
+        input = utils.tensor_to_gradcheck_var(input)
+        assert gradcheck(kornia.Rescale(2.0), (input, ), raise_exception=True)
 
 
 class TestRotate:
@@ -227,7 +269,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([2.]).to(device)
+        scale_factor = torch.tensor([[2., 2.]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp).sum().item(), 12.25)
 
@@ -246,7 +288,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
@@ -265,7 +307,7 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5, 0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
@@ -284,13 +326,13 @@ class TestScale:
             [0., 0., 0., 0.]
         ]]).to(device)
         # prepare transformation
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         transform = kornia.Scale(scale_factor)
         assert_allclose(transform(inp), expected)
 
     def test_gradcheck(self, device):
         # test parameters
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         scale_factor = utils.tensor_to_gradcheck_var(
             scale_factor, requires_grad=False)  # to var
 
@@ -303,7 +345,7 @@ class TestScale:
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
-        scale_factor = torch.tensor([0.5]).to(device)
+        scale_factor = torch.tensor([[0.5, 0.5]]).to(device)
         batch_size, channels, height, width = 2, 3, 64, 64
         img = torch.ones(batch_size, channels, height, width).to(device)
         trans = kornia.Scale(scale_factor)
@@ -417,6 +459,78 @@ class TestShear:
 
 
 class TestAffine2d:
+    def test_affine_no_args(self):
+        with pytest.raises(RuntimeError):
+            kornia.Affine()
+
+    def test_affine_batch_size_mismatch(self, device):
+        with pytest.raises(RuntimeError):
+            angle = torch.rand(1, device=device)
+            translation = torch.rand(2, 2, device=device)
+            kornia.Affine(angle, translation)
+
+    def test_affine_rotate(self, device):
+        torch.manual_seed(0)
+        angle = torch.rand(1, device=device) * 90.0
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(angle=angle).to(device)
+        actual = transform(input)
+        expected = kornia.rotate(input, angle)
+        assert_allclose(actual, expected)
+
+    def test_affine_translate(self, device):
+        torch.manual_seed(0)
+        translation = torch.rand(1, 2, device=device) * 2.0
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(translation=translation).to(device)
+        actual = transform(input)
+        expected = kornia.translate(input, translation)
+        assert_allclose(actual, expected)
+
+    def test_affine_scale(self, device):
+        torch.manual_seed(0)
+        _scale_factor = torch.rand(1, device=device) * 2.0
+        scale_factor = torch.stack([_scale_factor, _scale_factor], dim=1)
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(scale_factor=scale_factor).to(device)
+        actual = transform(input)
+        expected = kornia.scale(input, scale_factor)
+        assert_allclose(actual, expected)
+
+    @pytest.mark.skip(
+        "_compute_shear_matrix and get_affine_matrix2d yield different results. "
+        "See https://github.com/kornia/kornia/issues/629 for details."
+    )
+    def test_affine_shear(self, device):
+        torch.manual_seed(0)
+        shear = torch.rand(1, 2, device=device)
+        input = torch.rand(1, 2, 3, 4, device=device)
+
+        transform = kornia.Affine(shear=shear).to(device)
+        actual = transform(input)
+        expected = kornia.shear(input, shear)
+        assert_allclose(actual, expected)
+
+    def test_affine_rotate_translate(self, device):
+        batch_size = 2
+
+        input = torch.tensor(
+            [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]], device=device
+        ).repeat(batch_size, 1, 1, 1)
+
+        angle = torch.tensor(180.0, device=device).repeat(batch_size)
+        translation = torch.tensor([1.0, 0.0]).repeat(batch_size, 1)
+
+        expected = torch.tensor(
+            [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0]]], device=device,
+        ).repeat(batch_size, 1, 1, 1)
+
+        transform = kornia.Affine(angle=angle, translation=translation, align_corners=True).to(device)
+        actual = transform(input)
+        assert_allclose(actual, expected)
 
     def test_compose_affine_matrix_3x3(self, device):
         """ To get parameters:
@@ -451,7 +565,7 @@ class TestAffine2d:
         import math
         batch_size, ch, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)
-        scale, shear = 0.7785685905190581, [11.8235607082617, 7.06797949691645]
+        scale, shear = [0.7785685905190581, 0.7785685905190581], [11.8235607082617, 7.06797949691645]
         matrix_expected = T([[1.27536969, 4.26828945e-01, -3.2876e+01],
                              [2.18297196e-03, 1.29424165e+00, -1.1717e+01]])
         center = T([float(width), float(height)]).view(1, 2) / 2. + 0.5
@@ -459,7 +573,7 @@ class TestAffine2d:
         matrix_kornia = kornia.get_affine_matrix2d(
             T(translations).view(-1, 2),
             center,
-            T([scale]).view(-1),
+            T([scale]).view(-1, 2),
             T([angle]).view(-1),
             T([math.radians(shear[0])]).view(-1, 1),
             T([math.radians(shear[1])]).view(-1, 1))

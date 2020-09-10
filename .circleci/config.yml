@@ -22,6 +22,7 @@ commands:
       - run:
           name: unit tests
           command: make test-cpu
+          no_output_timeout: 45m
       - run:
           name: send coverage
           when: on_success

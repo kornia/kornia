@@ -599,3 +599,146 @@ class TestAdjustBrightness:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_brightness, (img, 2.),
                          raise_exception=True)
+
+
+class TestEqualize:
+    def test_shape_equalize(self, device, dtype):
+        bs, channels, height, width = 1, 3, 4, 5
+
+        inputs = torch.ones(channels, height, width, device=device, dtype=dtype)
+        f = kornia.enhance.equalize
+
+        assert f(inputs).shape == torch.Size([bs, channels, height, width])
+
+    def test_shape_equalize_batch(self, device, dtype):
+        bs, channels, height, width = 2, 3, 4, 5
+
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        f = kornia.enhance.equalize
+
+        assert f(inputs).shape == torch.Size([bs, channels, height, width])
+
+    def test_equalize(self, device):
+        bs, channels, height, width = 1, 3, 20, 20
+
+        inputs = self.build_input(channels, height, width).squeeze(dim=0)
+        inputs = inputs.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ])
+        expected = self.build_input(channels, height, width, bs=1, row=row_expected)
+        expected = expected.to(device)
+
+        f = kornia.enhance.equalize
+
+        assert_allclose(f(inputs), expected)
+
+    def test_equalize_batch(self, device):
+        bs, channels, height, width = 2, 3, 20, 20
+
+        inputs = self.build_input(channels, height, width, bs)
+        inputs = inputs.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ])
+        expected = self.build_input(channels, height, width, bs, row=row_expected)
+        expected = expected.to(device)
+
+        f = kornia.enhance.equalize
+
+        assert_allclose(f(inputs), expected)
+
+    def test_gradcheck(self, device):
+        bs, channels, height, width = 2, 3, 4, 5
+        inputs = torch.ones(bs, channels, height, width)
+        inputs = inputs.to(device)
+        inputs = utils.tensor_to_gradcheck_var(inputs)
+        assert gradcheck(kornia.enhance.equalize, (inputs,),
+                         raise_exception=True)
+
+    @staticmethod
+    def build_input(channels, height, width, bs=1, row=None):
+        if row is None:
+            row = torch.arange(width) / float(width)
+
+        channel = torch.stack([row] * height)
+        image = torch.stack([channel] * channels)
+        batch = torch.stack([image] * bs)
+
+        return batch
+
+
+class TestEqualize3D:
+    def test_shape_equalize3d(self, device, dtype):
+        bs, channels, depth, height, width = 1, 3, 6, 10, 10
+
+        inputs3d = torch.ones(channels, depth, height, width, device=device, dtype=dtype)
+        f = kornia.enhance.equalize3d
+
+        assert f(inputs3d).shape == torch.Size([bs, channels, depth, height, width])
+
+    def test_shape_equalize3d_batch(self, device, dtype):
+        bs, channels, depth, height, width = 2, 3, 6, 10, 10
+
+        inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
+        f = kornia.enhance.equalize3d
+
+        assert f(inputs3d).shape == torch.Size([bs, channels, depth, height, width])
+
+    def test_equalize3d(self, device):
+        bs, channels, depth, height, width = 1, 3, 6, 10, 10
+
+        inputs3d = self.build_input(channels, depth, height, width).squeeze(dim=0)
+        inputs3d.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
+        ])
+        expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected)
+        expected = expected.to(device)
+
+        f = kornia.enhance.equalize3d
+
+        assert_allclose(f(inputs3d), expected)
+
+    def test_equalize3d_batch(self, device):
+        bs, channels, depth, height, width = 2, 3, 6, 10, 10
+
+        inputs3d = self.build_input(channels, depth, height, width, bs)
+        inputs3d = inputs3d.to(device)
+
+        row_expected = torch.tensor([
+            0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
+        ])
+        expected = self.build_input(channels, depth, height, width, bs, row=row_expected)
+        expected = expected.to(device)
+
+        f = kornia.enhance.equalize3d
+
+        assert_allclose(f(inputs3d), expected)
+
+    def test_gradcheck(self, device):
+        bs, channels, depth, height, width = 2, 3, 6, 4, 5
+        inputs3d = torch.ones(bs, channels, depth, height, width)
+        inputs3d = inputs3d.to(device)
+        inputs3d = utils.tensor_to_gradcheck_var(inputs3d)
+        assert gradcheck(kornia.enhance.equalize3d, (inputs3d,),
+                         raise_exception=True)
+
+    @staticmethod
+    def build_input(channels, depth, height, width, bs=1, row=None):
+        if row is None:
+            row = torch.arange(width) / float(width)
+
+        channel = torch.stack([row] * height)
+        image = torch.stack([channel] * channels)
+        image3d = torch.stack([image] * depth).transpose(0, 1)
+        batch = torch.stack([image3d] * bs)
+
+        return batch

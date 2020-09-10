@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.augmentation.utils import _transform_input3d
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw
 from kornia.constants import pi
@@ -230,11 +231,13 @@ def adjust_brightness(input: torch.Tensor,
 def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
     r""" For each pixel in the image, select the pixel if the value is less than the threshold.
     Otherwise, subtract 1.0 from the pixel.
+
     Args:
         input (torch.Tensor): image or batched images to solarize.
         thresholds (float or torch.Tensor): solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
+
     Returns:
         torch.Tensor: Solarized images.
     """
@@ -249,6 +252,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
         assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
             f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
+        thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
 
     return torch.where(input < thresholds, input, 1.0 - input)
@@ -256,8 +260,9 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
 def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
              additions: Optional[Union[float, torch.Tensor]] = None) -> torch.Tensor:
-    r""" For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
+    r"""For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
     pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
+
     Args:
         input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to solarize.
         thresholds (float or torch.Tensor): solarize thresholds.
@@ -267,6 +272,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
             If None, no addition will be performed.
             If int or one element tensor, same addition will be added across the whole batch.
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
+
     Returns:
         torch.Tensor: Solarized images.
     """
@@ -295,8 +301,8 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
             assert input.size(0) == len(additions) and len(additions.shape) == 1, \
                 f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
+            additions = additions.to(input.device).to(input.dtype)
             additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
-
         input = input + additions
         input = input.clamp(0., 1.)
 
@@ -305,12 +311,14 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
 
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
     r"""Reduce the number of bits for each color channel. Non-differentiable function, uint8 involved.
+
     Args:
         input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to posterize.
         bits (int or torch.Tensor): number of high bits. Must be in range [0, 8].
             If int or one element tensor, input will be posterized by this bits.
             If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[1].
             If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
+
     Returns:
         torch.Tensor: Image with reduced color channels.
     """
@@ -369,11 +377,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Implements Sharpness function from PIL using torch ops.
+
     Args:
         input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to sharpen.
         factor (float or torch.Tensor): factor of sharpness strength. Must be above 0.
             If float or one element tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
+
     Returns:
         torch.Tensor: Sharpened image or images.
     """
@@ -419,53 +429,82 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     return torch.stack([_blend_one(input[i], result[i], factor[i]) for i in range(len(factor))])
 
 
+# Code taken from: https://github.com/pytorch/vision/pull/796
+def _scale_channel(im):
+    """Scale the data in the channel to implement equalize."""
+    im = im * 255
+
+    # Compute the histogram of the image channel.
+    histo = torch.histc(im, bins=256, min=0, max=255)
+    # For the purposes of computing the step, filter out the nonzeros.
+    nonzero_histo = torch.reshape(histo[histo != 0], [-1])
+    step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
+
+    def build_lut(histo, step):
+        # Compute the cumulative sum, shifting by step // 2
+        # and then normalization by step.
+        lut = (torch.cumsum(histo, 0) + (step // 2)) // step
+        # Shift lut, prepending with 0.
+        lut = torch.cat([torch.zeros(1), lut[:-1]])
+        # Clip the counts to be in range.  This is done
+        # in the C code for image.point.
+        return torch.clamp(lut, 0, 255)
+
+    # If step is zero, return the original image.  Otherwise, build
+    # lut from the full histogram and step and then index from it.
+    if step == 0:
+        result = im
+    else:
+        # can't index using 2d index. Have to flatten and then reshape
+        result = torch.gather(build_lut(histo, step), 0, im.flatten().long())
+        result = result.reshape_as(im)
+
+    return result / 255.
+
+
 def equalize(input: torch.Tensor) -> torch.Tensor:
-    """Implements Equalize function from PIL using PyTorch ops based on uint8 format:
+    r"""Apply equalize on the input tensor.
+    Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
+
     Args:
-        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes like :math:(C, H, W) or :math:(B, C, H, W) to equalize.
+
     Returns:
         torch.Tensor: Sharpened image or images.
     """
-    input = _to_bchw(input) * 255
-
-    # Code taken from: https://github.com/pytorch/vision/pull/796
-    def scale_channel(im, c):
-        """Scale the data in the channel to implement equalize."""
-        im = im[c, :, :]
-        # Compute the histogram of the image channel.
-        histo = torch.histc(im, bins=256, min=0, max=255)
-        # For the purposes of computing the step, filter out the nonzeros.
-        nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-        step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
-
-        def build_lut(histo, step):
-            # Compute the cumulative sum, shifting by step // 2
-            # and then normalization by step.
-            lut = (torch.cumsum(histo, 0) + (step // 2)) // step
-            # Shift lut, prepending with 0.
-            lut = torch.cat([torch.zeros(1), lut[:-1]])
-            # Clip the counts to be in range.  This is done
-            # in the C code for image.point.
-            return torch.clamp(lut, 0, 255)
-
-        # If step is zero, return the original image.  Otherwise, build
-        # lut from the full histogram and step and then index from it.
-        if step == 0:
-            result = im
-        else:
-            # can't index using 2d index. Have to flatten and then reshape
-            result = torch.gather(build_lut(histo, step), 0, im.flatten().long())
-            result = result.reshape_as(im)
-
-        return result / 255.
+    input = _to_bchw(input)
 
     res = []
     for image in input:
         # Assumes RGB for now.  Scales each channel independently
         # and then stacks the result.
-        scaled_image = torch.stack([scale_channel(image, i) for i in range(len(image))])
+        scaled_image = torch.stack([_scale_channel(image[i, :, :]) for i in range(len(image))])
         res.append(scaled_image)
+    return torch.stack(res)
+
+
+def equalize3d(input: torch.Tensor) -> torch.Tensor:
+    r"""Equalizes the values for a 3D volumetric tensor.
+
+    Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
+    https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
+
+    Args:
+    input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+
+    Returns:
+    torch.Tensor: Sharpened image or images with same shape as the input.
+    """
+    input = _transform_input3d(input)
+
+    res = []
+    for volume in input:
+        # Assumes RGB for now.  Scales each channel independently
+        # and then stacks the result.
+        scaled_input = torch.stack([_scale_channel(volume[i, :, :, :]) for i in range(len(volume))])
+        res.append(scaled_input)
+
     return torch.stack(res)
 
 

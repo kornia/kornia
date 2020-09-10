@@ -24,7 +24,7 @@ from .adjust import (
 )
 from .adjust import (
     adjust_brightness, adjust_contrast, adjust_gamma, adjust_hue, adjust_saturation,
-    adjust_hue_raw, adjust_saturation_raw, solarize, equalize, posterize, sharpness
+    adjust_hue_raw, adjust_saturation_raw, solarize, equalize, equalize3d, posterize, sharpness
 )
 
 
@@ -45,6 +45,7 @@ __all__ = [
     "adjust_saturation_raw",
     "solarize",
     "equalize",
+    "equalize3d",
     "posterize",
     "sharpness",
     "add_weighted",
