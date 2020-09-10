@@ -81,6 +81,8 @@ class _BasicAugmentationBase(nn.Module):
             else:
                 elem_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
             batch_prob = batch_prob * elem_prob
+        else:
+            batch_prob = batch_prob.repeat(batch_shape[0])
         # selectively param gen
         return self.__selective_param_gen__(batch_shape, batch_prob)
 
