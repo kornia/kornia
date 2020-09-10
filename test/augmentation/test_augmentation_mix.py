@@ -176,7 +176,7 @@ class TestRandomCutMix:
         assert (out_label[0, :, 0] == label).all()
         assert (out_label[0, :, 1] == torch.tensor([0, 1])).all()
         # cut area = 4 / 12
-        assert_allclose(out_label[0, :, 2], torch.tensor([0.3333, 0.3333]))
+        assert_allclose(out_label[0, :, 2], torch.tensor([0.33333, 0.33333], dtype=dtype))
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
