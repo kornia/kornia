@@ -1,5 +1,5 @@
 """Module for image projections."""
-from typing import Union
+from typing import Union, Tuple
 
 import torch
 
@@ -106,6 +106,44 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     K_h[..., -1, -1] += 1.
 
     return K @ Rt
+
+
+def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    r"""This function decomposes the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
+
+    Args:
+        P (torch.Tensor): the projection matrix with shape :math:`(B, 3, 4)`.
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        - The Camera matrix with shape :math:`(B, 3, 3)`.
+        - The Rotation matrix with shape :math:`(B, 3, 3)`.
+        - The Translation vector with shape :math:`(B, 3)`.
+
+    """
+    assert P.shape[-2:] == (3, 4), "P must be of shape [B, 3, 4]"
+    assert len(P.shape) == 3
+
+    submat_3x3 = P[:, 0:3, 0:3]
+    last_column = P[:, 0:3, 3].unsqueeze(-1)
+
+    # Trick to turn QR-decomposition into RQ-decomposition
+    reverse = torch.tensor([[0, 0, 1], [0, 1, 0], [1, 0, 0]], device=P.device, dtype=P.dtype).unsqueeze(0)
+    submat_3x3 = torch.matmul(reverse, submat_3x3).permute(0, 2, 1)
+    ortho_mat, upper_mat = torch.qr(submat_3x3)
+    ortho_mat = torch.matmul(reverse, ortho_mat.permute(0, 2, 1))
+    upper_mat = torch.matmul(reverse, torch.matmul(upper_mat.permute(0, 2, 1), reverse))
+
+    # Turning the `upper_mat's` diagonal elements to positive.
+    diagonals = torch.diagonal(upper_mat, dim1=-2, dim2=-1) + eps
+    signs = torch.sign(diagonals)
+    signs_mat = torch.diag_embed(signs)
+
+    K = torch.matmul(upper_mat, signs_mat)
+    R = torch.matmul(signs_mat, ortho_mat)
+    t = torch.matmul(torch.inverse(K), last_column)
+
+    return K, R, t
 
 
 def depth(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
