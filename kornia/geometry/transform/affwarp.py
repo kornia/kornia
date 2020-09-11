@@ -259,8 +259,8 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     yaw = yaw.expand(tensor.shape[0])
-    pitch = yaw.expand(tensor.shape[0])
-    roll = yaw.expand(tensor.shape[0])
+    pitch = pitch.expand(tensor.shape[0])
+    roll = roll.expand(tensor.shape[0])
     center = center.expand(tensor.shape[0], -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
 
