@@ -44,7 +44,7 @@ class TestRandomMixUp:
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomMixUp(p=0., p_batch=0.)
+        f = RandomMixUp(p=0.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -155,7 +155,7 @@ class TestRandomCutMix:
     def test_random_mixup_beta0(self, device, dtype):
         torch.manual_seed(76)
         # beta 0 => resample 0.5 area
-        f = RandomCutMix(beta=0., width=4, height=3, p=1., p_batch=1.)
+        f = RandomCutMix(beta=0., width=4, height=3, p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -180,7 +180,7 @@ class TestRandomCutMix:
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMix(width=4, height=3, num_mix=5, p=1., p_batch=1.)
+        f = RandomCutMix(width=4, height=3, num_mix=5, p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
@@ -206,7 +206,7 @@ class TestRandomCutMix:
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomCutMix(same_on_batch=True, width=4, height=3, p=1., p_batch=1.)
+        f = RandomCutMix(same_on_batch=True, width=4, height=3, p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),

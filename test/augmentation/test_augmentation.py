@@ -1538,17 +1538,17 @@ class TestRandomResizedCrop:
             , return_transform=False)"
         assert str(f) == repr
 
-    def test_no_resize(self, device):
+    def test_no_resize(self, device, dtype):
         torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
             [6., 7., 8.]
-        ]]).to(device)
+        ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
             [[[[5.3750, 5.8750, 4.5938],
-               [6.3437, 6.7812, 5.2500]]]]).to(device)
+               [6.3437, 6.7812, 5.2500]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch

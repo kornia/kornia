@@ -464,9 +464,7 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
 
     transform: torch.Tensor = K.eye_like(3, input)
 
-    to_transform = params['batch_prob'].to(input.device)
-
-    transform[to_transform] = perspective_transform[to_transform]
+    transform = perspective_transform
 
     return transform
 

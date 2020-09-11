@@ -118,7 +118,7 @@ class TestRandomPerspective:
                                             [0.0350575559, 0.1213315651, 1.0000000000]]],
                                           device=device, dtype=x_data.dtype)
 
-        out_perspective = kornia.augmentation.RandomPerspective(p=1.0,
+        out_perspective = kornia.augmentation.RandomPerspective(p=.99999999,  # step one the random state
                                                                 return_transform=True)(x_data)
 
         assert isinstance(out_perspective, tuple)

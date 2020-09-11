@@ -330,7 +330,7 @@ def random_crop_size_generator(
     else:  # whole image
         w = torch.tensor(size[0])
         h = torch.tensor(size[1])
-    return dict(size=torch.stack([h, w]))
+    return dict(size=torch.stack([h.long(), w.long()]))
 
 
 def random_rectangles_params_generator(
