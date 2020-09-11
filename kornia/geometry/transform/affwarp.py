@@ -47,9 +47,9 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     assert 3 <= len(tensor.shape) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
     depth, height, width = tensor.shape[-3:]
-    center_x: float = float(depth - 1) / 2
+    center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center_z: float = float(width - 1) / 2
+    center_z: float = float(depth - 1) / 2
     center: torch.Tensor = torch.tensor(
         [center_x, center_y, center_z],
         device=tensor.device, dtype=tensor.dtype)

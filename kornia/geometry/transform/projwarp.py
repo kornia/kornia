@@ -93,7 +93,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     The function computes the projection matrix given the center and angles per axis.
 
     Args:
-        center (torch.Tensor): center of the rotation in the source with shape :math:`(B, 3)`.
+        center (torch.Tensor): center of the rotation (x,y,z) in the source with shape :math:`(B, 3)`.
         angles (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
