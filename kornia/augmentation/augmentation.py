@@ -21,14 +21,14 @@ class AugmentationBase(AugmentationBase2D):
 
     Args:
         p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch.
+                   element-wisely for a batch. Default: 0.5.
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __init__(self, p: float, return_transform: bool = False, same_on_batch: bool = False) -> None:
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
         super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         raise DeprecationWarning(
             "`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
@@ -211,7 +211,7 @@ class RandomGrayscale(AugmentationBase2D):
                   [-0.1717, -0.9023,  0.0819]]]])
     """
 
-    def __init__(self, p: float = 0.1, return_transform: bool = False, same_on_batch: bool = False) -> None:
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.1) -> None:
         super(RandomGrayscale, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def __repr__(self) -> str:
@@ -252,9 +252,9 @@ class RandomErasing(AugmentationBase2D):
 
     # Note: Extra params, inplace=False in Torchvision.
     def __init__(
-            self, p: float = 0.5, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+            self, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
             ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
-            value: float = 0., return_transform: bool = False, same_on_batch: bool = False
+            value: float = 0., return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
     ) -> None:
         super(RandomErasing, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)

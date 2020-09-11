@@ -50,9 +50,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
 
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomHorizontalFlip3D, self).__init__(p=p, return_transform=return_transform,
-                                                     same_on_batch=same_on_batch)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+        super(RandomHorizontalFlip3D, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
@@ -100,8 +100,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                  [ 0.,  0.,  0.,  1.]]]))
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomVerticalFlip3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+        super(RandomVerticalFlip3D, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
@@ -150,8 +151,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomDepthicalFlip3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+        super(RandomDepthicalFlip3D, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
@@ -222,14 +224,14 @@ class RandomAffine3D(AugmentationBase3D):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-        p: float = 0.5, translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[Union[torch.Tensor, Tuple[float, float],
                               Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]] = None,
         shears: Union[torch.Tensor, float, Tuple[float, float], Tuple[float, float, float, float, float, float],
                       Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                             Tuple[float, float], Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 0.5
     ) -> None:
         super(RandomAffine3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.degrees = _tuple_range_reader(degrees, 3)
@@ -328,9 +330,9 @@ class RandomRotation3D(AugmentationBase3D):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-        p: float = 0.5, interpolation: Optional[Union[str, int, Resample]] = None,
+        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 0.5
     ) -> None:
         super(RandomRotation3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
         self.degrees = _tuple_range_reader(degrees, 3)

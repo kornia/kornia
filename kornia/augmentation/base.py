@@ -118,7 +118,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __init__(self, p: float, return_transform: bool = False, same_on_batch: bool = False,
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
                  p_batch: float = 1.) -> None:
         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
         self.p = p

@@ -96,7 +96,7 @@ class TestAugmentationBase:
 class TestRandomHorizontalFlip:
 
     def smoke_test(self, device):
-        f = RandomHorizontalFlip(0.5)
+        f = RandomHorizontalFlip(p=0.5)
         repr = "RandomHorizontalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
 
@@ -181,12 +181,12 @@ class TestRandomHorizontalFlip:
     def test_sequential(self, device):
 
         f = nn.Sequential(
-            RandomHorizontalFlip(1.0, return_transform=True),
-            RandomHorizontalFlip(1.0, return_transform=True),
+            RandomHorizontalFlip(p=1.0, return_transform=True),
+            RandomHorizontalFlip(p=1.0, return_transform=True),
         )
         f1 = nn.Sequential(
-            RandomHorizontalFlip(1.0, return_transform=True),
-            RandomHorizontalFlip(1.0),
+            RandomHorizontalFlip(p=1.0, return_transform=True),
+            RandomHorizontalFlip(p=1.0),
         )
 
         input = torch.tensor([[[[0., 0., 0.],
@@ -285,7 +285,7 @@ class TestRandomHorizontalFlip:
 class TestRandomVerticalFlip:
 
     def smoke_test(self, device):
-        f = RandomVerticalFlip(0.5)
+        f = RandomVerticalFlip(p=0.5)
         repr = "RandomVerticalFlip(p=0.5, return_transform=False)"
         assert str(f) == repr
 
@@ -367,12 +367,12 @@ class TestRandomVerticalFlip:
     def test_sequential(self, device):
 
         f = nn.Sequential(
-            RandomVerticalFlip(1.0, return_transform=True),
-            RandomVerticalFlip(1.0, return_transform=True),
+            RandomVerticalFlip(p=1.0, return_transform=True),
+            RandomVerticalFlip(p=1.0, return_transform=True),
         )
         f1 = nn.Sequential(
-            RandomVerticalFlip(1.0, return_transform=True),
-            RandomVerticalFlip(1.0),
+            RandomVerticalFlip(p=1.0, return_transform=True),
+            RandomVerticalFlip(p=1.0),
         )
 
         input = torch.tensor([[[[0., 0., 0.],
@@ -971,7 +971,7 @@ class TestRectangleRandomErasing:
     def test_random_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
-        rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range, p=1.)
         assert rand_rec(input).shape == batch_shape
 
     @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
@@ -980,14 +980,14 @@ class TestRectangleRandomErasing:
     def test_no_rectangle_erasing_shape(
             self, batch_shape, erase_scale_range, aspect_ratio_range):
         input = torch.rand(batch_shape)
-        rand_rec = RandomErasing(0., erase_scale_range, aspect_ratio_range)
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range, p=0.)
         assert rand_rec(input).equal(input)
 
     @pytest.mark.parametrize("erase_scale_range", [(.001, .001), (1., 1.)])
     @pytest.mark.parametrize("aspect_ratio_range", [(.1, .1), (10., 10.)])
     @pytest.mark.parametrize("shape", [(3, 11, 7)])
     def test_same_on_batch(self, shape, erase_scale_range, aspect_ratio_range):
-        f = RandomErasing(0.5, erase_scale_range, aspect_ratio_range, same_on_batch=True)
+        f = RandomErasing(erase_scale_range, aspect_ratio_range, same_on_batch=True, p=0.5)
         input = torch.rand(shape).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
         print(f._params)
@@ -999,8 +999,8 @@ class TestRectangleRandomErasing:
         erase_scale_range = (.2, .4)
         aspect_ratio_range = (.3, .5)
 
-        rand_rec = RandomErasing(1.0, erase_scale_range, aspect_ratio_range)
-        rect_params = rand_rec.__forward_parameters__(batch_shape, 1.0, False, 'element')
+        rand_rec = RandomErasing(erase_scale_range, aspect_ratio_range, p=1.0)
+        rect_params = rand_rec.__forward_parameters__(batch_shape, p=1.0, p_batch=1., same_on_batch=False)
 
         # evaluate function gradient
         input = torch.rand(batch_shape).to(device)
@@ -1207,8 +1207,8 @@ class TestRandomGrayscale:
     def test_gradcheck(self, device):
         input = torch.rand((3, 5, 5)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.augmentation.RandomGrayscale(1.), (input,), raise_exception=True)
-        assert gradcheck(kornia.augmentation.RandomGrayscale(0.), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomGrayscale(p=1.), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomGrayscale(p=0.), (input,), raise_exception=True)
 
 
 class TestCenterCrop:
