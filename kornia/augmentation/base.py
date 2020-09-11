@@ -4,6 +4,8 @@ import warnings
 import torch
 import torch.nn as nn
 
+from torch.distributions import Bernoulli
+
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -12,6 +14,7 @@ from .utils import (
     _transform_input,
     _transform_input3d,
     _validate_input_dtype,
+    _adapted_sampling
 )
 
 
@@ -33,6 +36,10 @@ class _BasicAugmentationBase(nn.Module):
         self.p = p
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
+        if p != 0. or p != 1.:
+            self._p_gen = Bernoulli(self.p)
+        if p_batch != 0. or p_batch != 1.:
+            self._p_batch_gen = Bernoulli(self.p_batch)
 
     def __repr__(self) -> str:
         return f"p={self.p}, same_on_batch={self.same_on_batch}"
@@ -70,7 +77,7 @@ class _BasicAugmentationBase(nn.Module):
         elif p_batch == 0:
             batch_prob = torch.tensor([False])
         else:
-            batch_prob = rg.random_prob_generator(1, p_batch, same_on_batch)
+            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch).bool()
 
         if batch_prob.sum().item() == 1:
             elem_prob: torch.Tensor
@@ -79,7 +86,7 @@ class _BasicAugmentationBase(nn.Module):
             elif p == 0:
                 elem_prob = torch.tensor([False] * batch_shape[0])
             else:
-                elem_prob = rg.random_prob_generator(batch_shape[0], p, same_on_batch)
+                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch).bool()
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])
@@ -162,7 +169,10 @@ class _AugmentationBase(_BasicAugmentationBase):
                 trans_matrix = self.compute_transformation(in_tensor, params)
         else:
             output = in_tensor.clone()
-            output[to_apply] = self.apply_transform(in_tensor[to_apply], params)
+            try:
+                output[to_apply] = self.apply_transform(in_tensor[to_apply], params)
+            except Exception as e:
+                raise ValueError(f"{e}, {to_apply}")
             if return_transform:
                 trans_matrix = self.identity_matrix(in_tensor)
                 trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)

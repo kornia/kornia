@@ -111,6 +111,22 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
     return input.shape[channel_index] == number
 
 
+def _adapted_rsampling(
+    shape: Union[Tuple, torch.Size],
+    dist: torch.distributions.Distribution,
+    same_on_batch=False
+) -> torch.Tensor:
+    r"""The uniform reparamiterized sampling function that accepts 'same_on_batch'.
+
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
+    By default, same_on_batch is set to False.
+    """
+    if same_on_batch:
+        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+    else:
+        return dist.rsample(shape)
+
+
 def _adapted_sampling(
     shape: Union[Tuple, torch.Size],
     dist: torch.distributions.Distribution,
@@ -122,9 +138,9 @@ def _adapted_sampling(
     By default, same_on_batch is set to False.
     """
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+        return dist.sample((1, *shape[1:])).repeat(shape[0])
     else:
-        return dist.rsample(shape)
+        return dist.sample(shape)
 
 
 def _adapted_uniform(
@@ -143,7 +159,7 @@ def _adapted_uniform(
     if not isinstance(high, torch.Tensor):
         high = torch.tensor(high, dtype=torch.float32)
     dist = Uniform(low, high)
-    return _adapted_sampling(shape, dist, same_on_batch)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _adapted_beta(
@@ -161,7 +177,7 @@ def _adapted_beta(
     if not isinstance(b, torch.Tensor):
         b = torch.tensor(b, dtype=torch.float32)
     dist = Beta(a, b)
-    return _adapted_sampling(shape, dist, same_on_batch)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,

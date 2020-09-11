@@ -824,10 +824,9 @@ class RandomSolarize(AugmentationBase2D):
         additions (float or tuple): Default value is 0.1.
             If float x, addition will be generated from (-x, x).
             If tuple (x, y), addition will be generated from (x, y).
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
@@ -882,10 +881,9 @@ class RandomPosterize(AugmentationBase2D):
             If int x, bits will be generated from (x, 8).
             If tuple (x, y), bits will be generated from (x, y).
             Default value is 3.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -936,10 +934,9 @@ class RandomSharpness(AugmentationBase2D):
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
         sharpness (float or tuple): factor of sharpness strength. Must be above 0. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`

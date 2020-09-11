@@ -3,6 +3,7 @@ import random
 import math
 
 import torch
+from torch.distributions import Bernoulli
 
 from kornia.constants import Resample, BorderType, SamplePadding
 from ..utils import (
@@ -20,7 +21,7 @@ def random_prob_generator(
     Args:
         batch_size (int): the number of images.
         p (float): probability to generate an 1-d binary mask. Default value is 0.5.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         torch.Tensor: parameters to be passed for transformation.
@@ -28,11 +29,9 @@ def random_prob_generator(
     if not isinstance(p, float):
         raise TypeError(f"The probability should be a float number. Got {type(p)}")
 
-    probs: torch.Tensor = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
+    probs: torch.Tensor = _adapted_sampling((batch_size,), Bernoulli(p), same_on_batch).bool()
 
-    batch_prob: torch.Tensor = (probs < p)
-
-    return batch_prob
+    return probs
 
 
 def random_color_jitter_generator(
@@ -92,7 +91,7 @@ def random_perspective_generator(
         height (int) : height of the image.
         width (int): width of the image.
         distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params (Dict[str, torch.Tensor])
@@ -159,7 +158,7 @@ def random_affine_generator(
             range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
             a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
             Will not apply shear by default
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -219,7 +218,7 @@ def random_rotation_generator(
     Args:
         batch_size (int): the tensor batch size.
         degrees (torch.Tensor): range of degrees with shape (2) to select from.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -245,7 +244,7 @@ def random_crop_generator(
         input_size (tuple): Input image shape, like (h, w).
         size (tuple): Desired size of the crop operation, like (h, w).
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -297,7 +296,7 @@ def random_crop_size_generator(
         size (Tuple[int, int]): expected output size of each edge
         scale: range of size of the origin size cropped
         ratio: range of aspect ratio of the origin aspect ratio cropped
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -351,7 +350,7 @@ def random_rectangles_params_generator(
         scale (torch.Tensor): range of size of the origin size cropped. Shape (2).
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
         value (float): value to be filled in the erased area.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -469,7 +468,7 @@ def random_motion_blur_generator(
             Lower values towards -1.0 will point the motion blur towards the back (with
             angle provided via angle), while higher values towards 1.0 will point the motion
             blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -513,7 +512,7 @@ def random_solarize_generator(
         thresholds (torch.Tensor): Pixels less than threshold will selected. Otherwise, subtract 1.0 from the pixel.
             Default value will be sampled from [0.4, 0.6].
         additions (torch.Tensor): The value is between -0.5 and 0.5. Default value will be sampled from [-0.1, 0.1]
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -543,7 +542,7 @@ def random_posterize_generator(
     Args:
         batch_size (int): the number of images.
         bits (int or tuple): Default value is 3. Integer that ranged from 0 ~ 8.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -565,7 +564,7 @@ def random_sharpness_generator(
     Args:
         batch_size (int): the number of images.
         sharpness (torch.Tensor): Must be above 0. Default value is sampled from (0, 1).
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
