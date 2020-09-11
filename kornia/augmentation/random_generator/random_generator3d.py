@@ -80,7 +80,7 @@ def random_affine_generator3d(
     # compute tensor ranges
     if scale is not None:
         assert scale.shape == torch.Size([3, 2]), f"'scale' must be the shape of (3, 2). Got {scale.shape}."
-        scale = torch.cat([
+        scale = torch.stack([
             _adapted_uniform((batch_size,), scale[0, 0], scale[0, 1], same_on_batch),
             _adapted_uniform((batch_size,), scale[1, 0], scale[1, 1], same_on_batch),
             _adapted_uniform((batch_size,), scale[2, 0], scale[2, 1], same_on_batch),
