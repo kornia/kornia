@@ -59,7 +59,7 @@ def random_affine_generator3d(
 
     Args:
         batch_size (int): the tensor batch size.
-        depth (int) : height of the image.
+        depth (int) : depth of the image.
         height (int) : height of the image.
         width (int): width of the image.
         degrees (torch.Tensor): Ranges of degrees with shape (3, 2) for yaw, pitch and roll.
@@ -91,7 +91,7 @@ def random_affine_generator3d(
     # compute tensor ranges
     if scale is not None:
         assert scale.shape == torch.Size([3, 2]), f"'scale' must be the shape of (3, 2). Got {scale.shape}."
-        scale = torch.cat([
+        scale = torch.stack([
             _adapted_uniform((batch_size,), scale[0, 0], scale[0, 1], same_on_batch),
             _adapted_uniform((batch_size,), scale[1, 0], scale[1, 1], same_on_batch),
             _adapted_uniform((batch_size,), scale[2, 0], scale[2, 1], same_on_batch),
@@ -101,9 +101,10 @@ def random_affine_generator3d(
 
     if translate is not None:
         assert translate.shape == torch.Size([3]), f"'translate' must be the shape of (2). Got {translate.shape}."
-        max_dx: torch.Tensor = translate[0] * depth
-        max_dy: torch.Tensor = translate[1] * width
-        max_dz: torch.Tensor = translate[2] * height
+        max_dz: torch.Tensor = translate[0] * depth
+        max_dy: torch.Tensor = translate[1] * height
+        max_dx: torch.Tensor = translate[2] * width
+        # translations should be in x,y,z
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),
@@ -112,8 +113,9 @@ def random_affine_generator3d(
     else:
         translations = torch.zeros(batch_size, 3)
 
+    # center should be in x,y,z
     center: torch.Tensor = torch.tensor(
-        [depth, width, height], dtype=torch.float32).view(1, 3) / 2. - 0.5
+        [width,height,depth], dtype=torch.float32).view(1, 3) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     if shears is not None:
