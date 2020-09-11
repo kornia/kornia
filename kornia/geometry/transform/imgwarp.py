@@ -540,8 +540,8 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     r"""Composes 3d affine matrix from the components.
 
     Args:
-        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 3)`.
-        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 3)`.
+        translations (torch.Tensor): tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
+        center (torch.Tensor): tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
         sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
         sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
