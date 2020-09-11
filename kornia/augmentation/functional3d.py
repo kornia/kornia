@@ -111,7 +111,7 @@ def compute_hflip_transformation3d(input: torch.Tensor, params: Dict[str, torch.
     to_flip = params['batch_prob'].to(input.device)
     trans_mat: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w],
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1],
                                            [0, 1, 0, 0],
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
@@ -168,7 +168,7 @@ def compute_vflip_transformation3d(input: torch.Tensor, params: Dict[str, torch.
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
-                                           [0, -1, 0, h],
+                                           [0, -1, 0, h - 1],
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
 
@@ -226,7 +226,7 @@ def compute_dflip_transformation3d(input: torch.Tensor, params: Dict[str, torch.
     d: int = input.shape[-3]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
                                            [0, 1, 0, 0],
-                                           [0, 0, -1, d],
+                                           [0, 0, -1, d - 1],
                                            [0, 0, 0, 1]])
 
     trans_mat[to_flip] = flip_mat.type_as(input)
