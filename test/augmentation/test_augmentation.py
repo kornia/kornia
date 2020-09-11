@@ -1553,7 +1553,7 @@ class TestRandomResizedCrop:
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device):
         f = RandomResizedCrop(
