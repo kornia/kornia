@@ -369,7 +369,7 @@ def test_deg2rad(batch_shape, device):
 
 
 class TestConvertPointsToHomogeneous:
-    def test_convert_points(self, device):
+    def test_convert_points(self, device, dtype):
         # generate input data
         points_h = torch.tensor([
             [1., 2., 1.],
@@ -377,7 +377,7 @@ class TestConvertPointsToHomogeneous:
             [2., 1., 0.],
             [-1., -2., -1.],
             [0., 1., -2.],
-        ]).to(device)
+        ], device=device, dtype=dtype)
 
         expected = torch.tensor([
             [1., 2., 1., 1.],
@@ -385,13 +385,13 @@ class TestConvertPointsToHomogeneous:
             [2., 1., 0., 1.],
             [-1., -2., -1., 1.],
             [0., 1., -2., 1.],
-        ]).to(device)
+        ], device=device, dtype=dtype)
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)
         assert_allclose(points, expected)
 
-    def test_convert_points_batch(self, device):
+    def test_convert_points_batch(self, device, dtype):
         # generate input data
         points_h = torch.tensor([[
             [2., 1., 0.],
@@ -399,7 +399,7 @@ class TestConvertPointsToHomogeneous:
             [0., 1., 2.],
         ], [
             [0., 1., -2.],
-        ]]).to(device)
+        ]], device=device, dtype=dtype)
 
         expected = torch.tensor([[
             [2., 1., 0., 1.],
@@ -407,7 +407,7 @@ class TestConvertPointsToHomogeneous:
             [0., 1., 2., 1.],
         ], [
             [0., 1., -2., 1.],
-        ]]).to(device)
+        ]], device=device, dtype=dtype)
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)

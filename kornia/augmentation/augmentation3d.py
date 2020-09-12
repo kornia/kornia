@@ -203,11 +203,11 @@ class RandomAffine3D(AugmentationBase3D):
             If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for depthical, horizontal
-            and vertical translations. For example translate=(a, b, c), then
-            depthical shift will be randomly sampled in the range -img_depth * a < dx < img_depth * a
-            horizontal shift will be randomly sampled in the range -img_width * b < dy < img_width * b.
+        translate (tuple, optional): tuple of maximum absolute fraction for horizontal, vertical and
+        depthical translations (dx,dy,dz). For example translate=(a, b, c), then
+            horizontal shift will be randomly sampled in the range -img_width * a < dx < img_width * a
             vertical shift will be randomly sampled in the range -img_height * b < dy < img_height * b.
+            depthical shift will be randomly sampled in the range -img_depth * c < dz < img_depth * c.
             Will not translate by default.
         scale (tuple, optional): scaling factor interval.
             If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
