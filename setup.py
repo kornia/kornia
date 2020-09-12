@@ -122,6 +122,10 @@ if __name__ == '__main__':
         # Package info
         packages=find_packages(exclude=('docs', 'test', 'examples',)),
 
+        package_data={
+            "kornia": ["py.typed"],
+        },
+
         zip_safe=True,
         install_requires=requirements,
         classifiers=[
