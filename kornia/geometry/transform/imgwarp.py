@@ -349,9 +349,11 @@ def get_rotation_matrix2d(
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
     rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
-    scaling_matrix: torch.Tensor = torch.zeros((2, 2)).fill_diagonal_(1).repeat(rotation_matrix.size(0), 1, 1)
+    scaling_matrix: torch.Tensor = torch.zeros(
+        (2, 2), device=rotation_matrix.device, dtype=rotation_matrix.dtype).fill_diagonal_(1).repeat(
+        rotation_matrix.size(0), 1, 1)
     scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix.to(rotation_matrix)
+    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
     alpha: torch.Tensor = scaled_rotation[:, 0, 0]
     beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
