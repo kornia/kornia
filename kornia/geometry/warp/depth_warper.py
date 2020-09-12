@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry.linalg import transform_points
-from kornia.geometry.linalg import relative_transformation
+from kornia.geometry.linalg import transform_points, inverse_transformation, compose_transformations
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.geometry.camera import PinholeCamera
@@ -80,8 +79,10 @@ class DepthWarper(nn.Module):
                             "PinholeCamera. Got {}".format(type(pinhole_src)))
         # compute the relative pose between the non reference and the reference
         # camera frames.
-        dst_trans_src: torch.Tensor = relative_transformation(
-            pinhole_src.extrinsics, self._pinhole_dst.extrinsics)
+        dst_trans_src: torch.Tensor = compose_transformations(
+            self._pinhole_dst.extrinsics,
+            inverse_transformation(pinhole_src.extrinsics),
+        )
 
         # compute the projection matrix between the non reference cameras and
         # the reference.
