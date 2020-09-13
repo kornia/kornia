@@ -42,7 +42,7 @@ class _BasicAugmentationBase(nn.Module):
             self._p_batch_gen = Bernoulli(self.p_batch)
 
     def __repr__(self) -> str:
-        return f"p={self.p}, same_on_batch={self.same_on_batch}"
+        return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
 
     def __infer_input__(
         self, input: torch.Tensor

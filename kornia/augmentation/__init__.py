@@ -1,7 +1,6 @@
 from .base import (
     AugmentationBase2D,
-    AugmentationBase3D,
-    MixAugmentationBase
+    AugmentationBase3D
 )
 from .augmentation import (
     CenterCrop,
@@ -57,7 +56,6 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
-    "MixAugmentationBase",
     "RandomMixUp",
     "RandomCutMix",
     "AugmentationBase3D",

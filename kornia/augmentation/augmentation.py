@@ -4,7 +4,7 @@ import torch
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding
-from .base import AugmentationBase2D
+from kornia.augmentation import AugmentationBase2D
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -14,19 +14,7 @@ from .utils import (
 
 
 class AugmentationBase(AugmentationBase2D):
-    r"""AugmentationBase3D base class for customized augmentation implementations.
-
-    For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required while the
-    "compute_transformation" is only required when passing "return_transform" as True.
-
-    Args:
-        p (float): probability for applying an augmentation. This param controls the augmentation probabilities
-                   element-wisely for a batch. Default: 0.5.
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-    """
+    __doc__ = AugmentationBase2D.__doc__
 
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
         super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)

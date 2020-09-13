@@ -11,86 +11,8 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.constants import pi
-from kornia.augmentation import AugmentationBase2D, RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
+from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
     RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
-
-
-class TestAugmentationBase:
-
-    def test_forward(self, device, dtype):
-        torch.manual_seed(42)
-        input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(return_transform=False, p=1.)
-
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
-                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
-
-            # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
-            params = {'params': {}, 'flags': {'foo': 0}}
-            generate_parameters.return_value = params
-            apply_transform.return_value = expected_output
-            compute_transformation.return_value = expected_transform
-            output = augmentation(input)
-            # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
-            # Not an easy fix, happens on verifying torch.tensor([True, True])
-            # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
-            # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
-
-            # Calling the augmentation with a tensor and set return_transform shall
-            # return the expected tensor and transformation.
-            output, transformation = augmentation(input, return_transform=True)
-            assert output is expected_output
-            assert_allclose(transformation, expected_transform)
-
-            # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
-            params = {'params': {}, 'flags': {'bar': 1}}
-            apply_transform.reset_mock()
-            generate_parameters.return_value = None
-            output = augmentation(input, params=params)
-            # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
-            # Not an easy fix, happens on verifying torch.tensor([True, True])
-            # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
-            # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
-
-            # Calling the augmentation with a tensor,a transformation and set
-            # return_transform shall return the expected tensor and the proper
-            # transformation matrix.
-            expected_final_transformation = expected_transform @ input_transform
-            output, transformation = augmentation((input, input_transform), return_transform=True)
-            assert output is expected_output
-            assert torch.allclose(expected_final_transformation, transformation)
-            assert transformation.shape[0] == input.shape[0]
-
-    def test_gradcheck(self, device, dtype):
-        torch.manual_seed(42)
-
-        input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        output = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-        other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
-        output = utils.tensor_to_gradcheck_var(output)  # to var
-        other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
-
-        input_param = {'batch_prob': torch.tensor([True]), 'params': {'x': input_transform}, 'flags': {}}
-
-        augmentation = AugmentationBase2D(return_transform=True, p=1.)
-
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
-                patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "compute_transformation", autospec=True) as compute_transformation:
-
-            apply_transform.return_value = output
-            compute_transformation.return_value = other_transform
-            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True)
 
 
 class TestRandomHorizontalFlip:
@@ -1617,7 +1539,7 @@ class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', p=0.5, same_on_batch=True, return_transform=False)"
+            "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=True, return_transform=False)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):
