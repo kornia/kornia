@@ -13,7 +13,7 @@ class TestPerspective:
 
     def test_smoke(self, device):
         x_data = torch.rand(1, 2, 3, 4).to(device)
-        batch_prob = torch.rand(1) < 0.5
+        batch_prob = torch.rand(1, device=device) < 0.5
         start_points = torch.rand(1, 4, 2).to(device)
         end_points = torch.rand(1, 4, 2).to(device)
 

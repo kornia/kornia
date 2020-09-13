@@ -81,5 +81,3 @@ Module
    :members: forward
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
-
-.. bibliography:: references.bib

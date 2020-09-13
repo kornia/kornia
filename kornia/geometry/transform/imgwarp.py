@@ -349,9 +349,11 @@ def get_rotation_matrix2d(
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
     rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
-    scaling_matrix: torch.Tensor = torch.zeros((2, 2)).fill_diagonal_(1).repeat(rotation_matrix.size(0), 1, 1)
+    scaling_matrix: torch.Tensor = torch.zeros(
+        (2, 2), device=rotation_matrix.device, dtype=rotation_matrix.dtype).fill_diagonal_(1).repeat(
+        rotation_matrix.size(0), 1, 1)
     scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
-    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix.to(rotation_matrix)
+    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
     alpha: torch.Tensor = scaled_rotation[:, 0, 0]
     beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
@@ -540,8 +542,8 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     r"""Composes 3d affine matrix from the components.
 
     Args:
-        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 3)`.
-        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 3)`.
+        translations (torch.Tensor): tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
+        center (torch.Tensor): tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
         sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
         sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.

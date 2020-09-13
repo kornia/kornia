@@ -51,12 +51,12 @@ def random_affine_generator3d(
 
     Args:
         batch_size (int): the tensor batch size.
-        depth (int) : height of the image.
+        depth (int) : depth of the image.
         height (int) : height of the image.
         width (int): width of the image.
         degrees (torch.Tensor): Ranges of degrees with shape (3, 2) for yaw, pitch and roll.
         translate (torch.Tensor, optional):  maximum absolute fraction with shape (3,) for horizontal, vertical
-            and depthical translations. Will not translate by default.
+            and depthical translations (dx,dy,dz). Will not translate by default.
         scale (torch.Tensor, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
@@ -75,7 +75,7 @@ def random_affine_generator3d(
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
     pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
     roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
-    angles = torch.cat([yaw, pitch, roll], dim=-1).view((batch_size, -1))
+    angles = torch.stack([yaw, pitch, roll], dim=1)
 
     # compute tensor ranges
     if scale is not None:
@@ -90,19 +90,21 @@ def random_affine_generator3d(
 
     if translate is not None:
         assert translate.shape == torch.Size([3]), f"'translate' must be the shape of (2). Got {translate.shape}."
-        max_dx: torch.Tensor = translate[0] * depth
-        max_dy: torch.Tensor = translate[1] * width
-        max_dz: torch.Tensor = translate[2] * height
+        max_dx: torch.Tensor = translate[0] * width
+        max_dy: torch.Tensor = translate[1] * height
+        max_dz: torch.Tensor = translate[2] * depth
+        # translations should be in x,y,z
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),
             _adapted_uniform((batch_size,), -max_dz, max_dz, same_on_batch)
-        ], dim=-1)
+        ], dim=1)
     else:
         translations = torch.zeros(batch_size, 3)
 
+    # center should be in x,y,z
     center: torch.Tensor = torch.tensor(
-        [depth, width, height], dtype=torch.float32).view(1, 3) / 2. - 0.5
+        [width, height, depth], dtype=torch.float32).view(1, 3) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     if shears is not None:

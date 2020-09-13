@@ -23,26 +23,24 @@ class AugmentationBase(AugmentationBase2D):
 
 
 class RandomHorizontalFlip(AugmentationBase2D):
-    r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
 
+    r"""Applies a random horizontal flip to a tensor image or a batch of tensor images randomly with a given probability.
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and concatenate the corresponding transformation matrix to the
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
-
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
-
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],
         ...                         [0., 1., 1.]]]])
-        >>> seq = torch.nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True),
+        >>> seq = nn.Sequential(RandomHorizontalFlip(p=1.0, return_transform=True),
         ...                     RandomHorizontalFlip(p=1.0, return_transform=True))
         >>> seq(input)
         (tensor([[[[0., 0., 0.],
@@ -50,7 +48,6 @@ class RandomHorizontalFlip(AugmentationBase2D):
                   [0., 1., 1.]]]]), tensor([[[1., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 1.]]]))
-
     """
 
     def __repr__(self) -> str:
@@ -67,7 +64,8 @@ class RandomHorizontalFlip(AugmentationBase2D):
 
 
 class RandomVerticalFlip(AugmentationBase2D):
-    r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
+
+    r"""Applies a random vertical flip to a tensor image or a batch of tensor images randomly with a given probability.
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -79,8 +77,8 @@ class RandomVerticalFlip(AugmentationBase2D):
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -110,7 +108,8 @@ class RandomVerticalFlip(AugmentationBase2D):
 
 
 class ColorJitter(AugmentationBase2D):
-    r"""Change the brightness, contrast, saturation and hue randomly given tensor image or a batch of tensor images.
+
+    r"""Applies a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
 
@@ -172,7 +171,7 @@ class ColorJitter(AugmentationBase2D):
 
 
 class RandomGrayscale(AugmentationBase2D):
-    r"""Random Grayscale transformation according to a probability p value.
+    r"""Applies random transformation to Grayscale according to a probability p value.
 
     Args:
         p (float): probability of the image to be transformed to grayscale. Default value is 0.1.
@@ -216,7 +215,10 @@ class RandomGrayscale(AugmentationBase2D):
 
 
 class RandomErasing(AugmentationBase2D):
-    r"""Erases a random selected rectangle for each image in the batch, putting the value to zero.
+    r"""Erases a random rectangle of a tensor image according to a probability p value.
+
+    The operator removes image parts and fills them with zero values at a selected rectangle
+    for each of the images in the batch.
 
     The rectangle will have an area equal to the original image area multiplied by a value uniformly
     sampled between the range [scale[0], scale[1]) and an aspect ratio sampled
@@ -266,7 +268,7 @@ class RandomErasing(AugmentationBase2D):
 
 
 class RandomPerspective(AugmentationBase2D):
-    r"""Performs Perspective transformation of the given torch.Tensor randomly with a given probability.
+    r"""Applies a random perspective transformation to an image tensor with a given probability.
 
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5.
@@ -328,7 +330,9 @@ class RandomPerspective(AugmentationBase2D):
 
 
 class RandomAffine(AugmentationBase2D):
-    r"""Random affine transformation of the image keeping center invariant.
+    r"""Applies a random 2D affine transformation to a tensor image.
+
+    The transformation is computed so that the image center is kept invariant.
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -430,7 +434,7 @@ class RandomAffine(AugmentationBase2D):
 
 
 class CenterCrop(AugmentationBase2D):
-    r"""Crops the given torch.Tensor at the center.
+    r"""Crops a given image tensor at the center.
 
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.
@@ -487,7 +491,7 @@ class CenterCrop(AugmentationBase2D):
 
 
 class RandomRotation(AugmentationBase2D):
-    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+    r"""Applies a random rotation to a tensor image or a batch of tensor images given an amount of degrees.
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -498,12 +502,12 @@ class RandomRotation(AugmentationBase2D):
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
         degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
-        range of degrees to select from will be (-degrees, +degrees)
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR
+          range of degrees to select from will be (-degrees, +degrees).
+        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
     Examples:
@@ -559,7 +563,7 @@ class RandomRotation(AugmentationBase2D):
 
 
 class RandomCrop(AugmentationBase2D):
-    r"""Random Crop on given size.
+    r"""Crops random patches of a tensor image on a given size.
 
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
@@ -660,18 +664,17 @@ class RandomCrop(AugmentationBase2D):
 
 
 class RandomResizedCrop(AugmentationBase2D):
-    r"""Random Crop on given size and resizing the cropped patch to another.
+    r"""Crops random patches in an image tensor and resizes to a given size.
 
     Args:
-        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
-        size (Tuple[int, int]): expected output size of each edge
-        scale: range of size of the origin size cropped
-        ratio: range of aspect ratio of the origin aspect ratio cropped
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        size (Tuple[int, int]): expected output size of each edge.
+        scale: range of size of the origin size cropped.
+        ratio: range of aspect ratio of the origin aspect ratio cropped.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
     Example:
@@ -730,7 +733,9 @@ class RandomResizedCrop(AugmentationBase2D):
 
 
 class RandomMotionBlur(AugmentationBase2D):
-    r"""Blurs a tensor using the motion filter. Same transformation happens across batches.
+    r"""Blurs a tensor image or batch of tensor images using a motion filter.
+
+    The same transformation can be applied across different batches.
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.

@@ -12,7 +12,7 @@ __all__ = [
     "center_crop",
     "bbox_to_mask",
     "infer_box_shape",
-    "validate_bboxes"
+    "validate_bboxes",
 ]
 
 

@@ -14,11 +14,16 @@ from .utils import (
 
 
 class RandomMixUp(MixAugmentationBase):
-    r"""Implemention for mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>.
+    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
-    each image. The implementation is on top of https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py.
+    each image.
+
+    The implementation is on top of the following repository:
+    `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
+    <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
+
     The loss and accuracy are computed as:
 
     .. code-block:: python
@@ -43,9 +48,8 @@ class RandomMixUp(MixAugmentationBase):
             This flag will not maintain permutation order. Default: False.
 
     Inputs:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Label: raw labels, shape of :math:`(B,)`.
+        - Label: raw labels, shape of :math:`(B)`.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
@@ -94,13 +98,17 @@ class RandomMixUp(MixAugmentationBase):
 
 
 class RandomCutMix(MixAugmentationBase):
-    r"""Implemention of CutMix augmentation.
+    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Localizable Features` :cite:`yun2019cutmix`.
 
-    CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
-    <https://arxiv.org/pdf/1905.04899.pdf>. The function returns (inputs, labels), in which the inputs
-    is the tensor that contains the mixup images while the labels is a :math:`(B, num_mixes, 3)` tensor
-    that contains (label_permuted_batch, lambda) for each cutmix. The implementation referred to
-    https://github.com/clovaai/CutMix-PyTorch. The onehot label may be computed as:
+    The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` tensor that contains (label_permuted_batch, lambda)
+    for each cutmix.
+
+    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
+    <https://github.com/clovaai/CutMix-PyTorch>`_.
+
+    The onehot label may be computed as:
 
     .. code-block:: python
 
@@ -133,9 +141,8 @@ class RandomCutMix(MixAugmentationBase):
             This flag will not maintain permutation order. Default: False.
 
     Inputs:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Raw labels, shape of :math:`(B,)`
+        - Raw labels, shape of :math:`(B)`.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:

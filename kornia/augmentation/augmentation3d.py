@@ -14,7 +14,7 @@ from .utils import (
 
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
-    r"""Horizontally flip a tensor image or a batch of tensor images randomly with a given probability.
+    r"""Applies a random horizontal flip to a 3D image tensor with a given probability.
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -23,11 +23,11 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
+        p (float): probability of the image being flipped. Default value is 0.5.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Examples:
         >>> x = torch.eye(3).repeat(3, 1, 1)
@@ -65,7 +65,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
 
 
 class RandomVerticalFlip3D(AugmentationBase3D):
-    r"""Vertically flip a tensor image or a batch of tensor images randomly with a given probability.
+    r"""Applies a random vertical flip to a 3D image tensor with a given probability.
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -74,11 +74,11 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
+        p (float): probability of the image being flipped. Default value is 0.5.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Examples:
         >>> x = torch.eye(3).repeat(3, 1, 1)
@@ -115,7 +115,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
 
 
 class RandomDepthicalFlip3D(AugmentationBase3D):
-    r"""Depthically flip a tensor image or a batch of tensor images randomly with a given probability.
+    r"""Applies a random flip along the depth axis of a 3D image tensor with a given probability.
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -124,11 +124,11 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
-        p (float): probability of the image being flipped. Default value is 0.5
+        p (float): probability of the image being flipped. Default value is 0.5.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Examples:
         >>> x = torch.eye(3).repeat(3, 1, 1)
@@ -166,7 +166,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
 
 class RandomAffine3D(AugmentationBase3D):
-    r"""Random 3D affine transformation of the image keeping center invariant.
+    r"""Applies a 3D affine transformation to a 3D image tensor with a given probability.
+
+    The transformation is computed so that the center is kept invariant.
 
     Args:
         degrees (float or tuple or list): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
@@ -177,11 +179,11 @@ class RandomAffine3D(AugmentationBase3D):
             If degrees is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for depthical, horizontal
-            and vertical translations. For example translate=(a, b, c), then
-            depthical shift will be randomly sampled in the range -img_depth * a < dx < img_depth * a
-            horizontal shift will be randomly sampled in the range -img_width * b < dy < img_width * b.
+        translate (tuple, optional): tuple of maximum absolute fraction for horizontal, vertical and
+        depthical translations (dx,dy,dz). For example translate=(a, b, c), then
+            horizontal shift will be randomly sampled in the range -img_width * a < dx < img_width * a
             vertical shift will be randomly sampled in the range -img_height * b < dy < img_height * b.
+            depthical shift will be randomly sampled in the range -img_depth * c < dz < img_depth * c.
             Will not translate by default.
         scale (tuple, optional): scaling factor interval.
             If (a, b) represents isotropic scaling, the scale is randomly sampled from the range a <= scale <= b.
@@ -194,10 +196,10 @@ class RandomAffine3D(AugmentationBase3D):
             will be applied.
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
     Examples:
@@ -282,7 +284,8 @@ class RandomAffine3D(AugmentationBase3D):
 
 
 class RandomRotation3D(AugmentationBase3D):
-    r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
+
+    r"""Applies a random rotation to a 3D tensor image or a batch of tensor images given an amount of degrees.
 
     Input should be a tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
@@ -302,8 +305,8 @@ class RandomRotation3D(AugmentationBase3D):
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+                                      wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
     Examples:
