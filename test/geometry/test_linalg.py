@@ -79,17 +79,17 @@ class TestTransformPoints:
         assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
         @torch.jit.script
         def op_script(transform, points):
             return kornia.transform_points(transform, points)
 
-        points = torch.ones(1, 2, 2).to(device)
-        transform = torch.eye(3)[None].to(device)
+        points = torch.ones(1, 2, 2, device=device)
+        transform = kornia.eye_like(3, points)
+        op = kornia.transform_points
+        op_script = torch.jit.script(op)
         actual = op_script(transform, points)
-        expected = kornia.transform_points(transform, points)
-
+        expected = op(transform, points)
         assert_allclose(actual, expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")

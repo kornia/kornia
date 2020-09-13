@@ -47,9 +47,9 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     assert 3 <= len(tensor.shape) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
     depth, height, width = tensor.shape[-3:]
-    center_x: float = float(depth - 1) / 2
+    center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center_z: float = float(width - 1) / 2
+    center_z: float = float(depth - 1) / 2
     center: torch.Tensor = torch.tensor(
         [center_x, center_y, center_z],
         device=tensor.device, dtype=tensor.dtype)
@@ -101,7 +101,7 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 def _compute_scaling_matrix(scale: torch.Tensor,
                             center: torch.Tensor) -> torch.Tensor:
     """Computes affine matrix for scaling."""
-    angle: torch.Tensor = torch.zeros(scale.shape[:1])
+    angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -259,8 +259,8 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     yaw = yaw.expand(tensor.shape[0])
-    pitch = yaw.expand(tensor.shape[0])
-    roll = yaw.expand(tensor.shape[0])
+    pitch = pitch.expand(tensor.shape[0])
+    roll = roll.expand(tensor.shape[0])
     center = center.expand(tensor.shape[0], -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
 
