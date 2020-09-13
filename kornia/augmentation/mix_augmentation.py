@@ -14,17 +14,18 @@ from .utils import (
 
 
 class MixAugmentation(AugmentationBase):
-    r"""MixAugmentation base class for customized augmentation implementations. For any augmentation,
-    the implementation of "generate_parameters" and "apply_transform" are required while the
-    "compute_transformation" is only required when passing "return_transform" as True.
+    r"""MixAugmentation base class for customized augmentation implementations.
+
+    For any augmentation, the implementation of "generate_parameters" and "apply_transform"
+    are required while the"compute_transformation" is only required when passing "return_transform"
+    as True.
 
     In "apply_transform", both input and label tensors are required.
 
     Args:
-        return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
-                                      input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-
+        return_transform (bool): if ``True`` return the matrix describing the geometric
+          transformation applied to each input tensor. If ``False`` and the input is a tuple the
+          applied transformation wont be concatenated.
     """
 
     def __init__(self):
@@ -52,13 +53,20 @@ class MixAugmentation(AugmentationBase):
 
 
 class RandomMixUp(MixAugmentation):
-    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION <https://arxiv.org/pdf/1710.09412.pdf>`.
+    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
-    each image. The implementation is on top of `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py`.
+    each image.
+
+    The implementation is on top of the following repository:
+    `https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py
+    <https://github.com/hongyi-zhang/mixup/blob/master/cifar/utils.py>`_.
+
     The loss and accuracy are computed as:
-        ```
+
+    .. code-block:: python
+
         def loss_mixup(y, logits):
             criterion = F.cross_entropy
             loss_a = criterion(logits, y[:, 0].long(), reduction='none')
@@ -68,7 +76,6 @@ class RandomMixUp(MixAugmentation):
         def acc_mixup(y, logits):
             pred = torch.argmax(logits, dim=1).to(y.device)
             return (1 - y[:, 2]) * pred.eq(y[:, 0]).float() + y[:, 2] * pred.eq(y[:, 1]).float()
-        ```
 
     Args:
         p (float): probability for performing mixup. Default is 0.5.
@@ -77,9 +84,8 @@ class RandomMixUp(MixAugmentation):
             This flag will not maintain permutation order. Default: False.
 
     Inputs:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Label: raw labels, shape of :math:`(B,)`.
+        - Label: raw labels, shape of :math:`(B)`.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
@@ -129,15 +135,20 @@ class RandomMixUp(MixAugmentation):
 
 
 class RandomCutMix(MixAugmentation):
-    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with Localizable Features
-    <https://arxiv.org/pdf/1905.04899.pdf>`.
+    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(num_mixes, B, 3)` tensor that contains (label_permuted_batch, lambda)
-    for each cutmix. The implementation referred to `https://github.com/clovaai/CutMix-PyTorch`.
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` tensor that contains (label_permuted_batch, lambda)
+    for each cutmix.
 
-    The onehot label may be computed as :
-        ```
+    The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
+    <https://github.com/clovaai/CutMix-PyTorch>`_.
+
+    The onehot label may be computed as:
+
+    .. code-block:: python
+
         def onehot(size, target):
             vec = torch.zeros(size, dtype=torch.float32)
             vec[target] = 1.
@@ -150,7 +161,6 @@ class RandomCutMix(MixAugmentation):
                 label_permuted_onehot = onehot(size, label_permuted_batch)
                 lb_onehot = lb_onehot * lam + label_permuted_onehot * (1. - lam)
             return lb_onehot
-        ```
 
     Args:
         height (int): the width of the input image.
@@ -165,9 +175,8 @@ class RandomCutMix(MixAugmentation):
             This flag will not maintain permutation order. Default: False.
 
     Inputs:
-        Tuple[torch.Tensor, torch.Tensor]:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
-        - Raw labels, shape of :math:`(B,)`
+        - Raw labels, shape of :math:`(B)`.
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
