@@ -138,9 +138,9 @@ def _adapted_sampling(
     By default, same_on_batch is set to False.
     """
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
+        return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
     else:
-        return dist.rsample(shape)
+        return dist.sample(shape)
 
 
 def _adapted_uniform(
