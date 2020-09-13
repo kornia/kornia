@@ -127,7 +127,7 @@ def _adapted_uniform(
         high = torch.tensor(high, dtype=torch.float32)
     dist = Uniform(low, high)
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+        return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
     else:
         return dist.rsample(shape)
 
