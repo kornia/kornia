@@ -24,18 +24,21 @@ class AugmentationBase(AugmentationBase2D):
 
 class RandomHorizontalFlip(AugmentationBase2D):
 
-    r"""Applies a random horizontal flip to a tensor image or a batch of tensor images randomly with a given probability.
+    r"""Applies a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
+
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and concatenate the corresponding transformation matrix to the
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
+
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],
@@ -65,7 +68,7 @@ class RandomHorizontalFlip(AugmentationBase2D):
 
 class RandomVerticalFlip(AugmentationBase2D):
 
-    r"""Applies a random vertical flip to a tensor image or a batch of tensor images randomly with a given probability.
+    r"""Applies a random vertical flip to a tensor image or a batch of tensor images with a given probability.
 
     Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,

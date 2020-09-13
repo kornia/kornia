@@ -14,7 +14,9 @@ from .utils import (
 
 
 class RandomMixUp(MixAugmentationBase):
-    r"""Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
+    r"""Apply MixUp augmentation to a batch of tensor images.
+
+    Implemention for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
     while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
@@ -98,7 +100,9 @@ class RandomMixUp(MixAugmentationBase):
 
 
 class RandomCutMix(MixAugmentationBase):
-    r"""Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
+    r"""Apply CutMix augmentation to a batch of tensor images.
+
+    Implemention for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.
 
     The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
