@@ -18,7 +18,7 @@ Containers
 This is the base class for creating a new transform. The user only needs to overrive: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
 
 
-.. autoclass:: AugmentationBase
+.. autoclass:: AugmentationBase2D
 
    .. automethod:: generate_parameters
    .. automethod:: compute_transformation
@@ -37,9 +37,9 @@ Create your own transformation:
    import torch
    import kornia as K
 
-   from kornia.augmentation import AugmentationBase
+   from kornia.augmentation import AugmentationBase2D
 
-   class MyRandomTransform(AugmentationBase):
+   class MyRandomTransform(AugmentationBase2D):
       def __init__(self, return_transform: bool = False) -> None:
          super(MyRandomTransform, self).__init__(return_transform)
 
@@ -170,7 +170,7 @@ Set of operators to perform data augmentation on 3D image tensors and volumetric
 Functional
 ----------
 
-.. automodule:: kornia.augmentation.functional
+.. automodule:: kornia.augmentation.functional.functional
     :members:
-.. automodule:: kornia.augmentation.functional3d
+.. automodule:: kornia.augmentation.functional.functional3d
     :members:

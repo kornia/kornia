@@ -117,12 +117,12 @@ class TestRandomHorizontalFlip3D:
     def test_sequential(self, device):
 
         f = nn.Sequential(
-            RandomHorizontalFlip3D(1.0, return_transform=True),
-            RandomHorizontalFlip3D(1.0, return_transform=True),
+            RandomHorizontalFlip3D(p=1.0, return_transform=True),
+            RandomHorizontalFlip3D(p=1.0, return_transform=True),
         )
         f1 = nn.Sequential(
-            RandomHorizontalFlip3D(1.0, return_transform=True),
-            RandomHorizontalFlip3D(1.0),
+            RandomHorizontalFlip3D(p=1.0, return_transform=True),
+            RandomHorizontalFlip3D(p=1.0),
         )
 
         input = torch.tensor([[[[0., 0., 0.],
@@ -276,12 +276,12 @@ class TestRandomVerticalFlip3D:
     def test_sequential(self, device):
 
         f = nn.Sequential(
-            RandomVerticalFlip3D(1.0, return_transform=True),
-            RandomVerticalFlip3D(1.0, return_transform=True),
+            RandomVerticalFlip3D(p=1.0, return_transform=True),
+            RandomVerticalFlip3D(p=1.0, return_transform=True),
         )
         f1 = nn.Sequential(
-            RandomVerticalFlip3D(1.0, return_transform=True),
-            RandomVerticalFlip3D(1.0),
+            RandomVerticalFlip3D(p=1.0, return_transform=True),
+            RandomVerticalFlip3D(p=1.0),
         )
 
         input = torch.tensor([[[[[0., 0., 0.],
@@ -441,12 +441,12 @@ class TestRandomDepthicalFlip3D:
     def test_sequential(self, device):
 
         f = nn.Sequential(
-            RandomDepthicalFlip3D(1.0, return_transform=True),
-            RandomDepthicalFlip3D(1.0, return_transform=True),
+            RandomDepthicalFlip3D(p=1.0, return_transform=True),
+            RandomDepthicalFlip3D(p=1.0, return_transform=True),
         )
         f1 = nn.Sequential(
-            RandomDepthicalFlip3D(1.0, return_transform=True),
-            RandomDepthicalFlip3D(1.0),
+            RandomDepthicalFlip3D(p=1.0, return_transform=True),
+            RandomDepthicalFlip3D(p=1.0),
         )
 
         input = torch.tensor([[[0., 0., 0., 0.],
