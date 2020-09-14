@@ -1,5 +1,8 @@
+from .base import (
+    AugmentationBase2D,
+    AugmentationBase3D
+)
 from .augmentation import (
-    AugmentationBase,
     CenterCrop,
     ColorJitter,
     RandomAffine,
@@ -18,7 +21,6 @@ from .augmentation import (
     RandomMotionBlur
 )
 from .augmentation3d import (
-    AugmentationBase3D,
     RandomHorizontalFlip3D,
     RandomVerticalFlip3D,
     RandomDepthicalFlip3D,
@@ -35,7 +37,7 @@ from kornia.enhance.normalize import (
 )
 
 __all__ = [
-    "AugmentationBase",
+    "AugmentationBase2D",
     "CenterCrop",
     "ColorJitter",
     "Normalize",
