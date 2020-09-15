@@ -6,6 +6,14 @@ import torch
 import torch.nn as nn
 
 
+__all__ = [
+    "normalize",
+    "denormalize",
+    "Normalize",
+    "Denormalize",
+]
+
+
 class Normalize(nn.Module):
     r"""Normalize a tensor image or a batch of tensor images with mean and standard deviation.
 
