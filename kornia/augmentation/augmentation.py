@@ -1,6 +1,7 @@
 from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 
 import torch
+import torch.nn as nn
 from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding
@@ -236,7 +237,7 @@ class RandomErasing(AugmentationBase2D):
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
-        >>> rec_er = RandomErasing(0.5, (.4, .8), (.3, 1/.3))
+        >>> rec_er = RandomErasing((.4, .8), (.3, 1/.3), p=0.5)
         >>> rec_er(inputs)
         tensor([[[[1., 0., 0.],
                   [1., 0., 0.],
@@ -687,9 +688,9 @@ class RandomResizedCrop(AugmentationBase2D):
         ...                         [6., 7., 8.]]])
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1.)
         >>> aug(inputs)
-        tensor([[[[3.7500, 4.7500, 5.7500],
-                  [5.2500, 6.2500, 7.2500],
-                  [4.5000, 5.2500, 6.0000]]]])
+        tensor([[[[1.2500, 1.7500, 1.5000],
+                  [4.2500, 4.7500, 3.7500],
+                  [7.2500, 7.7500, 6.0000]]]])
     """
 
     def __init__(

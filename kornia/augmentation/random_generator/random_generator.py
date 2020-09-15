@@ -256,11 +256,37 @@ def random_crop_generator(
         >>> crop_size = random_crop_size_generator(
         ...     3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))['size']
         >>> crop_size
-        tensor([[18, 18],
-                [18, 21],
-                [ 5, 12]], dtype=torch.int32)
-        >>> random_crop_generator(3, (20, 20), size=crop_size, same_on_batch=False)
-
+        tensor([[26, 29],
+                [27, 28],
+                [25, 28]], dtype=torch.int32)
+        >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
+        {'src': tensor([[[ 1,  3],
+                 [29,  3],
+                 [29, 28],
+                 [ 1, 28]],
+        <BLANKLINE>
+                [[ 2,  3],
+                 [29,  3],
+                 [29, 29],
+                 [ 2, 29]],
+        <BLANKLINE>
+                [[ 0,  2],
+                 [27,  2],
+                 [27, 26],
+                 [ 0, 26]]]), 'dst': tensor([[[ 0,  0],
+                 [28,  0],
+                 [28, 25],
+                 [ 0, 25]],
+        <BLANKLINE>
+                [[ 0,  0],
+                 [27,  0],
+                 [27, 26],
+                 [ 0, 26]],
+        <BLANKLINE>
+                [[ 0,  0],
+                 [27,  0],
+                 [27, 24],
+                 [ 0, 24]]])}
     """
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size).repeat(batch_size, 1)
@@ -321,9 +347,9 @@ def random_crop_size_generator(
     Examples:
         >>> _ = torch.manual_seed(0)
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[18, 18],
-                [18, 21],
-                [ 5, 12]], dtype=torch.int32)}
+        {'size': tensor([[26, 29],
+                [27, 28],
+                [25, 28]], dtype=torch.int32)}
     """
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
@@ -343,13 +369,6 @@ def random_crop_size_generator(
 
     w_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
     h_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
-
-    if same_on_batch:
-        w_out = _adapted_uniform((batch_size,), 0, w_out[0], same_on_batch).int()
-        h_out = _adapted_uniform((batch_size,), 0, h_out[0], same_on_batch).int()
-    else:
-        w_out = _adapted_uniform((1,), 0, w_out, same_on_batch).int().squeeze()
-        h_out = _adapted_uniform((1,), 0, h_out, same_on_batch).int().squeeze()
 
     if not cond_bool.all():
         # Fallback to center crop
