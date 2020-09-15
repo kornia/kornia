@@ -1469,8 +1469,8 @@ class TestRandomResizedCrop:
         ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[5.3750, 5.8750, 4.5938],
-               [6.3437, 6.7812, 5.2500]]]], device=device, dtype=dtype)
+            [[[[3.0937, 4.3750, 4.8750],
+               [3.9375, 5.4688, 5.9062]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
@@ -1488,44 +1488,44 @@ class TestRandomResizedCrop:
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def test_crop_scale_ratio(self, device):
+    def test_crop_scale_ratio(self, device, dtype):
         # This is included in doctest
         torch.manual_seed(0)
         inp = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
             [6., 7., 8.]
-        ]]).to(device)
+        ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[3.7500, 4.7500, 5.7500],
-               [5.2500, 6.2500, 7.2500],
-               [4.5000, 5.2500, 6.0000]]]]).to(device)
+            [[[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected)
 
-    def test_crop_scale_ratio_batch(self, device):
+    def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
             [6., 7., 8.]
-        ]]).repeat(batch_size, 1, 1, 1).to(device)
+        ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 
         expected = torch. tensor(
-            [[[[0.0000, 0.7500, 1.5000],
-               [0.7500, 1.7500, 2.7500],
-               [2.2500, 3.2500, 4.2500]]],
-             [[[3.7500, 4.7500, 5.7500],
-               [5.2500, 6.2500, 7.2500],
-               [4.5000, 5.2500, 6.0000]]]]).to(device)
+            [[[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]],
+             [[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility

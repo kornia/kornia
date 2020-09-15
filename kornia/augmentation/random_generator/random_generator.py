@@ -6,6 +6,7 @@ import torch
 from torch.distributions import Bernoulli
 
 from kornia.constants import Resample, BorderType, SamplePadding
+from kornia.geometry import bbox_generator
 from ..utils import (
     _adapted_sampling,
     _adapted_uniform,
@@ -243,35 +244,49 @@ def random_crop_generator(
         batch_size (int): the tensor batch size.
         input_size (tuple): Input image shape, like (h, w).
         size (tuple): Desired size of the crop operation, like (h, w).
+            If tensor, it must be (B, 2).
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-    """
-    x_diff = input_size[1] - size[1]
-    y_diff = input_size[0] - size[0]
 
-    if x_diff < 0 or y_diff < 0:
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> crop_size = random_crop_size_generator(
+        ...     3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))['size']
+        >>> crop_size
+        tensor([[18, 18],
+                [18, 21],
+                [ 5, 12]], dtype=torch.int32)
+        >>> random_crop_generator(3, (20, 20), size=crop_size, same_on_batch=False)
+
+    """
+    if not isinstance(size, torch.Tensor):
+        size = torch.tensor(size).repeat(batch_size, 1)
+    assert size.shape == torch.Size([batch_size, 2]), \
+        f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
+
+    x_diff = input_size[1] - size[:, 1] + 1
+    y_diff = input_size[0] - size[:, 0] + 1
+
+    if (x_diff < 0).any() or (y_diff < 0).any():
         raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
                          % (str(input_size), str(size)))
 
-    x_start = _adapted_uniform((batch_size,), 0, x_diff + 1, same_on_batch).long()
-    y_start = _adapted_uniform((batch_size,), 0, y_diff + 1, same_on_batch).long()
+    if same_on_batch:
+        # If same_on_batch, select the first then repeat.
+        x_start = _adapted_uniform((batch_size,), 0, x_diff[0], same_on_batch).long()
+        y_start = _adapted_uniform((batch_size,), 0, y_diff[0], same_on_batch).long()
+    else:
+        x_start = _adapted_uniform((1,), 0, x_diff, same_on_batch).long()
+        y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).long()
 
-    crop = torch.tensor([[
-        [0, 0],
-        [size[1] - 1, 0],
-        [size[1] - 1, size[0] - 1],
-        [0, size[0] - 1],
-    ]]).repeat(batch_size, 1, 1)
-
-    crop_src = crop.clone()
-    crop_src[:, :, 0] += x_start.unsqueeze(dim=0).reshape(batch_size, 1)
-    crop_src[:, :, 1] += y_start.unsqueeze(dim=0).reshape(batch_size, 1)
+    crop_src = bbox_generator(x_start.view(-1), y_start.view(-1), size[:, 1] - 1, size[:, 0] - 1)
 
     if resize_to is None:
-        crop_dst = crop
+        crop_dst = bbox_generator(
+            torch.tensor([0] * batch_size), torch.tensor([0] * batch_size), size[:, 1] - 1, size[:, 0] - 1)
     else:
         crop_dst = torch.tensor([[
             [0, 0],
@@ -285,6 +300,7 @@ def random_crop_generator(
 
 
 def random_crop_size_generator(
+    batch_size: int,
     size: Tuple[int, int],
     scale: torch.Tensor,
     ratio: torch.Tensor,
@@ -293,43 +309,67 @@ def random_crop_size_generator(
     r"""Get cropping heights and widths for ```crop``` transformation for resized crop transform.
 
     Args:
-        size (Tuple[int, int]): expected output size of each edge
-        scale: range of size of the origin size cropped
-        ratio: range of aspect ratio of the origin aspect ratio cropped
+        batch_size (int): the tensor batch size.
+        size (Tuple[int, int]): expected output size of each edge.
+        scale (tensor): range of size of the origin size cropped with (2,) shape.
+        ratio (tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+
+    Examples:
+        >>> _ = torch.manual_seed(0)
+        >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
+        {'size': tensor([[18, 18],
+                [18, 21],
+                [ 5, 12]], dtype=torch.int32)}
     """
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
 
+    # 10 trails for each element
     area = _adapted_uniform(
-        (10,), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
+        (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
     log_ratio = _adapted_uniform(
-        (10,), math.log(ratio[0]), math.log(ratio[1]), same_on_batch)
+        (batch_size, 10), torch.log(ratio[0]), torch.log(ratio[1]), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
 
     w = torch.sqrt(area * aspect_ratio).int()
     h = torch.sqrt(area / aspect_ratio).int()
-
     # Element-wise w, h condition
     cond = ((0 < h) * (h < size[1]) * (0 < w) * (w < size[0])).int()
-    if torch.sum(cond) > 0:
-        return dict(size=torch.stack([h[torch.argmax(cond)], w[torch.argmax(cond)]], dim=0))
+    cond_bool = torch.sum(cond, dim=1) > 0
 
-    # Fallback to center crop
-    in_ratio = float(size[0]) / float(size[1])
-    if (in_ratio < min(ratio)):
-        w = torch.tensor(size[0])
-        h = torch.round(w / min(ratio))
-    elif (in_ratio > max(ratio)):
-        h = torch.tensor(size[1])
-        w = torch.round(h * max(ratio))
-    else:  # whole image
-        w = torch.tensor(size[0])
-        h = torch.tensor(size[1])
-    return dict(size=torch.stack([h.long(), w.long()]))
+    w_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+    h_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+
+    if same_on_batch:
+        w_out = _adapted_uniform((batch_size,), 0, w_out[0], same_on_batch).int()
+        h_out = _adapted_uniform((batch_size,), 0, h_out[0], same_on_batch).int()
+    else:
+        w_out = _adapted_uniform((1,), 0, w_out, same_on_batch).int().squeeze()
+        h_out = _adapted_uniform((1,), 0, h_out, same_on_batch).int().squeeze()
+
+    if not cond_bool.all():
+        # Fallback to center crop
+        in_ratio = float(size[0]) / float(size[1])
+        if (in_ratio < min(ratio)):
+            w_ct = torch.tensor(size[0])
+            h_ct = torch.round(w_ct / min(ratio))
+        elif (in_ratio > max(ratio)):
+            h_ct = torch.tensor(size[1])
+            w_ct = torch.round(h_ct * max(ratio))
+        else:  # whole image
+            w_ct = torch.tensor(size[0])
+            h_ct = torch.tensor(size[1])
+        w_ct = w_ct.int()
+        h_ct = h_ct.int()
+
+        w_out = w_out.where(cond_bool, w_ct)
+        h_out = h_out.where(cond_bool, h_ct)
+
+    return dict(size=torch.stack([w_out, h_out], dim=1))
 
 
 def random_rectangles_params_generator(
@@ -696,8 +736,8 @@ def random_cutmix_generator(
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
     cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
-    cut_height = (cutmix_rate * height).long()
-    cut_width = (cutmix_rate * width).long()
+    cut_height = (cutmix_rate * height).long() - 1
+    cut_width = (cutmix_rate * width).long() - 1
     _gen_shape = (1,)
 
     if same_on_batch:
@@ -705,25 +745,13 @@ def random_cutmix_generator(
         cut_height = cut_height[0]
         cut_width = cut_width[0]
 
+    # Reserve at least 1 pixel for cropping.
     x_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width - 1, same_on_batch).long()
     y_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height - 1, same_on_batch).long()
 
-    bbox = torch.tensor([[
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-    ]]).repeat(batch_size * num_mix, 1, 1)
-
-    crop_src = bbox.clone()
-    crop_src[:, :, 0] += x_start.view(-1, 1)
-    crop_src[:, :, 1] += y_start.view(-1, 1)
-    crop_src[:, 1, 0] += cut_width - 1
-    crop_src[:, 2, 0] += cut_width - 1
-    crop_src[:, 2, 1] += cut_height - 1
-    crop_src[:, 3, 1] += cut_height - 1
+    crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 
     # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
     crop_src = crop_src.view(num_mix, batch_size, 4, 2)

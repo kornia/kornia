@@ -13,6 +13,7 @@ __all__ = [
     "bbox_to_mask",
     "infer_box_shape",
     "validate_bboxes",
+    "bbox_generator"
 ]
 
 
@@ -335,3 +336,59 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         mask_out.append(m_out)
 
     return torch.stack(mask_out, dim=0).float()
+
+
+def bbox_generator(
+    x_start: torch.Tensor, y_start: torch.Tensor, width: torch.Tensor, height: torch.Tensor
+) -> torch.Tensor:
+    """Generate bounding boxes according to the provided start coords, width and height.
+
+    Args:
+        x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        y_start (torch.Tensor): a tensor containing the y coordinates of the bounding boxes to be extracted.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        width (torch.Tensor): widths of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+        height (torch.Tensor): heights of the masked image.
+            Shape must be a scalar tensor or :math:`(B,)`.
+
+    Returns:
+        torch.Tensor: the bounding box tensor.
+
+    Examples:
+        >>> x_start = torch.tensor([0, 1])
+        >>> y_start = torch.tensor([1, 0])
+        >>> width = torch.tensor([5, 3])
+        >>> height = torch.tensor([7, 4])
+        >>> bbox_generator(x_start, y_start, width, height)
+        tensor([[[0, 1],
+                 [4, 1],
+                 [4, 7],
+                 [0, 7]],
+        <BLANKLINE>
+                [[1, 0],
+                 [3, 0],
+                 [3, 3],
+                 [1, 3]]])
+    """
+    assert x_start.shape == y_start.shape and x_start.dim() in [0, 1], \
+        f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
+    assert width.shape == height.shape and width.dim() in [0, 1], \
+        f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
+
+    bbox = torch.tensor([[
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+    ]]).repeat(len(x_start), 1, 1)
+
+    bbox[:, :, 0] += x_start.view(-1, 1)
+    bbox[:, :, 1] += y_start.view(-1, 1)
+    bbox[:, 1, 0] += width
+    bbox[:, 2, 0] += width
+    bbox[:, 2, 1] += height
+    bbox[:, 3, 1] += height
+
+    return bbox
