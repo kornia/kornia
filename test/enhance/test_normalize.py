@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import BaseTester
 
 import torch
 from torch.autograd import gradcheck
@@ -217,3 +218,45 @@ class TestDenormalize:
         expected = (data * std) + mean
 
         assert_allclose(kornia.denormalize(data, mean, std), expected)
+
+
+class TestNormalizeMinMax(BaseTester):
+    def test_smoke(self, device, dtype):
+        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        assert kornia.normalize_min_max(x) is not None
+        assert kornia.enhance.normalize_min_max(x) is not None
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(TypeError):
+            assert kornia.normalize_min_max(0.)
+            assert kornia.normalize_min_max(
+                torch.ones(1, 1, device=device, dtype=dtype), '')
+            assert kornia.normalize_min_max(
+                torch.ones(1, 1, device=device, dtype=dtype), 2., '')
+
+        with pytest.raises(ValueError):
+            assert kornia.normalize_min_max(torch.ones(1, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("input_shape", [
+        (1, 2, 3, 4), (2, 1, 4, 3), (1, 3, 2, 1)])
+    def test_batch(self, device, dtype, input_shape):
+        x = torch.rand(input_shape, device=device, dtype=dtype)
+        assert kornia.normalize_min_max(x).shape == input_shape
+
+    @pytest.mark.parametrize("a_val, b_val", [
+        (1., 2.), (2., 3.), (5., 20.), (40., 1000.)])
+    def test_range(self, device, dtype, a_val, b_val):
+        x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
+        out = kornia.normalize_min_max(x, a=a_val, b=b_val)
+        assert_allclose(out.min(), a_val)
+        assert_allclose(out.max(), b_val)
+
+    def test_jit(self, device, dtype):
+        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        op = kornia.normalize_min_max
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(x), op_jit(x))
+
+    def test_gradcheck(self, device, dtype):
+        x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.normalize_min_max, (x,), raise_exception=True)
