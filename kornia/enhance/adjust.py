@@ -293,7 +293,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
         if isinstance(additions, float):
             additions = torch.tensor(additions)
 
-        assert torch.all((additions < 0.5) * (additions > -0.5)), \
+        assert torch.all((additions <= 0.5) * (additions >= -0.5)), \
             f"The value of 'addition' is between -0.5 and 0.5. Got {additions}."
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:

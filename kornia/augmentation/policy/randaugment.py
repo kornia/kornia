@@ -23,19 +23,21 @@ from kornia.augmentation import AugmentationBase2D
 from ..utils import _adapted_rsampling
 
 IMAGENET_POLICY = OrderedDict(
-    Sharpness=(sharpness, 0.1, 1.9),
+    Sharpness=(sharpness, 0.1, 0.8),
     Solarize=(lambda inp, threshold: solarize(inp, threshold, None), 0, 1),
-    SolarizeAdd=(lambda inp, additions: solarize(inp, 0.5, additions), 0, 0.5),
+    SolarizeAdd=(lambda inp, additions: solarize(inp, 0.5, additions), 0., 0.5),
     Equalize=(equalize, None, None),
-    Posterize=(posterize, 0, 4),
-    Contrast=(adjust_contrast, 0.1, 1.9),
-    Brightness=(adjust_brightness, -0.9, 0.9),
-    Color=(adjust_saturation, 0.1, 1.9),
-    Rotate=(lambda inp, angle: rotate(align_corners=True), -30, 30),
-    ShearX=(lambda inp, shearX: shear(inp, torch.stack(shearX, torch.zeros_like(shearX)), True), -0.3, 0.3),
-    ShearY=(lambda inp, shearY: shear(inp, torch.stack(torch.zeros_like(shearY), shearY), True), -0.3, 0.3),
-    TranslateX=(lambda inp, transX: translate(inp, torch.stack(torch.zeros_like(transX), transX), True), -0.3, 0.3),
-    TranslateY=(lambda inp, transY: translate(inp, torch.stack(torch.zeros_like(transY), transY), True), -0.3, 0.3),
+    Posterize=(posterize, 4, 8),
+    Contrast=(adjust_contrast, 0.3, 1.1),
+    Brightness=(adjust_brightness, -0.6, 0.6),
+    Color=(adjust_saturation, 0.3, 1.0),
+    Rotate=(lambda inp, angle: rotate(inp, angle, align_corners=True), -30, 30),
+    ShearX=(lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True), -0.3, 0.3),
+    ShearY=(lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True), -0.3, 0.3),
+    TranslateX=(lambda inp, transX: translate(
+        inp, torch.stack([torch.zeros_like(transX), transX], dim=-1), True), -0.3, 0.3),
+    TranslateY=(lambda inp, transY: translate(
+        inp, torch.stack([torch.zeros_like(transY), transY], dim=-1), True), -0.3, 0.3),
     Invert=(invert2d, None, None),
     # TODO: Implement below
     AutoContrast=(lambda input: input, None, None),
@@ -99,7 +101,7 @@ class RandAugment(AugmentationBase2D):
     """
 
     def __init__(self, N: int = 2, M: Tuple[int, int] = [5, 30], policy: Union[str, OrderedDict] = 'imagenet',
-                 same_on_batch: bool = False, p: float = 1., p_batch: float = 0.5) -> None:
+                 same_on_batch: bool = False, p: float = 0.8, p_batch: float = 1.) -> None:
         super(RandAugment, self).__init__(return_transform=False, same_on_batch=same_on_batch, p=p, p_batch=p_batch)
         self._MAX_M_ = 30
         self.N = N
