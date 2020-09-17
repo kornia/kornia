@@ -195,7 +195,7 @@ def denormalize(
     return out
 
 
-def normalize_min_max(x: torch.Tensor, a: float = 0., b: float = 1., eps: float = 1e-6) -> torch.Tensor:
+def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1., eps: float = 1e-6) -> torch.Tensor:
     r"""Normalise an image tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
@@ -203,10 +203,12 @@ def normalize_min_max(x: torch.Tensor, a: float = 0., b: float = 1., eps: float 
     .. math::
         y_i = (b - a) * \frac{x_i - \text{min}(x)}{\text{max}(x) - \text{min}(x)} + a
 
+    where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
+
     Args:
         x (torch.Tensor): The image tensor to be normalised with shape :math:`(B, C, H, W)`.
-        a (float): The minimum value for the new range. Default: 0.
-        b (float): The maximum value for the new range. Default: 1.
+        min_val (float): The minimum value for the new range. Default: 0.
+        max_val (float): The maximum value for the new range. Default: 1.
         eps (float): Float number to avoid zero division. Default: 1e-6.
 
     Returns:
@@ -216,11 +218,11 @@ def normalize_min_max(x: torch.Tensor, a: float = 0., b: float = 1., eps: float 
     if not isinstance(x, torch.Tensor):
         raise TypeError(f"data should be a tensor. Got: {type(x)}.")
 
-    if not isinstance(a, float):
-        raise TypeError(f"'a' should be a float. Got: {type(a)}.")
+    if not isinstance(min_val, float):
+        raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")
 
-    if not isinstance(b, float):
-        raise TypeError(f"'b' should be a float. Got: {type(b)}.")
+    if not isinstance(max_val, float):
+        raise TypeError(f"'b' should be a float. Got: {type(max_val)}.")
 
     if len(x.shape) != 4:
         raise ValueError(f"Input shape must be a 4d tensor. Got: {x.shape}.")
@@ -231,6 +233,6 @@ def normalize_min_max(x: torch.Tensor, a: float = 0., b: float = 1., eps: float 
     x_max: torch.Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1, 1)
 
     x_out: torch.Tensor = (
-        (b - a) * (x - x_min) / (x_max - x_min + eps) + a
+        (max_val - min_val) * (x - x_min) / (x_max - x_min + eps) + min_val
     )
     return x_out.expand_as(x)

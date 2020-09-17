@@ -243,13 +243,29 @@ class TestNormalizeMinMax(BaseTester):
         x = torch.rand(input_shape, device=device, dtype=dtype)
         assert kornia.normalize_min_max(x).shape == input_shape
 
-    @pytest.mark.parametrize("a_val, b_val", [
+    @pytest.mark.parametrize("min_val, max_val", [
         (1., 2.), (2., 3.), (5., 20.), (40., 1000.)])
-    def test_range(self, device, dtype, a_val, b_val):
+    def test_range(self, device, dtype, min_val, max_val):
         x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
-        out = kornia.normalize_min_max(x, a=a_val, b=b_val)
-        assert_allclose(out.min(), a_val)
-        assert_allclose(out.max(), b_val)
+        out = kornia.normalize_min_max(x, min_val=min_val, max_val=max_val)
+        assert_allclose(out.min(), min_val)
+        assert_allclose(out.max(), max_val)
+
+    def test_values(self, device, dtype):
+        x = torch.tensor([[[
+            [0., 1., 3.],
+            [-1., 4., 3.],
+            [9., 5., 2.],
+        ]]], device=device, dtype=dtype)
+
+        expected = torch.tensor([[[
+            [-0.8, -0.6, -0.2],
+            [-1., 0., -0.2],
+            [1., 0.2, -0.4],
+        ]]], device=device, dtype=dtype)
+
+        actual = kornia.normalize_min_max(x, min_val=-1., max_val=1.)
+        assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
 
     def test_jit(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
