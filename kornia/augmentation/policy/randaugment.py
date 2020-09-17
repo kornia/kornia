@@ -36,9 +36,9 @@ IMAGENET_POLICY = OrderedDict(
     ShearX=(lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True), -0.3, 0.3),
     ShearY=(lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True), -0.3, 0.3),
     TranslateX=(lambda inp, transX: translate(
-        inp, torch.stack([torch.zeros_like(transX), transX], dim=-1), True), -0.3, 0.3),
+        inp, torch.stack([transX * inp.size(-2), torch.zeros_like(transX)], dim=-1), True), -0.3, 0.3),
     TranslateY=(lambda inp, transY: translate(
-        inp, torch.stack([torch.zeros_like(transY), transY], dim=-1), True), -0.3, 0.3),
+        inp, torch.stack([torch.zeros_like(transY), transY * inp.size(-1)], dim=-1), True), -0.3, 0.3),
     Invert=(invert2d, None, None),
     # TODO: Implement below
     AutoContrast=(lambda input: input, None, None),
