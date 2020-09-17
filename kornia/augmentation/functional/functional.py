@@ -672,6 +672,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     mask = torch.zeros(input.size()).type_as(input)
     values = torch.zeros(input.size()).type_as(input)
 
+    # TODO: use bbox functions instead.
     widths = params['widths']
     heights = params['heights']
     xs = params['xs']

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 import numpy as np
 import torch
@@ -46,16 +46,17 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
 
 
 def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
-    """Converts a PyTorch tensor image to BCHW format.
+    """Convert a PyTorch tensor image to BCHW format.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
             :math:`(B, C, H, W)`.
         color_channel_num (Optional[int]): Color channel of the input tensor.
             If None, it will not alter the input channel.
+            If set, it will move the color channel towards channel first input style.
 
     Returns:
-        torch.Tensor: input tensor of the form :math:`(B, H, W, C)`.
+        torch.Tensor: input tensor of the form :math:`(B, C, H, W)`.
     """
     if not torch.is_tensor(tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
@@ -74,6 +75,54 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
         channel_list.insert(1, channel_list.pop(color_channel_num))
         tensor = tensor.permute(*channel_list)
     return tensor
+
+
+def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
+    """Convert a PyTorch tensor image to BCDHW format.
+
+    Args:
+        tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
+            :math:`(B, C, D, H, W)`.
+        color_channel_num (Optional[int]): Color channel of the input tensor.
+            If None, it will not alter the input channel.
+            If set, it will move the color channel towards channel first input style.
+
+    Returns:
+        torch.Tensor: input tensor of the form :math:`(B, C, D, H, W)`.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+
+    if len(tensor.shape) > 5 or len(tensor.shape) < 3:
+        raise ValueError(f"Input size must be a three, four or five dimensional tensor. Got {tensor.shape}")
+
+    if len(tensor.shape) == 3:
+        tensor = tensor.unsqueeze(0)
+
+    if len(tensor.shape) == 4:
+        tensor = tensor.unsqueeze(0)
+
+    if color_channel_num is not None and color_channel_num != 1:
+        channel_list = [0, 1, 2, 3]
+        channel_list.insert(1, channel_list.pop(color_channel_num))
+        tensor = tensor.permute(*channel_list)
+    return tensor
+
+
+def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List,
+                          min: Optional[float] = None, max: Optional[float] = None) -> None:
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+
+    Args:
+        input: torch.Tensor.
+        accepted_dtypes: List. e.g. [torch.float32, torch.float64].
+        min (float, optional): min value of the tensor.
+        max (float, optional): max value of the tensor.
+    """
+    if input.dtype not in accepted_dtypes:
+        raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}.")
+    if input.min() < min or input.max() > max:
+        raise ValueError(f"Expected input in range of [{min}, {max}]. Got [{input.min()}, {input.max()}].")
 
 
 def tensor_to_image(tensor: torch.Tensor) -> np.array:

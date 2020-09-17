@@ -31,6 +31,9 @@ from .mix_augmentation import (
     RandomMixUp,
     RandomCutMix
 )
+from .policy import (
+    RandAugment,
+)
 from kornia.enhance.normalize import (
     Normalize,
     Denormalize
@@ -64,4 +67,5 @@ __all__ = [
     "RandomHorizontalFlip3D",
     "RandomRotation3D",
     "RandomAffine3D"
+    "RandAugment"
 ]

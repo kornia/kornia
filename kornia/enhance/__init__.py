@@ -24,7 +24,8 @@ from .adjust import (
 )
 from .adjust import (
     adjust_brightness, adjust_contrast, adjust_gamma, adjust_hue, adjust_saturation,
-    adjust_hue_raw, adjust_saturation_raw, solarize, equalize, equalize3d, posterize, sharpness
+    adjust_hue_raw, adjust_saturation_raw, solarize, equalize, equalize3d, posterize, sharpness,
+    invert2d, invert3d
 )
 
 
@@ -48,6 +49,8 @@ __all__ = [
     "equalize3d",
     "posterize",
     "sharpness",
+    "invert2d",
+    "invert3d",
     "add_weighted",
     "AddWeighted",
     "ZCAWhitening",

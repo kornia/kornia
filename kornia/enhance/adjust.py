@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.augmentation.utils import _transform_input3d
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import _to_bchw, _to_bcdhw, _validate_input_dtype
 from kornia.constants import pi
 
 
@@ -464,6 +463,7 @@ def _scale_channel(im):
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
+
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
@@ -471,7 +471,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         input (torch.Tensor): image tensor with shapes like :math:(C, H, W) or :math:(B, C, H, W) to equalize.
 
     Returns:
-        torch.Tensor: Sharpened image or images.
+        torch.Tensor: Equalized image or images in :math:(B, C, D, H, W).
     """
     input = _to_bchw(input)
 
@@ -491,10 +491,10 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-    input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes :math:(D, H, W), :math:(C, D, H, W) or :math:(B, C, D, H, W).
 
     Returns:
-    torch.Tensor: Sharpened image or images with same shape as the input.
+        torch.Tensor: Equalized image or images in :math:(B, C, D, H, W).
     """
     input = _transform_input3d(input)
 
@@ -506,6 +506,48 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         res.append(scaled_input)
 
     return torch.stack(res)
+
+
+def _invert(input: torch.Tensor) -> torch.Tensor:
+    r"""Invert color of the input 2D tensor.
+
+    Args:
+        input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+
+    Returns:
+        torch.Tensor: Inverted image or images.
+    """
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64], min=0., max=1.)
+    return 1. - input
+
+
+def invert2d(input: torch.Tensor) -> torch.Tensor:
+    r"""Invert color of the input 2D tensor.
+
+    Args:
+        input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+
+    Returns:
+        torch.Tensor: Inverted image or images.
+    """
+
+    input = _to_bchw(input)
+
+    return _invert(input)
+
+
+def invert3d(input: torch.Tensor) -> torch.Tensor:
+    r"""Invert color of the input 3D tensor.
+
+    Args:
+        input (torch.Tensor): image tensor with shapes of :math:(D, H, W), :math:(C, D, H, W) or :math:(B, C, D, H, W).
+
+    Returns:
+        torch.Tensor: Inverted image or images in :math:(B, C, D, H, W).
+    """
+    input = _to_bcdhw(input)
+
+    return _invert(input)
 
 
 class AdjustSaturation(nn.Module):

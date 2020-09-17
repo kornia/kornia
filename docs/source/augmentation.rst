@@ -156,6 +156,13 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomMixUp
 .. autoclass:: RandomCutMix
 
+Augmentation Policies
+------------
+
+Set of operators to perform pre-defined data augmentation on 2D image tensors.
+
+.. autoclass:: RandAugment
+
 Transforms3D
 ------------
 
