@@ -122,7 +122,7 @@ def _adapted_rsampling(
     By default, same_on_batch is set to False.
     """
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0])
+        return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
     else:
         return dist.rsample(shape)
 
