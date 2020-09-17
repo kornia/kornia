@@ -232,6 +232,9 @@ class RandomErasing(AugmentationBase2D):
         p (float): probability that the random erasing operation will be performed. Default value is 0.5.
         scale (Tuple[float, float]): range of proportion of erased area against input image.
         ratio (Tuple[float, float]): range of aspect ratio of erased area.
+        value (float): erasing value. Default is 0.
+            If a single int, it is used to erase all pixels.
+            If a tuple of length 3, it is used to erase R, G, B channels respectively.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Examples:
@@ -245,6 +248,7 @@ class RandomErasing(AugmentationBase2D):
     """
 
     # Note: Extra params, inplace=False in Torchvision.
+    # TODO: value: If a str of ‘random’, erasing each pixel with random values.
     def __init__(
             self, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
             ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),

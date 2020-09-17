@@ -915,6 +915,28 @@ class TestRectangleRandomErasing:
         print(f._params)
         assert (res[0] == res[1]).all()
 
+    @pytest.mark.parametrize("value", [99., (88., 66., 44.)])
+    def test_value(self, value, device, dtype):
+        torch.manual_seed(10)
+        input = torch.arange(10, device=device, dtype=dtype).reshape(2, 5).repeat(1, 3, 1, 1)
+        f = RandomErasing((0.3, 0.3), (0.3, 0.3), value=value, same_on_batch=False, p=1.)
+        res = f(input)
+        if isinstance(value, (float,)):
+            output = torch.tensor([[[[0., 1., 2., 3., 4.],
+                                     [99., 99., 99., 8., 9.]],
+                                    [[0., 1., 2., 3., 4.],
+                                     [99., 99., 99., 8., 9.]],
+                                    [[0., 1., 2., 3., 4.],
+                                     [99., 99., 99., 8., 9.]]]], device=device, dtype=dtype)
+        if isinstance(value, (tuple,)):
+            output = torch.tensor([[[[0., 1., 2., 3., 4.],
+                                     [88., 88., 88., 8., 9.]],
+                                    [[0., 1., 2., 3., 4.],
+                                     [66., 66., 66., 8., 9.]],
+                                    [[0., 1., 2., 3., 4.],
+                                     [44., 44., 44., 8., 9.]]]], device=device, dtype=dtype)
+        assert_allclose(res, output)
+
     def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)

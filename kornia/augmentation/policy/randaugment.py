@@ -21,6 +21,7 @@ from kornia.geometry import (
 )
 from kornia.augmentation import AugmentationBase2D
 from ..utils import _adapted_rsampling
+from .utils import _cutout
 
 IMAGENET_POLICY = OrderedDict(
     Sharpness=(sharpness, 0.1, 0.8),
@@ -41,7 +42,7 @@ IMAGENET_POLICY = OrderedDict(
     Invert=(invert2d, None, None),
     # TODO: Implement below
     AutoContrast=(lambda input: input, None, None),
-    Cutout=(lambda input: input, None, None),
+    Cutout=(_cutout, 0., .3),
 )
 
 
@@ -118,7 +119,7 @@ class RandAugment(AugmentationBase2D):
             # TODO: validate policy format
             self.policy = policy
         else:
-            raise ValueError(f"Policy must be either a string or an OrderedDict of augmentations.")
+            raise ValueError(f"Policy must be either a string or an OrderedDict of augmentations. Got {policy}.")
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         m = _adapted_rsampling((batch_shape[0],), self.M, self.same_on_batch)

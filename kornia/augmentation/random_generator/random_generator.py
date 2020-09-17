@@ -396,7 +396,7 @@ def random_rectangles_params_generator(
     width: int,
     scale: torch.Tensor,
     ratio: torch.Tensor,
-    value: float = 0.,
+    value: Union[float, Tuple] = 0.,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```erasing``` transformation for erasing transform.
@@ -448,7 +448,7 @@ def random_rectangles_params_generator(
                 heights=heights,
                 xs=xs,
                 ys=ys,
-                values=torch.tensor([value] * batch_size))
+                values=torch.tensor([value] * batch_size).view(batch_size, -1))
 
 
 def center_crop_generator(
