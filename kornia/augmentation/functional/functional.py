@@ -670,8 +670,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    mask = torch.zeros(input.size()).type_as(input)
-    values = torch.zeros(input.size()).type_as(input)
+    values = (torch.ones(input.size()) * params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)).type_as(input)
 
     bbox = bbox_generator(params['xs'], params['ys'], params['widths'] - 1, params['heights'] - 1)
     mask = bbox_to_mask(bbox, input.size(3), input.size(2))
