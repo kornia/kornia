@@ -1,1 +1,1 @@
-from randaugment import RandAugment
+from .randaugment import RandAugment
