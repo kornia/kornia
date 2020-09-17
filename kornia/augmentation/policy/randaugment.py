@@ -64,6 +64,9 @@ class RandAugment(AugmentationBase2D):
     Returns:
         torch.Tensor: The augmented version of `image`.
 
+    Note:
+        To maximize the efficiency, same policy will be applied in each batch even if same_on_batch == False.
+
     Example:
         >>> _ = torch.manual_seed(0)
         >>> randaug = RandAugment()
