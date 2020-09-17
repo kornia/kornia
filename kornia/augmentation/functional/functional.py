@@ -16,6 +16,7 @@ from kornia.geometry import (
     hflip,
     vflip,
     deg2rad,
+    bbox_generator,
     bbox_to_mask,
     infer_box_shape
 )
@@ -672,20 +673,10 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     mask = torch.zeros(input.size()).type_as(input)
     values = torch.zeros(input.size()).type_as(input)
 
-    # TODO: use bbox functions instead.
-    widths = params['widths']
-    heights = params['heights']
-    xs = params['xs']
-    ys = params['ys']
-    vs = params['values']
-    for i_elem in range(input.size()[0]):
-        h = widths[i_elem].item()
-        w = heights[i_elem].item()
-        y = ys[i_elem].item()
-        x = xs[i_elem].item()
-        v = vs[i_elem].item()
-        mask[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = 1.
-        values[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = v
+    bbox = bbox_generator(params['xs'], params['ys'], params['widths'] - 1, params['heights'] - 1)
+    mask = bbox_to_mask(bbox, input.size(3), input.size(2))
+    # BHW -> BCHW
+    mask = mask.unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
     transformed = torch.where(mask == 1., values, input)
     return transformed
 
