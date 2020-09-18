@@ -1,5 +1,20 @@
 import torch
 
+from kornia.enhance import (
+    adjust_brightness,
+    adjust_contrast,
+    adjust_saturation,
+    sharpness,
+    solarize,
+    equalize,
+    posterize,
+    invert2d,
+)
+from kornia.geometry import (
+    translate,
+    shear,
+    rotate
+)
 from ..functional import apply_erase_rectangles
 from ..random_generator import random_rectangles_params_generator
 
@@ -27,3 +42,26 @@ def _cutout(input: torch.Tensor, percentage: float = 0.2) -> torch.Tensor:
         torch.tensor([1., 1.]), value=(125, 123, 114) if c == 3 else 125, same_on_batch=True)
     output = apply_erase_rectangles(input, params)
     return output
+
+
+POLICY_FUNCS = {
+    # TODO: Implement AutoContrast
+    'AutoContrast': lambda input: input,
+    'Equalize': equalize,
+    'Invert': invert2d,
+    'Rotate': lambda inp, angle: rotate(inp, angle, align_corners=True),
+    'Posterize': posterize,
+    'Solarize': lambda inp, threshold: solarize(inp, threshold, None),
+    'SolarizeAdd': lambda inp, additions: solarize(inp, 0.5, additions),
+    'Color': adjust_saturation,
+    'Contrast': adjust_contrast,
+    'Brightness': adjust_brightness,
+    'Sharpness': sharpness,
+    'ShearX': lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True),
+    'ShearY': lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True),
+    'TranslateX': lambda inp, transX: translate(
+        inp, torch.stack([transX * inp.size(-2), torch.zeros_like(transX)], dim=-1), True),
+    'TranslateY': lambda inp, transY: translate(
+        inp, torch.stack([torch.zeros_like(transY), transY * inp.size(-1)], dim=-1), True),
+    'Cutout': _cutout,
+}

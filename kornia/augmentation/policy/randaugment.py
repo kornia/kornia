@@ -4,45 +4,28 @@ from collections import OrderedDict
 import torch
 from torch.distributions import Uniform
 
-from kornia.enhance import (
-    adjust_brightness,
-    adjust_contrast,
-    adjust_saturation,
-    sharpness,
-    solarize,
-    equalize,
-    posterize,
-    invert2d,
-)
-from kornia.geometry import (
-    translate,
-    shear,
-    rotate
-)
 from kornia.augmentation import AugmentationBase2D
 from ..utils import _adapted_rsampling
-from .utils import _cutout
+from .utils import POLICY_FUNCS
 
-IMAGENET_POLICY = OrderedDict(
-    Sharpness=(sharpness, 0.1, 0.8),
-    Solarize=(lambda inp, threshold: solarize(inp, threshold, None), 0, 1),
-    SolarizeAdd=(lambda inp, additions: solarize(inp, 0.5, additions), 0., 0.5),
-    Equalize=(equalize, None, None),
-    Posterize=(posterize, 4, 8),
-    Contrast=(adjust_contrast, 0.3, 1.1),
-    Brightness=(adjust_brightness, -0.6, 0.6),
-    Color=(adjust_saturation, 0.3, 1.0),
-    Rotate=(lambda inp, angle: rotate(inp, angle, align_corners=True), -30, 30),
-    ShearX=(lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True), -0.3, 0.3),
-    ShearY=(lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True), -0.3, 0.3),
-    TranslateX=(lambda inp, transX: translate(
-        inp, torch.stack([transX * inp.size(-2), torch.zeros_like(transX)], dim=-1), True), -0.3, 0.3),
-    TranslateY=(lambda inp, transY: translate(
-        inp, torch.stack([torch.zeros_like(transY), transY * inp.size(-1)], dim=-1), True), -0.3, 0.3),
-    Invert=(invert2d, None, None),
-    # TODO: Implement below
-    AutoContrast=(lambda input: input, None, None),
-    Cutout=(_cutout, 0., .3),
+# {policy_name: (min_val, max_val)}
+IMAGENET_RANDAUG_POLICY = OrderedDict(
+    Sharpness=(0.1, 0.8),
+    Solarize=(0, 1),
+    SolarizeAdd=(0., 0.5),
+    Equalize=(None, None),
+    Posterize=(4, 8),
+    Contrast=(0.3, 1.1),
+    Brightness=(-0.6, 0.6),
+    Color=(0.3, 1.0),
+    Rotate=(-30, 30),
+    ShearX=(-0.3, 0.3),
+    ShearY=(-0.3, 0.3),
+    TranslateX=(-0.3, 0.3),
+    TranslateY=(-0.3, 0.3),
+    Invert=(None, None),
+    AutoContrast=(None, None),
+    Cutout=(0., .3),
 )
 
 
@@ -75,30 +58,30 @@ class RandAugment(AugmentationBase2D):
         >>> randaug = RandAugment()
         >>> input = torch.randn(2, 3, 3, 5)
         >>> randaug(input)
-        tensor([[[[0.0571, 0.0571, 0.0571, 0.0571, 0.0571],
-                  [0.0571, 0.0571, 0.0571, 0.0000, 0.0571],
-                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+        tensor([[[[0.0000, 0.0000, 0.0000, 0.0000, 0.6351],
+                  [0.5178, 0.0000, 0.0000, 0.2412, 0.0000],
+                  [0.2619, 0.2306, 0.0897, 0.9261, 0.8357]],
         <BLANKLINE>
-                 [[0.0571, 0.0571, 0.0000, 0.0571, 0.0571],
-                  [0.0571, 0.0000, 0.0571, 0.0571, 0.0571],
-                  [0.0000, 0.0571, 0.0000, 0.0000, 0.0571]],
+                 [[0.0000, 0.0000, 0.0000, 0.4240, 0.5938],
+                  [0.4481, 0.0000, 0.0000, 1.0000, 0.5614],
+                  [0.0000, 0.0000, 0.1373, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.0571, 0.0000, 0.0000, 0.0000, 0.0571],
-                  [0.0000, 0.0000, 0.0000, 0.0571, 0.0000],
-                  [0.0571, 0.0571, 0.0571, 0.0000, 0.0571]]],
+                 [[0.7081, 0.0000, 0.0000, 0.0236, 0.0000],
+                  [0.1859, 0.3290, 0.0841, 0.4795, 0.3301],
+                  [0.0000, 0.5930, 0.0000, 0.0393, 0.3913]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[0.3210, 0.5333, 0.3210, 0.3210, 0.9579],
-                  [0.1087, 0.1087, 0.7456, 0.5333, 0.5333],
-                  [0.5333, 0.5333, 0.7456, 0.5333, 0.3210]],
+                [[[1.0000, 0.0000, 0.0000, 0.0000, 0.7129],
+                  [0.8619, 0.1452, 0.0000, 0.0000, 0.4437],
+                  [0.0000, 0.0000, 0.6077, 1.0000, 1.0000]],
         <BLANKLINE>
-                 [[0.5333, 0.7456, 0.7456, 0.5333, 0.5333],
-                  [0.9579, 0.1087, 0.3210, 0.5333, 0.5333],
-                  [0.5333, 0.3210, 0.3210, 0.5333, 0.1087]],
+                 [[0.0000, 0.0000, 1.0000, 0.0000, 0.0000],
+                  [0.7514, 0.9072, 1.0000, 0.0000, 1.0000],
+                  [0.0000, 0.2740, 0.0000, 0.0000, 0.9545]],
         <BLANKLINE>
-                 [[0.3210, 0.9579, 0.7456, 0.9579, 0.5333],
-                  [0.7456, 0.7456, 0.9579, 0.5333, 0.7456],
-                  [0.7456, 0.1087, 0.5333, 0.3210, 0.1087]]]])
+                 [[0.3222, 1.0000, 0.6464, 0.0000, 0.0000],
+                  [1.0000, 0.0000, 0.7892, 1.0000, 0.0000],
+                  [0.0000, 0.0812, 0.3608, 0.2017, 0.0628]]]])
     """
 
     def __init__(self, N: int = 2, M: Tuple[int, int] = [5, 30], policy: Union[str, OrderedDict] = 'imagenet',
@@ -112,7 +95,7 @@ class RandAugment(AugmentationBase2D):
     def load_policy(self, policy: Union[str, OrderedDict] = 'imagenet') -> None:
         if isinstance(policy, (str)):
             if policy == 'imagenet':
-                self.policy = IMAGENET_POLICY
+                self.policy = IMAGENET_RANDAUG_POLICY
             else:
                 raise ValueError(f"Policy for {policy} is not yet defined.")
         elif isinstance(policy, (OrderedDict)):
@@ -131,10 +114,12 @@ class RandAugment(AugmentationBase2D):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         policy = [list(self.policy.items())[i] for i in params['policy_idx']]
-        for name, (func, min_val, max_val) in policy:
+        for name, (min_val, max_val) in policy:
+            func = POLICY_FUNCS[name]
             if min_val is None and max_val is None:
                 input = func(input)
             else:
+                # Ref: https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py#261
                 val = (params['m'] / self._MAX_M_) * (max_val - min_val) + min_val
                 input = func(input, val)
         return input
