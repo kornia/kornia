@@ -227,15 +227,18 @@ class TestNormalizeMinMax(BaseTester):
         assert kornia.enhance.normalize_min_max(x) is not None
 
     def test_exception(self, device, dtype):
+        x = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         with pytest.raises(TypeError):
             assert kornia.normalize_min_max(0.)
-            assert kornia.normalize_min_max(
-                torch.ones(1, 1, device=device, dtype=dtype), '')
-            assert kornia.normalize_min_max(
-                torch.ones(1, 1, device=device, dtype=dtype), 2., '')
 
         with pytest.raises(ValueError):
-            assert kornia.normalize_min_max(torch.ones(1, device=device, dtype=dtype))
+            assert kornia.normalize_min_max(x[0])
+
+        with pytest.raises(TypeError):
+            assert kornia.normalize_min_max(x, '', '')
+
+        with pytest.raises(TypeError):
+            assert kornia.normalize_min_max(x, 2., '')
 
     @pytest.mark.parametrize("input_shape", [
         (1, 2, 3, 4), (2, 1, 4, 3), (1, 3, 2, 1)])
