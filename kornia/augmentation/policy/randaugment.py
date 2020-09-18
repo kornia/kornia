@@ -1,5 +1,4 @@
-from typing import Callable, Tuple, Union, Optional, Dict, cast
-from collections import OrderedDict
+from typing import Tuple, Union, Dict
 
 import torch
 from torch.distributions import Uniform
@@ -9,23 +8,23 @@ from ..utils import _adapted_rsampling
 from .utils import POLICY_FUNCS
 
 # {policy_name: (min_val, max_val)}
-IMAGENET_RANDAUG_POLICY = OrderedDict(
-    Sharpness=(0.1, 0.8),
-    Solarize=(0, 1),
-    SolarizeAdd=(0., 0.5),
-    Equalize=(None, None),
-    Posterize=(4, 8),
-    Contrast=(0.3, 1.1),
-    Brightness=(-0.6, 0.6),
-    Color=(0.3, 1.0),
-    Rotate=(-30, 30),
-    ShearX=(-0.3, 0.3),
-    ShearY=(-0.3, 0.3),
-    TranslateX=(-0.3, 0.3),
-    TranslateY=(-0.3, 0.3),
-    Invert=(None, None),
-    AutoContrast=(None, None),
-    Cutout=(0., .3),
+IMAGENET_RANDAUG_POLICY = dict(
+    sharpness=(0.1, 0.8),
+    solarize=(0, 1),
+    solarizeAdd=(0., 0.5),
+    equalize=(None, None),
+    posterize=(4, 8),
+    contrast=(0.3, 1.1),
+    brightness=(-0.6, 0.6),
+    color=(0.3, 1.0),
+    rotate=(-30, 30),
+    shearX=(-0.3, 0.3),
+    shearY=(-0.3, 0.3),
+    translateX=(-0.3, 0.3),
+    translateY=(-0.3, 0.3),
+    invert=(None, None),
+    autocontrast=(None, None),
+    cutout=(0., .3),
 )
 
 
@@ -84,7 +83,7 @@ class RandAugment(AugmentationBase2D):
                   [0.0000, 0.0812, 0.3608, 0.2017, 0.0628]]]])
     """
 
-    def __init__(self, N: int = 2, M: Tuple[int, int] = [5, 30], policy: Union[str, OrderedDict] = 'imagenet',
+    def __init__(self, N: int = 2, M: Tuple[int, int] = [5, 30], policy: Union[str, dict] = 'imagenet',
                  same_on_batch: bool = False, p: float = 0.8, p_batch: float = 1.) -> None:
         super(RandAugment, self).__init__(return_transform=False, same_on_batch=same_on_batch, p=p, p_batch=p_batch)
         self._MAX_M_ = 30
@@ -92,17 +91,17 @@ class RandAugment(AugmentationBase2D):
         self.M = Uniform(M[0], M[1])
         self.load_policy(policy)
 
-    def load_policy(self, policy: Union[str, OrderedDict] = 'imagenet') -> None:
+    def load_policy(self, policy: Union[str, dict] = 'imagenet') -> None:
         if isinstance(policy, (str)):
             if policy == 'imagenet':
                 self.policy = IMAGENET_RANDAUG_POLICY
             else:
                 raise ValueError(f"Policy for {policy} is not yet defined.")
-        elif isinstance(policy, (OrderedDict)):
+        elif isinstance(policy, (dict)):
             # TODO: validate policy format
             self.policy = policy
         else:
-            raise ValueError(f"Policy must be either a string or an OrderedDict of augmentations. Got {policy}.")
+            raise ValueError(f"Policy must be either a string or an dict of augmentations. Got {policy}.")
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         m = _adapted_rsampling((batch_shape[0],), self.M, self.same_on_batch)

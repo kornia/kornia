@@ -1,3 +1,4 @@
+from typing import Optional
 import torch
 
 from kornia.enhance import (
@@ -46,22 +47,63 @@ def _cutout(input: torch.Tensor, percentage: float = 0.2) -> torch.Tensor:
 
 POLICY_FUNCS = {
     # TODO: Implement AutoContrast
-    'AutoContrast': lambda input: input,
-    'Equalize': equalize,
-    'Invert': invert2d,
-    'Rotate': lambda inp, angle: rotate(inp, angle, align_corners=True),
-    'Posterize': posterize,
-    'Solarize': lambda inp, threshold: solarize(inp, threshold, None),
-    'SolarizeAdd': lambda inp, additions: solarize(inp, 0.5, additions),
-    'Color': adjust_saturation,
-    'Contrast': adjust_contrast,
-    'Brightness': adjust_brightness,
-    'Sharpness': sharpness,
-    'ShearX': lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True),
-    'ShearY': lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True),
-    'TranslateX': lambda inp, transX: translate(
+    'autocontrast': lambda input: input,
+    'equalize': equalize,
+    'invert': invert2d,
+    'rotate': lambda inp, angle: rotate(inp, angle, align_corners=True),
+    'posterize': posterize,
+    'solarize': lambda inp, threshold: solarize(inp, threshold, None),
+    'solarizeAdd': lambda inp, additions: solarize(inp, 0.5, additions),
+    'color': adjust_saturation,
+    'contrast': adjust_contrast,
+    'brightness': adjust_brightness,
+    'sharpness': sharpness,
+    'shearX': lambda inp, shearX: shear(inp, torch.stack([shearX, torch.zeros_like(shearX)], dim=-1), True),
+    'shearY': lambda inp, shearY: shear(inp, torch.stack([torch.zeros_like(shearY), shearY], dim=-1), True),
+    'translateX': lambda inp, transX: translate(
         inp, torch.stack([transX * inp.size(-2), torch.zeros_like(transX)], dim=-1), True),
-    'TranslateY': lambda inp, transY: translate(
+    'translateY': lambda inp, transY: translate(
         inp, torch.stack([torch.zeros_like(transY), transY * inp.size(-1)], dim=-1), True),
-    'Cutout': _cutout,
+    'cutout': _cutout,
 }
+
+
+class SubPolicy(object):
+    """Subpolicy for auto augmentation."""
+    def __init__(self, p1, operation1, magnitude_idx1, p2, operation2, magnitude_idx2):
+        ranges = {
+            "shearX": torch.linspace(-0.3, 0.3, 10),
+            "shearY": torch.linspace(-0.3, 0.3, 10),
+            "translateX": torch.linspace(-150 / 331, 150 / 331, 10),
+            "translateY": torch.linspace(-150 / 331, 150 / 331, 10),
+            "rotate": torch.linspace(-30, 30, 10),
+            "color": torch.linspace(0.3, 1.0, 10),
+            "posterize": torch.round(torch.linspace(8, 4, 10)).to(torch.int),
+            "solarize": torch.linspace(1., 0., 10),
+            "contrast": torch.linspace(0.3, 1.1, 10),
+            "sharpness": torch.linspace(0.1, 0.8, 10),
+            "brightness": torch.linspace(-0.6, 0.6, 10),
+            "autocontrast": [None] * 10,
+            "equalize": [None] * 10,
+            "invert": [None] * 10
+        }
+
+        self.p1 = p1
+        self.operation1 = POLICY_FUNCS[operation1]
+        self.magnitude1 = ranges[operation1][magnitude_idx1]
+
+        self.p2 = p2
+        self.operation2 = POLICY_FUNCS[operation2]
+        self.magnitude2 = ranges[operation2][magnitude_idx2]
+
+    def to_apply(self) -> torch.Tensor:
+        return torch.tensor([torch.rand(1).item() < self.p1, torch.rand(1).item() < self.p2])
+
+    def __call__(self, input: torch.Tensor, to_apply: Optional[torch.Tensor] = None):
+        if to_apply is None:
+            to_apply = self.to_apply()
+        if to_apply[0]:
+            input = self.operation1(input, self.magnitude1) if self.magnitude1 is not None else self.operation1(input)
+        if to_apply[1]:
+            input = self.operation2(input, self.magnitude2) if self.magnitude2 is not None else self.operation2(input)
+        return input
