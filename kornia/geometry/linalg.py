@@ -211,12 +211,12 @@ def transform_points(trans_01: torch.Tensor,
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
     trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
     # We expand trans_01 to match the dimensions needed for bmm
-    trans_01 = torch.repeat_interleave(trans_01, repeats=points_1.shape[0]//trans_01.shape[0], dim=0)
+    trans_01 = torch.repeat_interleave(trans_01, repeats=points_1.shape[0] // trans_01.shape[0], dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # transform coordinates
     points_0_h = torch.bmm(points_1_h,
-                           trans_01.permute(0,2,1))
+                           trans_01.permute(0, 2, 1))
     points_0_h = torch.squeeze(points_0_h, dim=-1)
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
@@ -225,6 +225,7 @@ def transform_points(trans_01: torch.Tensor,
     shape_inp[-1] = points_0.shape[-1]
     points_0 = points_0.reshape(shape_inp)
     return points_0
+
 
 def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
     r""" Function that applies a transformation matrix to a box or batch of boxes. Boxes must
