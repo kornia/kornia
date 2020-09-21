@@ -6,14 +6,12 @@ import torch.nn as nn
 
 from torch.distributions import Bernoulli
 
+from kornia.utils.image import _to_bchw, _to_bcdhw, _validate_input_dtype
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
     _infer_batch_shape,
     _infer_batch_shape3d,
-    _transform_input,
-    _transform_input3d,
-    _validate_input_dtype,
     _adapted_sampling
 )
 
@@ -219,7 +217,7 @@ class AugmentationBase2D(_AugmentationBase):
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-        return _transform_input(input)
+        return _to_bchw(input)
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
@@ -246,7 +244,7 @@ class AugmentationBase3D(_AugmentationBase):
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-        return _transform_input3d(input)
+        return _to_bcdhw(input)
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
@@ -273,7 +271,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-        return _transform_input(input)
+        return _to_bchw(input)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,     # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:   # type: ignore

@@ -13,11 +13,8 @@ from kornia.geometry import (
     deg2rad
 )
 
+from kornia.utils.image import _to_bcdhw, _validate_input_dtype
 from .. import random_generator as rg
-from ..utils import (
-    _transform_input3d,
-    _validate_input_dtype
-)
 
 from .__temp__ import __deprecation_warning
 
@@ -29,7 +26,7 @@ def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional.apply_hflip3d` for details.
     """
     __deprecation_warning("random_hflip3d", "kornia.augmentation.RandomHorizontalFlip3D")
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -48,7 +45,7 @@ def random_vflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional3d.apply_vflip3d` for details.
     """
     __deprecation_warning("random_vflip3d", "kornia.augmentation.RandomVerticalFlip3D")
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -67,7 +64,7 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     See :func:`~kornia.augmentation.functional3d.apply_dflip3d` for details.
     """
     __deprecation_warning("random_dflip3d", "kornia.augmentation.RandomDepthicalFlip3D")
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     batch_size, _, d, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -91,7 +88,7 @@ def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The horizontal flipped input
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-1])
@@ -107,7 +104,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     w: int = input.shape[-1]
@@ -131,7 +128,7 @@ def apply_vflip3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The vertical flipped input
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-2])
@@ -147,7 +144,7 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     h: int = input.shape[-2]
@@ -171,7 +168,7 @@ def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The depthical flipped input.
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-3])
@@ -186,7 +183,7 @@ def compute_intensity_transformation3d(input: torch.Tensor):
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`. Returns identity transformations.
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     identity: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     return identity
@@ -202,7 +199,7 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     d: int = input.shape[-3]
@@ -241,7 +238,7 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     # arrange input data
@@ -281,7 +278,7 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform = get_affine_matrix3d(
         params['translations'], params['center'], params['scale'], params['angles'],
@@ -308,7 +305,7 @@ def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     Returns:
         torch.Tensor: The cropped input
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     yaw: torch.Tensor = params["yaw"].type_as(input)
     pitch: torch.Tensor = params["pitch"].type_as(input)
@@ -335,7 +332,7 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     yaw: torch.Tensor = params["yaw"].type_as(input)
     pitch: torch.Tensor = params["pitch"].type_as(input)

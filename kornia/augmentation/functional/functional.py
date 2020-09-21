@@ -35,11 +35,10 @@ from kornia.enhance import (
 from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
+from kornia.utils.image import _to_bchw, _validate_input_dtype
 from .. import random_generator as rg
 from ..utils import (
-    _transform_input,
     _validate_input_shape,
-    _validate_input_dtype,
     _range_bound,
     _shape_validation
 )
@@ -54,7 +53,7 @@ def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.functional.apply_hflip` for details.
     """
     __deprecation_warning("random_hflip", "kornia.augmentation.RandomHorizontalFlip")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -73,7 +72,7 @@ def random_vflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = F
     See :func:`~kornia.augmentation.functional.apply_vflip` for details.
     """
     __deprecation_warning("random_vflip", "kornia.augmentation.RandomVerticalFlip")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -96,7 +95,7 @@ def color_jitter(input: torch.Tensor, brightness: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.functional.apply_color_jitter` for details.
     """
     __deprecation_warning("color_jitter", "kornia.augmentation.ColorJitter")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, h, w = input.size()
     _brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
     _contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
@@ -115,7 +114,7 @@ def random_grayscale(input: torch.Tensor, p: float = 0.5, return_transform: bool
     See :func:`~kornia.augmentation.functional.apply_grayscale` for details.
     """
     __deprecation_warning("random_grayscale", "kornia.augmentation.RandomGrayscale")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, h, w = input.size()
     output = input.clone()
     to_apply = rg.random_prob_generator(batch_size, p=p)
@@ -135,7 +134,7 @@ def random_perspective(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_perspective` for details.
     """
     __deprecation_warning("random_perspective", "kornia.augmentation.RandomPerspective")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, height, width = input.size()
     output = input.clone()
     distortion_scale =  \
@@ -165,7 +164,7 @@ def random_affine(input: torch.Tensor,
     See :func:`~kornia.augmentation.functional.apply_affine` for details.
     """
     __deprecation_warning("random_affine", "kornia.augmentation.RandomAffine")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, height, width = input.size()
 
     _degrees: torch.Tensor = _range_bound(degrees, 'degrees', 0, (-360, 360))
@@ -216,7 +215,7 @@ def random_rectangle_erase(
     See :func:`~kornia.augmentation.functional.apply_erase_rectangles` for details.
     """
     __deprecation_warning("random_rectangle_erase", "kornia.augmentation.RandomRectangleErase")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, h, w = input.size()
     _scale: torch.Tensor = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
     _ratio: torch.Tensor = ratio if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
@@ -239,7 +238,7 @@ def random_rotation(input: torch.Tensor, degrees: Union[torch.Tensor, float, Tup
     See :func:`~kornia.augmentation.functional.apply_rotation` for details.
     """
     __deprecation_warning("random_rotation", "kornia.augmentation.RandomRotation")
-    input = _transform_input(input)
+    input = _to_bchw(input)
     batch_size, _, _, _ = input.size()
     _degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
     params = rg.random_rotation_generator(batch_size, degrees=_degrees)
@@ -261,7 +260,7 @@ def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The horizontally flipped input
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return hflip(input)
@@ -276,7 +275,7 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
@@ -297,7 +296,7 @@ def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The vertically flipped input
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return vflip(input)
@@ -312,7 +311,7 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     h: int = input.shape[-2]
@@ -345,7 +344,7 @@ def apply_color_jitter(
     """
     # TODO: params validation
 
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transforms = [
@@ -372,7 +371,7 @@ def compute_intensity_transformation(input: torch.Tensor):
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`. Returns identity transformations.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     identity: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     return identity
@@ -389,7 +388,7 @@ def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The grayscaled input
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     if not _validate_input_shape(input, 1, 3):
@@ -422,7 +421,7 @@ def apply_perspective(
     Returns:
         torch.Tensor: Perspectively transformed tensor.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     _, _, height, width = input.shape
@@ -458,7 +457,7 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     perspective_transform: torch.Tensor = get_perspective_transform(
         params['start_points'], params['end_points']).type_as(input)
@@ -493,7 +492,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     # arrange input data
@@ -531,7 +530,7 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform = get_affine_matrix2d(
         params['translations'], params['center'], params['scale'], params['angle'],
@@ -558,7 +557,7 @@ def apply_rotation(
     Returns:
         torch.Tensor: The cropped input
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
@@ -581,7 +580,7 @@ def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Te
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     angles: torch.Tensor = params["degrees"].type_as(input)
 
@@ -614,7 +613,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
     Returns:
         torch.Tensor: The cropped input.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
@@ -636,7 +635,7 @@ def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Ten
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform: torch.Tensor = get_perspective_transform(params['src'].to(input.dtype), params['dst'].to(input.dtype))
     transform = transform.expand(input.shape[0], -1, -1).type_as(input)
@@ -667,7 +666,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
             f"and ({params['xs'].size()}, {params['ys'].size()})"
         )
 
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     values = (torch.ones(input.size()) * params['values'].unsqueeze(-1).unsqueeze(-1)).type_as(input)
@@ -695,7 +694,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_brightness(input, params['brightness_factor'].to(input.dtype) - 1)
@@ -718,7 +717,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) 
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_contrast(input, params['contrast_factor'].to(input.dtype))
@@ -741,7 +740,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_saturation(input, params['saturation_factor'].to(input.dtype))
@@ -765,7 +764,7 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> to
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_hue(input, params['hue_factor'].to(input.dtype) * 2 * pi)
@@ -786,7 +785,7 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     transformed = adjust_gamma(input, params['gamma_factor'].to(input.dtype))
@@ -817,7 +816,7 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
         torch.Tensor: Adjusted image with the shape as the inpute (\*, C, H, W).
 
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     kernel_size: int = cast(int, params['ksize_factor'].item())
@@ -840,7 +839,7 @@ def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     thresholds = params['thresholds_factor']
@@ -863,7 +862,7 @@ def apply_posterize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     bits = params['bits_factor']
@@ -882,7 +881,7 @@ def apply_sharpness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     factor = params['sharpness_factor']
@@ -899,7 +898,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     Returns:
         torch.Tensor: Adjusted image.
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return equalize(input)
@@ -945,7 +944,7 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
         tensor([[0.0000, 1.0000, 0.5000],
                 [1.0000, 0.0000, 0.9000]])
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
     labels_permute = labels.index_select(dim=0, index=params['mixup_pairs'].to(labels.device))
@@ -1004,7 +1003,7 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
                   [1., 1., 1., 1., 1.]]]]), tensor([[[0.0000, 1.0000, 0.1600],
                  [1.0000, 0.0000, 0.2400]]]))
     """
-    input = _transform_input(input)
+    input = _to_bchw(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     height, width = input.size(2), input.size(3)
     num_mixes = params['mix_pairs'].size(0)

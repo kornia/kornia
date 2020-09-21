@@ -496,7 +496,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Equalized image or images in :math:(B, C, D, H, W).
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
 
     res = []
     for volume in input:

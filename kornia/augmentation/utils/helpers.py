@@ -1,6 +1,8 @@
 from typing import Tuple, Union, List, cast, Optional
+import warnings
 
 import torch
+from kornia.utils.image import _to_bchw, _to_bcdhw
 from torch.distributions import Uniform, Beta
 
 
@@ -8,9 +10,9 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
     r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
     """
     if isinstance(input, tuple):
-        tensor = _transform_input(input[0])
+        tensor = _to_bchw(input[0])
     else:
-        tensor = _transform_input(input)
+        tensor = _to_bchw(input)
     return tensor.shape
 
 
@@ -18,9 +20,9 @@ def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Te
     r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
     """
     if isinstance(input, tuple):
-        tensor = _transform_input3d(input[0])
+        tensor = _to_bcdhw(input[0])
     else:
-        tensor = _transform_input3d(input)
+        tensor = _to_bcdhw(input)
     return tensor.shape
 
 
@@ -32,20 +34,8 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(
-            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
-
-    if len(input.shape) == 2:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    return input
+    warnings.warn("`_transform_input` is deprecated soon. Please update your code with `kornia.utils.image._to_bchw`.")
+    return _to_bchw(input)
 
 
 def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
@@ -56,20 +46,8 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) not in [3, 4, 5]:
-        raise ValueError(
-            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}")
-
-    if len(input.shape) == 3:
-        input = input.unsqueeze(0)
-
-    if len(input.shape) == 4:
-        input = input.unsqueeze(0)
-
-    return input
+    warnings.warn("`_transform_input3D` is deprecated soon. Please update your code with `kornia.utils.image._to_bcdhw`.")
+    return _to_bcdhw(input)
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:

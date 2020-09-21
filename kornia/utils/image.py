@@ -121,8 +121,12 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List,
     """
     if input.dtype not in accepted_dtypes:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}.")
-    if input.min() < min or input.max() > max:
-        raise ValueError(f"Expected input in range of [{min}, {max}]. Got [{input.min()}, {input.max()}].")
+    if min is not None:
+        if input.min() < min:
+            raise ValueError(f"Expected input in range of [{min}, {max}]. Got [{input.min()}, {input.max()}].")
+    if max is not None:
+        if input.max() > max:
+            raise ValueError(f"Expected input in range of [{min}, {max}]. Got [{input.min()}, {input.max()}].")
 
 
 def tensor_to_image(tensor: torch.Tensor) -> np.array:

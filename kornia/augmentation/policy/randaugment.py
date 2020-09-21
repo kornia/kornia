@@ -83,7 +83,7 @@ class RandAugment(AugmentationBase2D):
                   [0.0000, 0.0812, 0.3608, 0.2017, 0.0628]]]])
     """
 
-    def __init__(self, N: int = 2, M: Tuple[int, int] = [5, 30], policy: Union[str, dict] = 'imagenet',
+    def __init__(self, N: int = 2, M: Tuple[int, int] = (5, 30), policy: Union[str, dict] = 'imagenet',
                  same_on_batch: bool = False, p: float = 0.8, p_batch: float = 1.) -> None:
         super(RandAugment, self).__init__(return_transform=False, same_on_batch=same_on_batch, p=p, p_batch=p_batch)
         self._MAX_M_ = 30
@@ -116,9 +116,9 @@ class RandAugment(AugmentationBase2D):
         for name, (min_val, max_val) in policy:
             func = POLICY_FUNCS[name]
             if min_val is None and max_val is None:
-                input = func(input)
+                input = func(input)  # type: ignore
             else:
                 # Ref: https://github.com/ildoonet/pytorch-randaugment/blob/master/RandAugment/augmentations.py#261
                 val = (params['m'] / self._MAX_M_) * (max_val - min_val) + min_val
-                input = func(input, val)
+                input = func(input, val)  # type: ignore
         return input
