@@ -1,6 +1,13 @@
 from typing import Tuple, List
+
 import torch
 import torch.nn as nn
+
+
+__all__ = [
+    "histogram",
+    "histogram2d",
+]
 
 
 def marginal_pdf(values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor,

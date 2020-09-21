@@ -1,10 +1,11 @@
 """
 The testing package contains testing-specific utilities.
 """
-
+from abc import ABC, abstractmethod
 
 import torch
 import numpy as np
+
 
 __all__ = [
     'tensor_to_gradcheck_var', 'create_eye_batch',
@@ -71,3 +72,25 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
     H_left = create_random_homography(batch_size, 3, std_val)
     H_right = create_random_homography(batch_size, 3, std_val)
     return H_left.permute(0, 2, 1) @ F_rect @ H_right
+
+
+class BaseTester(ABC):
+    @abstractmethod
+    def test_smoke(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_exception(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_batch(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_jit(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_gradcheck(self):
+        raise NotImplementedError("Implement a stupid routine.")

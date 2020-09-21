@@ -47,6 +47,7 @@ from kornia.color import (
 )
 from kornia.enhance import (
     normalize,
+    normalize_min_max,
     denormalize,
     zca_mean,
     zca_whiten,
