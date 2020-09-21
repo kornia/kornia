@@ -11,12 +11,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.constants import pi
-<<<<<<< HEAD
-from kornia.augmentation import RandomHorizontalFlip, RandomVerticalFlip, ColorJitter, \
-    RandomErasing, RandomGrayscale, RandomRotation, RandomCrop, RandomResizedCrop, RandomMotionBlur
-=======
 from kornia.augmentation import (
-    AugmentationBase,
     ColorJitter,
     RandomHorizontalFlip,
     RandomVerticalFlip,
@@ -28,7 +23,6 @@ from kornia.augmentation import (
     RandomResizedCrop,
     RandomMotionBlur
 )
->>>>>>> Add tests to RandomEqualize and fix potential bug
 
 
 class TestRandomHorizontalFlip:

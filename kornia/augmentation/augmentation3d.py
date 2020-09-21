@@ -369,12 +369,12 @@ class RandomEqualize3D(AugmentationBase3D):
     r"""Random 3D equalization of a volumetric image.
 
     Args:
-        p (float): probability of the image being equalized. Default value is 0.5.
+        p (float): probability of the image being equalized. Default value is 0.5
 
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+                                      wont be concatenated
+        same_on_batch (bool): apply the same transformation across the batch. Default: False
     """
 
     def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
@@ -387,7 +387,7 @@ class RandomEqualize3D(AugmentationBase3D):
         return self.__class__.__name__ + repr
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_prob_generator(batch_shape[0], self.p, self.same_on_batch)
+        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input, params)
