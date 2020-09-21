@@ -786,12 +786,12 @@ class TestRandomEqualize3D:
 
         identity = kornia.eye_like(4, expected)
 
-        assert_allclose(f(inputs3d)[0], expected)
-        assert_allclose(f(inputs3d)[1], identity)
-        assert_allclose(f1(inputs3d)[0], inputs3d)
-        assert_allclose(f1(inputs3d)[1], identity)
-        assert_allclose(f2(inputs3d), expected)
-        assert_allclose(f3(inputs3d), inputs3d)
+        assert_allclose(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
 
     def test_batch_random_equalize(self, device, dtype):
         f = RandomEqualize3D(p=1.0, return_transform=True)
@@ -811,12 +811,12 @@ class TestRandomEqualize3D:
 
         identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
 
-        assert_allclose(f(inputs3d)[0], expected)
-        assert_allclose(f(inputs3d)[1], identity)
-        assert_allclose(f1(inputs3d)[0], inputs3d)
-        assert_allclose(f1(inputs3d)[1], identity)
-        assert_allclose(f2(inputs3d), expected)
-        assert_allclose(f3(inputs3d), inputs3d)
+        assert_allclose(f(inputs3d)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs3d)[0], inputs3d, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs3d)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs3d), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs3d), inputs3d, rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomEqualize3D(p=0.5, same_on_batch=True)
