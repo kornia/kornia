@@ -407,7 +407,9 @@ def random_rectangles_params_generator(
         width (int): width of the image.
         scale (torch.Tensor): range of size of the origin size cropped. Shape (2).
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
-        value (float): value to be filled in the erased area.
+        value (float or tuple): value to be filled in the erased area.
+            If tuple, the length of the tuple must be equal to the number of color channels.
+            If float, it will be the value for all color channels.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
@@ -448,7 +450,7 @@ def random_rectangles_params_generator(
                 heights=heights,
                 xs=xs,
                 ys=ys,
-                values=torch.tensor([value] * batch_size).view(batch_size, -1))
+                values=torch.tensor([value]).repeat(batch_size, 1))
 
 
 def center_crop_generator(

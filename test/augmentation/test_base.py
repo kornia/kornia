@@ -105,7 +105,7 @@ class TestAugmentationBase2D:
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {'params': {}, 'flags': {'bar': 1}}
             apply_transform.reset_mock()
-            generate_parameters.return_value = None
+            generate_parameters.return_value = params
             output = augmentation(input, params=params)
             # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
             # Not an easy fix, happens on verifying torch.tensor([True, True])

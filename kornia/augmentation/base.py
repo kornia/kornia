@@ -62,12 +62,8 @@ class _BasicAugmentationBase(nn.Module):
 
     def __selective_param_gen__(
             self, batch_shape: torch.Size, to_apply: torch.Tensor) -> Dict[str, torch.Tensor]:
-        if to_apply.sum().item() != 0:
-            _params = self.generate_parameters(
-                torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
-        else:
-            # Do not need to generate if no data needs to be augmented.
-            _params = {}
+        _params = self.generate_parameters(
+            torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         _params['batch_prob'] = to_apply
         return _params
 
