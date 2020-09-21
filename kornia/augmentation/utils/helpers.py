@@ -46,7 +46,8 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor
     """
-    warnings.warn("`_transform_input3D` is deprecated soon. Please update your code with `kornia.utils.image._to_bcdhw`.")
+    warnings.warn(
+        "`_transform_input3D` is deprecated soon. Please update your code with `kornia.utils.image._to_bcdhw`.")
     return _to_bcdhw(input)
 
 
