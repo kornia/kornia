@@ -130,3 +130,162 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     proj_mat = (from_origin_mat @ proj_mat @ to_origin_mat)
 
     return proj_mat[..., :3, :]  # Bx3x4
+
+
+r"""
+Maths for 3d perspective transform:
+
+.. math ::
+
+    \[ u_i =\frac{c_{00} * x_i + c_{01} * y_i + c_{02} * z_i + c_{03}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+    \[ v_i =\frac{c_{10} * x_i + c_{11} * y_i + c_{12} * z_i + c_{13}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+    \[ w_i =\frac{c_{20} * x_i + c_{21} * y_i + c_{22} * z_i + c_{23}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+
+.. math ::
+
+    $\begin{pmatrix}
+    x_0 & y_0 & z_0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_0*u_0 & -y_0*u_0 & -z_0 * u_0 \\
+    x_1 & y_1 & z_1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_1*u_1 & -y_1*u_1 & -z_1 * u_1 \\
+    x_2 & y_2 & z_2 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_2*u_2 & -y_2*u_2 & -z_2 * u_2 \\
+    x_3 & y_3 & z_3 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_3*u_3 & -y_3*u_3 & -z_3 * u_3 \\
+    x_4 & y_4 & z_4 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_4*u_4 & -y_4*u_4 & -z_4 * u_4 \\
+    x_5 & y_5 & z_5 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_5*u_5 & -y_5*u_5 & -z_5 * u_5 \\
+    x_6 & y_6 & z_6 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_6*u_6 & -y_6*u_6 & -z_6 * u_6 \\
+    x_7 & y_7 & z_7 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_7*u_7 & -y_7*u_7 & -z_7 * u_7 \\
+    0 & 0 & 0 & 0 & x_0 & y_0 & z_0 & 1 & 0 & 0 & 0 & 0 & -x_0*v_0 & -y_0*v_0 & -z_0 * v_0 \\
+    0 & 0 & 0 & 0 & x_1 & y_1 & z_1 & 1 & 0 & 0 & 0 & 0 & -x_1*v_1 & -y_1*v_1 & -z_1 * v_1 \\
+    0 & 0 & 0 & 0 & x_2 & y_2 & z_2 & 1 & 0 & 0 & 0 & 0 & -x_2*v_2 & -y_2*v_2 & -z_2 * v_2 \\
+    0 & 0 & 0 & 0 & x_3 & y_3 & z_3 & 1 & 0 & 0 & 0 & 0 & -x_3*v_3 & -y_3*v_3 & -z_3 * v_3 \\
+    0 & 0 & 0 & 0 & x_4 & y_4 & z_4 & 1 & 0 & 0 & 0 & 0 & -x_4*v_4 & -y_4*v_4 & -z_4 * v_4 \\
+    0 & 0 & 0 & 0 & x_5 & y_5 & z_5 & 1 & 0 & 0 & 0 & 0 & -x_5*v_5 & -y_5*v_5 & -z_5 * v_5 \\
+    0 & 0 & 0 & 0 & x_6 & y_6 & z_6 & 1 & 0 & 0 & 0 & 0 & -x_6*v_6 & -y_6*v_6 & -z_6 * v_6 \\
+    0 & 0 & 0 & 0 & x_7 & y_7 & z_7 & 1 & 0 & 0 & 0 & 0 & -x_7*v_7 & -y_7*v_7 & -z_7 * v_7 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_0 & y_0 & z_0 & 1 & -x_0*w_0 & -y_0*w_0 & -z_0 * w_0 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_1 & y_1 & z_1 & 1 & -x_1*w_1 & -y_1*w_1 & -z_1 * w_1 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_2 & y_2 & z_2 & 1 & -x_2*w_2 & -y_2*w_2 & -z_2 * w_2 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_3 & y_3 & z_3 & 1 & -x_3*w_3 & -y_3*w_3 & -z_3 * w_3 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_4 & y_4 & z_4 & 1 & -x_4*w_4 & -y_4*w_4 & -z_4 * w_4 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_5 & y_5 & z_5 & 1 & -x_5*w_5 & -y_5*w_5 & -z_5 * w_5 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_6 & y_6 & z_6 & 1 & -x_6*w_6 & -y_6*w_6 & -z_6 * w_6 \\
+    0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & x_7 & y_7 & z_7 & 1 & -x_7*w_7 & -y_7*w_7 & -z_7 * w_7 \\
+    \end{pmatrix}$
+"""
+
+
+def get_perspective_transform3d(src, dst):
+    r"""Calculate a 3d perspective transform from four pairs of the corresponding points.
+
+    The function calculates the matrix of a perspective transform so that:
+
+    .. math ::
+
+        \begin{bmatrix}
+        t_{i}x_{i}^{'} \\
+        t_{i}y_{i}^{'} \\
+        t_{i}z_{i}^{'} \\
+        t_{i} \\
+        \end{bmatrix}
+        =
+        \textbf{map_matrix} \cdot
+        \begin{bmatrix}
+        x_{i} \\
+        y_{i} \\
+        z_{i} \\
+        1 \\
+        \end{bmatrix}
+
+    where
+
+    .. math ::
+        dst(i) = (x_{i}^{'},y_{i}^{'},z_{i}^{'}), src(i) = (x_{i}, y_{i}, z_{i}), i = 0,1,2,3,4,5,6,7
+
+    Args:
+        src (Tensor): coordinates of quadrangle vertices in the source image.
+        dst (Tensor): coordinates of the corresponding quadrangle vertices in
+            the destination image.
+
+    Returns:
+        Tensor: the perspective transformation.
+
+    Shape:
+        - Input: :math:`(B, 8, 3)` and :math:`(B, 8, 3)`
+        - Output: :math:`(B, 4, 4)`
+    """
+    if not torch.is_tensor(src):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(src)))
+    if not torch.is_tensor(dst):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(dst)))
+    if not src.shape[-2:] == (8, 3):
+        raise ValueError("Inputs must be a Bx8x3 tensor. Got {}"
+                         .format(src.shape))
+    if not src.shape == dst.shape:
+        raise ValueError("Inputs must have the same shape. Got {}"
+                         .format(dst.shape))
+    if not (src.shape[0] == dst.shape[0]):
+        raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
+                         .format(src.shape, dst.shape))
+
+    def ax(p, q):
+        ones = torch.ones_like(p)[..., 0:1]
+        zeros = torch.zeros_like(p)[..., 0:1]
+        return torch.cat([
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            zeros, zeros, zeros, zeros,
+            zeros, zeros, zeros, zeros,
+            -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
+        ], dim=1)
+
+    def ay(p, q):
+        ones = torch.ones_like(p)[..., 0:1]
+        zeros = torch.zeros_like(p)[..., 0:1]
+        return torch.cat([
+            zeros, zeros, zeros, zeros,
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            zeros, zeros, zeros, zeros,
+            -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
+        ], dim=1)
+
+    def az(p, q):
+        ones = torch.ones_like(p)[..., 0:1]
+        zeros = torch.zeros_like(p)[..., 0:1]
+        return torch.cat([
+            zeros, zeros, zeros, zeros,
+            zeros, zeros, zeros, zeros,
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
+        ], dim=1)
+
+    # we build matrix A by using only 4 point correspondence. The linear
+    # system is solved with the least square method, so here
+    # we could even pass more correspondence
+    p = []
+    for i in [0, 1, 3, 5, 7]:
+        p.append(ax(src[:, i], dst[:, i]))
+        p.append(ay(src[:, i], dst[:, i]))
+        p.append(az(src[:, i], dst[:, i]))
+
+    # A is Bx15x15
+    A = torch.stack(p, dim=1)
+
+    # b is a Bx15x1
+    b = torch.stack([
+        dst[:, 0:1, 0], dst[:, 0:1, 1], dst[:, 0:1, 2],
+        dst[:, 1:2, 0], dst[:, 1:2, 1], dst[:, 1:2, 2],
+        # dst[:, 2:3, 0], dst[:, 2:3, 1], dst[:, 2:3, 2],
+        dst[:, 3:4, 0], dst[:, 3:4, 1], dst[:, 3:4, 2],
+        # dst[:, 4:5, 0], dst[:, 4:5, 1], dst[:, 4:5, 2],
+        dst[:, 5:6, 0], dst[:, 5:6, 1], dst[:, 5:6, 2],
+        # dst[:, 6:7, 0], dst[:, 6:7, 1], dst[:, 6:7, 2],
+        dst[:, 7:8, 0], dst[:, 7:8, 1], dst[:, 7:8, 2],
+    ], dim=1)
+
+    # solve the system Ax = b
+    X, LU = torch.solve(b, A)
+
+    # create variable to return
+    batch_size = src.shape[0]
+    M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
+    M[..., :15] = torch.squeeze(X, dim=-1)
+    return M.view(-1, 4, 4)  # Bx4x4
