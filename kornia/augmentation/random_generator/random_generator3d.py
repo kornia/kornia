@@ -206,9 +206,9 @@ def center_crop_generator3d(
 
 def random_crop_generator3d(
     batch_size: int,
-    input_size: Tuple[int, int],
-    size: Union[Tuple[int, int], torch.Tensor],
-    resize_to: Optional[Tuple[int, int]] = None,
+    input_size: Tuple[int, int, int],
+    size: Union[Tuple[int, int, int], torch.Tensor],
+    resize_to: Optional[Tuple[int, int, int]] = None,
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.

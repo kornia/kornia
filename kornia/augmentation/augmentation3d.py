@@ -509,8 +509,8 @@ class RandomCrop3D(AugmentationBase3D):
             elif isinstance(self.padding, tuple) and len(self.padding) == 6:
                 padding = [
                     self.padding[0], self.padding[1],
-                    self.padding[2], self.padding[3],
-                    self.padding[4], self.padding[5],
+                    self.padding[2], self.padding[3],  # type: ignore
+                    self.padding[4], self.padding[5],  # type: ignore
                 ]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 

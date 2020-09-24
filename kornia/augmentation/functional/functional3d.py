@@ -397,6 +397,6 @@ def compute_crop_transformation3d(input: torch.Tensor, params: Dict[str, torch.T
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    transform: torch.Tensor = get_perspective_transform3d(params['src'].to(input.dtype), params['dst'].to(input.dtype))
+    transform: torch.Tensor = get_3d_perspective_transform(params['src'].to(input.dtype), params['dst'].to(input.dtype))
     transform = transform.expand(input.shape[0], -1, -1).type_as(input)
     return transform

@@ -17,7 +17,7 @@ __all__ = [
 ]
 
 
-def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
+def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int, int],
                       interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
     r"""Extracts crops from the input tensor and resizes them.
 
@@ -27,7 +27,7 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
-        size (Tuple[int, int]): a tuple with the height and width that will be
+        size (Tuple[int, int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See

@@ -170,12 +170,14 @@ def random_affine_generator(
     # compute tensor ranges
     if scale is not None:
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
-        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).repeat(2, 1).T
+        _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch)
+        # (B, 1) => (B, 2)
+        _scale = _scale.repeat(2, 1).T  # type: ignore  # Not sure why: error: "Tensor" has no attribute "T"
         if len(scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
-            scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
+            _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
-        scale = torch.ones((batch_size, 2))
+        _scale = torch.ones((batch_size, 2))
 
     if translate is not None:
         _joint_range_check(cast(torch.Tensor, translate), "translate")
@@ -202,7 +204,7 @@ def random_affine_generator(
 
     return dict(translations=translations,
                 center=center,
-                scale=scale,
+                scale=_scale,
                 angle=angle,
                 sx=sx,
                 sy=sy)
