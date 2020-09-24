@@ -164,9 +164,12 @@ def get_3d_perspective_transform(src, dst):
 
     .. math ::
 
-        \[ u_i =\frac{c_{00} * x_i + c_{01} * y_i + c_{02} * z_i + c_{03}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
-        \[ v_i =\frac{c_{10} * x_i + c_{11} * y_i + c_{12} * z_i + c_{13}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
-        \[ w_i =\frac{c_{20} * x_i + c_{21} * y_i + c_{22} * z_i + c_{23}}{c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+        \[ u_i =\frac{c_{00} * x_i + c_{01} * y_i + c_{02} * z_i + c_{03}}
+            {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+        \[ v_i =\frac{c_{10} * x_i + c_{11} * y_i + c_{12} * z_i + c_{13}}
+            {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
+        \[ w_i =\frac{c_{20} * x_i + c_{21} * y_i + c_{22} * z_i + c_{23}}
+            {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
 
     .. math ::
 
