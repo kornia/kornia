@@ -2,6 +2,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 
 import torch
 
+import kornia as K
 from kornia.constants import Resample, BorderType, pi
 from kornia.geometry.transform.affwarp import (
     _compute_rotation_matrix3d, _compute_tensor_center3d
@@ -9,6 +10,7 @@ from kornia.geometry.transform.affwarp import (
 from kornia.geometry.transform.projwarp import warp_projective
 from kornia.geometry import (
     crop_by_boxes3d,
+    warp_perspective3d,
     get_3d_perspective_transform,
     rotate3d,
     get_affine_matrix3d,
@@ -399,4 +401,71 @@ def compute_crop_transformation3d(input: torch.Tensor, params: Dict[str, torch.T
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform: torch.Tensor = get_3d_perspective_transform(params['src'].to(input.dtype), params['dst'].to(input.dtype))
     transform = transform.expand(input.shape[0], -1, -1).type_as(input)
+    return transform
+
+
+def apply_perspective3d(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
+    r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
+              bottom-left] of the orignal image with shape Bx8x3.
+            - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
+              bottom-left] of the transformed image with shape Bx8x3.
+        flags (Dict[str, torch.Tensor]):
+            - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
+
+    Returns:
+        torch.Tensor: Perspectively transformed tensor.
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    _, _, depth, height, width = input.shape
+
+    # compute the homography between the input points
+    transform: torch.Tensor = compute_perspective_transformation3d(input, params)
+
+    out_data: torch.Tensor = input.clone()
+
+    # apply the computed transform
+    depth, height, width = input.shape[-3:]
+    resample_name: str = Resample(flags['interpolation'].item()).name.lower()
+    align_corners: bool = cast(bool, flags['align_corners'].item())
+
+    out_data = warp_perspective3d(
+        input, transform, (depth, height, width),
+        flags=resample_name, align_corners=align_corners)
+
+    return out_data.view_as(input)
+
+
+def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
+              bottom-left] of the orignal image with shape Bx8x3.
+            - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
+              bottom-left] of the transformed image with shape Bx8x3.
+
+    Returns:
+        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    perspective_transform: torch.Tensor = get_3d_perspective_transform(
+        params['start_points'], params['end_points']).type_as(input)
+
+    transform: torch.Tensor = K.eye_like(4, input)
+
+    transform = perspective_transform
+
     return transform

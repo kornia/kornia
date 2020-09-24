@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.utils import create_meshgrid
+from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.geometry.linalg import transform_points
 from kornia.testing import check_is_tensor
 
@@ -12,6 +12,7 @@ from kornia.testing import check_is_tensor
 __all__ = [
     "HomographyWarper",
     "homography_warp",
+    "homography_warp3d",
     "warp_grid",
     "normalize_homography",
     "normalize_homography3d",
@@ -43,6 +44,30 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     # the grid is copied to input device and casted to the same type
     flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxHxWx2
     return flow.view(batch_size, height, width, 2)  # NxHxWx2
+
+
+def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
+    r"""Compute the grid to warp the coordinates grid by the homography/ies.
+
+    Args:
+        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`.
+        src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
+          transform all points in the grid. Shape of the homography
+          has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
+
+    Returns:
+        torch.Tensor: the transformed grid of shape :math:`(N, H, W, 3)`.
+    """
+    batch_size: int = src_homo_dst.size(0)
+    _, depth, height, width, _ = grid.size()
+    # expand grid to match the input batch size
+    grid = grid.expand(batch_size, -1, -1, -1, -1)  # NxDxHxWx3
+    if len(src_homo_dst.shape) == 3:  # local homography case
+        src_homo_dst = src_homo_dst.view(batch_size, 1, 4, 4)  # Nx1x3x3
+    # perform the actual grid transformation,
+    # the grid is copied to input device and casted to the same type
+    flow: torch.Tensor = transform_points(src_homo_dst, grid.to(src_homo_dst))  # NxDxHxWx3
+    return flow.view(batch_size, depth, height, width, 3)  # NxDxHxWx3
 
 
 # functional api
@@ -89,6 +114,55 @@ def homography_warp(patch_src: torch.Tensor,
     height, width = dsize
     grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
     warped_grid = warp_grid(grid, src_homo_dst)
+
+    return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode,
+                         align_corners=align_corners)
+
+
+def homography_warp3d(patch_src: torch.Tensor,
+                      src_homo_dst: torch.Tensor,
+                      dsize: Tuple[int, int, int],
+                      mode: str = 'bilinear',
+                      padding_mode: str = 'zeros',
+                      align_corners: bool = False,
+                      normalized_coordinates: bool = True) -> torch.Tensor:
+    r"""Function that warps image patchs or tensors by homographies.
+
+    See :class:`~kornia.geometry.warp.HomographyWarper` for details.
+
+    Args:
+        patch_src (torch.Tensor): The image or tensor to warp. Should be from
+                                  source of shape :math:`(N, C, D, H, W)`.
+        src_homo_dst (torch.Tensor): The homography or stack of homographies
+                                     from destination to source of shape
+                                     :math:`(N, 4, 4)`.
+        dsize (Tuple[int, int, int]): The height and width of the image to warp.
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
+                                       coordinates or not.
+
+    Return:
+        torch.Tensor: Patch sampled at locations from source to destination.
+
+    Example:
+        >>> input = torch.rand(1, 3, 32, 32)
+        >>> homography = torch.eye(3).view(1, 3, 3)
+        >>> output = kornia.homography_warp(input, homography, (32, 32))
+    """
+    if not src_homo_dst.device == patch_src.device:
+        raise TypeError("Patch and homography must be on the same device. \
+                         Got patch.device: {} src_H_dst.device: {}.".format(
+                        patch_src.device, src_homo_dst.device))
+
+    depth, height, width = dsize
+    grid = create_meshgrid3d(depth, height, width, normalized_coordinates=normalized_coordinates,
+                             device=patch_src.device)
+    warped_grid = warp_grid3d(grid, src_homo_dst)
 
     return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode,
                          align_corners=align_corners)

@@ -542,3 +542,76 @@ class RandomCrop3D(AugmentationBase3D):
         else:
             input = self.precrop_padding(input)  # type:ignore
         return super().forward(input, params, return_transform)
+
+
+class RandomPerspective3D(AugmentationBase3D):
+    r"""Applies a random perspective transformation to an image tensor with a given probability.
+
+    Args:
+        p (float): probability of the image being perspectively transformed. Default value is 0.5.
+        distortion_scale(float): it controls the degree of distortion and ranges from 0 to 1. Default value is 0.5.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
+        return_transform (bool): if ``True`` return the matrix describing the transformation
+                                 applied to each. Default: False.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        align_corners(bool): interpolation flag. Default: False.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> inputs= torch.tensor([[[
+        ...    [[1., 0., 0.],
+        ...     [0., 1., 0.],
+        ...     [0., 0., 1.]],
+        ...    [[1., 0., 0.],
+        ...     [0., 1., 0.],
+        ...     [0., 0., 1.]],
+        ...    [[1., 0., 0.],
+        ...     [0., 1., 0.],
+        ...     [0., 0., 1.]]
+        ... ]]])
+        >>> aug = RandomPerspective3D(0.5, p=1., align_corners=True)
+        >>> aug(inputs)
+        tensor([[[[[0.1348, 0.2359, 0.0363],
+                   [0.0000, 0.0000, 0.0000],
+                   [0.0000, 0.0000, 0.0000]],
+        <BLANKLINE>
+                  [[0.3976, 0.5507, 0.0000],
+                   [0.0901, 0.3668, 0.0000],
+                   [0.0000, 0.0000, 0.0000]],
+        <BLANKLINE>
+                  [[0.2651, 0.4657, 0.0000],
+                   [0.1390, 0.5174, 0.0000],
+                   [0.0000, 0.0000, 0.0000]]]]])
+    """
+
+    def __init__(
+        self, distortion_scale: Union[torch.Tensor, float] = 0.5,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        return_transform: bool = False, same_on_batch: bool = False,
+        align_corners: bool = False, p: float = 0.5
+    ) -> None:
+        super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        self.distortion_scale = cast(torch.Tensor, distortion_scale) \
+            if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
+        self.resample = Resample.get(resample)
+        self.align_corners = align_corners
+        self.flags: Dict[str, torch.Tensor] = dict(
+            interpolation=torch.tensor(self.resample.value),
+            align_corners=torch.tensor(align_corners)
+        )
+
+    def __repr__(self) -> str:
+        repr = (f"distortion_scale={self.distortion_scale}, resample={self.resample.name}, "
+                f"align_corners={self.align_corners}")
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_perspective_generator3d(
+            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1],
+            self.distortion_scale, self.same_on_batch)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_perspective_transformation3d(input, params)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_perspective3d(input, params, self.flags)

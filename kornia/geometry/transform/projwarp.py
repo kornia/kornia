@@ -4,13 +4,15 @@ from typing import Tuple, List
 import torch
 import kornia as K
 from kornia.geometry.conversions import convert_affinematrix_to_homography3d
-from kornia.geometry.warp import normalize_homography3d
+from kornia.geometry.warp import normalize_homography3d, homography_warp3d
+from kornia.testing import check_is_tensor
 
 __all__ = [
     "warp_projective",
     "get_projective_transform",
     "projection_from_Rt",
-    "get_3d_perspective_transform"
+    "get_3d_perspective_transform",
+    "warp_perspective3d"
 ]
 
 
@@ -283,3 +285,60 @@ def get_3d_perspective_transform(src, dst):
     M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
     M[..., :15] = torch.squeeze(X, dim=-1)
     return M.view(-1, 4, 4)  # Bx4x4
+
+
+def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int, int],
+                       flags: str = 'bilinear', border_mode: str = 'zeros',
+                       align_corners: bool = False) -> torch.Tensor:
+    r"""Applies a perspective transformation to an image.
+
+    The function warp_perspective transforms the source image using
+    the specified matrix:
+
+    .. math::
+        \text{dst} (x, y) = \text{src} \left(
+        \frac{M_{11} x + M_{12} y + M_{13}}{M_{31} x + M_{32} y + M_{33}} ,
+        \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
+        \right )
+
+    Args:
+        src (torch.Tensor): input image with shape :math:`(B, C, D, H, W)`.
+        M (torch.Tensor): transformation matrix with shape :math:`(B, 4, 4)`.
+        dsize (tuple): size of the output image (height, width).
+        flags (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        border_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners(bool): interpolation flag. Default: False.
+
+    Returns:
+        torch.Tensor: the warped input image :math:`(B, C, D, H, W)`.
+
+    """
+    check_is_tensor(src)
+    check_is_tensor(M)
+
+    if not len(src.shape) == 5:
+        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}"
+                         .format(src.shape))
+
+    if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
+        raise ValueError("Input M must be a Bx4x4 tensor. Got {}"
+                         .format(M.shape))
+
+    # launches the warper
+    d, h, w = src.shape[-3:]
+    return transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners)
+
+
+def transform_warp_impl3d(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
+                          dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int],
+                          grid_mode: str, padding_mode: str, align_corners: bool) -> torch.Tensor:
+    """Compute the transform in normalized cooridnates and perform the warping.
+    """
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
+        dst_pix_trans_src_pix, dsize_src, dsize_dst)
+
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    return homography_warp3d(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode,
+                             align_corners, True)

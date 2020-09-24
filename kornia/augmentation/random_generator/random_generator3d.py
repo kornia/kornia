@@ -268,3 +268,64 @@ def random_crop_generator3d(
 
     return dict(src=crop_src,
                 dst=crop_dst)
+
+
+def random_perspective_generator3d(
+    batch_size: int,
+    depth: int,
+    height: int,
+    width: int,
+    distortion_scale: torch.Tensor,
+    same_on_batch: bool = False,
+) -> Dict[str, torch.Tensor]:
+    r"""Get parameters for ``perspective`` for a random perspective transform.
+
+    Args:
+        batch_size (int): the tensor batch size.
+        depth (int) : depth of the image.
+        height (int) : height of the image.
+        width (int): width of the image.
+        distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Returns:
+        params (Dict[str, torch.Tensor])
+    """
+    assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
+        f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
+
+    start_points: torch.Tensor = torch.tensor([[
+        [0., 0, 0],
+        [width - 1, 0, 0],
+        [width - 1, height - 1, 0],
+        [0, height - 1, 0],
+        [0., 0, depth - 1],
+        [width - 1, 0, depth - 1],
+        [width - 1, height - 1, depth - 1],
+        [0, height - 1, depth - 1],
+    ]]).expand(batch_size, -1, -1)
+
+    # generate random offset not larger than half of the image
+    fx = distortion_scale * width / 2
+    fy = distortion_scale * height / 2
+    fz = distortion_scale * depth / 2
+
+    factor = torch.stack([fx, fy, fz], dim=0).view(-1, 1, 3)
+
+    # TODO: This line somehow breaks the gradcheck
+    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch)
+
+    pts_norm = torch.tensor([[
+        [1, 1, 1],
+        [-1, 1, 1],
+        [-1, -1, 1],
+        [1, -1, 1],
+        [1, 1, -1],
+        [-1, 1, -1],
+        [-1, -1, -1],
+        [1, -1, -1],
+    ]])
+    end_points = start_points + factor * rand_val * pts_norm
+
+    return dict(start_points=start_points,
+                end_points=end_points)
