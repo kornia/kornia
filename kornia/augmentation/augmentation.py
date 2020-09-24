@@ -608,7 +608,7 @@ class RandomCrop(AugmentationBase2D):
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed

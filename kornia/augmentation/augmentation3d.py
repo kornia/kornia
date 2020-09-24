@@ -314,17 +314,17 @@ class RandomRotation3D(AugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.0, return_transform=True)
         >>> aug(input)
-        (tensor([[[[[0.4963, 0.5013, 0.2314],
-                   [0.1015, 0.3624, 0.4779],
-                   [0.2669, 0.5749, 0.4081]],
+        (tensor([[[[[0.3819, 0.4886, 0.2111],
+                   [0.1196, 0.3833, 0.4722],
+                   [0.3432, 0.5951, 0.4223]],
         <BLANKLINE>
-                  [[0.4426, 0.4198, 0.2713],
-                   [0.2911, 0.1689, 0.4538],
-                   [0.3939, 0.6022, 0.6166]],
+                  [[0.5553, 0.4374, 0.2780],
+                   [0.2423, 0.1689, 0.4009],
+                   [0.4516, 0.6376, 0.7327]],
         <BLANKLINE>
-                  [[0.1496, 0.3740, 0.3151],
-                   [0.4169, 0.4803, 0.5804],
-                   [0.3856, 0.4253, 0.9527]]]]]), tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
+                  [[0.1605, 0.3112, 0.3673],
+                   [0.4931, 0.4620, 0.5700],
+                   [0.3505, 0.4685, 0.8092]]]]]), tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
                  [-0.0603,  0.9669,  0.2478, -0.1545],
                  [ 0.2262, -0.2286,  0.9469,  0.0556],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
@@ -363,3 +363,182 @@ class RandomRotation3D(AugmentationBase3D):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_rotation3d(input, params, self.flags)
+
+
+class CenterCrop3D(AugmentationBase3D):
+    r"""Crops a given image tensor at the center.
+
+    Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.
+        size (sequence or int): Desired output size of the crop. If size is an
+            int instead of sequence like (d, h, w), a square crop (size, size, size) is
+            made.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated.
+        align_corners(bool): interpolation flag. Default: True.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.randn(1, 1, 3, 3, 3)
+        >>> aug = CenterCrop3D(2, p=1.)
+        >>> aug(inputs)
+        tensor([[[[[-0.2170,  0.1856],
+                   [-0.2126, -0.0129]],
+        <BLANKLINE>
+                  [[-0.1957, -0.1423],
+                   [-0.0310, -0.3132]]]]])
+    """
+
+    def __init__(self, size: Union[int, Tuple[int, int, int]], align_corners: bool = True,
+                 resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+                 return_transform: bool = False, p: float = 1.) -> None:
+        # same_on_batch is always True for CenterCrop
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        super(CenterCrop3D, self).__init__(
+            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
+        self.size = size
+        self.resample = Resample.get(resample)
+        self.align_corners = align_corners
+        self.flags: Dict[str, torch.Tensor] = dict(
+            interpolation=torch.tensor(self.resample.value),
+            align_corners=torch.tensor(align_corners)
+        )
+
+    def __repr__(self) -> str:
+        repr = f"size={self.size}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        if isinstance(self.size, tuple):
+            size_param = (self.size[0], self.size[1], self.size[2])
+        elif isinstance(self.size, int):
+            size_param = (self.size, self.size, self.size)
+        else:
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {self.size}.")
+        return rg.center_crop_generator3d(
+            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], size_param)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_crop_transformation3d(input, params, self.flags)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_crop3d(input, params, self.flags)
+
+
+class RandomCrop3D(AugmentationBase3D):
+    r"""Crops random patches of a tensor image on a given size.
+
+    Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
+        size (tuple): Desired output size of the crop, like (d, h, w).
+        padding (int or sequence, optional): Optional padding on each border of the image.
+            Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to pad
+            left, top, right, bottom, front, back borders respectively.
+            If a sequence of length 3 is provided, it is used to pad left/right,
+            top/bottom, front/back borders, respectively.
+        pad_if_needed (boolean): It will pad the image if smaller than the
+            desired size to avoid raising an exception. Since cropping is done
+            after padding, the padding seems to be done at a random offset.
+        fill: Pixel fill value for constant fill. Default is 0. If a tuple of
+            length 3, it is used to fill R, G, B channels respectively.
+            This value is only used when the padding_mode is constant.
+        padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+                                      input tensor. If ``False`` and the input is a tuple the applied transformation
+                                      wont be concatenated
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        align_corners(bool): interpolation flag. Default: True.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.randn(1, 1, 3, 3, 3)
+        >>> aug = RandomCrop3D((2, 2, 2), p=1.)
+        >>> aug(inputs)
+        tensor([[[[[-1.1258, -1.1524],
+                   [-0.4339,  0.8487]],
+        <BLANKLINE>
+                  [[-1.2633,  0.3500],
+                   [ 0.1665,  0.8744]]]]])
+    """
+
+    def __init__(
+        self, size: Tuple[int, int, int],
+        padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
+        pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 1.0
+    ) -> None:
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        super(RandomCrop3D, self).__init__(
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+        self.size = size
+        self.padding = padding
+        self.pad_if_needed = pad_if_needed
+        self.fill = fill
+        self.padding_mode = padding_mode
+        self.resample = Resample.get(resample)
+        self.same_on_batch = same_on_batch
+        self.align_corners = align_corners
+        self.flags: Dict[str, torch.Tensor] = dict(
+            interpolation=torch.tensor(self.resample.value),
+            align_corners=torch.tensor(align_corners)
+        )
+
+    def __repr__(self) -> str:
+        repr = (f"crop_size={self.size}, padding={self.padding}, fill={self.fill}, pad_if_needed={self.pad_if_needed}, "
+                f"padding_mode={self.padding_mode}, resample={self.resample.name}")
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_crop_generator3d(batch_shape[0], (batch_shape[-3], batch_shape[-2], batch_shape[-1]),
+                                          self.size, same_on_batch=self.same_on_batch)
+
+    def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
+        if self.padding is not None:
+            if isinstance(self.padding, int):
+                padding = [self.padding, self.padding, self.padding, self.padding, self.padding, self.padding]
+            elif isinstance(self.padding, tuple) and len(self.padding) == 3:
+                padding = [
+                    self.padding[0], self.padding[0],
+                    self.padding[1], self.padding[1],
+                    self.padding[2], self.padding[2],
+                ]
+            elif isinstance(self.padding, tuple) and len(self.padding) == 6:
+                padding = [
+                    self.padding[0], self.padding[1],
+                    self.padding[2], self.padding[3],
+                    self.padding[4], self.padding[5],
+                ]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        if self.pad_if_needed and input.shape[-3] < self.size[0]:
+            padding = [self.size[0] - input.shape[-3], self.size[0] - input.shape[-3], 0, 0, 0, 0]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        if self.pad_if_needed and input.shape[-2] < self.size[1]:
+            padding = [0, 0, (self.size[1] - input.shape[-2]), self.size[1] - input.shape[-2], 0, 0]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        if self.pad_if_needed and input.shape[-1] < self.size[2]:
+            padding = [0, 0, 0, 0, self.size[2] - input.shape[-1], self.size[2] - input.shape[-1]]
+            input = pad(input, padding, value=self.fill, mode=self.padding_mode)
+
+        return input
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_crop_transformation3d(input, params, self.flags)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_crop3d(input, params, self.flags)
+
+    def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+                params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
+                ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+        if type(input) == tuple:
+            input = (self.precrop_padding(input[0]), input[1])
+        else:
+            input = self.precrop_padding(input)  # type:ignore
+        return super().forward(input, params, return_transform)

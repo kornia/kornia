@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.transform.projwarp import (
-    get_perspective_transform3d, get_projective_transform, warp_projective
+    get_3d_perspective_transform, get_projective_transform, warp_projective
 )
 
 __all__ = [
@@ -25,7 +25,8 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
         tensor (torch.Tensor): the reference tensor of shape BxCxDxHxW.
         boxes (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
-            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
         size (Tuple[int, int]): a tuple with the height and width that will be
           used to resize the extracted patches.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
@@ -234,10 +235,12 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         tensor (torch.Tensor): the input tensor with shape (C, D, H, W) or (B, C, D, H, W).
         src_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
-            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
         dst_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be placed. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
-            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
+            order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+            back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
@@ -301,7 +304,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform3d(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
+    dst_trans_src: torch.Tensor = get_3d_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 

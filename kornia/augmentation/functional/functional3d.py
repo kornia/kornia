@@ -8,6 +8,8 @@ from kornia.geometry.transform.affwarp import (
 )
 from kornia.geometry.transform.projwarp import warp_projective
 from kornia.geometry import (
+    crop_by_boxes3d,
+    get_3d_perspective_transform,
     rotate3d,
     get_affine_matrix3d,
     deg2rad
@@ -351,3 +353,50 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     trans_mat[:, 2] = rotation_mat[:, 2]
 
     return trans_mat
+
+
+def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Apply cropping by src bounding box and dst bounding box.
+
+    Order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+        back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
+            - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
+        flags (Dict[str, torch.Tensor]):
+            - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
+
+    Returns:
+        torch.Tensor: The cropped input.
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
+    align_corners: bool = cast(bool, flags['align_corners'].item())
+
+    return crop_by_boxes3d(
+        input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
+
+
+def compute_crop_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]):
+    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
+            - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
+
+    Returns:
+        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+    transform: torch.Tensor = get_perspective_transform3d(params['src'].to(input.dtype), params['dst'].to(input.dtype))
+    transform = transform.expand(input.shape[0], -1, -1).type_as(input)
+    return transform

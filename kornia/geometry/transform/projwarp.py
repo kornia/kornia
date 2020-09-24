@@ -10,6 +10,7 @@ __all__ = [
     "warp_projective",
     "get_projective_transform",
     "projection_from_Rt",
+    "get_3d_perspective_transform"
 ]
 
 
@@ -132,7 +133,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     return proj_mat[..., :3, :]  # Bx3x4
 
 
-def get_perspective_transform3d(src, dst):
+def get_3d_perspective_transform(src, dst):
     r"""Calculate a 3d perspective transform from four pairs of the corresponding points.
 
     The function calculates the matrix of a perspective transform so that:
