@@ -261,7 +261,9 @@ def get_perspective_transform3d(src, dst):
     # system is solved with the least square method, so here
     # we could even pass more correspondence
     p = []
-    for i in [0, 1, 3, 5, 7]:
+
+    # 000, 100, 110, 101, 011
+    for i in [0, 1, 2, 5, 7]:
         p.append(ax(src[:, i], dst[:, i]))
         p.append(ay(src[:, i], dst[:, i]))
         p.append(az(src[:, i], dst[:, i]))
@@ -273,8 +275,8 @@ def get_perspective_transform3d(src, dst):
     b = torch.stack([
         dst[:, 0:1, 0], dst[:, 0:1, 1], dst[:, 0:1, 2],
         dst[:, 1:2, 0], dst[:, 1:2, 1], dst[:, 1:2, 2],
-        # dst[:, 2:3, 0], dst[:, 2:3, 1], dst[:, 2:3, 2],
-        dst[:, 3:4, 0], dst[:, 3:4, 1], dst[:, 3:4, 2],
+        dst[:, 2:3, 0], dst[:, 2:3, 1], dst[:, 2:3, 2],
+        # dst[:, 3:4, 0], dst[:, 3:4, 1], dst[:, 3:4, 2],
         # dst[:, 4:5, 0], dst[:, 4:5, 1], dst[:, 4:5, 2],
         dst[:, 5:6, 0], dst[:, 5:6, 1], dst[:, 5:6, 2],
         # dst[:, 6:7, 0], dst[:, 6:7, 1], dst[:, 6:7, 2],
