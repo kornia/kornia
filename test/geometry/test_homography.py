@@ -28,6 +28,25 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)],)
+    def test_shape_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        H = find_homography_dlt(points1, points2, None)
+        assert H.shape == (B, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)], )
+    def test_points_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, N, device=device, dtype=dtype)
+        H_noweights = find_homography_dlt(points1, points2, None)
+        H_withweights = find_homography_dlt(points1, points2, weights)
+        assert H_noweights.shape == (B, 3, 3) and H_withweights.shape == (B, 3, 3)
+        assert_allclose(H_noweights, H_withweights)
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_and_gradcheck(self, batch_size, device):
         # generate input data
