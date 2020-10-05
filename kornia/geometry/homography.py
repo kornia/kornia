@@ -1,5 +1,8 @@
+import warnings
+
 import torch
 from typing import Tuple
+from typing import Optional
 
 import kornia
 from kornia.geometry.epipolar import normalize_points
@@ -7,7 +10,8 @@ from kornia.geometry.epipolar import normalize_points
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
-def find_homography_dlt(points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor = None) -> torch.Tensor:
+def find_homography_dlt(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> \
+        torch.Tensor:
     r"""Computes the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -50,7 +54,7 @@ def find_homography_dlt(points1: torch.Tensor, points2: torch.Tensor, weights: t
     try:
         U, S, V = torch.svd(A)
     except:
-        print('SVD did not converged')
+        warnings.warn('SVD did not converge', RuntimeWarning)
         return torch.empty((points1_norm.size(0), 3, 3), device=points1.device)
     H = V[..., -1].view(-1, 3, 3)
     H = transform2.inverse() @ (H @ transform1)
