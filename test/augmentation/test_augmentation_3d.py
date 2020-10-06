@@ -764,8 +764,8 @@ class TestRandomRotation3D:
 
 class TestRandomEqualize3D:
     def test_smoke(self, device, dtype):
-        f = RandomEqualize3D(0.5)
-        repr = "RandomEqualize3D(p=0.5, return_transform=False, same_on_batch=False)"
+        f = RandomEqualize3D(p=0.5)
+        repr = "RandomEqualize3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_random_equalize(self, device, dtype):
