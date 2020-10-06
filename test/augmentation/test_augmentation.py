@@ -1569,7 +1569,7 @@ class TestRandomMotionBlur:
 
 
 class TestRandomEqualize:
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = RandomEqualize(0.5)
         repr = "RandomEqualize(p=0.5, return_transform=False)"
         assert str(f) == repr

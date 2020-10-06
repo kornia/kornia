@@ -161,7 +161,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         if torch.sum(to_apply) == 0:
             output = in_tensor
             if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor, params)
+                trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
             output = self.apply_transform(in_tensor, params)
@@ -174,7 +174,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             except Exception as e:
                 raise ValueError(f"{e}, {to_apply}")
             if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor, params)
+                trans_matrix = self.identity_matrix(in_tensor)
                 trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
 
         if return_transform:
@@ -226,9 +226,9 @@ class AugmentationBase2D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
-    def identity_matrix(self, input, params) -> torch.Tensor:
+    def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
 
 class AugmentationBase3D(_AugmentationBase):
@@ -253,9 +253,9 @@ class AugmentationBase3D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input3d(input)
 
-    def identity_matrix(self, input, params) -> torch.Tensor:
+    def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return F.compute_intensity_transformation3d(input, params)
+        return F.compute_intensity_transformation3d(input)
 
 
 class MixAugmentationBase(_BasicAugmentationBase):

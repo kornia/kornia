@@ -168,7 +168,7 @@ class ColorJitter(AugmentationBase2D):
             batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_color_jitter(input, params)
@@ -212,7 +212,7 @@ class RandomGrayscale(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_grayscale(input)
@@ -265,7 +265,7 @@ class RandomErasing(AugmentationBase2D):
             value=self.value, same_on_batch=self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_erase_rectangles(input, params)
@@ -804,7 +804,7 @@ class RandomMotionBlur(AugmentationBase2D):
         return rg.random_motion_blur_generator(1, self.kernel_size, self.angle, self.direction)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_motion_blur(input, params, self.flags)
@@ -863,7 +863,7 @@ class RandomSolarize(AugmentationBase2D):
         return rg.random_solarize_generator(batch_shape[0], self.thresholds, self.additions, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_solarize(input, params)
@@ -919,7 +919,7 @@ class RandomPosterize(AugmentationBase2D):
         return rg.random_posterize_generator(batch_shape[0], self.bits, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_posterize(input, params)
@@ -983,7 +983,7 @@ class RandomSharpness(AugmentationBase2D):
         return rg.random_sharpness_generator(batch_shape[0], self.sharpness, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_sharpness(input, params)
@@ -1026,7 +1026,7 @@ class RandomEqualize(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input, params)
+        return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_equalize(input, params)

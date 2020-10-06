@@ -362,7 +362,7 @@ def apply_color_jitter(
     return jittered
 
 
-def compute_intensity_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]):
+def compute_intensity_transformation(input: torch.Tensor):
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
 
     Args:
@@ -911,10 +911,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    res = []
-    for image, prob in zip(input, params['batch_prob']):
-        res.append(equalize(image) if prob else _transform_input(image))
-    return torch.cat(res, dim=0)
+    return equalize(input)
 
 
 def apply_mixup(input: torch.Tensor, labels: torch.Tensor,

@@ -450,7 +450,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im):
+def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     r"""Scale the data in the channel to implement equalize.
 
     Args:

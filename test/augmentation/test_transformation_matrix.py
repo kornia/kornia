@@ -85,7 +85,7 @@ class TestIntensityTransformation:
 
         expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
 
-        assert_allclose(F.compute_intensity_transformation(input, dict()), expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.compute_intensity_transformation(input), expected_transform, atol=1e-4, rtol=1e-5)
 
     def test_intensity_transformation_batch(self):
         batch_size = 2
@@ -94,7 +94,7 @@ class TestIntensityTransformation:
 
         expected_transform = torch.eye(3).unsqueeze(0).expand((batch_size, 3, 3))  # 2 x 3 x 3
 
-        assert_allclose(F.compute_intensity_transformation(input, dict()), expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.compute_intensity_transformation(input), expected_transform, atol=1e-4, rtol=1e-5)
 
 
 class TestPerspective:
