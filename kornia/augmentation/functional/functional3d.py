@@ -189,6 +189,8 @@ def compute_intensity_transformation3d(input: torch.Tensor):
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     identity: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     return identity
+
+
 def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
 
