@@ -9,6 +9,71 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestFocalLossWithLogits:
+    def test_smoke_none(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        assert kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.5, gamma=2.0, reduction="none"
+        ).shape == (2, 3, 2)
+
+    def test_smoke_sum(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="sum"
+            ).shape == ()
+        )
+
+    def test_smoke_mean(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
+            ).shape == ()
+        )
+
+    def test_smoke_mean_flat(self, device):
+        num_classes = 3
+        logits = torch.rand(2, num_classes).to(device)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+        assert (
+            kornia.losses.binary_focal_loss_with_logits(
+                logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
+            ).shape == ()
+        )
+
+    # TODO: implement me
+    def test_jit(self, device):
+        pass
+
+    def test_gradcheck(self, device):
+        num_classes = 3
+        alpha, gamma = 0.5, 2.0  # for focal loss
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        logits = utils.tensor_to_gradcheck_var(logits)  # to var
+        assert gradcheck(
+            kornia.losses.binary_focal_loss_with_logits,
+            (logits, labels, alpha, gamma),
+            raise_exception=True,
+        )
+
+
 class TestFocalLoss:
     def test_smoke_none(self, device):
         num_classes = 3
