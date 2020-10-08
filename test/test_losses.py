@@ -12,7 +12,7 @@ from torch.testing import assert_allclose
 class TestFocalLossWithLogits:
     def test_smoke_none(self, device):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to('cpu')
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -22,7 +22,7 @@ class TestFocalLossWithLogits:
 
     def test_smoke_sum(self, device):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to('cpu')
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -34,7 +34,7 @@ class TestFocalLossWithLogits:
 
     def test_smoke_mean(self, device):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to('cpu')
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -46,7 +46,7 @@ class TestFocalLossWithLogits:
 
     def test_smoke_mean_flat(self, device):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to('cpu')
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
         assert (
@@ -55,14 +55,26 @@ class TestFocalLossWithLogits:
             ).shape == ()
         )
 
-    # TODO: implement me
     def test_jit(self, device):
-        pass
+        @torch.jit.script
+        def op_script(logits, labels):
+            return kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.binary_focal_loss_with_logits
+        op_script = torch.jit.script(op)
+        actual = op_script(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+        expected = op(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+        assert_allclose(actual, expected)
 
     def test_gradcheck(self, device):
         num_classes = 1
         alpha, gamma = 0.5, 2.0  # for focal loss with logits
-        logits = torch.rand(2, num_classes, 3, 2).to('cpu')
+        logits = torch.rand(2, num_classes, 3, 2).to(device)
         labels = torch.rand(2, 1, 3, 2) * num_classes
         labels = labels.to(device).long()
 
