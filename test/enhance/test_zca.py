@@ -58,8 +58,8 @@ class TestZCA:
 
         assert_allclose(actual, expected)
 
-    @pytest.mark.parametrize("input_shape", [(15, 2, 2, 2), (10, 4), (20, 3, 2, 2)])
-    def test_identity(self, input_shape, device):
+    @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), .1), ((20, 3, 2, 2), 1e-3)])
+    def test_identity(self, input_shape, eps, device):
         """
 
         Assert that data can be recovered by the inverse transform
@@ -68,7 +68,7 @@ class TestZCA:
 
         data = torch.randn(*input_shape, dtype=torch.float32).to(device)
 
-        zca = kornia.enhance.ZCAWhitening(compute_inv=True).fit(data)
+        zca = kornia.enhance.ZCAWhitening(compute_inv=True, eps=eps).fit(data)
 
         data_w = zca(data)
 
