@@ -53,10 +53,6 @@ class TestFocalLossWithLogits:
         )
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(logits, labels):
-            return kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
-
         num_classes = 1
         logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
