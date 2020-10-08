@@ -21,7 +21,7 @@ def inverse_depth_smoothness_loss(
         image: torch.Tensor) -> torch.Tensor:
     r"""Computes image-aware inverse depth smoothness loss.
 
-    See :class:`~kornia.losses.InvDepthSmoothnessLoss` for details.
+    See :class:`~kornia.losses.InverseDepthSmoothnessLoss` for details.
     """
     if not torch.is_tensor(idepth):
         raise TypeError("Input idepth type is not a torch.Tensor. Got {}"
