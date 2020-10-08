@@ -10,21 +10,19 @@ from torch.testing import assert_allclose
 
 
 class TestFocalLossWithLogits:
-    def test_smoke_none(self, device):
+    def test_smoke_none(self, device, dtype):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert kornia.losses.binary_focal_loss_with_logits(
             logits, labels, alpha=0.5, gamma=2.0, reduction="none"
         ).shape == (2, 3, 2)
 
-    def test_smoke_sum(self, device):
+    def test_smoke_sum(self, device, dtype):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
             kornia.losses.binary_focal_loss_with_logits(
@@ -32,11 +30,10 @@ class TestFocalLossWithLogits:
             ).shape == ()
         )
 
-    def test_smoke_mean(self, device):
+    def test_smoke_mean(self, device, dtype):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         assert (
             kornia.losses.binary_focal_loss_with_logits(
@@ -44,26 +41,25 @@ class TestFocalLossWithLogits:
             ).shape == ()
         )
 
-    def test_smoke_mean_flat(self, device):
+    def test_smoke_mean_flat(self, device, dtype):
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+
         assert (
             kornia.losses.binary_focal_loss_with_logits(
                 logits, labels, alpha=0.5, gamma=2.0, reduction="mean"
             ).shape == ()
         )
 
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(logits, labels):
             return kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
 
         num_classes = 1
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         op = kornia.losses.binary_focal_loss_with_logits
         op_script = torch.jit.script(op)
