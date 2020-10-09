@@ -25,7 +25,8 @@ from .augmentation3d import (
     RandomVerticalFlip3D,
     RandomDepthicalFlip3D,
     RandomRotation3D,
-    RandomAffine3D
+    RandomAffine3D,
+    RandomEqualize3D
 )
 from .mix_augmentation import (
     RandomMixUp,

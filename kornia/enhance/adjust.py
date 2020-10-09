@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.augmentation.utils import _transform_input3d
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.constants import pi
 
 
@@ -451,10 +450,31 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im):
-    """Scale the data in the channel to implement equalize."""
-    im = im * 255
+def _scale_channel(im: torch.Tensor) -> torch.Tensor:
+    r"""Scale the data in the channel to implement equalize.
 
+    Args:
+        input (torch.Tensor): image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
+    Returns:
+        torch.Tensor: image tensor with the batch in the zero position.
+    """
+    min_ = im.min()
+    max_ = im.max()
+
+    if min_.item() < 0. and not torch.isclose(min_, torch.tensor(0., dtype=min_.dtype)):
+        raise ValueError(
+            f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}."
+        )
+    if max_.item() > 1. and not torch.isclose(max_, torch.tensor(1., dtype=max_.dtype)):
+        raise ValueError(
+            f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}."
+        )
+
+    ndims = len(im.shape)
+    if ndims not in (2, 3):
+        raise TypeError(f"Input tensor must have 2 or 3 dimensions. Found {ndims}.")
+
+    im = im * 255
     # Compute the histogram of the image channel.
     histo = torch.histc(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
@@ -489,8 +509,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-        input (torch.Tensor): image tensor with shapes like :math:(C, H, W) or :math:(B, C, H, W) to equalize.
-
+        input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
     Returns:
         torch.Tensor: Sharpened image or images.
     """
@@ -512,12 +531,12 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
-    input (torch.Tensor): image tensor with shapes like :math:(C, D, H, W) or :math:(B, C, D, H, W) to equalize.
+        input (torch.Tensor): image tensor with shapes like :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)` to equalize.
 
     Returns:
-    torch.Tensor: Sharpened image or images with same shape as the input.
+        torch.Tensor: Sharpened image or images with same shape as the input.
     """
-    input = _transform_input3d(input)
+    input = _to_bcdhw(input)
 
     res = []
     for volume in input:
