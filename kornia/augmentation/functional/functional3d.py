@@ -3,6 +3,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 import torch
 
 from kornia.constants import Resample, BorderType, pi
+from kornia.enhance.adjust import equalize3d
 from kornia.geometry.transform.affwarp import (
     _compute_rotation_matrix3d, _compute_tensor_center3d
 )
@@ -179,10 +180,8 @@ def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
 
 def compute_intensity_transformation3d(input: torch.Tensor):
     r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
-
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
-
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`. Returns identity transformations.
     """
@@ -351,3 +350,20 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     trans_mat[:, 2] = rotation_mat[:, 2]
 
     return trans_mat
+
+
+def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
+            :math:`(*, C, D, H, W)`.
+        params (Dict[str, torch.Tensor]): shall be empty.
+
+    Returns:
+        torch.Tensor: The equalized input. :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    return equalize3d(input)
