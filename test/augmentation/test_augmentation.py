@@ -42,101 +42,87 @@ from kornia.augmentation.base import AugmentationBase2D
 # compute_transformation implementálva van és batchsiye stimmel
 # apply_transform implementálva van és batchsiye stimmel
 
-# class CommonAugmentation2DTests(BaseTester):
-#     def test_smoke(self):
-#         raise NotImplementedError("Implement a stupid routine.")
-#     def test_exception(self):
-#         raise NotImplementedError("Implement a stupid routine.")
-#     def test_batch(self):
-#         raise NotImplementedError("Implement a stupid routine.")
-#     def test_jit(self):
-#         raise NotImplementedError("Implement a stupid routine.")
-#     def test_gradcheck(self):
-#         raise NotImplementedError("Implement a stupid routine.")
 
-#     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
-#                  p_batch: float = 1.) -> None:
-#         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
-#         self.p = p
-#         self.p_batch = p_batch
-#         self.return_transform = return_transform
+class CommonTests(BaseTester):
 
-#     def __repr__(self) -> str:
-#         return super().__repr__() + f", return_transform={self.return_transform}"
-#     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-#                 params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-#                 return_transform: Optional[bool] = None
-#                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-
-class CommonTests:
-
-    # Override setter
+    ############################################################################################################
+    # Attributes variables to set
+    ############################################################################################################
     _augmentation_cls = None
-
-    @property
-    def augmentation_cls(self):
-        return self._augmentation_cls
-
-    @augmentation_cls.setter
-    def augmentation_cls(self, val):
-        raise ValueError("augmentation_cls should not be modified")
+    _default_param_set = None
 
     ############################################################################################################
     # Fixtures 
     ############################################################################################################
-    @pytest.fixture(params=[(4,5),(3,4,5),(2,3,4,5)],scope="class")
-    def input_shape(self,request):
-        return request.param
-
+    @pytest.fixture(scope="class")
+    def param_set(self,request):
+        raise NotImplementedError("param_set must be overriden in subclasses")
+    
     ############################################################################################################
-    # Test cases to implement 
+    # Test cases 
     ############################################################################################################
+    def test_smoke(self,device,dtype,param_set):
+        self._test_smoke_implementation(device=device, dtype=dtype,**param_set)
 
-    def test_smoke(self):
-        raise NotImplementedError("test_smoke must be implemented. Check the function _test_smoke_implementation")
+    def test_smoke_call(self,device,dtype,param_set):
+        self._test_smoke_call_implementation(device=device, dtype=dtype,**param_set)
 
-    def test_consistent_output_shape(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    def test_smoke_return_transform(self,device,dtype,param_set):
+        self._test_smoke_return_transform_implementation(device=device, dtype=dtype,**param_set)
 
-    def test_random_p_0(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.parametrize("input_shape", [(4,5),(3,4,5),(2,3,4,5)])
+    def test_consistent_output_shape(self,device,dtype,input_shape):
+        self._test_consistent_output_shape_implementation(device=device, dtype=dtype, input_shape=input_shape,**self._default_param_set)
 
-    def test_random_p_0_return_transform(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    def test_random_p_0(self,device,dtype):
+        self._test_random_p_0_implementation(device=device, dtype=dtype,**self._default_param_set)
 
-    def test_random_p_1(self):
+    def test_random_p_0_return_transform(self,device,dtype):
+        self._test_random_p_0_return_transform_implementation(device=device, dtype=dtype,**self._default_param_set)
+
+    def test_random_p_1(self,device,dtype):
         raise NotImplementedError("Implement a stupid routine.")
     
-    def test_random_p_1_return_transform(self):
+    def test_random_p_1_return_transform(self,device,dtype):
         raise NotImplementedError("Implement a stupid routine.")
     
-    def test_sequential(self):
+    def test_exception(self):
         raise NotImplementedError("Implement a stupid routine.")
     
-    def test_random_batch_transform(self):
+    def test_batch(self):
+        raise NotImplementedError("Implement a stupid routine.")
+    
+    def test_jit(self):
+        raise NotImplementedError("Implement a stupid routine.")
+    
+    def test_gradcheck(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    def test_sequential(self,device,dtype):
+        raise NotImplementedError("Implement a stupid routine.")
+    
+    def test_random_batch_transform(self,device,dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
 # TODO Implement
 # test_random_p_half_return_transform (manual force [True, False] for batchsize 2 inputs)
+# test_batch
 # test_batch_return_transform
+# test_sequential
 # test_sequential_return_transform
 # test_coordinate check
 # test_jit
 # test_gradcheck
 
-# TODO WTF selective param gen
-
-
     def _create_augmentation_from_params(self,**params):
-        return self.augmentation_cls(**params)
+        return self._augmentation_cls(**params)
     
     ############################################################################################################
     # Test case implementations 
     ############################################################################################################
 
-    # TODO Split up into multiple test cases
     def _test_smoke_implementation(self, device, dtype, **params):
-        assert issubclass(self.augmentation_cls,AugmentationBase2D), f"{self.augmentation_cls} is not a subclass of AugmentationBase2D"
+        assert issubclass(self._augmentation_cls,AugmentationBase2D), f"{self._augmentation_cls} is not a subclass of AugmentationBase2D"
         
         # Can be instatiated
         augmentation = self._create_augmentation_from_params(**params,return_transform=False)
@@ -160,16 +146,23 @@ class CommonTests:
         output = augmentation.apply_transform(test_input,generated_params)
         assert output.shape[0] == batch_shape[0]
 
-        # augmentation can be called and returns the correct batch sized output
+    def _test_smoke_call_implementation(self, device, dtype, **params):
+        batch_shape = (4,3,5,6)
+        expected_transformation_shape = torch.Size((batch_shape[0],3,3))
+        test_input = torch.ones(batch_shape,device=device,dtype=dtype)
+        augmentation = self._create_augmentation_from_params(**params,return_transform=False)
+        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params["batch_prob"] = torch.tensor([True,True,True,True])
+        test_transform = torch.rand(expected_transformation_shape,device=device,dtype=dtype)
+
+
         output = augmentation(test_input,params=generated_params)
         assert output.shape[0] == batch_shape[0]
 
-        # augmentation can be called and returns the correct batch sized output
         output, transformation = augmentation(test_input,params=generated_params,return_transform=True)
         assert output.shape[0] == batch_shape[0]
         assert transformation.shape == expected_transformation_shape
 
-        test_transform = torch.rand(expected_transformation_shape,device=device,dtype=dtype)
         output, final_transformation = augmentation((test_input,test_transform),params=generated_params,return_transform=True)
         assert output.shape[0] == batch_shape[0]
         assert final_transformation.shape == expected_transformation_shape
@@ -180,14 +173,26 @@ class CommonTests:
         assert transformation.shape == expected_transformation_shape
         assert (transformation==test_transform).all()
 
-        # Return transform 
+    def _test_smoke_return_transform_implementation(self, device, dtype, **params):
+        batch_shape = (4,3,5,6)
+        expected_transformation_shape = torch.Size((batch_shape[0],3,3))
+        test_input = torch.ones(batch_shape,device=device,dtype=dtype)
         augmentation = self._create_augmentation_from_params(**params,return_transform=True)
+        generated_params = augmentation.generate_parameters(batch_shape)
+        generated_params["batch_prob"] = torch.tensor([True,True,True,True])
+        test_transform = torch.rand(expected_transformation_shape,device=device,dtype=dtype)
+
 
         output, transformation = augmentation(test_input,params=generated_params)
         assert output.shape[0] == batch_shape[0]
         assert transformation.shape == expected_transformation_shape
 
         output, final_transformation = augmentation((test_input,test_transform),params=generated_params)
+        assert output.shape[0] == batch_shape[0]
+        assert final_transformation.shape == expected_transformation_shape
+        assert_allclose(final_transformation, transformation @ test_transform)
+
+        output, final_transformation = augmentation((test_input,test_transform),params=generated_params,return_transform=True)
         assert output.shape[0] == batch_shape[0]
         assert final_transformation.shape == expected_transformation_shape
         assert_allclose(final_transformation, transformation @ test_transform)
@@ -269,8 +274,8 @@ class CommonTests:
     def _test_sequential(self, device, dtype,**params):
 
         f = nn.Sequential(
-            self._create_augmentation_from_params(**params,return_transform=True)
             self._create_augmentation_from_params(**params,return_transform=True),
+            self._create_augmentation_from_params(**params,return_transform=True)
         )
 
         input = torch.rand(3, 5, 5).to(device)  # 3 x 5 x 5
@@ -283,99 +288,59 @@ class CommonTests:
         assert_allclose(f(input)[0], expected, atol=1e-4, rtol=1e-5)
         assert_allclose(f(input)[1], expected_transform)
     
-    # Can be instantiated
-    # Can be called
-    # Returns the proper number and shaped tensors
-    # Returns the the proper transformations eye
-    # Returns the proper transformation back transform
-    # return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
-    #              p_batch: float = 1.
 
+class TestColorJitterAlternative(CommonTests):
 
-# ps = [0.0,1.0]
-# return_transforms = [False,True]
-# params = product(ps,return_transforms)
-# class TestSubclass(CommonTests):
-#     @pytest.fixture(params=params,scope="class")
-#     def augmentation(self,request):
-#         return RandomHorizontalFlip3D(request.param[0], return_transform=request.param[1],same_on_batch=True)
-# def dummy_generator(n):
-#     for i in range(n):
-#         yield i
-# def cartesian(default,*,**kwargs):
-#     keys = kwargs.keys()
-#     combinations = ({} for )
-
-# def one_by_one(default,*,**kwargs):
-#     pass
-
-
-class TestColorJitter2(CommonTests):
-
-    brightness = (1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.)))
-    contrast = (1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.)))
-    saturation = (1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.)))
-    hue = (0., (-0.5,0.5), [-0.5,0.5],torch.tensor(0.),torch.tensor((-0.5,0.5)))
-    return_transform = (False,True)
-    same_on_batch = (False,True)
-    p = (0.,1.)
-
-    params = []
-    params.extend({"brightness":v} for v in brightness)
-    params.extend({"contrast":v} for v in contrast)
-    params.extend({"saturation":v} for v in saturation)
-    params.extend({"hue":v} for v in hue)
+    possible_params = {
+        "brightness":(1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.))),
+        "contrast":(1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.))),
+        "saturation":(1., (0.,2.), [0.,2.],torch.tensor(0.),torch.tensor((0.,2.))),
+        "hue":(0., (-0.5,0.5), [-0.5,0.5],torch.tensor(0.),torch.tensor((-0.5,0.5))),
+    }
+    params = [{param_name:v} for param_name,possible_values in possible_params.items() for v in possible_values]
 
     _augmentation_cls = ColorJitter
-
-    @pytest.mark.parametrize("params", params)
-    def test_smoke(self,device,dtype,params):
-        super()._test_smoke_implementation(device=device, dtype=dtype,**params)
-
-    def test_random_p_0(self,dtype,device):
-        super()._test_random_p_0_implementation(device=device, dtype=dtype,
-                    brightness=0.5,
-                    contrast=0.5,
-                    saturation=0.5,
-                    hue=0.5
-                )
+    _default_param_set = {"brightness":0.3,
+                          "contrast":0.3,
+                          "saturation":0.3,
+                          "hue":0.3,}
+    
+    @pytest.fixture(params=params,scope="class")
+    def param_set(self,request):
+        return request.param
 
     @pytest.mark.parametrize("input_shape", [(3,4,5),(2,3,4,5)])
     def test_consistent_output_shape(self,device,dtype,input_shape):
-        super()._test_consistent_output_shape_implementation(device=device, dtype=dtype, input_shape=input_shape)
-
-
-    def test_random_p_0_return_transform(self,device,dtype):
-        super()._test_random_p_0_return_transform_implementation(device=device, dtype=dtype,
-                    brightness=0.5,
-                    contrast=0.5,
-                    saturation=0.5,
-                    hue=0.5
-                )
+        self._test_consistent_output_shape_implementation(device=device, dtype=dtype, input_shape=input_shape,**self._default_param_set)
 
     def test_random_p_1(self,device,dtype):
         torch.manual_seed(42)
+        # fmt: off
         input_tensor = torch.tensor([[.1, .2, .3, .4],
-                              [.5, .6, .7, .8],
-                              [.9, .0, .1, .2]], device=device, dtype=dtype).repeat(3, 1, 1)
+                                     [.5, .6, .7, .8],
+                                     [.9, .0, .1, .2]], device=device, dtype=dtype).repeat(3, 1, 1)
         expected_output = torch.tensor([[[[0.6024, 0.7273, 0.8522, 0.9771],
                                           [1.0000, 1.0000, 1.0000, 1.0000],
                                           [1.0000, 0.4775, 0.6024, 0.7273]]]]).repeat(1, 3, 1, 1)
-        super()._test_random_p_1_implementation(device=device, dtype=dtype,input_tensor=input_tensor,expected_output=expected_output,
+        # fmt: on
+        self._test_random_p_1_implementation(device=device, dtype=dtype,input_tensor=input_tensor,expected_output=expected_output,
                     brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1
                 )
+                
     def test_random_p_1_return_transform(self, device, dtype):
         torch.manual_seed(42)
+        # fmt: off
         input_tensor = torch.tensor([[.1, .2, .3, .4],
-                              [.5, .6, .7, .8],
-                              [.9, .0, .1, .2]], device=device, dtype=dtype).repeat(3, 1, 1)
+                                     [.5, .6, .7, .8],
+                                     [.9, .0, .1, .2]], device=device, dtype=dtype).repeat(3, 1, 1)
         expected_output = torch.tensor([[[[0.6024, 0.7273, 0.8522, 0.9771],
                                           [1.0000, 1.0000, 1.0000, 1.0000],
                                           [1.0000, 0.4775, 0.6024, 0.7273]]]], device=device, dtype=dtype).repeat(1, 3, 1, 1)
         expected_transformation = torch.tensor([[[1., 0., 0.],
-                                                [0., 1., 0.],
-                                                [0., 0., 1.]]], device=device, dtype=dtype)
-        super()._test_random_p_1_return_transform_implementation(device=device, dtype=dtype,input_tensor=input_tensor,expected_output=expected_output,expected_transformation=expected_transformation,
+                                                 [0., 1., 0.],
+                                                 [0., 0., 1.]]], device=device, dtype=dtype)
+        # fmt: on
+        self._test_random_p_1_return_transform_implementation(device=device, dtype=dtype,input_tensor=input_tensor,expected_output=expected_output,expected_transformation=expected_transformation,
                     brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1
                 )
 
