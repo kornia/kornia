@@ -133,7 +133,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     v: torch.Tensor = maxc  # brightness
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / (v+1e-31)
+    s: torch.Tensor = deltac / (v + 1e-31)
 
     # avoid division by zero
     deltac = torch.where(
@@ -143,11 +143,11 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     h = torch.stack([
         bc - gc,
-        2.0*deltac + rc - bc,
-        4.0*deltac + gc - rc,
+        2.0 * deltac + rc - bc,
+        4.0 * deltac + gc - rc,
     ], dim=-3)
 
-    h = torch.gather(h, dim=-3, index=max_indices[..., None,:,:])
+    h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
     h = h.squeeze(-3)
     h = h / deltac
 
