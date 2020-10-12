@@ -66,15 +66,13 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     t: torch.Tensor = v * (one - (one - f) * s)
 
     hi = hi.long()
-    indices: torch.Tensor = torch.stack([hi, hi+6, hi+12], dim=-3)
-    # fmt: on
+    indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
     out = torch.stack((
-                    v,q,p,p,t,v,
-                    t,v,v,q,p,p,
-                    p,p,t,v,v,q,
+        v, q, p, p, t, v,
+        t, v, v, q, p, p,
+        p, p, t, v, v, q,
     ), dim=-3)
-    # fmt: off
-    out = torch.gather(out,-3,indices)
+    out = torch.gather(out, -3, indices)
 
     return out
 
@@ -141,15 +139,15 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     deltac = torch.where(
         deltac == 0, torch.ones_like(deltac), deltac)
 
-    rc,gc,bc = torch.unbind(maxc.unsqueeze(-3) - image,dim=-3)
+    rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
 
     h = torch.stack([
         bc - gc,
         2.0*deltac + rc - bc,
         4.0*deltac + gc - rc,
-    ],dim=-3)
+    ], dim=-3)
 
-    h = torch.gather(h,dim=-3,index=max_indices[...,None,:,:])
+    h = torch.gather(h, dim=-3, index=max_indices[..., None,:,:])
     h = h.squeeze(-3)
     h = h / deltac
 
