@@ -141,7 +141,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     deltac = torch.where(
         deltac == 0, torch.ones_like(deltac), deltac)
 
-    rc,gc,bc = torch.unbind(maxc - image,dim=-3)
+    rc,gc,bc = torch.unbind(maxc.unsqueeze(-3) - image,dim=-3)
 
     h = torch.stack([
         bc - gc,
