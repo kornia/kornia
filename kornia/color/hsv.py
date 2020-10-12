@@ -65,14 +65,16 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     q: torch.Tensor = v * (one - f * s)
     t: torch.Tensor = v * (one - (one - f) * s)
 
-    out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3)
-
-    out[out == 0] = torch.stack((v, t, p), dim=-3)[out == 0]
-    out[out == 1] = torch.stack((q, v, p), dim=-3)[out == 1]
-    out[out == 2] = torch.stack((p, v, t), dim=-3)[out == 2]
-    out[out == 3] = torch.stack((p, q, v), dim=-3)[out == 3]
-    out[out == 4] = torch.stack((t, p, v), dim=-3)[out == 4]
-    out[out == 5] = torch.stack((v, p, q), dim=-3)[out == 5]
+    hi = hi.long()
+    indices: torch.Tensor = torch.stack([hi, hi+6, hi+12], dim=-3)
+    # fmt: on
+    out = torch.stack((
+                    v,q,p,p,t,v,
+                    t,v,v,q,p,p,
+                    p,p,t,v,v,q,
+    ), dim=-3)
+    # fmt: off
+    out = torch.gather(out,-3,indices)
 
     return out
 
@@ -127,35 +129,29 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
-
-    maxc: torch.Tensor = image.max(-3)[0]
+    maxc, max_indices = image.max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / v
-
-    s[torch.isnan(s)] = 0.
+    s: torch.Tensor = deltac / (v+1e-31)
 
     # avoid division by zero
     deltac = torch.where(
         deltac == 0, torch.ones_like(deltac), deltac)
 
-    rc: torch.Tensor = (maxc - r) / deltac
-    gc: torch.Tensor = (maxc - g) / deltac
-    bc: torch.Tensor = (maxc - b) / deltac
+    rc,gc,bc = torch.unbind(maxc - image,dim=-3)
 
-    maxg: torch.Tensor = g == maxc
-    maxr: torch.Tensor = r == maxc
+    h = torch.stack([
+        bc - gc,
+        2.0*deltac + rc - bc,
+        4.0*deltac + gc - rc,
+    ],dim=-3)
 
-    h: torch.Tensor = 4.0 + gc - rc
-    h[maxg] = 2.0 + rc[maxg] - bc[maxg]
-    h[maxr] = bc[maxr] - gc[maxr]
-    h[minc == maxc] = 0.0
+    h = torch.gather(h,dim=-3,index=max_indices[...,None,:,:])
+    h = h.squeeze(-3)
+    h = h / deltac
 
     h = (h / 6.0) % 1.0
 
