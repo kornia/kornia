@@ -482,7 +482,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
-        angle = angle.unsqueeze(dim=0)
+        angle = angle.unsqueeze(0)
     assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
@@ -490,17 +490,24 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
-        direction = direction.unsqueeze(dim=0)
+        direction = direction.unsqueeze(0)
     assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+
+    assert direction.shape == angle.shape, \
+        f"direction and angle must have the same length. Got {direction} and {angle}."
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
-    direction = (torch.clamp(direction, -1., 1.).item() + 1.) / 2.
-    kernel = torch.zeros(kernel_tuple, dtype=torch.float)
-    kernel[kernel_tuple[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_tuple[0])
-    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+
+    # Element-wise linspace
+    kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
+        [(direction - (1 / (kernel_tuple[0] - 1)) * i) for i in range(kernel_tuple[0])], dim=-1)
+    kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, angle)
-    kernel = kernel[0][0]
+    kernel = kernel[:, 0]
     kernel = kernel / kernel.sum()
+
     return kernel

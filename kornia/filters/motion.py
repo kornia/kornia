@@ -64,6 +64,5 @@ def motion_blur(
     See :class:`~kornia.filters.MotionBlur` for details.
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
-    kernel: torch.Tensor = torch.unsqueeze(
-        get_motion_kernel2d(kernel_size, angle, direction), dim=0)
+    kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction)
     return filter2D(input, kernel, border_type)

@@ -44,7 +44,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
         input (torch.Tensor): the input tensor with shape of
           :math:`(B, C, H, W)`.
         kernel (torch.Tensor): the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kH, kW)`.
+          tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
@@ -86,17 +86,19 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel[None].type_as(input)
+    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).type_as(input)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
+    if tmp_kernel.size(0) == 1:
+        tmp_kernel = tmp_kernel.expand(c, -1, -1, -1)
 
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
     padding_shape: List[int] = compute_padding([height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
-    return F.conv2d(input_pad, tmp_kernel.expand(c, -1, -1, -1), groups=c, padding=0, stride=1)
+    return F.conv2d(input_pad, tmp_kernel, groups=c, padding=0, stride=1)
 
 
 def filter3D(input: torch.Tensor, kernel: torch.Tensor,
