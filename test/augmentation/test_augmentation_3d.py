@@ -24,9 +24,12 @@ from kornia.augmentation import (
 
 class TestRandomHorizontalFlip3D:
 
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+=======
+>>>>>>> Repr functions and smoke tests fixed (#710)
     def test_smoke(self):
         f = RandomHorizontalFlip3D(0.5)
         repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -189,9 +192,12 @@ class TestRandomHorizontalFlip3D:
 
 class TestRandomVerticalFlip3D:
 
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+=======
+>>>>>>> Repr functions and smoke tests fixed (#710)
     def test_smoke(self):
         f = RandomVerticalFlip3D(0.5)
         repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -349,9 +355,12 @@ class TestRandomVerticalFlip3D:
 
 class TestRandomDepthicalFlip3D:
 
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+=======
+>>>>>>> Repr functions and smoke tests fixed (#710)
     def test_smoke(self):
         f = RandomDepthicalFlip3D(0.5)
         repr = "RandomDepthicalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -522,6 +531,7 @@ class TestRandomRotation3D:
 
     torch.manual_seed(0)  # for random reproductibility
 
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -530,6 +540,13 @@ class TestRandomRotation3D:
         repr = """RandomRotation3D(degrees=tensor([[-45.5000, 45.5000],
         [-45.5000, 45.5000],
         [-45.5000, 45.5000]]), resample=BILINEAR, align_corners=False, p=0.5, """\
+=======
+    def test_smoke(self):
+        f = RandomRotation3D(degrees=45.5)
+        repr = """RandomRotation3D(degrees=tensor([[-45.5000,  45.5000],
+        [-45.5000,  45.5000],
+        [-45.5000,  45.5000]]), resample=BILINEAR, align_corners=False, p=0.5, """\
+>>>>>>> Repr functions and smoke tests fixed (#710)
         """p_batch=1.0, same_on_batch=False, return_transform=False)"""
         assert str(f) == repr
 

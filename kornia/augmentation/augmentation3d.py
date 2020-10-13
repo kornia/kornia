@@ -63,6 +63,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
@@ -124,6 +127,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                  keepdim: bool = False) -> None:
         super(RandomVerticalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -190,6 +196,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
                  keepdim: bool = False) -> None:
         super(RandomDepthicalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
