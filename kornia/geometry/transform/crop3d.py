@@ -19,21 +19,23 @@ __all__ = [
 
 def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int, int],
                       interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    r"""Extracts crops from the input tensor and resizes them.
+    r"""Extract crops from 3D volumes (5D tensor) and resize them.
 
     Args:
-        tensor (torch.Tensor): the reference tensor of shape BxCxDxHxW.
+        tensor (torch.Tensor): the 3D volume tensor with shape (C, D, H, W) or (B, C, D, H, W).
         boxes (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
         size (Tuple[int, int, int]): a tuple with the height and width that will be
-          used to resize the extracted patches.
+            used to resize the extracted patches.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+
     Returns:
-        torch.Tensor: tensor containing the patches with shape BxN1xN2
+        torch.Tensor: tensor containing the patches with shape (Bx)CxN1xN2xN3.
+
     Example:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
         >>> input
@@ -80,7 +82,7 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
                         .format(type(boxes)))
     if not len(tensor.shape) in (4, 5,):
-        raise ValueError("Input tensor must be in the shape of CxHxW or "
+        raise ValueError("Input tensor must be in the shape of CxDxHxW or "
                          "BxCxDxHxW. Got {}".format(tensor.shape))
     if not isinstance(size, (tuple, list,)) and len(size) != 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}"
@@ -113,16 +115,15 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
 def center_crop3d(tensor: torch.Tensor, size: Tuple[int, int, int],
                   interpolation: str = 'bilinear',
                   align_corners: bool = True) -> torch.Tensor:
-    r"""Crops the given tensor at the center.
+    r"""Crop the 3D volumes (5D tensor) at the center.
 
     Args:
-        tensor (torch.Tensor): the input tensor with shape (C, D, H, W) or
-          (B, C, D, H, W).
+        tensor (torch.Tensor): the 3D volume tensor with shape (C, D, H, W) or (B, C, D, H, W).
         size (Tuple[int, int, int]): a tuple with the expected depth, height and width
-          of the output patch.
+            of the output patch.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
 
     Returns:
         torch.Tensor: the output tensor with patches.
@@ -224,15 +225,15 @@ def center_crop3d(tensor: torch.Tensor, size: Tuple[int, int, int],
 
 def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
                     interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    """A wrapper performs crop transform with bounding boxes.
+    """Perform crop transform on 3D volumes (5D tensor) by bounding boxes.
 
     Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
     Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
     So far, the ragged tensor is not supported by PyTorch right now. This function hereby requires the bounding boxes
-    in a batch must be rectangles with same width and height.
+    in a batch must be rectangles with same width, height and depth.
 
     Args:
-        tensor (torch.Tensor): the input tensor with shape (C, D, H, W) or (B, C, D, H, W).
+        tensor (torch.Tensor): the 3D volume tensor with shape (C, D, H, W) or (B, C, D, H, W).
         src_box (torch.Tensor): a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
@@ -297,7 +298,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
 
     if tensor.ndimension() not in [4, 5]:
         raise TypeError(f"Only tensor with shape (C, D, H, W) and (B, C, D, H, W) supported. Got {tensor.shape}.")
-    # warping needs data in the shape of BCHW
+    # warping needs data in the shape of BCDHW
     is_unbatched: bool = tensor.ndimension() == 4
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
@@ -325,7 +326,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
 
 
 def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Auto-infer the output sizes.
+    r"""Auto-infer the output sizes for the given 3D bounding boxes.
 
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
@@ -375,7 +376,7 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
 
 
 def validate_bboxes3d(boxes: torch.Tensor) -> None:
-    """Validate if a bounding box usable or not.
+    """Validate if a 3D bounding box usable or not.
 
     This function checks if the boxes are cube or not.
 
@@ -474,7 +475,7 @@ def bbox_generator3d(
     x_start: torch.Tensor, y_start: torch.Tensor, z_start: torch.Tensor,
     width: torch.Tensor, height: torch.Tensor, depth: torch.Tensor
 ) -> torch.Tensor:
-    """Generate bounding boxes according to the provided start coords, width, height and depth.
+    """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
 
     Args:
         x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.

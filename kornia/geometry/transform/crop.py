@@ -19,10 +19,10 @@ __all__ = [
 
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
                     interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    r"""Extracts crops from the input tensor and resizes them.
+    r"""Extract crops from 2D images (4D tensor) and resize them.
 
     Args:
-        tensor (torch.Tensor): the reference tensor of shape BxCxHxW.
+        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
         boxes (torch.Tensor): a tensor containing the coordinates of the
           bounding boxes to be extracted. The tensor must have the shape
           of Bx4x2, where each box is defined in the following (clockwise)
@@ -32,9 +32,11 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
           used to resize the extracted patches.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+
     Returns:
-        torch.Tensor: tensor containing the patches with shape BxN1xN2
+        torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
+
     Example:
         >>> input = torch.tensor([[
                 [1., 2., 3., 4.],
@@ -87,11 +89,10 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
                 interpolation: str = 'bilinear',
                 align_corners: bool = True) -> torch.Tensor:
-    r"""Crops the given tensor at the center.
+    r"""Crop the 2D images (4D tensor) at the center.
 
     Args:
-        tensor (torch.Tensor): the input tensor with shape (C, H, W) or
-          (B, C, H, W).
+        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
@@ -164,7 +165,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
 
 def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
                   interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    """A wrapper performs crop transform with bounding boxes.
+    """Perform crop transform on 2D images (4D tensor) by bounding boxes.
 
     Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
     Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
@@ -172,7 +173,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     in a batch must be rectangles with same width and height.
 
     Args:
-        tensor (torch.Tensor): the input tensor with shape (C, H, W) or (B, C, H, W).
+        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
         src_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
@@ -239,7 +240,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
 
 
 def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Auto-infer the output sizes.
+    r"""Auto-infer the output sizes for the given 2D bounding boxes.
 
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the
@@ -275,7 +276,7 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
 
 def validate_bboxes(boxes: torch.Tensor) -> None:
-    """Validate if a bounding box usable or not.
+    """Validate if a 2D bounding box usable or not.
 
     This function checks if the boxes are rectangular or not.
 
@@ -295,7 +296,7 @@ def validate_bboxes(boxes: torch.Tensor) -> None:
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
-    """Convert bounding boxes to masks. Covered area is 1. and the remaining is 0.
+    """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
         boxes (torch.Tensor): a tensor containing the coordinates of the
@@ -341,7 +342,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
 def bbox_generator(
     x_start: torch.Tensor, y_start: torch.Tensor, width: torch.Tensor, height: torch.Tensor
 ) -> torch.Tensor:
-    """Generate bounding boxes according to the provided start coords, width and height.
+    """Generate 2D bounding boxes according to the provided start coords, width and height.
 
     Args:
         x_start (torch.Tensor): a tensor containing the x coordinates of the bounding boxes to be extracted.
