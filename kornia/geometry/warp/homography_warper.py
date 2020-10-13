@@ -78,7 +78,7 @@ def homography_warp(patch_src: torch.Tensor,
                     padding_mode: str = 'zeros',
                     align_corners: bool = False,
                     normalized_coordinates: bool = True) -> torch.Tensor:
-    r"""Function that warps image patchs or tensors by homographies.
+    r"""Warp image patchs or tensors by normalized 2D homographies.
 
     See :class:`~kornia.geometry.warp.HomographyWarper` for details.
 
@@ -126,7 +126,7 @@ def homography_warp3d(patch_src: torch.Tensor,
                       padding_mode: str = 'zeros',
                       align_corners: bool = False,
                       normalized_coordinates: bool = True) -> torch.Tensor:
-    r"""Function that warps image patchs or tensors by homographies.
+    r"""Warp image patchs or tensors by normalized 3D homographies.
 
     Args:
         patch_src (torch.Tensor): The image or tensor to warp. Should be from
