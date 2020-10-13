@@ -7,11 +7,11 @@ from kornia.constants import Resample, BorderType, pi
 from kornia.geometry.transform.affwarp import (
     _compute_rotation_matrix3d, _compute_tensor_center3d
 )
-from kornia.geometry.transform.projwarp import warp_projective
+from kornia.geometry.transform.projwarp import warp_affine3d
 from kornia.geometry import (
     crop_by_boxes3d,
     warp_perspective3d,
-    get_3d_perspective_transform,
+    get_perspective_transform3d,
     rotate3d,
     get_affine_matrix3d,
     deg2rad
@@ -259,9 +259,9 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     resample_name: str = Resample(flags['resample'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    out_data: torch.Tensor = warp_projective(x_data, transform[:, :3, :],
-                                             (depth, height, width), resample_name,
-                                             align_corners=align_corners)
+    out_data: torch.Tensor = warp_affine3d(x_data, transform[:, :3, :],
+                                           (depth, height, width), resample_name,
+                                           align_corners=align_corners)
     return out_data.view_as(input)
 
 
@@ -399,7 +399,7 @@ def compute_crop_transformation3d(input: torch.Tensor, params: Dict[str, torch.T
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    transform: torch.Tensor = get_3d_perspective_transform(params['src'].to(input.dtype), params['dst'].to(input.dtype))
+    transform: torch.Tensor = get_perspective_transform3d(params['src'].to(input.dtype), params['dst'].to(input.dtype))
     transform = transform.expand(input.shape[0], -1, -1).type_as(input)
     return transform
 
@@ -461,7 +461,7 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     """
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    perspective_transform: torch.Tensor = get_3d_perspective_transform(
+    perspective_transform: torch.Tensor = get_perspective_transform3d(
         params['start_points'], params['end_points']).type_as(input)
 
     transform: torch.Tensor = K.eye_like(4, input)

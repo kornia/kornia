@@ -7,7 +7,7 @@ from kornia.geometry.transform.imgwarp import (
     warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
 from kornia.geometry.transform.projwarp import (
-    warp_projective, get_projective_transform
+    warp_affine3d, get_projective_transform
 )
 
 __all__ = [
@@ -185,8 +185,8 @@ def affine3d(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     depth: int = tensor.shape[-3]
     height: int = tensor.shape[-2]
     width: int = tensor.shape[-1]
-    warped: torch.Tensor = warp_projective(tensor, matrix, (depth, height, width), mode,
-                                           align_corners=align_corners)
+    warped: torch.Tensor = warp_affine3d(tensor, matrix, (depth, height, width), mode,
+                                         align_corners=align_corners)
 
     # return in the original shape
     if is_unbatched:

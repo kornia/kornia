@@ -128,8 +128,6 @@ def homography_warp3d(patch_src: torch.Tensor,
                       normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Function that warps image patchs or tensors by homographies.
 
-    See :class:`~kornia.geometry.warp.HomographyWarper` for details.
-
     Args:
         patch_src (torch.Tensor): The image or tensor to warp. Should be from
                                   source of shape :math:`(N, C, D, H, W)`.

@@ -17,7 +17,7 @@ class TestWarpProjective:
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(1, 3, 4, device=device, dtype=dtype)
-        output = proj.warp_projective(input, P, (3, 4, 5))
+        output = proj.warp_affine3d(input, P, (3, 4, 5))
         assert output.shape == (1, 3, 3, 4, 5)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -27,14 +27,14 @@ class TestWarpProjective:
         B, C = batch_size, num_channels
         input = torch.rand(B, C, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(B, 3, 4, device=device, dtype=dtype)
-        output = proj.warp_projective(input, P, out_shape)
+        output = proj.warp_affine3d(input, P, out_shape)
         assert list(output.shape) == [B, C] + list(out_shape)
 
     def test_gradcheck(self, device):
         # generate input data
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=torch.float64, requires_grad=True)
         P = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
-        assert gradcheck(proj.warp_projective, (input, P, (3, 3, 3)), raise_exception=True)
+        assert gradcheck(proj.warp_affine3d, (input, P, (3, 3, 3)), raise_exception=True)
 
     def test_forth_back(self, device, dtype):
         out_shape = (3, 4, 5)
@@ -42,7 +42,7 @@ class TestWarpProjective:
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
-        output = proj.warp_projective(input, P_hat, out_shape)
+        output = proj.warp_affine3d(input, P_hat, out_shape)
         assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
@@ -82,7 +82,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_y(self, device, dtype):
@@ -122,7 +122,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_z(self, device, dtype):
@@ -162,7 +162,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_y_large(self, device, dtype):
@@ -227,7 +227,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
 

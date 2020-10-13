@@ -20,7 +20,7 @@ class TestBoundingBoxInferring:
         ]]).to(device)
         expected_height = 2
         expected_width = 3
-        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
+        h, w = kornia.geometry.crop.infer_box_shape(boxes)
         assert (h, w) == (expected_height, expected_width)
 
     def test_bounding_boxes_dim_inferring_batch(self, device):
@@ -37,7 +37,7 @@ class TestBoundingBoxInferring:
         ]]).to(device)
         expected_height = 2
         expected_width = 3
-        h, w = kornia.geometry.transform.crop.infer_box_shape(boxes)
+        h, w = kornia.geometry.crop.infer_box_shape(boxes)
         assert (h.unique().item(), w.unique().item()) == (expected_height, expected_width)
 
     @pytest.mark.skip(reason="Crashes with pytorch internal error")
@@ -52,7 +52,7 @@ class TestBoundingBoxInferring:
             [1., 2.],
         ]]).to(device)
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(kornia.kornia.geometry.transform.crop._infer_bounding_box,
+        assert gradcheck(kornia.kornia.geometry.crop.infer_box_shape,
                          (boxes,), raise_exception=True)
 
 
@@ -338,7 +338,7 @@ class TestCropByBoxes:
             [10., 11.],
         ]]).to(device)
 
-        patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst, align_corners=True)
+        patches = kornia.geometry.crop.crop_by_boxes(inp, src, dst, align_corners=True)
         assert_allclose(patches, expected)
 
     def test_crop_by_boxes_resizing(self, device):
@@ -368,7 +368,7 @@ class TestCropByBoxes:
             [10., 10.5, 11.],
         ]]).to(device)
 
-        patches = kornia.geometry.transform.crop_by_boxes(inp, src, dst, align_corners=True)
+        patches = kornia.geometry.crop.crop_by_boxes(inp, src, dst, align_corners=True)
         assert_allclose(patches, expected)
 
     def test_gradcheck(self, device):
@@ -386,6 +386,6 @@ class TestCropByBoxes:
 
         inp = utils.tensor_to_gradcheck_var(inp, requires_grad=True)  # to var
 
-        assert gradcheck(kornia.geometry.transform.crop_by_boxes,
+        assert gradcheck(kornia.geometry.crop.crop_by_boxes,
                          (inp, src, dst,),
                          raise_exception=True)

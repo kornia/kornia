@@ -1,14 +1,10 @@
-"""This module is deprecated soon.
-
-Please use kornia.geometry.crop instead.
-"""
-
 from typing import Tuple, Union
-import warnings
 
 import torch
 
-import kornia.geometry.crop as crop
+from kornia.geometry.transform.imgwarp import (
+    warp_perspective, get_perspective_transform, warp_affine
+)
 
 __all__ = [
     "crop_and_resize",
@@ -19,11 +15,6 @@ __all__ = [
     "validate_bboxes",
     "bbox_generator"
 ]
-
-
-def __deprecation_warning(name: str, replacement: str):
-    warnings.warn(f"`{name}` is no longer maintained and will be removed from the future versions. "
-                  f"Please use {replacement} instead.")
 
 
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
@@ -63,8 +54,36 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         tensor([[[ 6.0000,  7.0000],
                  [ 10.0000, 11.0000]]])
     """
-    __deprecation_warning("kornia.geometry.transform.crop_and_resize", "kornia.geometry.crop.crop_and_resize")
-    return crop.crop_and_resize(tensor, boxes, size, interpolation, align_corners)
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+    if not torch.is_tensor(boxes):
+        raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
+                        .format(type(boxes)))
+    if not len(tensor.shape) in (3, 4,):
+        raise ValueError("Input tensor must be in the shape of CxHxW or "
+                         "BxCxHxW. Got {}".format(tensor.shape))
+    if not isinstance(size, (tuple, list,)) and len(size) == 2:
+        raise ValueError("Input size must be a tuple/list of length 2. Got {}"
+                         .format(size))
+    # unpack input data
+    dst_h: torch.Tensor = torch.tensor(size[0])
+    dst_w: torch.Tensor = torch.tensor(size[1])
+
+    # [x, y] origin
+    # top-left, top-right, bottom-right, bottom-left
+    points_src: torch.Tensor = boxes
+
+    # [x, y] destination
+    # top-left, top-right, bottom-right, bottom-left
+    points_dst: torch.Tensor = torch.tensor([[
+        [0, 0],
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
+    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
+
+    return crop_by_boxes(tensor, points_src, points_dst, interpolation, align_corners)
 
 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
@@ -93,8 +112,55 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         tensor([[[ 5.0000,  6.0000,  7.0000,  8.0000],
                  [ 9.0000, 10.0000, 11.0000, 12.0000]]])
     """
-    __deprecation_warning("kornia.geometry.transform.center_crop", "kornia.geometry.crop.center_crop")
-    return crop.center_crop(tensor, size, interpolation, align_corners)
+    if not torch.is_tensor(tensor):
+        raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
+                        .format(type(tensor)))
+
+    if not len(tensor.shape) in (3, 4,):
+        raise ValueError("Input tensor must be in the shape of CxHxW or "
+                         "BxCxHxW. Got {}".format(tensor.shape))
+
+    if not isinstance(size, (tuple, list,)) and len(size) == 2:
+        raise ValueError("Input size must be a tuple/list of length 2. Got {}"
+                         .format(size))
+
+    # unpack input sizes
+    dst_h, dst_w = size
+    src_h, src_w = tensor.shape[-2:]
+
+    # compute start/end offsets
+    dst_h_half = dst_h / 2
+    dst_w_half = dst_w / 2
+    src_h_half = src_h / 2
+    src_w_half = src_w / 2
+
+    start_x = src_w_half - dst_w_half
+    start_y = src_h_half - dst_h_half
+
+    end_x = start_x + dst_w - 1
+    end_y = start_y + dst_h - 1
+    # [y, x] origin
+    # top-left, top-right, bottom-right, bottom-left
+    points_src: torch.Tensor = torch.tensor([[
+        [start_x, start_y],
+        [end_x, start_y],
+        [end_x, end_y],
+        [start_x, end_y],
+    ]], device=tensor.device)
+
+    # [y, x] destination
+    # top-left, top-right, bottom-right, bottom-left
+    points_dst: torch.Tensor = torch.tensor([[
+        [0, 0],
+        [dst_w - 1, 0],
+        [dst_w - 1, dst_h - 1],
+        [0, dst_h - 1],
+    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
+    return crop_by_boxes(tensor,
+                         points_src.to(tensor.dtype),
+                         points_dst.to(tensor.dtype),
+                         interpolation,
+                         align_corners)
 
 
 def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
@@ -143,8 +209,34 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         If the src_box is smaller than dst_box, the following error will be thrown.
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
-    __deprecation_warning("kornia.geometry.transform.crop_by_boxes", "kornia.geometry.crop.crop_by_boxes")
-    return crop.crop_by_boxes(tensor, src_box, dst_box, interpolation, align_corners)
+    validate_bboxes(src_box)
+    validate_bboxes(dst_box)
+
+    if tensor.ndimension() not in [3, 4]:
+        raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
+    # warping needs data in the shape of BCHW
+    is_unbatched: bool = tensor.ndimension() == 3
+    if is_unbatched:
+        tensor = torch.unsqueeze(tensor, dim=0)
+
+    # compute transformation between points and warp
+    # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
+    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
+    # simulate broadcasting
+    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
+
+    bbox = infer_box_shape(dst_box)
+    assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1, "cropping height and width" \
+        f" must be exact same in a batch. Got height {bbox[0].unique()} and width {bbox[1].unique()}"
+    patches: torch.Tensor = warp_affine(
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[1].unique().item())),
+        flags=interpolation, align_corners=align_corners)
+
+    # return in the original shape
+    if is_unbatched:
+        patches = torch.squeeze(patches, dim=0)
+
+    return patches
 
 
 def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -177,8 +269,10 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         >>> infer_box_shape(boxes)
         (tensor([2., 2.]), tensor([2., 3.]))
     """
-    __deprecation_warning("kornia.geometry.transform.infer_box_shape", "kornia.geometry.crop.infer_box_shape")
-    return crop.infer_box_shape(boxes)
+    validate_bboxes(boxes)
+    width: torch.Tensor = (boxes[:, 1, 0] - boxes[:, 0, 0] + 1)
+    height: torch.Tensor = (boxes[:, 2, 1] - boxes[:, 0, 1] + 1)
+    return (height, width)
 
 
 def validate_bboxes(boxes: torch.Tensor) -> None:
@@ -193,8 +287,12 @@ def validate_bboxes(boxes: torch.Tensor) -> None:
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
     """
-    __deprecation_warning("kornia.geometry.transform.validate_bboxes", "kornia.geometry.crop.validate_bboxes")
-    return crop.validate_bboxes(boxes)
+    assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
+        "Boxes must have be rectangular, while get widths %s and %s" % \
+        (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
+    assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
+        "Boxes must have be rectangular, while get heights %s and %s" % \
+        (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
@@ -226,8 +324,19 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.]]])
     """
-    __deprecation_warning("kornia.geometry.transform.bbox_to_mask", "kornia.geometry.crop.bbox_to_mask")
-    return crop.bbox_to_mask(boxes, width, height)
+    validate_bboxes(boxes)
+    mask = torch.zeros((len(boxes), height, width))
+
+    mask_out = []
+    # TODO: Looking for a vectorized way
+    for m, box in zip(mask, boxes):
+        m = m.index_fill(1, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.unsqueeze(dim=0)
+        m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
+        mask_out.append(m_out)
+
+    return torch.stack(mask_out, dim=0).float()
 
 
 def bbox_generator(
@@ -264,5 +373,23 @@ def bbox_generator(
                  [3, 3],
                  [1, 3]]])
     """
-    __deprecation_warning("kornia.geometry.transform.bbox_generator", "kornia.geometry.crop.bbox_generator")
-    return crop.bbox_generator(x_start, y_start, width, height)
+    assert x_start.shape == y_start.shape and x_start.dim() in [0, 1], \
+        f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
+    assert width.shape == height.shape and width.dim() in [0, 1], \
+        f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
+
+    bbox = torch.tensor([[
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+    ]]).repeat(len(x_start), 1, 1)
+
+    bbox[:, :, 0] += x_start.view(-1, 1)
+    bbox[:, :, 1] += y_start.view(-1, 1)
+    bbox[:, 1, 0] += width
+    bbox[:, 2, 0] += width
+    bbox[:, 2, 1] += height
+    bbox[:, 3, 1] += height
+
+    return bbox

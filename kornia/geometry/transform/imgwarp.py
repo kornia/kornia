@@ -10,7 +10,7 @@ from kornia.geometry.conversions import (
     deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography, convert_affinematrix_to_homography3d
 )
 from kornia.geometry.transform.projwarp import (
-    warp_projective, get_projective_transform
+    get_projective_transform
 )
 from kornia.testing import check_is_tensor
 

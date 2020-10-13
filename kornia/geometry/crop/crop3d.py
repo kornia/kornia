@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 
 from kornia.geometry.transform.projwarp import (
-    get_3d_perspective_transform, get_projective_transform, warp_projective
+    get_perspective_transform3d, get_projective_transform, warp_affine3d
 )
 
 __all__ = [
@@ -305,7 +305,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_3d_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
+    dst_trans_src: torch.Tensor = get_perspective_transform3d(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
@@ -313,7 +313,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
     assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1 and len(bbox[2].unique()) == 1, (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0].unique()}, width {bbox[1].unique()} and depth {bbox[2].unique()}.")
-    patches: torch.Tensor = warp_projective(
+    patches: torch.Tensor = warp_affine3d(
         tensor, dst_trans_src[:, :3, :],
         (int(bbox[0].unique().item()), int(bbox[1].unique().item()), int(bbox[2].unique().item())),
         flags=interpolation, align_corners=align_corners)

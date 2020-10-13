@@ -8,20 +8,20 @@ from kornia.geometry.warp import normalize_homography3d, homography_warp3d
 from kornia.testing import check_is_tensor
 
 __all__ = [
-    "warp_projective",
+    "warp_affine3d",
     "get_projective_transform",
     "projection_from_Rt",
-    "get_3d_perspective_transform",
+    "get_perspective_transform3d",
     "warp_perspective3d"
 ]
 
 
-def warp_projective(src: torch.Tensor,
-                    M: torch.Tensor,
-                    dsize: Tuple[int, int, int],
-                    flags: str = 'bilinear',
-                    padding_mode: str = 'zeros',
-                    align_corners: bool = True) -> torch.Tensor:
+def warp_affine3d(src: torch.Tensor,
+                  M: torch.Tensor,
+                  dsize: Tuple[int, int, int],
+                  flags: str = 'bilinear',
+                  padding_mode: str = 'zeros',
+                  align_corners: bool = True) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
     .. warning::
@@ -135,7 +135,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     return proj_mat[..., :3, :]  # Bx3x4
 
 
-def get_3d_perspective_transform(src, dst):
+def get_perspective_transform3d(src, dst):
     r"""Calculate a 3d perspective transform from four pairs of the corresponding points.
 
     The function calculates the matrix of a perspective transform so that:
