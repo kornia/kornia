@@ -8,7 +8,7 @@ import warnings
 
 import torch
 
-import kornia.geometry.crop as crop
+from .. import crop as crop
 
 __all__ = [
     "crop_and_resize",
