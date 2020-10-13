@@ -260,7 +260,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
 
     T_inv: Optional[torch.Tensor] = None
     if return_inverse:
-        T_inv = (U).mm(torch.sqrt(S) * U.t())
+        T_inv = (U).mm(torch.sqrt(S + eps) * U.t())
 
     return T, mean, T_inv
 

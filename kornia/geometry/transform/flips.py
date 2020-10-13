@@ -123,8 +123,8 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
         torch.Tensor: The horizontally flipped image tensor
 
     """
-
-    return torch.flip(input, [-1])
+    w = input.shape[-1]
+    return input[..., torch.arange(w - 1, -1, -1)]
 
 
 def vflip(input: torch.Tensor) -> torch.Tensor:
@@ -139,4 +139,5 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
 
     """
 
-    return torch.flip(input, [-2])
+    h = input.shape[-2]
+    return input[..., torch.arange(h - 1, -1, -1), :]
