@@ -81,6 +81,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
@@ -160,6 +163,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({super().__repr__()})"
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -244,6 +250,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({super().__repr__()})"
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
