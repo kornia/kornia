@@ -22,9 +22,9 @@ from kornia.augmentation import (
 
 class TestRandomHorizontalFlip3D:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomHorizontalFlip3D(0.5)
-        repr = "RandomHorizontalFlip3D(p=0.5, return_transform=False)"
+        repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
     def test_random_hflip(self, device):
@@ -184,9 +184,9 @@ class TestRandomHorizontalFlip3D:
 
 class TestRandomVerticalFlip3D:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomVerticalFlip3D(0.5)
-        repr = "RandomVerticalFlip3D(p=0.5, return_transform=False)"
+        repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
     def test_random_vflip(self, device):
@@ -341,9 +341,9 @@ class TestRandomVerticalFlip3D:
 
 class TestRandomDepthicalFlip3D:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomDepthicalFlip3D(0.5)
-        repr = "RandomDepthicalFlip3D(p=0.5, return_transform=False)"
+        repr = "RandomDepthicalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
     def test_random_dflip(self, device):
@@ -512,9 +512,12 @@ class TestRandomRotation3D:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomRotation3D(degrees=45.5)
-        repr = "RandomRotation3D(degrees=45.5, return_transform=False)"
+        repr = """RandomRotation3D(degrees=tensor([[-45.5000,  45.5000],
+        [-45.5000,  45.5000],
+        [-45.5000,  45.5000]]), resample=BILINEAR, align_corners=False, p=0.5, """\
+        """p_batch=1.0, same_on_batch=False, return_transform=False)"""
         assert str(f) == repr
 
     def test_random_rotation(self, device):
