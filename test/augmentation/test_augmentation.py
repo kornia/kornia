@@ -1549,7 +1549,7 @@ class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=True, return_transform=False)"
+            "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_gradcheck(self, device):
