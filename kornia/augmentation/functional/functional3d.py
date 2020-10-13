@@ -16,6 +16,9 @@ from kornia.geometry import (
     get_affine_matrix3d,
     deg2rad
 )
+from kornia.enhance import (
+    equalize3d
+)
 
 from .. import random_generator as rg
 from ..utils import (
