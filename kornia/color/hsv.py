@@ -142,6 +142,7 @@ class HsvToRgb(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
+<<<<<<< refs/remotes/kornia/master
         torch.Tensor: RGB version of the image.
 
     Shape:
@@ -153,6 +154,42 @@ class HsvToRgb(nn.Module):
         >>> rgb = HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+=======
+        torch.Tensor: HSV version of the image.
+    """
+
+    if not torch.is_tensor(image):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                         .format(image.shape))
+
+    maxc, max_indices = image.max(-3)
+    minc: torch.Tensor = image.min(-3)[0]
+
+    v: torch.Tensor = maxc  # brightness
+
+    deltac: torch.Tensor = maxc - minc
+    s: torch.Tensor = deltac / (v + 1e-31)
+
+    # avoid division by zero
+    deltac = torch.where(
+        deltac == 0, torch.ones_like(deltac), deltac)
+
+    rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
+
+    h = torch.stack([
+        bc - gc,
+        2.0 * deltac + rc - bc,
+        4.0 * deltac + gc - rc,
+    ], dim=-3)
+
+    h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
+    h = h.squeeze(-3)
+    h = h / deltac
+>>>>>>> Accelerate augmentations (#708)
 
     def __init__(self) -> None:
         super(HsvToRgb, self).__init__()
