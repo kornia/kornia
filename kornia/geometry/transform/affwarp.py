@@ -243,8 +243,11 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
     if not torch.is_tensor(yaw):
-        raise TypeError("Input angle type is not a torch.Tensor. Got {}"
-                        .format(type(yaw)))
+        raise TypeError("yaw is not a torch.Tensor. Got {}".format(type(yaw)))
+    if not torch.is_tensor(pitch):
+        raise TypeError("pitch is not a torch.Tensor. Got {}".format(type(pitch)))
+    if not torch.is_tensor(roll):
+        raise TypeError("roll is not a torch.Tensor. Got {}".format(type(roll)))
     if center is not None and not torch.is_tensor(center):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))

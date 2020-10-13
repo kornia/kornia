@@ -21,7 +21,7 @@ def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
         batch_size = 1
     kernel = kornia.get_motion_kernel2d(ksize, angle, direction)
     assert kernel.shape == (batch_size, ksize, ksize)
-    assert_allclose(kernel.sum(), 1.)
+    assert_allclose(kernel.sum(), batch_size)
 
 
 class TestMotionBlur:
