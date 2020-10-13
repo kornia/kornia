@@ -14,9 +14,9 @@ from kornia.augmentation import (
 
 class TestRandomMixUp:
 
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = RandomMixUp()
-        repr = "RandomMixUp(p=1.0, max_lambda=tensor(1.0), same_on_batch=False)"
+        repr = "RandomMixUp(lambda_val=tensor([0., 1.]), p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):
@@ -105,9 +105,9 @@ class TestRandomMixUp:
 
 class TestRandomCutMix:
 
-    def smoke_test(self, device, dtype):
+    def test_smoke(self, device, dtype):
         f = RandomCutMix(width=3, height=3)
-        repr = "RandomCutMix(p=1, num_mix=1, beta=tensor(0.),, width=3, height=3, same_on_batch=False"
+        repr = "RandomCutMix(num_mix=1, beta=1.0, cut_size=tensor([0., 1.]), , p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):
