@@ -27,9 +27,9 @@ from kornia.augmentation import (
 
 class TestRandomHorizontalFlip:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomHorizontalFlip(p=0.5)
-        repr = "RandomHorizontalFlip(p=0.5, return_transform=False)"
+        repr = "RandomHorizontalFlip(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_random_hflip(self, device):
@@ -216,9 +216,9 @@ class TestRandomHorizontalFlip:
 
 class TestRandomVerticalFlip:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomVerticalFlip(p=0.5)
-        repr = "RandomVerticalFlip(p=0.5, return_transform=False)"
+        repr = "RandomVerticalFlip(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_random_vflip(self, device):
@@ -400,9 +400,11 @@ class TestRandomVerticalFlip:
 
 class TestColorJitter:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1)
-        repr = "ColorJitter(brightness=0.5, contrast=0.3, saturation=[0.2, 1.2], hue=0.1, return_transform=False)"
+        repr = "ColorJitter(brightness=tensor([0.5000, 1.5000]), contrast=tensor([0.7000, 1.3000]), "\
+               "saturation=tensor([0.2000, 1.2000]), hue=tensor([-0.1000,  0.1000]), "\
+               "p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_color_jitter(self, device):
@@ -922,7 +924,6 @@ class TestRectangleRandomErasing:
         f = RandomErasing(erase_scale_range, aspect_ratio_range, same_on_batch=True, p=0.5)
         input = torch.rand(shape).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        print(f._params)
         assert (res[0] == res[1]).all()
 
     def test_gradcheck(self, device):
@@ -960,9 +961,9 @@ class TestRectangleRandomErasing:
 
 class TestRandomGrayscale:
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomGrayscale()
-        repr = "RandomGrayscale(p=0.5, return_transform=False)"
+        repr = "RandomGrayscale(p=0.1, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_random_grayscale(self, device):
@@ -1172,9 +1173,10 @@ class TestRandomRotation:
 
     torch.manual_seed(0)  # for random reproductibility
 
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomRotation(degrees=45.5)
-        repr = "RandomHorizontalFlip(degrees=45.5, return_transform=False)"
+        repr = "RandomRotation(degrees=tensor([-45.5000,  45.5000]), interpolation=BILINEAR, p=0.5, "\
+               "p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_random_rotation(self, device):
@@ -1336,10 +1338,10 @@ class TestRandomRotation:
 
 
 class TestRandomCrop:
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, p=1.)
-        repr = "RandomCrop(crop_size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False,\
-            return_transform=False)"
+        repr = "RandomCrop(crop_size=(2, 3), padding=(0, 1), fill=10, pad_if_needed=False, padding_mode=constant, "\
+               "resample=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_no_padding(self, device):
@@ -1464,10 +1466,10 @@ class TestRandomCrop:
 
 
 class TestRandomResizedCrop:
-    def smoke_test(self, device):
+    def test_smoke(self):
         f = RandomResizedCrop(size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
-        repr = "RandomResizedCrop(size=(2, 3), resize_to=(1., 1.), resize_to=(1., 1.)\
-            , return_transform=False)"
+        repr = "RandomResizedCrop(size=(2, 3), scale=tensor([1., 1.]), ratio=tensor([1., 1.]), "\
+               "interpolation=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
     def test_no_resize(self, device, dtype):
@@ -1546,7 +1548,7 @@ class TestRandomResizedCrop:
 
 
 class TestRandomMotionBlur:
-    def test_smoke(self, device):
+    def test_smoke(self):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
             "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=True, return_transform=False)"

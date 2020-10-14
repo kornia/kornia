@@ -720,7 +720,7 @@ class RandomResizedCrop(AugmentationBase2D):
         )
 
     def __repr__(self) -> str:
-        repr = f"size={self.size}, resize_to={self.scale}, resize_to={self.ratio}, interpolation={self.resample.name}"
+        repr = f"size={self.size}, scale={self.scale}, ratio={self.ratio}, interpolation={self.resample.name}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
