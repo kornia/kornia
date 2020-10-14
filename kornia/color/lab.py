@@ -11,10 +11,12 @@ https://github.com/cameronfabbri/Colorizing-Images-Using-Adversarial-Networks
 """
 
 import sys
-sprintf = lambda format, *values : format % values
-printf  = lambda format, *values : sys.stdout.write(format % values)
+sprintf = lambda format, *values: format % values
+printf = lambda format, *values: sys.stdout.write(format % values)
 
 # keep only constants in buffer
+
+
 class RgbToLab(nn.Module):
     r"""Convert image from RGB to LAB
     The image data is assumed to be in the range of (0, 1).
@@ -38,27 +40,26 @@ class RgbToLab(nn.Module):
         eps = 10e-12
         self.rgb_to_xyz = torch.tensor([
             #    X        Y          Z
-            [0.412453, 0.212671, 0.019334], # R
-            [0.357580, 0.715160, 0.119193], # G
-            [0.180423, 0.072169, 0.950227], # B
+            [0.412453, 0.212671, 0.019334],  # R
+            [0.357580, 0.715160, 0.119193],  # G
+            [0.180423, 0.072169, 0.950227],  # B
         ]) + eps
         self.register_buffer('srgb2xyz_const', self.rgb_to_xyz)
 
         self.fxfyfz_to_lab = torch.tensor([
             #  l       a       b
-            [  0.0,  500.0,    0.0], # fx
-            [116.0, -500.0,  200.0], # fy
-            [  0.0,    0.0, -200.0], # fz
+            [0.0, 500.0, 0.0],  # fx
+            [116.0, -500.0, 200.0],  # fy
+            [0.0, 0.0, -200.0],  # fz
         ]) + eps
         self.register_buffer('xyz2lab_const', self.fxfyfz_to_lab)
 
         # normalize for D65 white point
-        self.xyz_normalization_const = torch.tensor([1/0.950456, 1.0, 1/1.088754]) + eps
+        self.xyz_normalization_const = torch.tensor([1 / 0.950456, 1.0, 1 / 1.088754]) + eps
         self.register_buffer('xyz2lab_xyz_normalization_const', self.xyz_normalization_const)
 
         self.lab_normalization_const = torch.tensor([-16.0, 0.0, 0.0]) + eps
         self.register_buffer('xyz2lab_lab_normalization_const', self.lab_normalization_const)
-
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # with torch.no_grad():
@@ -112,10 +113,10 @@ class RgbToLab(nn.Module):
         exponential_mask = (input > 0.04045).type(input.data.type()) + eps
 
         # avoid a slightly negative number messing up the conversion
-        input = torch.clamp(input, 0.0, 1.0-eps) + eps
+        input = torch.clamp(input, 0.0, 1.0 - eps) + eps
 
         rgb_pixels = (input / 12.92 * linear_mask)
-        rgb_pixels += (((input + 0.055) / 1.055) ** 2.4)  * exponential_mask
+        rgb_pixels += (((input + 0.055) / 1.055) ** 2.4) * exponential_mask
 
         # self.register_buffer('srgb2xyz_rgb', rgb_pixels)
 
@@ -135,27 +136,23 @@ class RgbToLab(nn.Module):
         xyz_normalized_pixels = torch.mul(input, xyz_normalization_const) + eps
         # self.register_buffer('xyz2lab_xyz_normalized', xyz_normalized_pixels)
 
-        epsilon = 6/29
+        epsilon = 6 / 29
         linear_mask = (xyz_normalized_pixels <= (epsilon**3)).type(input.data.type()) + eps
         # self.register_buffer('xyz2lab_linear_mask', linear_mask)
 
         exponential_mask = (xyz_normalized_pixels > (epsilon**3)).type(input.data.type()) + eps
         # self.register_buffer('xyz2lab_exponential_mask', exponential_mask)
 
-
-        fxfyfz_pixels = (xyz_normalized_pixels / (3 * epsilon**2) + 4/29) * linear_mask
-        ##### TODO: problematic grad here!
+        fxfyfz_pixels = (xyz_normalized_pixels / (3 * epsilon**2) + 4 / 29) * linear_mask
+        # TODO: problematic grad here!
         # Function 'PowBackward0' returned nan values in its 0th output.
         xyz_normalized_pixels[xyz_normalized_pixels.ne(xyz_normalized_pixels)] = 0
         xyz_normalized_pixels += eps
-        fxfyfz_pixels += (xyz_normalized_pixels ** (1/3)) * exponential_mask
+        fxfyfz_pixels += (xyz_normalized_pixels ** (1 / 3)) * exponential_mask
 
         lab_pixels = torch.matmul(fxfyfz_pixels, fxfyfz_to_lab) + lab_normalization_const
 
         return lab_pixels
-
-
-
 
 
 class LabToRgb(nn.Module):
@@ -180,9 +177,9 @@ class LabToRgb(nn.Module):
         # Constant tensor used for conversion
         self.lab_to_fxfyfz = torch.tensor([
             #   fx      fy        fz
-            [1/116.0, 1/116.0,  1/116.0], # l
-            [1/500.0,     0.0,      0.0], # a
-            [    0.0,     0.0, -1/200.0], # b
+            [1 / 116.0, 1 / 116.0, 1 / 116.0],  # l
+            [1 / 500.0, 0.0, 0.0],  # a
+            [0.0, 0.0, -1 / 200.0],  # b
         ]) + eps
         self.register_buffer('lab2xyz_const', self.lab_to_fxfyfz)
 
@@ -194,13 +191,12 @@ class LabToRgb(nn.Module):
 
         self.xyz_to_rgb = torch.tensor([
             #     r           g          b
-            [ 3.24048134, -0.96925495,  0.05564664], # x
-            [-1.53715152,  1.87599, -0.20404134], # y
-            [-0.49853633,  0.04155593,  1.05731107], # z
+            [3.24048134, -0.96925495, 0.05564664],  # x
+            [-1.53715152, 1.87599, -0.20404134],  # y
+            [-0.49853633, 0.04155593, 1.05731107],  # z
         ]) + eps
 
         self.register_buffer('xyz2srgb_const', self.xyz_to_rgb)
-
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # with torch.no_grad():
@@ -231,7 +227,6 @@ class LabToRgb(nn.Module):
         # printf("Input to Lab2Rgb: %s\n", input[(torch.isnan(input) == True)])
         # assert ((input != input).any()), "Checkpoint 0"
 
-
         input_dims = len(input.shape)
         if input_dims == 3:
             input = input[None, :, :, :]
@@ -259,18 +254,17 @@ class LabToRgb(nn.Module):
         fxfyfz_pixels = torch.matmul(input + fxfyfz_normalization_const, lab_to_fxfyfz) + eps
 
         # convert to xyz
-        epsilon = 6/29
+        epsilon = 6 / 29
         linear_mask = (fxfyfz_pixels <= epsilon).type(input.data.type()) + eps
         exponential_mask = (fxfyfz_pixels > epsilon).type(input.data.type()) + eps
 
-        xyz_pixels = (3 * epsilon**2 * (fxfyfz_pixels - 4/29)) * linear_mask + (fxfyfz_pixels ** 3) * exponential_mask
+        xyz_pixels = (3 * epsilon**2 * (fxfyfz_pixels - 4 / 29)) * linear_mask + (fxfyfz_pixels ** 3) * exponential_mask
 
         # denormalize for D65 white point
         xyz_denormalization_const = self.xyz_denormalization_const.type(input.data.type())
         xyz_pixels = torch.mul(xyz_pixels, xyz_denormalization_const)
 
         return xyz_pixels
-
 
     def xyz_to_srgb(self, input: torch.Tensor) -> torch.Tensor:
         eps = 10e-12
@@ -279,24 +273,24 @@ class LabToRgb(nn.Module):
         rgb_pixels = torch.matmul(input, xyz_to_rgb)
 
         # avoid a slightly negative number messing up the conversion
-        rgb_pixels = torch.clamp(rgb_pixels, 0.0, 1.0-eps) + eps
+        rgb_pixels = torch.clamp(rgb_pixels, 0.0, 1.0 - eps) + eps
 
         linear_mask = (rgb_pixels <= 0.0031308).type(input.data.type()) + eps
 
         exponential_mask = (rgb_pixels > 0.0031308).type(input.data.type()) + eps
 
         srgb_pixels = (rgb_pixels * 12.92 * linear_mask)
-        ##### TODO: problematic grad here!
+        # TODO: problematic grad here!
         # Function 'PowBackward0' returned nan values in its 0th output.
-        srgb_pixels += ((rgb_pixels ** (1/2.4) * 1.055) - 0.055) * exponential_mask
+        srgb_pixels += ((rgb_pixels ** (1 / 2.4) * 1.055) - 0.055) * exponential_mask
 
         return srgb_pixels
-
 
 
 def rgb_to_lab(input: torch.Tensor) -> torch.Tensor:
     rgbToLabModule = RgbToLab()
     return rgbToLabModule(input)
+
 
 def lab_to_rgb(input: torch.Tensor) -> torch.Tensor:
     labToRgbModule = LabToRgb()
