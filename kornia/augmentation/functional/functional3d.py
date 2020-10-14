@@ -379,7 +379,7 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     input = _transform_input3d(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-    kernel_size: int = cast(int, params['ksize_factor'].item())
+    kernel_size: int = cast(int, params['ksize_factor'].unique().item())
     angle = params['angle_factor']
     direction = params['direction_factor']
     border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())

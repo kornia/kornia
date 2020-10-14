@@ -20,8 +20,7 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomRotation,
     RandomCrop,
-    RandomResizedCrop,
-    RandomMotionBlur
+    RandomResizedCrop
 )
 
 
@@ -1543,29 +1542,6 @@ class TestRandomResizedCrop:
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         assert gradcheck(RandomResizedCrop(
             size=(3, 3), scale=(1., 1.), ratio=(1., 1.)), (inp, ), raise_exception=True)
-
-
-class TestRandomMotionBlur:
-    def test_smoke(self, device):
-        f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10, 30]), direction=tensor([-0.5000,  0.5000]), "\
-            "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
-        assert str(f) == repr
-
-    def test_gradcheck(self, device):
-        torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((1, 3, 11, 7)).to(device)
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
-        params = {
-            'batch_prob': torch.tensor([True]),
-            'ksize_factor': torch.tensor([31]),
-            'angle_factor': torch.tensor([30.]),
-            'direction_factor': torch.tensor([-0.5]),
-            'border_type': torch.tensor([0]),
-        }
-        assert gradcheck(RandomMotionBlur(
-            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
 
 
 class TestRandomEqualize:

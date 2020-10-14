@@ -446,10 +446,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_motion_blur_generator3d(batch_shape[0], self.kernel_size, self.angle, self.direction)
+        return rg.random_motion_blur_generator3d(
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return F.compute_intensity_transformation3d(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_motion_blur3d(input, params, self.flags)
