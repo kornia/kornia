@@ -55,6 +55,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         super(RandomHorizontalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
@@ -104,6 +107,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
         super(RandomVerticalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
@@ -155,6 +161,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
         super(RandomDepthicalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
@@ -353,7 +362,7 @@ class RandomRotation3D(AugmentationBase3D):
         )
 
     def __repr__(self) -> str:
-        repr = f"(degrees={self.degrees}, resample={self.resample.name}, align_corners={self.align_corners}"
+        repr = f"degrees={self.degrees}, resample={self.resample.name}, align_corners={self.align_corners}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
