@@ -113,6 +113,7 @@ def motion_blur(
         input (tensor): the input tensor with shape :math:`(B, C, H, W)`.
         kernel_size (int): motion kernel width and height. It should be odd and positive.
         angle (tensor, float): angle of the motion blur in degrees (anti-clockwise rotation).
+            If tensor, it must be :math:`(B,)`.
         direction (tensor or float): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a

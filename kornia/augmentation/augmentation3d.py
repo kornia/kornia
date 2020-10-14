@@ -8,6 +8,7 @@ from .base import AugmentationBase3D
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
+    _range_bound,
     _tuple_range_reader,
     _singular_range_check
 )
@@ -363,6 +364,95 @@ class RandomRotation3D(AugmentationBase3D):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_rotation3d(input, params, self.flags)
+
+
+class RandomMotionBlur3D(AugmentationBase3D):
+    r"""Perform motion blur on 3D volumes (5D tensor).
+
+    Args:
+        p (float): probability of applying the transformation. Default value is 0.5.
+        kernel_size (int or Tuple[int, int]): motion kernel size (odd and positive).
+            If int, the kernel will have a fixed size.
+            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
+        angle (float or tuple or list): Range of degrees to select from.
+            If angle is a number, then yaw, pitch, roll will be generated from the range of (-angle, +angle).
+            If angle is a tuple of (min, max), then yaw, pitch, roll will be generated from the range of (min, max).
+            If angle is a list of floats [a, b, c], then yaw, pitch, roll will be generated from (-a, a), (-b, b)
+            and (-c, c).
+            If angle is a list of tuple ((a, b), (m, n), (x, y)), then yaw, pitch, roll will be generated from
+            (a, b), (m, n) and (x, y).
+            Set to 0 to deactivate rotations.
+        direction (float or Tuple[float, float]): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+            If float, it will generate the value from (-direction, direction).
+            If Tuple[int, int], it will randomly generate the value from the range.
+        border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
+            CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+
+    Shape:
+        - Input: :math:`(B, C, D, H, W)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 3, 5, 5)
+        >>> motion_blur = RandomMotionBlur3D(3, 35., 0.5, p=1.)
+        >>> motion_blur(input)
+        tensor([[[[[ 0.1654,  5.0626,  3.7446,  6.8393,  3.5563],
+                   [-5.0999,  2.1964,  2.4311, -1.8043,  1.4908],
+                   [-3.2720, -2.1332,  2.1459,  1.7491,  1.3186],
+                   [-2.6045,  5.2450,  6.0367,  1.0320,  6.7205],
+                   [-4.5962, -5.2259, -0.9809, -1.6601,  0.1398]],
+        <BLANKLINE>
+                  [[ 0.1843,  2.6303,  7.0769,  1.3952,  2.1699],
+                   [-6.4852,  0.3011,  0.3557,  4.5564,  5.5316],
+                   [-6.4329,  2.8427,  0.2914,  3.6307,  0.4988],
+                   [-1.2635, -4.5109,  1.3771,  0.8912,  2.1555],
+                   [-1.6038, -3.7698,  0.0352, -0.8663,  0.1607]],
+        <BLANKLINE>
+                  [[ 0.2733,  1.8909,  4.7292,  1.0408,  1.4417],
+                   [-6.8248,  0.8740,  1.4280, -4.1784,  5.0158],
+                   [-3.8589,  2.7687,  2.9419,  3.2143,  6.3996],
+                   [-4.7014, -0.3668, -1.8947,  0.1953,  7.2572],
+                   [-3.5506, -4.1522, -5.3692, -6.4713,  0.3117]]]]])
+    """
+
+    def __init__(
+            self, kernel_size: Union[int, Tuple[int, int]],
+            angle: Union[torch.Tensor, float, Tuple[float, float]],
+            direction: Union[torch.Tensor, float, Tuple[float, float]],
+            border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
+    ) -> None:
+        super(RandomMotionBlur3D, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
+
+        self.angle: torch.Tensor = _tuple_range_reader(angle, 3)
+
+        direction = \
+            cast(torch.Tensor, direction) if isinstance(direction, torch.Tensor) else torch.tensor(direction)
+        self.direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
+        self.border_type = BorderType.get(border_type)
+        self.flags: Dict[str, torch.Tensor] = {
+            "border_type": torch.tensor(self.border_type.value)
+        }
+
+    def __repr__(self) -> str:
+        repr = f"kernel_size={self.kernel_size}, angle={self.angle}, direction={self.direction}, " +\
+            f"border_type='{self.border_type.name.lower()}'"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return rg.random_motion_blur_generator3d(batch_shape[0], self.kernel_size, self.angle, self.direction)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_motion_blur3d(input, params, self.flags)
 
 
 class RandomEqualize3D(AugmentationBase3D):

@@ -4,7 +4,7 @@ from .sobel import SpatialGradient, spatial_gradient, SpatialGradient3d, spatial
 from .sobel import Sobel, sobel
 from .blur import BoxBlur, box_blur
 from .median import MedianBlur, median_blur
-from .motion import MotionBlur, motion_blur
+from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .filter import filter2D, filter3D
 from .kernels import (
     gaussian,
@@ -39,6 +39,7 @@ __all__ = [
     "box_blur",
     "median_blur",
     "motion_blur",
+    "motion_blur3d",
     "filter2D",
     "filter3D",
     "GaussianBlur2d",
@@ -48,6 +49,7 @@ __all__ = [
     "BoxBlur",
     "MedianBlur",
     "MotionBlur",
+    "MotionBlur3D",
     "SpatialGradient3d",
     "spatial_gradient3d",
 ]

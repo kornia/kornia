@@ -737,15 +737,13 @@ class RandomResizedCrop(AugmentationBase2D):
 
 
 class RandomMotionBlur(AugmentationBase2D):
-    r"""Blurs a tensor image or batch of tensor images using a motion filter.
-
-    The same transformation can be applied across different batches.
+    r"""Perform motion blur on 2D images (4D tensor).
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
-        kernel_size (int or Tuple[int, int]): motion kernel width and height (odd and positive).
+        kernel_size (int or Tuple[int, int]): motion kernel size (odd and positive).
             If int, the kernel will have a fixed size.
-            If Tuple[int, int], it will randomly generate the value from the range.
+            If Tuple[int, int], it will randomly generate the value from the range batch-wisely.
         angle (float or Tuple[float, float]): angle of the motion blur in degrees (anti-clockwise rotation).
             If float, it will generate the value from (-angle, angle).
         direction (float or Tuple[float, float]): forward/backward direction of the motion blur.
@@ -800,7 +798,7 @@ class RandomMotionBlur(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_motion_blur_generator(batch_shape.size(0), self.kernel_size, self.angle, self.direction)
+        return rg.random_motion_blur_generator(batch_shape[0], self.kernel_size, self.angle, self.direction)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
