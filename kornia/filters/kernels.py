@@ -446,7 +446,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
 def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
                         direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
-    r"""Function that returns motion blur filter.
+    r"""Return 2D motion blur filter.
 
     Args:
         kernel_size (int): motion kernel width and height. It should be odd and positive.
@@ -515,7 +515,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
 def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float, float, float]],
                         direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
-    r"""Function that returns motion blur filter.
+    r"""Return 3D motion blur filter.
 
     Args:
         kernel_size (int): motion kernel width, height and depth. It should be odd and positive.

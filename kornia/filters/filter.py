@@ -33,7 +33,7 @@ def compute_padding(kernel_size: List[int]) -> List[int]:
 def filter2D(input: torch.Tensor, kernel: torch.Tensor,
              border_type: str = 'reflect',
              normalized: bool = False) -> torch.Tensor:
-    r"""Function that convolves a tensor with a 2d kernel.
+    r"""Convolve a tensor with a 2d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
     independently at each depth channel of the tensor. Before applying the
@@ -86,25 +86,31 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).type_as(input)
+    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).to(input)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
-    if tmp_kernel.size(0) == 1:
-        tmp_kernel = tmp_kernel.expand(c, -1, -1, -1)
+
+    tmp_kernel = tmp_kernel.expand(-1, c, -1, -1)
 
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
     padding_shape: List[int] = compute_padding([height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
-    return F.conv2d(input_pad, tmp_kernel, groups=c, padding=0, stride=1)
+    # kernel and input tensor reshape to align element-wise or batch-wise params
+    tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
+    input_pad = input_pad.view(-1, tmp_kernel.size(0), input_pad.size(-2), input_pad.size(-1))
+
+    # convolve the tensor with the kernel.
+    output = F.conv2d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+    return output.view(b, c, h, w)
 
 
 def filter3D(input: torch.Tensor, kernel: torch.Tensor,
              border_type: str = 'replicate',
              normalized: bool = False) -> torch.Tensor:
-    r"""Function that convolves a tensor with a 3d kernel.
+    r"""Convolve a tensor with a 3d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
     independently at each depth channel of the tensor. Before applying the
@@ -115,7 +121,7 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
         input (torch.Tensor): the input tensor with shape of
           :math:`(B, C, D, H, W)`.
         kernel (torch.Tensor): the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kD, kH, kW)`.
+          tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
         border_type (str): the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``,
           ``'replicate'`` or ``'circular'``. Default: ``'replicate'``.
@@ -179,17 +185,24 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
 
     # prepare kernel
     b, c, d, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel[None].type_as(input)
+    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).to(input)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
         tmp_kernel = normalize_kernel2d(tmp_kernel.view(
-            bk, dk, hk * wk)).view_as(kernel)
+            bk, dk, hk * wk)).view_as(tmp_kernel)
+
+    tmp_kernel = tmp_kernel.expand(-1, c, -1, -1, -1)
 
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
     padding_shape: List[int] = compute_padding([depth, height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
+    # kernel and input tensor reshape to align element-wise or batch-wise params
+    tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
+    input_pad = input_pad.view(-1, tmp_kernel.size(0), input_pad.size(-3), input_pad.size(-2), input_pad.size(-1))
+
     # convolve the tensor with the kernel.
-    return F.conv3d(input_pad, tmp_kernel.expand(c, -1, -1, -1, -1), groups=c, padding=0, stride=1)
+    output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+    return output.view(b, c, d, h, w)
