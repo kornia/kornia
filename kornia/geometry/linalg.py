@@ -1,9 +1,11 @@
 from typing import Optional
 
 import torch
+
 import kornia
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.testing import check_is_tensor
 
 
 __all__ = [
@@ -11,6 +13,7 @@ __all__ = [
     "relative_transformation",
     "inverse_transformation",
     "transform_points",
+    "transform_boxes",
     "perspective_transform_lafs",
 ]
 
@@ -194,23 +197,79 @@ def transform_points(trans_01: torch.Tensor,
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = kornia.transform_points(trans_01, points_1)  # BxNx3
     """
-    if not torch.is_tensor(trans_01) or not torch.is_tensor(points_1):
-        raise TypeError("Input type is not a torch.Tensor")
+    check_is_tensor(trans_01)
+    check_is_tensor(points_1)
     if not trans_01.device == points_1.device:
         raise TypeError("Tensor must be in the same device")
-    if not trans_01.shape[0] == points_1.shape[0]:
-        raise ValueError("Input batch size must be the same for both tensors")
+    if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
+        raise ValueError("Input batch size must be the same for both tensors or 1")
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError("Last input dimensions must differe by one unit")
+        raise ValueError("Last input dimensions must differ by one unit")
+
+    # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
+    shape_inp = list(points_1.shape)
+    points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
+    trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
+    # We expand trans_01 to match the dimensions needed for bmm
+    trans_01 = torch.repeat_interleave(trans_01, repeats=points_1.shape[0] // trans_01.shape[0], dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # transform coordinates
-    points_0_h = torch.matmul(
-        trans_01.unsqueeze(1), points_1_h.unsqueeze(-1))
+    points_0_h = torch.bmm(points_1_h,
+                           trans_01.permute(0, 2, 1))
     points_0_h = torch.squeeze(points_0_h, dim=-1)
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
+    # reshape to the input shape
+    shape_inp[-2] = points_0.shape[-2]
+    shape_inp[-1] = points_0.shape[-1]
+    points_0 = points_0.reshape(shape_inp)
     return points_0
+
+
+def transform_boxes(trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy") -> torch.Tensor:
+    r""" Function that applies a transformation matrix to a box or batch of boxes. Boxes must
+    be a tensor of the shape (N, 4) or a batch of boxes (B, N, 4) and trans_mat must be a (3, 3)
+    transformation matrix or a batch of transformation matrices (B, 3, 3)
+
+    Args:
+        trans_mat (torch.Tensor): The transformation matrix to be applied
+        boxes (torch.Tensor): The boxes to be transformed
+        mode (str): The format in which the boxes are provided. If set to 'xyxy' the boxes
+                    are assumed to be in the format (xmin, ymin, xmax, ymax). If set to 'xywh'
+                    the boxes are assumed to be in the format (xmin, ymin, width, height).
+                    Default: 'xyxy'
+    Returns:
+        torch.Tensor: The set of transformed points in the specified mode
+
+
+    """
+
+    if not torch.is_tensor(boxes):
+        raise TypeError(f"Boxes type is not a torch.Tensor. Got {type(boxes)}")
+
+    if not torch.is_tensor(trans_mat):
+        raise TypeError(f"Tranformation matrix type is not a torch.Tensor. Got {type(trans_mat)}")
+
+    if not isinstance(mode, str):
+        raise TypeError(f"Mode must be a string. Got {type(mode)}")
+
+    if mode not in ("xyxy", "xywh"):
+        raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
+
+    # convert boxes to format xyxy
+    if mode == "xywh":
+        boxes[..., -2] = boxes[..., 0] + boxes[..., -2]  # x + w
+        boxes[..., -1] = boxes[..., 1] + boxes[..., -1]  # y + h
+
+    transformed_boxes: torch.Tensor = kornia.transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    transformed_boxes = transformed_boxes.view_as(boxes)
+
+    if mode == 'xywh':
+        transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
+        transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
+
+    return transformed_boxes
 
 
 def perspective_transform_lafs(trans_01: torch.Tensor,

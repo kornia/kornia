@@ -41,6 +41,12 @@ def get_sift_bin_ksize_stride_pad(patch_size: int,
     ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
     stride: int = patch_size // num_spatial_bins
     pad: int = ksize // 4
+    out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1
+    if out_size != num_spatial_bins:
+        raise ValueError(f"Patch size {patch_size} is incompatible with \
+            requested number of spatial bins {num_spatial_bins} \
+            for SIFT descriptor. Usually it happens when patch size is too small\
+            for num_spatial_bins specified")
     return ksize, stride, pad
 
 
@@ -57,7 +63,7 @@ class SIFTDescriptor(nn.Module):
         is computed
 
     Returns:
-        Tensor: SIFT descriptor of the patches
+        torch.Tensor: SIFT descriptor of the patches
 
     Shape:
         - Input: (B, 1, num_spatial_bins, num_spatial_bins)

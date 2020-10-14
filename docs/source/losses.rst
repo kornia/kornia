@@ -1,17 +1,31 @@
 kornia.losses
-====================
+=============
 
 .. currentmodule:: kornia.losses
 
-.. autofunction:: dice_loss
-.. autofunction:: total_variation
-.. autofunction:: psnr_loss
-.. autofunction:: tversky_loss
-.. autofunction:: focal_loss
+Reconstruction
+--------------
+
 .. autofunction:: ssim
+.. autofunction:: psnr_loss
+.. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
+
+Semantic Segmentation
+---------------------
+
+.. autofunction:: focal_loss
+.. autofunction:: dice_loss
+.. autofunction:: tversky_loss
+
+Distributions
+-------------
+
 .. autofunction:: js_div_loss_2d
 .. autofunction:: kl_div_loss_2d
+
+Module
+------
 
 .. autoclass:: DiceLoss
 .. autoclass:: TverskyLoss

@@ -10,12 +10,15 @@ from kornia.utils import create_meshgrid
 from kornia.filters import spatial_gradient
 
 
-def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
+def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     Args:
         depth (torch.Tensor): image tensor containing a depth value per pixel.
         camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
+        normalize_points (bool): whether to normalise the pointcloud. This
+            must be set to `True` when the depth is represented as the Euclidean
+            ray length from the camera position. Default is `False`.
 
     Shape:
         - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
@@ -51,17 +54,20 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tenso
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
     points_3d: torch.Tensor = unproject_points(
-        points_2d, points_depth, camera_matrix_tmp, normalize=True)  # BxHxWx3
+        points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points)  # BxHxWx3
 
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW
 
 
-def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
+def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute the normal surface per pixel.
 
     Args:
         depth (torch.Tensor): image tensor containing a depth value per pixel.
         camera_matrix (torch.Tensor): tensor containing the camera intrinsics.
+        normalize_points (bool): whether to normalise the pointcloud. This
+            must be set to `True` when the depth is represented as the Euclidean
+            ray length from the camera position. Default is `False`.
 
     Shape:
         - Input: :math:`(B, 1, H, W)` and :math:`(B, 3, 3)`
@@ -86,7 +92,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor) -> torch.
                          f"Got: {camera_matrix.shape}.")
 
     # compute the 3d points from depth
-    xyz: torch.Tensor = depth_to_3d(depth, camera_matrix)  # Bx3xHxW
+    xyz: torch.Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
 
     # compute the pointcloud spatial gradients
     gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
@@ -102,7 +108,8 @@ def warp_frame_depth(
         image_src: torch.Tensor,
         depth_dst: torch.Tensor,
         src_trans_dst: torch.Tensor,
-        camera_matrix: torch.Tensor) -> torch.Tensor:
+        camera_matrix: torch.Tensor,
+        normalize_points: bool = False) -> torch.Tensor:
     """Warp a tensor from a source to destination frame by the depth in the destination.
 
     Compute 3d points from the depth, transform them using given transformation, then project the point cloud to an
@@ -113,6 +120,9 @@ def warp_frame_depth(
         depth_dst (torch.Tensor): depth tensor in the destination frame with shape (Bx1xHxW).
         src_trans_dst (torch.Tensor): transformation matrix from destination to source with shape (Bx4x4).
         camera_matrix (torch.Tensor): tensor containing the camera intrinsics with shape (Bx3x3).
+        normalize_points (bool): whether to normalise the pointcloud. This
+            must be set to `True` when the depth is represented as the Euclidean
+            ray length from the camera position. Default is `False`.
 
     Return:
         torch.Tensor: the warped tensor in the source frame with shape (Bx3xHxW).
@@ -146,7 +156,7 @@ def warp_frame_depth(
         raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). "
                          f"Got: {camera_matrix.shape}.")
     # unproject source points to camera frame
-    points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix)  # Bx3xHxW
+    points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
 
     # transform points from source to destionation
     points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
@@ -163,4 +173,4 @@ def warp_frame_depth(
     points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(
         points_2d_src, height, width)  # BxHxWx2
 
-    return F.grid_sample(image_src, points_2d_src_norm)  # BxDxHxW
+    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)  # type: ignore

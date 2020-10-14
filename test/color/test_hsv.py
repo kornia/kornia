@@ -1,9 +1,8 @@
 import pytest
 
 import kornia
-from kornia.geometry import pi
+from kornia.constants import pi
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import math
 

@@ -4,7 +4,16 @@ import numpy as np
 import torch
 import kornia as kornia
 import kornia.testing as utils  # test utils
-from test.common import device
+
+
+@pytest.mark.parametrize("input_dtype, expected_dtype",
+                         [(np.uint8, torch.uint8),
+                          (np.float32, torch.float32),
+                          (np.float64, torch.float64), ])
+def test_image_to_tensor_keep_dtype(input_dtype, expected_dtype):
+    image = np.ones((1, 3, 4, 5), dtype=input_dtype)
+    tensor = kornia.image_to_tensor(image)
+    assert tensor.dtype == expected_dtype
 
 
 @pytest.mark.parametrize("input_shape, expected",

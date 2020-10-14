@@ -2,14 +2,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.constants import pi
 
 __all__ = [
     # functional api
-    "pi",
     "rad2deg",
     "deg2rad",
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
+    "convert_affinematrix_to_homography",
+    "convert_affinematrix_to_homography3d",
     "angle_axis_to_rotation_matrix",
     "angle_axis_to_quaternion",
     "rotation_matrix_to_angle_axis",
@@ -24,11 +26,6 @@ __all__ = [
     "denormalize_pixel_coordinates3d",
     "normalize_pixel_coordinates3d",
 ]
-
-
-"""Constant with number pi
-"""
-pi = torch.tensor(3.14159265358979323846)
 
 
 def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
@@ -84,6 +81,7 @@ def convert_points_from_homogeneous(
     if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(points)))
+
     if len(points.shape) < 2:
         raise ValueError("Input must be at least a 2D tensor. Got {}".format(
             points.shape))
@@ -94,10 +92,9 @@ def convert_points_from_homogeneous(
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
-    scale: torch.Tensor = torch.where(
-        torch.abs(z_vec) > eps,
-        torch.tensor(1.) / z_vec,
-        torch.ones_like(z_vec))
+    mask: torch.Tensor = torch.abs(z_vec) > eps
+    scale: torch.Tensor = torch.ones_like(z_vec).masked_scatter_(
+        mask, torch.tensor(1.0).to(points.device) / z_vec[mask])
 
     return scale * points[..., :-1]
 
@@ -118,6 +115,46 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
             points.shape))
 
     return torch.nn.functional.pad(points, [0, 1], "constant", 1.0)
+
+
+def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
+    H: torch.Tensor = torch.nn.functional.pad(A, [0, 0, 0, 1], "constant", value=0.)
+    H[..., -1, -1] += 1.0
+    return H
+
+
+def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
+    r"""Function that converts batch of affine matrices from [Bx2x3] to [Bx3x3].
+
+    Examples::
+
+        >>> input = torch.rand(2, 2, 3)  # Bx2x3
+        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx3x3
+    """
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(A)))
+    if not (len(A.shape) == 3 and A.shape[-2:] == (2, 3)):
+        raise ValueError("Input matrix must be a Bx2x3 tensor. Got {}"
+                         .format(A.shape))
+    return _convert_affinematrix_to_homography_impl(A)
+
+
+def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
+    r"""Function that converts batch of affine matrices from [Bx3x4] to [Bx4x4].
+
+    Examples::
+
+        >>> input = torch.rand(2, 3, 4)  # Bx3x4
+        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx4x4
+    """
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(A)))
+    if not (len(A.shape) == 3 and A.shape[-2:] == (3, 4)):
+        raise ValueError("Input matrix must be a Bx3x4 tensor. Got {}"
+                         .format(A.shape))
+    return _convert_affinematrix_to_homography_impl(A)
 
 
 def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:

@@ -83,7 +83,7 @@ def harris_response(input: torch.Tensor,
 
     # compute the structure tensor M elements
     def g(x):
-        return gaussian_blur2d(x, (3, 3), (1., 1.))
+        return gaussian_blur2d(x, (7, 7), (1., 1.))
 
     dx2: torch.Tensor = g(dx ** 2)
     dy2: torch.Tensor = g(dy ** 2)
@@ -91,7 +91,7 @@ def harris_response(input: torch.Tensor,
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
     # compute the response map
-    scores: torch.Tensor = torch.relu(det_m - k * (trace_m ** 2))
+    scores: torch.Tensor = det_m - k * (trace_m ** 2)
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
@@ -163,7 +163,7 @@ def gftt_response(input: torch.Tensor,
 
     # compute the structure tensor M elements
     def g(x):
-        return gaussian_blur2d(x, (3, 3), (1., 1.))
+        return gaussian_blur2d(x, (7, 7), (1., 1.))
 
     dx2: torch.Tensor = g(dx ** 2)
     dy2: torch.Tensor = g(dy ** 2)
@@ -177,7 +177,7 @@ def gftt_response(input: torch.Tensor,
 
     scores: torch.Tensor = torch.min(e1, e2)
     if sigmas is not None:
-        scores = scores * sigmas.pow(2).view(-1, 1, 1, 1)
+        scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
 
 
@@ -253,10 +253,51 @@ def hessian_response(input: torch.Tensor,
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = torch.abs(dxx * dyy - dxy ** 2)
+    scores: torch.Tensor = dxx * dyy - dxy ** 2
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
+
+
+def dog_response(input: torch.Tensor) -> torch.Tensor:
+    r"""Computes the Difference-of-Gaussian responce given the Gaussian 5d input:
+
+
+    Args:
+        input: torch.Tensor: 5d tensor
+
+    Return:
+        torch.Tensor: the response map per channel.
+
+    Shape:
+      - Input: :math:`(B, C, D, H, W)`
+      - Output: :math:`(B, C, D-1, H, W)`
+
+    """
+    if not torch.is_tensor(input):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+    if not len(input.shape) == 5:
+        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
+                         .format(input.shape))
+    return input[:, :, 1:] - input[:, :, :-1]
+
+
+class BlobDoG(nn.Module):
+    r"""nn.Module that calculates Difference-of-Gaussians blobs
+    See :func:`~kornia.feature.dog_response` for details.
+    """
+
+    def __init__(self) -> None:
+        super(BlobDoG, self).__init__()
+        return
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__
+
+    def forward(self, input: torch.Tensor,  # type: ignore
+                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        return dog_response(input)  # type: ignore
 
 
 class CornerHarris(nn.Module):

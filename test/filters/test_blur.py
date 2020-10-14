@@ -4,7 +4,6 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
-from test.common import device
 
 import torch
 from torch.testing import assert_allclose
@@ -65,6 +64,15 @@ class TestBoxBlur:
 
         actual = kornia.filters.box_blur(inp, kernel_size)
         assert_allclose(actual[:, 0, 2, 2], expected)
+
+    def test_noncontiguous(self, device):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+
+        kernel_size = (3, 3)
+        actual = kornia.filters.box_blur(inp, kernel_size)
+        expected = actual
+        assert_allclose(actual, actual)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4

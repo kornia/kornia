@@ -52,7 +52,7 @@ class PinholeCamera:
     def _check_valid_params(
             data: torch.Tensor,
             data_name: str) -> bool:
-        if len(data.shape) not in (3, 4,) and data.shape[-2:] is not (4, 4):
+        if len(data.shape) not in (3, 4,) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
             raise ValueError("Argument {0} shape must be in the following shape"
                              " Bx4x4 or BxNx4x4. Got {1}".format(data_name,
                                                                  data.shape))

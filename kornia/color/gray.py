@@ -23,6 +23,8 @@ class RgbToGrayscale(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
@@ -38,17 +40,19 @@ class RgbToGrayscale(nn.Module):
     def rgb_to_grayscale(self, input: torch.Tensor) -> torch.Tensor:
         r"""Convert a RGB image to grayscale.
 
-        See :class:`~kornia.color.RgbToGrayscale` for details.
+    Returns:
+        torch.Tensor: Grayscale version of the image.
+    """
+    if not isinstance(input, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(input)))
 
         Args:
             input (torch.Tensor): RGB image to be converted to grayscale.
 
-        Returns:
-            torch.Tensor: Grayscale version of the image.
-        """
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-                type(input)))
+    r, g, b = torch.chunk(input, chunks=3, dim=-3)
+    gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
+    return gray
 
         if len(input.shape) < 3 and input.shape[-3] != 3:
             raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
@@ -83,6 +87,8 @@ class BgrToGrayscale(nn.Module):
 
     Examples::
 
+        >>> import torch
+        >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
