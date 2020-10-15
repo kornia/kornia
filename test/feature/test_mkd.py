@@ -294,3 +294,70 @@ class TestWhitening:
                          raise_exception=True, nondet_tol=1e-4)
 
 
+
+class TestMKD:
+    dims = {'cart':63, 'polar':175, 'concat':238}
+
+    @pytest.mark.parametrize("ps,dtype", [(9,'concat'),
+      (9,'cart'),(9,'polar'),(32,'concat'), (32,'cart'),(32,'polar')])
+    def test_shape(self, ps, dtype, device):
+        mkd = MKD(patch_size=ps,
+                  dtype=dtype,
+                  whitening=None).to(device)
+        inp = torch.ones(1, 1, ps, ps, device=device)
+        out = mkd(inp)
+        assert out.shape == (1, self.dims[dtype])
+
+    @pytest.mark.parametrize("ps,dtype,whitening", [(9,'concat', 'lw'),
+      (9,'cart', 'lw'),(9,'polar', 'lw'),(9,'concat', 'pcawt'),
+        (9,'cart', 'pcawt'),(9,'polar', 'pcawt')])
+    def test_whitened_shape(self, ps, dtype, whitening, device):
+        mkd = MKD(patch_size=ps,
+                  dtype=dtype,
+                  whitening=whitening).to(device)
+        inp = torch.ones(1, 1, ps, ps, device=device)
+        out = mkd(inp)
+        reduce_dims = min(self.dims[dtype], 128)
+        assert out.shape == (1, reduce_dims)
+
+    @pytest.mark.parametrize("bs", [1, 3, 7])
+    def test_batch_shape(self, bs, device):
+        mkd = MKD(patch_size=19,
+                  dtype='concat',
+                  whitening=None).to(device)
+        inp = torch.ones(bs, 1, 19, 19, device=device)
+        out = mkd(inp)
+        assert out.shape == (bs, 238)
+
+    def test_print(self, device):
+        mkd = MKD(patch_size=32,
+                  whitening='lw',
+                  training_set='liberty',
+                  reduce_dims=128).to(device)
+        mkd.__repr__()
+
+    def test_toy(self, device):
+        inp = torch.ones(1, 1, 6, 6, device=device).float()
+        inp[0, 0, :, :] = 0
+        mkd = MKD(patch_size=6,
+                  dtype='concat',
+                  whitening=None).to(device)
+        out = mkd(inp)
+        out_part = out[0,-28:]
+        expected = torch.zeros_like(out_part, device=device)
+        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("whitening", [None, 'lw', 'pca'])
+    def test_gradcheck(self, whitening, device):
+        batch_size, channels, ps = 1, 1, 19
+        patches = torch.rand(batch_size, channels, ps, ps, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+
+        def mkd_describe(patches, patch_size=19):
+            return MKD(patch_size=patch_size,
+                       dtype='concat',
+                       whitening=whitening).double()(patches.double())
+        assert gradcheck(mkd_describe, (patches, ps),
+                         raise_exception=True, nondet_tol=1e-4)
+
+
