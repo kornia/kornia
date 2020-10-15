@@ -1,3 +1,4 @@
+from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,6 +9,8 @@ __all__ = [
     # functional api
     "rad2deg",
     "deg2rad",
+    "pol2cart",
+    "cart2pol",
     "convert_points_from_homogeneous",
     "convert_points_to_homogeneous",
     "convert_affinematrix_to_homography",
@@ -67,6 +70,54 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
             type(tensor)))
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.
+
+
+def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Function that converts polar coordinates to cartesian coordinates.
+
+    Args:
+        rho (torch.Tensor): Tensor of arbitrary shape.
+        phi (torch.Tensor): Tensor of same arbitrary shape.
+
+    Returns:
+        torch.Tensor, torch.Tensor: Tensor with same shape as input.
+
+    Example:
+        >>> rho = torch.rand(1, 3, 3)
+        >>> phi = kornia.pi * torch.rand(1, 3, 3)
+        >>> x, y = kornia.pol2cart(rho, phi)
+    """
+    if not (isinstance(rho, torch.Tensor) & isinstance(phi, torch.Tensor)):
+        raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(
+            type(rho), type(phi)))
+
+    x = rho * torch.cos(phi)
+    y = rho * torch.sin(phi)
+    return x, y
+
+
+def cart2pol(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    r"""Function that converts cartesian coordinates to polar coordinates.
+
+    Args:
+        rho (torch.Tensor): Tensor of arbitrary shape.
+        phi (torch.Tensor): Tensor of same arbitrary shape.
+
+    Returns:
+        torch.Tensor, torch.Tensor: Tensor with same shape as input.
+
+    Example:
+        >>> x = torch.rand(1, 3, 3)
+        >>> y = torch.rand(1, 3, 3)
+        >>> rho, phi = kornia.cart2pol(x, y)
+    """
+    if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
+        raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(
+            type(x), type(y)))
+
+    rho = torch.sqrt(x**2 + y**2)
+    phi = torch.atan2(y, x)
+    return rho, phi
 
 
 def convert_points_from_homogeneous(
