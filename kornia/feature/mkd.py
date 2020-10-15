@@ -21,6 +21,7 @@ urls: Dict[str, str] = {k:f'https://github.com/manyids2/mkd_pytorch/raw/master/m
                         for k in ['cart', 'polar', 'concat']}
 
 
+
 def get_grid_dict(patch_size:int = 32) -> Dict[str, torch.Tensor]:
     """Gets cartesian and polar parametrizations of grid. """
     kgrid = create_meshgrid(height=patch_size,
@@ -83,3 +84,67 @@ class MKDGradients(nn.Module):
 
     def __repr__(self) -> str:
         return self.__class__.__name__
+
+
+class VonMisesKernel(nn.Module):
+    """
+    Module, which computes parameters of Von Mises kernel given coefficients,
+    and embeds given patches.
+    Args:
+        patch_size: (int) Input patch size in pixels (32 is default)
+        coeffs: (list) List of coefficients
+              Some examples are hardcoded in COEFFS
+    Returns:
+        Tensor: Von Mises embedding of given parametrization
+    Shape:
+        - Input: (B, 1, patch_size, patch_size)
+        - Output: (B, d, patch_size, patch_size)
+    Examples::
+        >>> oris = torch.rand(23, 1, 32, 32)
+        >>> vm = kornia.feature.mkd.VonMisesKernel(patch_size=32,
+                                                   coeffs=[0.14343168,
+                                                           0.268285,
+                                                           0.21979234])
+        >>> emb = vm(oris) # 23x7x32x32
+    """
+
+    def __init__(self,
+                 patch_size: int,
+                 coeffs: Union[list, tuple]) -> None:
+        super().__init__()
+
+        self.patch_size = patch_size
+        self.register_buffer('coeffs', torch.Tensor(coeffs).float())
+
+        # Compute parameters.
+        n = self.coeffs.shape[0] - 1
+        self.n = n
+        self.d = 2 * n + 1
+
+        # Precompute helper variables.
+        emb0 = torch.ones([1, 1, patch_size, patch_size]).float()
+        frange = torch.arange(n).float() + 1
+        frange = frange.reshape(-1, 1, 1).float()
+        weights = torch.zeros([2 * n + 1]).float()
+        weights[:n + 1] = torch.sqrt(self.coeffs)
+        weights[n + 1:] = torch.sqrt(self.coeffs[1:])
+        weights = weights.reshape(-1, 1, 1).float()
+        self.register_buffer('emb0', emb0)
+        self.register_buffer('frange', frange)
+        self.register_buffer('weights', weights)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        emb0 = self.emb0.repeat(x.size(0), 1, 1, 1)
+        frange = self.frange * x
+        emb1 = torch.cos(frange)
+        emb2 = torch.sin(frange)
+        embedding = torch.cat([emb0, emb1, emb2], dim=1)
+        embedding = self.weights * embedding
+        return embedding
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(' + 'patch_size=' + str(self.patch_size) +\
+            ', ' + 'n=' + str(self.n) +\
+            ', ' + 'd=' + str(self.d) +\
+            ', ' + 'coeffs=' + str(self.coeffs) + ')'

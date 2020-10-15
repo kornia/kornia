@@ -59,4 +59,66 @@ class TestMKDGradients:
         def grad_describe(patches):
             return MKDGradients()(patches)
         assert gradcheck(grad_describe, (patches),
+                         raise_exception = True, nondet_tol = 1e-4)
+
+class TestVonMisesKernel:
+    @ pytest.mark.parametrize("ps", [5, 13, 25])
+    def test_shape(self, ps, device):
+        inp=torch.ones(1, 1, ps, ps, device = device)
+        vm=VonMisesKernel(patch_size = ps,
+                            coeffs = [0.38214156, 0.48090413]).to(device)
+        out=vm(inp)
+        assert out.shape == (1, 3, ps, ps)
+
+    @ pytest.mark.parametrize("bs", [1, 5, 13])
+    def test_batch_shape(self, bs, device):
+        inp=torch.ones(bs, 1, 15, 15, device = device)
+        vm=VonMisesKernel(patch_size = 15,
+                            coeffs = [0.38214156, 0.48090413]).to(device)
+        out=vm(inp)
+        assert out.shape == (bs, 3, 15, 15)
+
+    @ pytest.mark.parametrize("coeffs", COEFFS.values())
+    def test_coeffs(self, coeffs, device):
+        inp=torch.ones(1, 1, 15, 15, device = device)
+        vm=VonMisesKernel(patch_size = 15,
+                          coeffs=coeffs).to(device)
+        out = vm(inp)
+        assert out.shape == (1, 2 * len(coeffs) - 1, 15, 15)
+
+    def test_print(self, device):
+        vm = VonMisesKernel(patch_size=32,
+                          coeffs=[0.38214156, 0.48090413]).to(device)
+        vm.__repr__()
+
+    def test_toy(self, device):
+        patch = torch.ones(1, 1, 6, 6, device=device).float()
+        patch[0, 0, :, 3:] = 0
+        vm = VonMisesKernel(patch_size=6,
+                          coeffs=[0.38214156, 0.48090413]).to(device)
+        out = vm(patch)
+        expected = torch.ones_like(out[0,0,:,:], device=device)
+        assert_allclose(out[0,0,:,:], expected * 0.6182, atol=1e-3, rtol=1e-3)
+
+        expected = torch.Tensor([0.3747, 0.3747, 0.3747,
+                               0.6935, 0.6935, 0.6935], device=device)
+        expected = expected.unsqueeze(0).repeat(6,1)
+        assert_allclose(out[0,1,:,:], expected, atol=1e-3, rtol=1e-3)
+
+        expected = torch.Tensor([0.5835, 0.5835, 0.5835,
+                               0.0000, 0.0000, 0.0000], device=device)
+        expected = expected.unsqueeze(0).repeat(6,1)
+        assert_allclose(out[0,2,:,:], expected, atol=1e-3, rtol=1e-3)
+
+    def test_gradcheck(self, device):
+        batch_size, channels, ps = 1, 1, 13
+        patches = torch.rand(batch_size, channels, ps, ps, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+
+        def vm_describe(patches, ps=13):
+            return VonMisesKernel(patch_size=ps,
+                  coeffs=[0.38214156, 0.48090413]).double()(patches.double())
+        assert gradcheck(vm_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
+
+
