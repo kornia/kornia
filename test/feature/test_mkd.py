@@ -122,3 +122,48 @@ class TestVonMisesKernel:
                          raise_exception=True, nondet_tol=1e-4)
 
 
+
+class TestEmbedGradients:
+
+    @pytest.mark.parametrize("ps,relative", [(5, True), (13, True), (25, True),
+      (5, False), (13, False), (25, False)])
+    def test_shape(self, ps, relative, device):
+        inp = torch.ones(1, 2, ps, ps, device=device)
+        emb_grads = EmbedGradients(patch_size=ps,
+                            relative=relative).to(device)
+        out = emb_grads(inp)
+        assert out.shape == (1, 7, ps, ps)
+
+    @pytest.mark.parametrize("bs", [1, 5, 13])
+    def test_batch_shape(self, bs, device):
+        inp = torch.ones(bs, 2, 15, 15, device=device)
+        emb_grads = EmbedGradients(patch_size=15,
+                            relative=True).to(device)
+        out = emb_grads(inp)
+        assert out.shape == (bs, 7, 15, 15)
+
+    def test_print(self, device):
+        emb_grads = EmbedGradients(patch_size=15,
+                            relative=True).to(device)
+        emb_grads.__repr__()
+
+    def test_toy(self, device):
+        grads = torch.ones(1, 2, 6, 6, device=device).float()
+        grads[0, 0, :, 3:] = 0
+        emb_grads = EmbedGradients(patch_size=6,
+                            relative=True).to(device)
+        out = emb_grads(grads)
+        expected = torch.ones_like(out[0,0,:,:3], device=device)
+        assert_allclose(out[0,0,:,:3], expected * .3787, atol=1e-3, rtol=1e-3)
+        assert_allclose(out[0,0,:,3:], expected * 0, atol=1e-3, rtol=1e-3)
+
+    def test_gradcheck(self, device):
+        batch_size, channels, ps = 1, 2, 13
+        patches = torch.rand(batch_size, channels, ps, ps, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+
+        def emb_grads_describe(patches, ps=13):
+            return EmbedGradients(patch_size=ps,
+                          relative=True).double()(patches.double())
+        assert gradcheck(emb_grads_describe, (patches, ps),
+                         raise_exception=True, nondet_tol=1e-4)

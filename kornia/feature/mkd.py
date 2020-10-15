@@ -148,3 +148,61 @@ class VonMisesKernel(nn.Module):
             ', ' + 'n=' + str(self.n) +\
             ', ' + 'd=' + str(self.d) +\
             ', ' + 'coeffs=' + str(self.coeffs) + ')'
+
+
+class EmbedGradients(nn.Module):
+    """
+    Module that computes gradient embedding,
+    weighted by sqrt of magnitudes of given patches.
+    Args:
+        patch_size: (int) Input patch size in pixels (32 is default)
+        relative: (bool) absolute or relative gradients (False is default)
+    Returns:
+        Tensor: Gradient embedding
+    Shape:
+        - Input: (B, 2, patch_size, patch_size)
+        - Output: (B, 7, patch_size, patch_size)
+    Examples::
+        >>> grads = torch.rand(23, 2, 32, 32)
+        >>> emb_grads = kornia.feature.mkd.EmbedGradients(patch_size=32,
+                                                          relative=False)
+        >>> emb = emb_grads(grads) # 23x7x32x32
+    """
+
+    def __init__(self,
+                 patch_size: int = 32,
+                 relative: bool = False) -> None:
+        super().__init__()
+        self.patch_size = patch_size
+        self.relative = relative
+        self.eps = 1e-8
+
+        # Theta kernel for gradients.
+        self.kernel = VonMisesKernel(patch_size=patch_size,
+                                     coeffs=COEFFS['theta'])
+
+        # Relative gradients.
+        kgrid = create_meshgrid(height=patch_size,
+                                width=patch_size,
+                                normalized_coordinates=True)
+        _, phi = cart2pol(kgrid[:,:,:,0], kgrid[:,:,:,1])
+        self.register_buffer('phi', phi.float())
+
+    def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
+        """Embed square roots of magnitudes with eps for numerical reasons. """
+        mags = torch.sqrt(mags + self.eps)
+        return mags
+
+    def forward(self, grads: torch.Tensor) -> torch.Tensor:
+        mags = grads[:, :1, :, :]
+        oris = grads[:, 1:, :, :]
+        if self.relative:
+            oris = oris - self.phi
+        y = self.kernel(oris) * self.emb_mags(mags)
+        return y
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(' + 'patch_size=' + str(self.patch_size) +\
+            ', ' + 'relative=' + str(self.relative) + ')'
+
