@@ -126,8 +126,8 @@ class VonMisesKernel(nn.Module):
         frange = torch.arange(n).float() + 1
         frange = frange.reshape(-1, 1, 1).float()
         weights = torch.zeros([2 * n + 1]).float()
-        weights[:n + 1] = torch.sqrt(self.coeffs)
-        weights[n + 1:] = torch.sqrt(self.coeffs[1:])
+        weights[:n + 1] = torch.sqrt(b_coeffs)
+        weights[n + 1:] = torch.sqrt(b_coeffs[1:])
         weights = weights.reshape(-1, 1, 1).float()
         self.register_buffer('emb0', emb0)
         self.register_buffer('frange', frange)
