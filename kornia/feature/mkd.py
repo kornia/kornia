@@ -134,7 +134,7 @@ class VonMisesKernel(nn.Module):
         self.register_buffer('weights', weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        emb0 = self.emb0.repeat(x.size(0), 1, 1, 1)
+        emb0 = self.emb0.repeat(x.size(0), 1, 1, 1)  # type: ignore
         frange = self.frange * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
@@ -296,7 +296,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
         # Store precomputed embedding.
         self.register_buffer('emb', emb.unsqueeze(0))
-        self.d_emb: int = self.emb.shape[1]
+        self.d_emb: int = self.emb.shape[1]  # type: ignore
         self.out_dims: int = self.in_dims * self.d_emb
         self.odims: int = self.out_dims
 
@@ -314,11 +314,11 @@ class ExplicitSpacialEncoding(nn.Module):
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker. """
         kron = get_kron_order(self.in_dims, self.d_emb)
-        emb2 = torch.index_select(self.emb, 1, kron[:, 1])
+        emb2 = torch.index_select(self.emb, 1, kron[:, 1])  # type: ignore
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        emb1 = torch.index_select(x, 1, self.idx1)
+        emb1 = torch.index_select(x, 1, self.idx1)  # type: ignore
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
         if self.do_l2:
