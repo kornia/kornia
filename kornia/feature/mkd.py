@@ -116,9 +116,9 @@ class VonMisesKernel(nn.Module):
         self.register_buffer('coeffs', torch.Tensor(coeffs).float())
 
         # Compute parameters.
-        n = self.coeffs.shape[0] - 1
-        self.n = n
-        self.d = 2 * n + 1
+        n: int = len(coeffs) - 1
+        self.n: int = n
+        self.d: int = 2 * n + 1
 
         # Precompute helper variables.
         emb0 = torch.ones([1, 1, patch_size, patch_size]).float()
@@ -365,7 +365,7 @@ class Whitening(nn.Module):
 
     def __init__(self,
                  xform: str,
-                 whitening_model: Union[Dict[str, torch.Tensor], None],
+                 whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
                  in_dims: int,
                  reduce_dims: int = 128,
                  keval: int = 40,
