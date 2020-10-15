@@ -296,9 +296,9 @@ class ExplicitSpacialEncoding(nn.Module):
 
         # Store precomputed embedding.
         self.register_buffer('emb', emb.unsqueeze(0))
-        self.d_emb = self.emb.shape[1]
-        self.out_dims = self.in_dims * self.d_emb
-        self.odims = self.out_dims
+        self.d_emb: int = self.emb.shape[1]
+        self.out_dims: int = self.in_dims * self.d_emb
+        self.odims: int = self.out_dims
 
         # Store kronecker form.
         emb2, idx1 = self.init_kron()
@@ -507,14 +507,14 @@ class MKD(nn.Module):
             self.polar_feats = nn.Sequential(ori_rel, polar_emb)
 
         if dtype == 'concat':
-            self.odims = polar_emb.odims + cart_emb.odims
+            self.odims: int = polar_emb.odims + cart_emb.odims
         elif dtype == 'cart':
-            self.odims = cart_emb.odims
+            self.odims: int = cart_emb.odims
         elif dtype == 'polar':
-            self.odims = polar_emb.odims
+            self.odims: int = polar_emb.odims
 
         # Compute true reduce_dims.
-        self.reduce_dims = min(reduce_dims, self.odims)
+        self.reduce_dims: int = min(reduce_dims, self.odims)
 
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
