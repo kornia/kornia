@@ -206,3 +206,34 @@ class EmbedGradients(nn.Module):
             '(' + 'patch_size=' + str(self.patch_size) +\
             ', ' + 'relative=' + str(self.relative) + ')'
 
+def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
+    """Compute embeddings for cartesian and polar parametrizations. """
+    factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
+    if dtype == 'cart':
+        coeffs_ = 'xy'
+        params_ = ['x', 'y']
+    elif dtype == 'polar':
+        coeffs_ = 'rhophi'
+        params_ = ['phi', 'rho']
+
+    # Infer patch_size.
+    keys = list(grids.keys())
+    patch_size = grids[keys[0]].shape[-1]
+
+    # Scale appropriately.
+    grids_normed = {k:v * factors[k] for k,v in grids.items()}
+    grids_normed = {k:v.unsqueeze(0).unsqueeze(0).float()
+        for k,v in grids_normed.items()}
+
+    # x,y/rho,phi kernels.
+    vm_a = VonMisesKernel(patch_size=patch_size, coeffs=COEFFS[coeffs_])
+    vm_b = VonMisesKernel(patch_size=patch_size, coeffs=COEFFS[coeffs_])
+
+    emb_a = vm_a(grids_normed[params_[0]]).squeeze()
+    emb_b = vm_b(grids_normed[params_[1]]).squeeze()
+
+    # Final precomputed position embedding.
+    kron_order = get_kron_order(vm_a.d, vm_b.d)
+    spatial_kernel = emb_a.index_select(0,
+        kron_order[:,0]) * emb_b.index_select(0, kron_order[:,1])
+    return spatial_kernel
