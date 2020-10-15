@@ -176,3 +176,67 @@ def test_spatial_kernel_embedding(dtype, ps,d):
     assert spatial_kernel.shape == (d, ps, ps)
 
 
+class TestExplicitSpacialEncoding:
+
+    @pytest.mark.parametrize("dtype,ps,in_dims", [('cart', 9, 3),
+      ('polar', 9, 3),('cart', 13, 7), ('polar', 13, 7)])
+    def test_shape(self, dtype, ps, in_dims, device):
+        inp = torch.ones(1, in_dims, ps, ps, device=device)
+        ese = ExplicitSpacialEncoding(dtype=dtype,
+                                    fmap_size=ps,
+                                    in_dims=in_dims).to(device)
+        out = ese(inp)
+        d_ = 9 if dtype == 'cart' else 25
+        assert out.shape == (1, d_ * in_dims)
+
+    @pytest.mark.parametrize("dtype,bs", [('cart',1), ('cart',5), ('cart',13),
+      ('polar',1), ('polar',5), ('polar',13)])
+    def test_batch_shape(self, dtype, bs, device):
+        inp = torch.ones(bs, 7, 15, 15, device=device)
+        ese = ExplicitSpacialEncoding(dtype=dtype,
+                                      fmap_size=15,
+                                      in_dims=7).to(device)
+        out = ese(inp)
+        d_ = 9 if dtype == 'cart' else 25
+        assert out.shape == (bs, d_ * 7)
+
+    @pytest.mark.parametrize("dtype", ['cart', 'polar'])
+    def test_print(self, dtype, device):
+        ese = ExplicitSpacialEncoding(dtype=dtype,
+                                      fmap_size=15,
+                                      in_dims=7).to(device)
+        ese.__repr__()
+
+    def test_toy(self, device):
+        inp = torch.ones(1, 2, 6, 6, device=device).float()
+        inp[0, 0, :, :] = 0
+        cart_ese = ExplicitSpacialEncoding(dtype='cart',
+                                      fmap_size=6,
+                                      in_dims=2).to(device)
+        out = cart_ese(inp)
+        out_part = out[:,:9]
+        expected = torch.zeros_like(out_part, device=device)
+        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+
+        polar_ese = ExplicitSpacialEncoding(dtype='polar',
+                                            fmap_size=6,
+                                            in_dims=2).to(device)
+        out = polar_ese(inp)
+        out_part = out[:,:25]
+        expected = torch.zeros_like(out_part, device=device)
+        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+
+    @pytest.mark.parametrize("dtype", ['cart', 'polar'])
+    def test_gradcheck(self, dtype, device):
+        batch_size, channels, ps = 1, 2, 13
+        patches = torch.rand(batch_size, channels, ps, ps, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+
+        def explicit_spatial_describe(patches, ps=13):
+            return ExplicitSpacialEncoding(dtype=dtype,
+                                           fmap_size=ps,
+                                           in_dims=2)(patches)
+        assert gradcheck(explicit_spatial_describe, (patches, ps),
+                         raise_exception=True, nondet_tol=1e-4)
+
+

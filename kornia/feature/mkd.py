@@ -237,3 +237,98 @@ def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
     spatial_kernel = emb_a.index_select(0,
         kron_order[:,0]) * emb_b.index_select(0, kron_order[:,1])
     return spatial_kernel
+
+
+class ExplicitSpacialEncoding(nn.Module):
+    """
+    Module that computes explicit cartesian or polar embedding.
+    Args:
+        dtype: (str) Parametrization of kernel.
+                     'polar', 'cart' ('polar' is default)
+        fmap_size: (int) Input feature map size in pixels (32 is default)
+        in_dims: (int) Dimensionality of input feature map (7 is default)
+        do_gmask: (bool) Apply gaussian mask (True is default)
+        do_l2: (bool) Apply l2-normalization (True is default)
+    Returns:
+        Tensor: Explicit cartesian or polar embedding
+    Shape:
+        - Input: (B, in_dims, fmap_size, fmap_size)
+        - Output: (B, out_dims, fmap_size, fmap_size)
+    Examples::
+        >>> emb_ori = torch.rand(23, 7, 32, 32)
+        >>> ese = kornia.feature.mkd.ExplicitSpacialEncoding(dtype='polar',
+                                                             fmap_size=32,
+                                                             in_dims=7,
+                                                             do_gmask=True,
+                                                             do_l2=True)
+        >>> desc = ese(emb_ori) # 23x175x32x32
+    """
+
+    def __init__(self,
+                 dtype: str = 'polar',
+                 fmap_size: int = 32,
+                 in_dims: int = 7,
+                 do_gmask: bool = True,
+                 do_l2: bool = True) -> None:
+        super().__init__()
+
+        self.dtype = dtype
+        self.fmap_size = fmap_size
+        self.in_dims = in_dims
+        self.do_gmask = do_gmask
+        self.do_l2 = do_l2
+        self.grid = get_grid_dict(fmap_size)
+        self.gmask = None
+
+        # Precompute embedding.
+        if self.dtype == 'cart':
+            emb = spatial_kernel_embedding('cart', self.grid)
+        elif self.dtype == 'polar':
+            emb = spatial_kernel_embedding('polar', self.grid)
+        else:
+            raise NotImplementedError(f'{self.dtype} is not implemented.')
+
+        # Gaussian mask.
+        if self.do_gmask:
+            self.gmask = self.get_gmask(sigma=1.0)
+            emb = emb * self.gmask
+
+        # Store precomputed embedding.
+        self.register_buffer('emb', emb.unsqueeze(0))
+        self.d_emb = self.emb.shape[1]
+        self.out_dims = self.in_dims * self.d_emb
+        self.odims = self.out_dims
+
+        # Store kronecker form.
+        emb2, idx1 = self.init_kron()
+        self.register_buffer('emb2', emb2)
+        self.register_buffer('idx1', idx1)
+
+    def get_gmask(self, sigma: float) -> torch.Tensor:
+        """Compute Gaussian mask. """
+        norm_rho = self.grid['rho'] / self.grid['rho'].max()
+        gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
+        return gmask
+
+    def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Initialize helper variables to calculate kronecker. """
+        kron = get_kron_order(self.in_dims, self.d_emb)
+        emb2 = torch.index_select(self.emb, 1, kron[:, 1])
+        return emb2, kron[:, 0]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        emb1 = torch.index_select(x, 1, self.idx1)
+        output = emb1 * self.emb2
+        output = output.sum(dim=(2, 3))
+        if self.do_l2:
+            output = F.normalize(output, dim=1)
+        return output
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(' + 'dtype=' + str(self.dtype) +\
+            ', ' + 'fmap_size=' + str(self.fmap_size) +\
+            ', ' + 'in_dims=' + str(self.in_dims) +\
+            ', ' + 'out_dims=' + str(self.out_dims) +\
+            ', ' + 'do_gmask=' + str(self.do_gmask) +\
+            ', ' + 'do_l2=' + str(self.do_l2) + ')'
