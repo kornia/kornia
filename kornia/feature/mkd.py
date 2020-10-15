@@ -113,7 +113,8 @@ class VonMisesKernel(nn.Module):
         super().__init__()
 
         self.patch_size = patch_size
-        self.register_buffer('coeffs', torch.Tensor(coeffs).float())
+        b_coeffs: torch.Tensor = torch.Tensor(coeffs).float()
+        self.register_buffer('coeffs', b_coeffs)
 
         # Compute parameters.
         n: int = len(coeffs) - 1
