@@ -361,3 +361,38 @@ class TestMKD:
                          raise_exception=True, nondet_tol=1e-4)
 
 
+class TestSimpleKD:
+    dims = {'cart':63, 'polar':175}
+
+    @pytest.mark.parametrize("ps,dtype", [(9,'cart'),(9,'polar'),
+      (32,'cart'),(32,'polar')])
+    def test_shape(self, ps, dtype, device):
+        skd = SimpleKD(patch_size=ps,
+                       dtype=dtype).to(device)
+        inp = torch.ones(1, 1, ps, ps, device=device)
+        out = skd(inp)
+        assert out.shape == (1, min(128,self.dims[dtype]))
+
+    @pytest.mark.parametrize("bs", [1, 3, 7])
+    def test_batch_shape(self, bs, device):
+        skd = SimpleKD(patch_size=19,
+                       dtype='polar').to(device)
+        inp = torch.ones(bs, 1, 19, 19, device=device)
+        out = skd(inp)
+        assert out.shape == (bs, 128)
+
+    def test_print(self, device):
+        skd = SimpleKD(patch_size=19, dtype='polar').to(device)
+        skd.__repr__()
+
+
+    def test_gradcheck(self, device):
+        batch_size, channels, ps = 1, 1, 19
+        patches = torch.rand(batch_size, channels, ps, ps, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        def skd_describe(patches, patch_size=19):
+            return SimpleKD(patch_size=patch_size, dtype='polar',
+                            whitening='lw').double()(patches.double())
+        assert gradcheck(skd_describe, (patches, ps),
+                         raise_exception=True, nondet_tol=1e-4)
+

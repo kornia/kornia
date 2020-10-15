@@ -562,3 +562,46 @@ class MKD(nn.Module):
             ', ' + 'whitening=' + str(self.whitening) +\
             ', ' + 'training_set=' + str(self.training_set) +\
             ', ' + 'reduce_dims=' + str(self.reduce_dims) + ')'
+
+
+def load_whitening_model(dtype: str, training_set: str) -> Dict:
+    whitening_models = torch.hub.load_state_dict_from_url(
+        urls[dtype], map_location=lambda storage, loc: storage
+    )
+    whitening_model = whitening_models[training_set]
+    return whitening_model
+
+
+class SimpleKD(nn.Module):
+    """Example to write custom Kernel Descriptors. """
+
+    def __init__(self,
+                 patch_size: int = 32,
+                 dtype: str = 'polar',  # 'cart' 'polar'
+                 whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
+                 training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
+                 reduce_dims: int = 128) -> None:
+        super().__init__()
+
+        relative = dtype == 'polar'
+        sigma = 1.4 * (patch_size / 64)
+
+        # Sequence of modules.
+        smoothing = GaussianBlur2d((5,5), (sigma, sigma), 'replicate')
+        gradients = MKDGradients()
+        ori = EmbedGradients(patch_size=patch_size, relative=relative)
+        ese = ExplicitSpacialEncoding(dtype=dtype,
+                fmap_size=patch_size, in_dims=ori.kernel.d)
+        wh = Whitening(whitening,
+                       load_whitening_model(dtype, training_set),
+                       in_dims=ese.odims,
+                       reduce_dims=reduce_dims)
+
+        self.features = nn.Sequential(smoothing,
+                                      gradients,
+                                      ori,
+                                      ese,
+                                      wh)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.features(x)
