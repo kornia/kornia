@@ -121,8 +121,6 @@ class TestVonMisesKernel:
         assert gradcheck(vm_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
 
-
-
 class TestEmbedGradients:
 
     @pytest.mark.parametrize("ps,relative", [(5, True), (13, True), (25, True),
@@ -167,3 +165,14 @@ class TestEmbedGradients:
                           relative=True).double()(patches.double())
         assert gradcheck(emb_grads_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
+
+
+
+@pytest.mark.parametrize("dtype,d,ps", [('cart',9, 9), ('polar',25, 9),
+                                      ('cart',9, 16), ('polar',25, 16)])
+def test_spatial_kernel_embedding(dtype, ps,d):
+    grids = get_grid_dict(ps)
+    spatial_kernel = spatial_kernel_embedding(dtype, grids)
+    assert spatial_kernel.shape == (d, ps, ps)
+
+
