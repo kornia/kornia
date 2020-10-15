@@ -32,6 +32,7 @@ from .laf import (extract_patches_from_pyramid,
                   laf_to_three_points,
                   laf_from_three_points)
 from .siftdesc import SIFTDescriptor
+from .mkd import MKD
 from .hardnet import HardNet
 from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
@@ -67,6 +68,7 @@ __all__ = [
     "get_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
+    "MKD",
     "HardNet",
     "PassLAF",
     "ScaleSpaceDetector",
