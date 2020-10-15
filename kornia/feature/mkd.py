@@ -506,12 +506,13 @@ class MKD(nn.Module):
                                                 in_dims=ori_rel.kernel.d)
             self.polar_feats = nn.Sequential(ori_rel, polar_emb)
 
+        self.odims: int = 0
         if dtype == 'concat':
-            self.odims: int = polar_emb.odims + cart_emb.odims
+            self.odims = polar_emb.odims + cart_emb.odims
         elif dtype == 'cart':
-            self.odims: int = cart_emb.odims
+            self.odims = cart_emb.odims
         elif dtype == 'polar':
-            self.odims: int = polar_emb.odims
+            self.odims = polar_emb.odims
 
         # Compute true reduce_dims.
         self.reduce_dims: int = min(reduce_dims, self.odims)
