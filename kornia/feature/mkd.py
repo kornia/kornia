@@ -332,3 +332,110 @@ class ExplicitSpacialEncoding(nn.Module):
             ', ' + 'out_dims=' + str(self.out_dims) +\
             ', ' + 'do_gmask=' + str(self.do_gmask) +\
             ', ' + 'do_l2=' + str(self.do_l2) + ')'
+
+
+class Whitening(nn.Module):
+    """
+    Module, performs supervised or unsupervised whitening as described in
+    [Understanding and Improving Kernel Local Descriptors](https://arxiv.org/abs/1811.11147) .
+    Args:
+        xform: (str) Variant of whitening to use.
+                     None, 'lw', 'pca', 'pcaws', 'pcawt'
+        whitening_model: (dict) Dictionary with keys
+                    'mean', 'eigvecs', 'eigvals' holding torch.Tensors
+        in_dims: (int) Dimensionality of input descriptors
+        reduce_dims: (int) Dimensionality reduction (128 is default)
+        keval: (int) Shrinkage parameter (40 is default)
+        t: (float) Attenuation parameter (0.7 is default)
+    Returns:
+        Tensor: l2-normalized, whitened descriptors
+    Shape:
+        - Input: (B, in_dims, fmap_size, fmap_size)
+        - Output: (B, out_dims, fmap_size, fmap_size)
+    Examples::
+        >>> descs = torch.rand(23, 238)
+        >>> whitening = kornia.feature.mkd.Whitening(xform='pcawt',
+                                                     whitening_model,
+                                                     in_dims,
+                                                     reduce_dims=128,
+                                                     keval=40,
+                                                     t=0.7)
+        >>> wdescs = whitening(descs) # 23x128
+    """
+
+    def __init__(self,
+                 xform: str,
+                 whitening_model: Union[Dict[str, torch.Tensor], None],
+                 in_dims: int,
+                 reduce_dims: int = 128,
+                 keval: int = 40,
+                 t: float = 0.7) -> None:
+        super().__init__()
+
+        self.xform = xform
+        self.in_dims = in_dims
+        self.keval = keval
+        self.t = t
+        self.pval = 1.0
+
+        # Compute true reduce_dims.
+        reduce_dims = min(reduce_dims, in_dims)
+        self.reduce_dims = reduce_dims
+
+        # Initialize identity transform.
+        self.mean = nn.Parameter(torch.zeros(in_dims).float(),
+                                 requires_grad=True)
+        self.evecs = nn.Parameter(torch.eye(in_dims)[:,:reduce_dims].float(),
+                                  requires_grad=True)
+        self.evals = nn.Parameter(torch.ones(in_dims)[:reduce_dims].float(),
+                                  requires_grad=True)
+
+        if whitening_model is not None:
+            self.load_whitening_parameters(whitening_model)
+
+    def load_whitening_parameters(self,
+              whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
+        algo = 'lw' if self.xform == 'lw' else 'pca'
+        wh_model = whitening_model[algo]
+        self.mean.data = wh_model['mean'].float()
+        self.evecs.data = wh_model['eigvecs'][:,:self.reduce_dims].float()
+        self.evals.data = wh_model['eigvals'][:self.reduce_dims].float()
+
+        modifications = {'pca': self._modify_pca,
+                         'lw': self._modify_lw,
+                         'pcaws': self._modify_pcaws,
+                         'pcawt': self._modify_pcawt}
+
+        # Call modification.
+        modifications[self.xform]()
+
+    def _modify_pca(self) -> None:
+        """ Modify powerlaw parameter."""
+        self.pval = 0.5
+
+    def _modify_lw(self) -> None:
+        """ No modification required."""
+
+    def _modify_pcaws(self) -> None:
+        """ Shrinkage for eigenvalues."""
+        alpha = self.evals[self.keval]
+        evals = ((1 - alpha) * self.evals) + alpha
+        self.evecs.data = self.evecs @ torch.diag(torch.pow(evals, -0.5))
+
+    def _modify_pcawt(self) -> None:
+        """ Attenuation for eigenvalues."""
+        m = -0.5 * self.t
+        self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x - self.mean  # Center the data.
+        x = x @ self.evecs  # Apply rotation and/or scaling.
+        x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
+        return F.normalize(x, dim=1)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ +\
+            '(' + 'xform=' + str(self.xform) +\
+            ', ' + 'in_dims=' + str(self.in_dims) +\
+            ', ' + 'reduce_dims=' + str(self.reduce_dims) + ')'
+

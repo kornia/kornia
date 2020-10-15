@@ -240,3 +240,57 @@ class TestExplicitSpacialEncoding:
                          raise_exception=True, nondet_tol=1e-4)
 
 
+class TestWhitening:
+    @pytest.mark.parametrize("dtype,xform,reduce_dims", [('cart', None, 3),
+      ('polar', None, 3),('cart', 'lw', 7), ('polar', 'lw', 7),
+        ('cart', 'pca', 9),('polar', 'pca', 9)])
+    def test_shape(self, dtype, xform, reduce_dims, device):
+        in_dims = 63 if dtype == 'cart' else 175
+        wh = Whitening(xform=xform,
+                       whitening_model=None,
+                       in_dims=in_dims,
+                       reduce_dims=reduce_dims).to(device)
+        inp = torch.ones(1, in_dims, device=device)
+        out = wh(inp)
+        assert out.shape == (1, reduce_dims)
+
+    @pytest.mark.parametrize("bs", [1, 3, 7])
+    def test_batch_shape(self, bs, device):
+        wh = Whitening(xform='lw',
+                       whitening_model=None,
+                       in_dims=175,
+                       reduce_dims=128).to(device)
+        inp = torch.ones(bs, 175, device=device)
+        out = wh(inp)
+        assert out.shape == (bs, 128)
+
+    def test_print(self, device):
+        wh = Whitening(xform='lw',
+                       whitening_model=None,
+                       in_dims=175,
+                       reduce_dims=128).to(device)
+        wh.__repr__()
+
+    def test_toy(self, device):
+        wh = Whitening(xform='lw',
+                       whitening_model=None,
+                       in_dims=175,
+                       reduce_dims=175).to(device)
+        inp = torch.ones(1, 175, device=device).float()
+        out = wh(inp)
+        expected = torch.ones_like(inp, device=device) * 0.0756
+        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+
+    def test_gradcheck(self, device):
+        batch_size, in_dims = 1, 175
+        patches = torch.rand(batch_size, in_dims, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+
+        def whitening_describe(patches, in_dims=175):
+            return Whitening(xform='lw',
+                             whitening_model=None,
+                             in_dims=in_dims).double()(patches.double())
+        assert gradcheck(whitening_describe, (patches, in_dims),
+                         raise_exception=True, nondet_tol=1e-4)
+
+
