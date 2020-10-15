@@ -13,24 +13,23 @@ sqrt2: float = 1.4142135623730951
 COEFFS_N1_K1: List[float] = [0.38214156, 0.48090413]
 COEFFS_N2_K8: List[float] = [0.14343168, 0.268285, 0.21979234]
 COEFFS_N3_K8: List[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
-COEFFS:Dict[str, List[float]] = {'xy':COEFFS_N1_K1,
-                                 'rhophi':COEFFS_N2_K8,
-                                 'theta':COEFFS_N3_K8}
+COEFFS: Dict[str, List[float]] = {'xy': COEFFS_N1_K1,
+                                  'rhophi': COEFFS_N2_K8,
+                                  'theta': COEFFS_N3_K8}
 
-urls: Dict[str, str] = {k:f'https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth'
+urls: Dict[str, str] = {k: f'https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth'
                         for k in ['cart', 'polar', 'concat']}
 
 
-
-def get_grid_dict(patch_size:int = 32) -> Dict[str, torch.Tensor]:
+def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
     """Gets cartesian and polar parametrizations of grid. """
     kgrid = create_meshgrid(height=patch_size,
                             width=patch_size,
                             normalized_coordinates=True)
-    x = kgrid[0,:,:,0]
-    y = kgrid[0,:,:,1]
+    x = kgrid[0, :, :, 0]
+    y = kgrid[0, :, :, 1]
     rho, phi = cart2pol(x, y)
-    grid_dict = {'x':x, 'y':y, 'rho':rho, 'phi':phi}
+    grid_dict = {'x': x, 'y': y, 'rho': rho, 'phi': phi}
     return grid_dict
 
 
@@ -74,9 +73,9 @@ class MKDGradients(nn.Module):
         self.grad = grad_fn
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        grads_xy = self.grad(x)[:,0,:,:,:]
-        gx = grads_xy[:,0,:,:].unsqueeze(1)
-        gy = grads_xy[:,1,:,:].unsqueeze(1)
+        grads_xy = self.grad(x)[:, 0, :, :, :]
+        gx = grads_xy[:, 0, :, :].unsqueeze(1)
+        gy = grads_xy[:, 1, :, :].unsqueeze(1)
         mags = torch.sqrt(torch.pow(gx, 2) + torch.pow(gy, 2) + self.eps)
         oris = torch.atan2(gy, gx)
         y = torch.cat([mags, oris], dim=1)
@@ -185,7 +184,7 @@ class EmbedGradients(nn.Module):
         kgrid = create_meshgrid(height=patch_size,
                                 width=patch_size,
                                 normalized_coordinates=True)
-        _, phi = cart2pol(kgrid[:,:,:,0], kgrid[:,:,:,1])
+        _, phi = cart2pol(kgrid[:, :, :, 0], kgrid[:, :, :, 1])
         self.register_buffer('phi', phi.float())
 
     def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
@@ -206,6 +205,7 @@ class EmbedGradients(nn.Module):
             '(' + 'patch_size=' + str(self.patch_size) +\
             ', ' + 'relative=' + str(self.relative) + ')'
 
+
 def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
     """Compute embeddings for cartesian and polar parametrizations. """
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
@@ -221,9 +221,9 @@ def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
     patch_size = grids[keys[0]].shape[-1]
 
     # Scale appropriately.
-    grids_normed = {k:v * factors[k] for k,v in grids.items()}
-    grids_normed = {k:v.unsqueeze(0).unsqueeze(0).float()
-        for k,v in grids_normed.items()}
+    grids_normed = {k: v * factors[k] for k, v in grids.items()}
+    grids_normed = {k: v.unsqueeze(0).unsqueeze(0).float()
+                    for k, v in grids_normed.items()}
 
     # x,y/rho,phi kernels.
     vm_a = VonMisesKernel(patch_size=patch_size, coeffs=COEFFS[coeffs_])
@@ -235,7 +235,7 @@ def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
     # Final precomputed position embedding.
     kron_order = get_kron_order(vm_a.d, vm_b.d)
     spatial_kernel = emb_a.index_select(0,
-        kron_order[:,0]) * emb_b.index_select(0, kron_order[:,1])
+                                        kron_order[:, 0]) * emb_b.index_select(0, kron_order[:, 1])
     return spatial_kernel
 
 
@@ -385,7 +385,7 @@ class Whitening(nn.Module):
         # Initialize identity transform.
         self.mean = nn.Parameter(torch.zeros(in_dims).float(),
                                  requires_grad=True)
-        self.evecs = nn.Parameter(torch.eye(in_dims)[:,:reduce_dims].float(),
+        self.evecs = nn.Parameter(torch.eye(in_dims)[:, :reduce_dims].float(),
                                   requires_grad=True)
         self.evals = nn.Parameter(torch.ones(in_dims)[:reduce_dims].float(),
                                   requires_grad=True)
@@ -394,11 +394,11 @@ class Whitening(nn.Module):
             self.load_whitening_parameters(whitening_model)
 
     def load_whitening_parameters(self,
-              whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
+                                  whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
         algo = 'lw' if self.xform == 'lw' else 'pca'
         wh_model = whitening_model[algo]
         self.mean.data = wh_model['mean'].float()
-        self.evecs.data = wh_model['eigvecs'][:,:self.reduce_dims].float()
+        self.evecs.data = wh_model['eigvecs'][:, :self.reduce_dims].float()
         self.evals.data = wh_model['eigvals'][:self.reduce_dims].float()
 
         modifications = {'pca': self._modify_pca,
@@ -469,11 +469,11 @@ class MKD(nn.Module):
     """
 
     def __init__(self,
-        patch_size: int = 32,
-        dtype: str = 'concat',
-        whitening: str = 'pcawt',
-        training_set: str = 'liberty',
-        reduce_dims: int = 128) -> None:
+                 patch_size: int = 32,
+                 dtype: str = 'concat',
+                 whitening: str = 'pcawt',
+                 training_set: str = 'liberty',
+                 reduce_dims: int = 128) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -482,7 +482,7 @@ class MKD(nn.Module):
         self.training_set = training_set
 
         self.sigma = 1.4 * (patch_size / 64)
-        self.smoothing = GaussianBlur2d((5,5),
+        self.smoothing = GaussianBlur2d((5, 5),
                                         (self.sigma, self.sigma),
                                         'replicate')
         self.gradients = MKDGradients()
@@ -501,8 +501,8 @@ class MKD(nn.Module):
             ori_rel = EmbedGradients(patch_size=patch_size,
                                      relative=True)
             polar_emb = ExplicitSpacialEncoding(dtype='polar',
-                                               fmap_size=patch_size,
-                                               in_dims=ori_rel.kernel.d)
+                                                fmap_size=patch_size,
+                                                in_dims=ori_rel.kernel.d)
             self.polar_feats = nn.Sequential(ori_rel, polar_emb)
 
         if dtype == 'concat':
@@ -587,11 +587,11 @@ class SimpleKD(nn.Module):
         sigma = 1.4 * (patch_size / 64)
 
         # Sequence of modules.
-        smoothing = GaussianBlur2d((5,5), (sigma, sigma), 'replicate')
+        smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')
         gradients = MKDGradients()
         ori = EmbedGradients(patch_size=patch_size, relative=relative)
         ese = ExplicitSpacialEncoding(dtype=dtype,
-                fmap_size=patch_size, in_dims=ori.kernel.d)
+                                      fmap_size=patch_size, in_dims=ori.kernel.d)
         wh = Whitening(whitening,
                        load_whitening_model(dtype, training_set),
                        in_dims=ese.odims,
