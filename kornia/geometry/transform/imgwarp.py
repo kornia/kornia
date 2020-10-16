@@ -81,7 +81,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
                          .format(src.shape))
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
+    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(M.shape))
 
