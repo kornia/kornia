@@ -14,6 +14,7 @@ __all__ = [
     "homography_warp",
     "homography_warp3d",
     "warp_grid",
+    "warp_grid3d",
     "normalize_homography",
     "normalize_homography3d",
     "normal_transform_pixel",
@@ -29,7 +30,6 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         src_homo_dst (torch.Tensor): Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
-
 
     Returns:
         torch.Tensor: the transformed grid of shape :math:`(N, H, W, 2)`.
@@ -140,9 +140,9 @@ def homography_warp3d(patch_src: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
         normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
-                                       coordinates or not.
+            coordinates or not.
 
     Return:
         torch.Tensor: Patch sampled at locations from source to destination.
