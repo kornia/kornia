@@ -9,13 +9,19 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+@pytest.mark.parametrize("batch_size", [0, 1, 5])
 @pytest.mark.parametrize("ksize", [3, 11])
 @pytest.mark.parametrize("angle", [0., 360.])
 @pytest.mark.parametrize("direction", [-1., 1.])
-def test_get_motion_kernel2d(ksize, angle, direction):
+def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
+    if batch_size != 0:
+        angle = torch.tensor([angle] * batch_size)
+        direction = torch.tensor([direction] * batch_size)
+    else:
+        batch_size = 1
     kernel = kornia.get_motion_kernel2d(ksize, angle, direction)
-    assert kernel.shape == (ksize, ksize)
-    assert_allclose(kernel.sum(), 1.)
+    assert kernel.shape == (batch_size, ksize, ksize)
+    assert_allclose(kernel.sum(), batch_size)
 
 
 class TestMotionBlur:

@@ -26,6 +26,7 @@ from .augmentation3d import (
     RandomDepthicalFlip3D,
     RandomRotation3D,
     RandomAffine3D,
+    RandomMotionBlur3D,
     RandomCrop3D,
     CenterCrop3D,
     RandomEqualize3D
@@ -66,6 +67,7 @@ __all__ = [
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",
     "RandomRotation3D",
+    "RandomMotionBlur3D",
     "RandomAffine3D",
     "RandomCrop3D",
     "CenterCrop3D",
