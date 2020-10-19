@@ -1,9 +1,17 @@
+<<<<<<< refs/remotes/kornia/master
 from typing import Tuple
+=======
+from typing import Tuple, Union
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
 import torch
 
 from kornia.geometry.transform.projwarp import (
+<<<<<<< refs/remotes/kornia/master
     get_perspective_transform3d, warp_affine3d
+=======
+    get_perspective_transform3d, get_projective_transform, warp_affine3d
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 )
 
 __all__ = [
@@ -246,7 +254,11 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         torch.Tensor: the output tensor with patches.
 
     Examples:
+<<<<<<< refs/remotes/kornia/master
         >>> input = torch.tensor([[[
+=======
+        >>> input = torch.tensor([[
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         ...         [[ 0.,  1.,  2.,  3.],
         ...          [ 4.,  5.,  6.,  7.],
         ...          [ 8.,  9., 10., 11.],
@@ -258,7 +270,11 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ...         [[32., 33., 34., 35.],
         ...          [36., 37., 38., 39.],
         ...          [40., 41., 42., 43.],
+<<<<<<< refs/remotes/kornia/master
         ...          [44., 45., 46., 47.]]]]])
+=======
+        ...          [44., 45., 46., 47.]]]])
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         >>> src_box = torch.tensor([[
         ...     [1., 1., 1.],
         ...     [3., 1., 1.],
@@ -280,6 +296,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ...     [0., 2., 1.],
         ... ]])  # 1x8x3
         >>> crop_by_boxes3d(input, src_box, dst_box, interpolation='nearest', align_corners=True)
+<<<<<<< refs/remotes/kornia/master
         tensor([[[[[21., 22., 23.],
                    [25., 26., 27.],
                    [29., 30., 31.]],
@@ -287,6 +304,15 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
                   [[37., 38., 39.],
                    [41., 42., 43.],
                    [45., 46., 47.]]]]])
+=======
+        tensor([[[[21., 22., 23.],
+                  [25., 26., 27.],
+                  [29., 30., 31.]],
+        <BLANKLINE>
+                 [[37., 38., 39.],
+                  [41., 42., 43.],
+                  [45., 46., 47.]]]])
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     """
     validate_bboxes3d(src_box)
@@ -350,12 +376,21 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
     """
     validate_bboxes3d(boxes)
 
+<<<<<<< refs/remotes/kornia/master
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = (left - right + 1)[:, 0]
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
+=======
+    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
+    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+    widths = (left - right + 1)[:, 0]
+
+    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
+    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     heights = (bot - upper + 1)[:, 0]
 
     depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
@@ -376,14 +411,24 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
     assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3]), \
         f"Box shape must be (B, 8, 3). Got {boxes.shape}."
 
+<<<<<<< refs/remotes/kornia/master
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
+=======
+    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
+    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     widths = (left - right + 1)
     assert torch.allclose(widths.permute(1, 0), widths[:, 0]), \
         f"Boxes must have be cube, while get different widths {widths}."
 
+<<<<<<< refs/remotes/kornia/master
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
+=======
+    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
+    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     heights = (bot - upper + 1)
     assert torch.allclose(heights.permute(1, 0), heights[:, 0]), \
         f"Boxes must have be cube, while get different heights {heights}."
@@ -448,6 +493,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     mask_out = []
     # TODO: Looking for a vectorized way
     for m, box in zip(mask, boxes):
+<<<<<<< refs/remotes/kornia/master
         m = m.index_fill(0, torch.arange(
             box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long
         ), torch.tensor(1, device=box.device, dtype=box.dtype))
@@ -457,6 +503,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
         m = m.index_fill(2, torch.arange(
             box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long
         ), torch.tensor(1, device=box.device, dtype=box.dtype))
+=======
+        m = m.index_fill(0, torch.arange(box[0, 2].item(), box[4, 2].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(1, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(2, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         m = m.unsqueeze(dim=0)
         m_out = torch.ones_like(m)
         m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)

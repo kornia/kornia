@@ -26,7 +26,10 @@ from .augmentation3d import (
     RandomDepthicalFlip3D,
     RandomRotation3D,
     RandomAffine3D,
+<<<<<<< refs/remotes/kornia/master
     RandomMotionBlur3D,
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     RandomCrop3D,
     CenterCrop3D,
     RandomEqualize3D
@@ -67,7 +70,10 @@ __all__ = [
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",
     "RandomRotation3D",
+<<<<<<< refs/remotes/kornia/master
     "RandomMotionBlur3D",
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     "RandomAffine3D",
     "RandomCrop3D",
     "CenterCrop3D",

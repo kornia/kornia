@@ -361,6 +361,7 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     return trans_mat
 
 
+<<<<<<< refs/remotes/kornia/master
 def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                         flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform motion blur on an image.
@@ -395,11 +396,20 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return motion_blur3d(input, kernel_size, angle, direction, border_type)
 
 
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
 
     Order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
         back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
+<<<<<<< refs/remotes/kornia/master
+=======
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        params (Dict[str, torch.Tensor]):
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
             - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
         flags (Dict[str, torch.Tensor]):
@@ -447,7 +457,11 @@ def apply_perspective3d(
         input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
+<<<<<<< refs/remotes/kornia/master
               bottom-left] of the original image with shape Bx8x3.
+=======
+              bottom-left] of the orignal image with shape Bx8x3.
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx8x3.
         flags (Dict[str, torch.Tensor]):

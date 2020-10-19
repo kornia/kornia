@@ -327,6 +327,10 @@ class TestHomographyNormalTransform:
 
 
 class TestHomographyWarper3D:
+<<<<<<< refs/remotes/kornia/master
+=======
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     num_tests = 10
     threshold = 0.1
 

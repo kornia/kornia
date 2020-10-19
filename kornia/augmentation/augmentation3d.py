@@ -439,6 +439,7 @@ class RandomRotation3D(AugmentationBase3D):
         return F.apply_rotation3d(input, params, self.flags)
 
 
+<<<<<<< refs/remotes/kornia/master
 class RandomMotionBlur3D(AugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 
@@ -545,11 +546,22 @@ class CenterCrop3D(AugmentationBase3D):
         size (Tuple[int, int, int] or int): Desired output size (out_d, out_h, out_w) of the crop.
             If integer, out_d = out_h = out_w = size.
             If Tuple[int, int, int], out_d = size[0], out_h = size[1], out_w = size[2].
+=======
+class CenterCrop3D(AugmentationBase3D):
+    r"""Crops a given image tensor at the center.
+
+    Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.
+        size (sequence or int): Desired output size of the crop. If size is an
+            int instead of sequence like (d, h, w), a square crop (size, size, size) is
+            made.
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         align_corners(bool): interpolation flag. Default: True.
+<<<<<<< refs/remotes/kornia/master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -582,15 +594,36 @@ class CenterCrop3D(AugmentationBase3D):
         <BLANKLINE>
                   [[-0.6136,  0.0316],
                    [ 0.6408,  0.4412]]]]])
+=======
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.randn(1, 1, 3, 3, 3)
+        >>> aug = CenterCrop3D(2, p=1.)
+        >>> aug(inputs)
+        tensor([[[[[-0.2170,  0.1856],
+                   [-0.2126, -0.0129]],
+        <BLANKLINE>
+                  [[-0.1957, -0.1423],
+                   [-0.0310, -0.3132]]]]])
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     """
 
     def __init__(self, size: Union[int, Tuple[int, int, int]], align_corners: bool = True,
                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+<<<<<<< refs/remotes/kornia/master
                  return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(CenterCrop3D, self).__init__(
             p=1., return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+=======
+                 return_transform: bool = False, p: float = 1.) -> None:
+        # same_on_batch is always True for CenterCrop
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        super(CenterCrop3D, self).__init__(
+            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         self.size = size
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -621,6 +654,7 @@ class CenterCrop3D(AugmentationBase3D):
 
 
 class RandomCrop3D(AugmentationBase3D):
+<<<<<<< refs/remotes/kornia/master
     r"""Apply random crop on 3D volumes (5D tensor).
 
     Crops random sub-volumes on a given size.
@@ -629,6 +663,13 @@ class RandomCrop3D(AugmentationBase3D):
         p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
         size (Tuple[int, int, int]): Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
+=======
+    r"""Crops random patches of a tensor image on a given size.
+
+    Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
+        size (tuple): Desired output size of the crop, like (d, h, w).
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         padding (int or sequence, optional): Optional padding on each border of the image.
             Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to pad
             left, top, right, bottom, front, back borders respectively.
@@ -647,6 +688,7 @@ class RandomCrop3D(AugmentationBase3D):
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: True.
+<<<<<<< refs/remotes/kornia/master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -658,6 +700,8 @@ class RandomCrop3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -676,18 +720,30 @@ class RandomCrop3D(AugmentationBase3D):
         padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+<<<<<<< refs/remotes/kornia/master
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = True, p: float = 1.0, keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop3D, self).__init__(
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+=======
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 1.0
+    ) -> None:
+        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        super(RandomCrop3D, self).__init__(
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
         self.resample = Resample.get(resample)
+<<<<<<< refs/remotes/kornia/master
+=======
+        self.same_on_batch = same_on_batch
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -701,8 +757,12 @@ class RandomCrop3D(AugmentationBase3D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator3d(batch_shape[0], (batch_shape[-3], batch_shape[-2], batch_shape[-1]),
+<<<<<<< refs/remotes/kornia/master
                                           self.size, same_on_batch=self.same_on_batch, device=self.device,
                                           dtype=self.dtype)
+=======
+                                          self.size, same_on_batch=self.same_on_batch)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
@@ -755,7 +815,11 @@ class RandomCrop3D(AugmentationBase3D):
 
 
 class RandomPerspective3D(AugmentationBase3D):
+<<<<<<< refs/remotes/kornia/master
     r"""Apply andom perspective transformation to 3D volumes (5D tensor).
+=======
+    r"""Applies a random perspective transformation to an image tensor with a given probability.
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5.
@@ -765,6 +829,7 @@ class RandomPerspective3D(AugmentationBase3D):
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+<<<<<<< refs/remotes/kornia/master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -776,6 +841,8 @@ class RandomPerspective3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -809,10 +876,16 @@ class RandomPerspective3D(AugmentationBase3D):
         self, distortion_scale: Union[torch.Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
+<<<<<<< refs/remotes/kornia/master
         align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                   keepdim=keepdim)
+=======
+        align_corners: bool = False, p: float = 0.5
+    ) -> None:
+        super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         self.distortion_scale = cast(torch.Tensor, distortion_scale) \
             if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample = Resample.get(resample)
@@ -830,7 +903,11 @@ class RandomPerspective3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1],
+<<<<<<< refs/remotes/kornia/master
             self.distortion_scale, self.same_on_batch, self.device, self.dtype)
+=======
+            self.distortion_scale, self.same_on_batch)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation3d(input, params)
