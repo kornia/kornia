@@ -68,7 +68,7 @@ from kornia.feature import (
     hessian_response,
     gftt_response,
     SIFTDescriptor,
-    MKD
+    MKDDescriptor
 )
 from kornia.filters import (
     get_gaussian_kernel1d,
