@@ -294,7 +294,7 @@ class TestHomographyNormalTransform:
         assert_allclose(output, expected)
 
 
-class TestHomographyWarper:
+class TestHomographyWarper3D:
 
     num_tests = 10
     threshold = 0.1

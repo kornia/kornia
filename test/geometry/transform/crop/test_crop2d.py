@@ -286,7 +286,7 @@ class TestCenterCrop:
         img = torch.ones(2, 1, 6, 3, device=device, dtype=dtype)
         # Run
         actual = op_trace(img, (torch.tensor(2), torch.tensor(3)))
-        expected = kornia.center_crop(img, (2, 3))
+        expected = op(img, (2, 3))
         assert_allclose(actual, expected)
 
 

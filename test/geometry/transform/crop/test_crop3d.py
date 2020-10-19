@@ -222,7 +222,7 @@ class TestCenterCrop3D:
         expected = kornia.center_crop3d(img, (4, 3, 2))
         assert_allclose(actual, expected)
 
-    def test_jit(self, device, dtype):
+    def test_jit_trace(self, device, dtype):
         # Define script
         op = kornia.center_crop3d
         op_script = torch.jit.script(op)

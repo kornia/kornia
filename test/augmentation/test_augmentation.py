@@ -1462,6 +1462,35 @@ class TestRandomCrop:
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         assert gradcheck(RandomCrop(size=(3, 3), p=1.), (inp, ), raise_exception=True)
 
+    @pytest.mark.skip("Need to fix Union type")
+    def test_jit(self, device, dtype):
+        # Define script
+        op = RandomCrop(size=(3, 3), p=1.).forward
+        op_script = torch.jit.script(op)
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        actual = op_script(img)
+        expected = kornia.center_crop3d(img)
+        assert_allclose(actual, expected)
+
+    @pytest.mark.skip("Need to fix Union type")
+    def test_jit_trace(self, device, dtype):
+        # Define script
+        op = RandomCrop(size=(3, 3), p=1.).forward
+        op_script = torch.jit.script(op)
+        # 1. Trace op
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        op_trace = torch.jit.trace(op_script, (img,))
+
+        # 2. Generate new input
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        # 3. Evaluate
+        actual = op_trace(img)
+        expected = op(img)
+        assert_allclose(actual, expected)
+
 
 class TestRandomResizedCrop:
     def test_smoke(self):
