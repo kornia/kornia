@@ -810,7 +810,7 @@ class TestRandomCrop3D:
                  [11, 12, 13, 14]],
             ]]], device=device, dtype=dtype)
 
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1., same_on_batch=True)
@@ -845,7 +845,7 @@ class TestRandomCrop3D:
         f = RandomCrop3D(size=(2, 3, 4), fill=10., padding=padding, align_corners=True, p=1.)
         out = f(inp)
 
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)
@@ -863,7 +863,7 @@ class TestRandomCrop3D:
         rc = RandomCrop3D(size=(2, 3, 4), pad_if_needed=True, fill=9, align_corners=True, p=1.)
         out = rc(inp)
 
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
