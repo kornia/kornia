@@ -205,10 +205,10 @@ def get_perspective_transform3d(src, dst):
         - Input: :math:`(B, 8, 3)` and :math:`(B, 8, 3)`
         - Output: :math:`(B, 4, 4)`
     """
-    if not torch.is_tensor(src):
+    if not isinstance(src, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(src)))
-    if not torch.is_tensor(dst):
+    if not isinstance(dst, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(dst)))
     if not src.shape[-2:] == (8, 3):
@@ -221,36 +221,6 @@ def get_perspective_transform3d(src, dst):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 
-    def ax(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat([
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            zeros, zeros, zeros, zeros,
-            zeros, zeros, zeros, zeros,
-            -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
-        ], dim=1)
-
-    def ay(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat([
-            zeros, zeros, zeros, zeros,
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            zeros, zeros, zeros, zeros,
-            -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
-        ], dim=1)
-
-    def az(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat([
-            zeros, zeros, zeros, zeros,
-            zeros, zeros, zeros, zeros,
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
-        ], dim=1)
-
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
     # we could even pass more correspondence
@@ -258,9 +228,9 @@ def get_perspective_transform3d(src, dst):
 
     # 000, 100, 110, 101, 011
     for i in [0, 1, 2, 5, 7]:
-        p.append(ax(src[:, i], dst[:, i]))
-        p.append(ay(src[:, i], dst[:, i]))
-        p.append(az(src[:, i], dst[:, i]))
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'z'))
 
     # A is Bx15x15
     A = torch.stack(p, dim=1)
@@ -285,6 +255,37 @@ def get_perspective_transform3d(src, dst):
     M = torch.ones(batch_size, 16, device=src.device, dtype=src.dtype)
     M[..., :15] = torch.squeeze(X, dim=-1)
     return M.view(-1, 4, 4)  # Bx4x4
+
+
+def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
+    ones = torch.ones_like(p)[..., 0:1]
+    zeros = torch.zeros_like(p)[..., 0:1]
+
+    if axis == 'x':
+        return torch.cat([
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            zeros, zeros, zeros, zeros,
+            zeros, zeros, zeros, zeros,
+            -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
+        ], dim=1)
+
+    if axis == 'y':
+        return torch.cat([
+            zeros, zeros, zeros, zeros,
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            zeros, zeros, zeros, zeros,
+            -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
+        ], dim=1)
+
+    if axis == 'z':
+        return torch.cat([
+            zeros, zeros, zeros, zeros,
+            zeros, zeros, zeros, zeros,
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
+        ], dim=1)
+
+    raise ValueError(f"axis `{axis}` is not defined.")
 
 
 def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int, int],

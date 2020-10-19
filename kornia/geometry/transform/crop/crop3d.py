@@ -75,10 +75,10 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
                   [[37.0000, 39.0000],
                    [45.0000, 47.0000]]]]])
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, (torch.Tensor)):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
-    if not torch.is_tensor(boxes):
+    if not isinstance(boxes, (torch.Tensor)):
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
                         .format(type(boxes)))
     if not len(tensor.shape) in (4, 5,):
@@ -88,15 +88,15 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
         raise ValueError("Input size must be a tuple/list of length 3. Got {}"
                          .format(size))
     # unpack input data
-    dst_d: torch.Tensor = torch.tensor(size[0])
-    dst_h: torch.Tensor = torch.tensor(size[1])
-    dst_w: torch.Tensor = torch.tensor(size[2])
+    dst_d, dst_h, dst_w = size[0], size[1], size[2]
 
-    # [x, y] origin
+    # [x, y, z] origin
+    # from front to back
     # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = boxes
 
-    # [x, y] destination
+    # [x, y, z] destination
+    # from front to back
     # top-left, top-right, bottom-right, bottom-left
     points_dst: torch.Tensor = torch.tensor([[
         [0, 0, 0],
@@ -107,7 +107,7 @@ def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int
         [dst_w - 1, 0, dst_d - 1],
         [dst_w - 1, dst_h - 1, dst_d - 1],
         [0, dst_h - 1, dst_d - 1],
-    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
+    ]], dtype=tensor.dtype, device=tensor.device).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes3d(tensor, points_src, points_dst, interpolation, align_corners)
 
@@ -157,7 +157,7 @@ def center_crop3d(tensor: torch.Tensor, size: Tuple[int, int, int],
                   [[37.0000, 38.0000],
                    [41.0000, 42.0000]]]]])
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, (torch.Tensor)):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
 
@@ -296,10 +296,10 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
     validate_bboxes3d(src_box)
     validate_bboxes3d(dst_box)
 
-    if tensor.ndimension() not in [4, 5]:
+    if len(tensor.shape) not in [4, 5]:
         raise TypeError(f"Only tensor with shape (C, D, H, W) and (B, C, D, H, W) supported. Got {tensor.shape}.")
     # warping needs data in the shape of BCDHW
-    is_unbatched: bool = tensor.ndimension() == 4
+    is_unbatched: bool = len(tensor.shape) == 4
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 
@@ -310,12 +310,14 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = infer_box_shape3d(dst_box)
-    assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1 and len(bbox[2].unique()) == 1, (
+    (bbox[0] == bbox[0][0]).all()
+    assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
-        f"Got height {bbox[0].unique()}, width {bbox[1].unique()} and depth {bbox[2].unique()}.")
+        f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}.")
     patches: torch.Tensor = warp_affine3d(
         tensor, dst_trans_src[:, :3, :],
-        (int(bbox[0].unique().item()), int(bbox[1].unique().item()), int(bbox[2].unique().item())),
+        # TODO: It will break the grads
+        (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item())),
         flags=interpolation, align_corners=align_corners)
 
     # return in the original shape
@@ -361,17 +363,16 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
         (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
     """
     validate_bboxes3d(boxes)
-    dim = boxes.size(0)
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
-    widths = (left - right + 1).unique(dim=-1).view(dim)
+    widths = (left - right + 1)[:, 0]
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
-    heights = (bot - upper + 1).unique(dim=-1).view(dim)
+    heights = (bot - upper + 1)[:, 0]
 
-    depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1).unique(dim=-1).view(dim)
+    depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
     return (depths, heights, widths)
 
 
@@ -386,21 +387,21 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in the x, y, z order.
     """
-    assert boxes.shape[1:] == torch.Size([8, 3]), f"Box shape must be (B, 8, 3). Got {boxes.shape}."
-    dim = boxes.size(0)
+    assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3]), \
+        f"Box shape must be (B, 8, 3). Got {boxes.shape}."
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
-    widths = (left - right + 1).unique(dim=-1).view(dim)
-    assert len(widths) == dim, f"Boxes must have be cube, while get different widths {widths}."
+    widths = (left - right + 1)
+    assert torch.allclose(widths.T, widths[:, 0]), f"Boxes must have be cube, while get different widths {widths}."
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
-    heights = (bot - upper + 1).unique(dim=-1).view(dim)
-    assert len(heights) == dim, f"Boxes must have be cube, while get different heights {heights}."
+    heights = (bot - upper + 1)
+    assert torch.allclose(heights.T, heights[:, 0]), f"Boxes must have be cube, while get different heights {heights}."
 
-    depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1).unique(dim=-1).view(dim)
-    assert len(depths) == dim, f"Boxes must have be cube, while get different depths {depths}."
+    depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)
+    assert torch.allclose(depths.T, depths[:, 0]), f"Boxes must have be cube, while get different depths {depths}."
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
