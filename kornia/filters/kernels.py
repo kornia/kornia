@@ -566,7 +566,7 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
     assert direction.size(0) == angle.size(0), \
         f"direction and angle must have the same length. Got {direction} and {angle}."
 
-    kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size, kernel_size)
+    kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
     kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
