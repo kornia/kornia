@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import torch
 
@@ -15,6 +15,12 @@ __all__ = [
     "validate_bboxes3d",
     "bbox_generator3d"
 ]
+
+
+def _index_select(boxes: torch.Tensor, idx: List[int]) -> torch.Tensor:
+    r"""Utility function to extract boxes from given index list."""
+    idx_th = torch.tensor(idx, device=boxes.device, dtype=torch.long)
+    return torch.index_select(boxes, 1, idx_th)
 
 
 def crop_and_resize3d(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int, int],
@@ -350,12 +356,12 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
     """
     validate_bboxes3d(boxes)
 
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+    left = _index_select(boxes, [1, 2, 5, 6])[:, :, 0]
+    right = _index_select(boxes, [0, 3, 4, 7])[:, :, 0]
     widths = (left - right + 1)[:, 0]
 
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+    bot = _index_select(boxes, [2, 3, 6, 7])[:, :, 1]
+    upper = _index_select(boxes, [0, 1, 4, 5])[:, :, 1]
     heights = (bot - upper + 1)[:, 0]
 
     depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
@@ -376,14 +382,14 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
     assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3]), \
         f"Box shape must be (B, 8, 3). Got {boxes.shape}."
 
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+    left = _index_select(boxes, [1, 2, 5, 6])[:, :, 0]
+    right = _index_select(boxes, [0, 3, 4, 7])[:, :, 0]
     widths = (left - right + 1)
     assert torch.allclose(widths.permute(1, 0), widths[:, 0]), \
         f"Boxes must have be cube, while get different widths {widths}."
 
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+    bot = _index_select(boxes, [2, 3, 6, 7])[:, :, 1]
+    upper = _index_select(boxes, [0, 1, 4, 5])[:, :, 1]
     heights = (bot - upper + 1)
     assert torch.allclose(heights.permute(1, 0), heights[:, 0]), \
         f"Boxes must have be cube, while get different heights {heights}."
