@@ -23,16 +23,15 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
 
     Args:
         tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
-        boxes (torch.Tensor): a tensor containing the coordinates of the
-          bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-right and bottom-left. The
-          coordinates must be in the x, y order.
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
+            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
+            The coordinates would compose a rectangle with a shape of (N1, N2).
         size (Tuple[int, int]): a tuple with the height and width that will be
-          used to resize the extracted patches.
+            used to resize the extracted patches.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
         align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
 
     Returns:
         torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
@@ -298,11 +297,9 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
-        boxes (torch.Tensor): a tensor containing the coordinates of the
-          bounding boxes to be extracted. The tensor must have the shape
-          of Bx4x2, where each box is defined in the following (clockwise)
-          order: top-left, top-right, bottom-right, bottom-left. The
-          coordinates must be in the x, y order.
+        boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
+            The tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
+            order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
         width (int): width of the masked image.
         height (int): height of the masked image.
 

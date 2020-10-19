@@ -294,38 +294,6 @@ class TestHomographyNormalTransform:
         assert_allclose(output, expected)
 
 
-def test_homography_warp3d(device, dtype):
-    torch.manual_seed(0)
-    input = torch.randn(2, 1, 5, 5, 5, device=device, dtype=dtype)
-    # Test with normalized
-    output = kornia.homography_warp3d(
-        input, kornia.eye_like(4, input), dsize=(2, 2, 2), mode='nearest', align_corners=True)
-    expected = torch.tensor([
-        [[[[0.0000, 0.0000],
-           [0.0000, 0.0000]],
-          [[0.8487, 0.7502],
-           [0.2469, 0.1239]]]],
-        [[[[0.0000, 0.0000],
-           [0.0000, 0.0000]],
-          [[-0.4189, 0.3866],
-           [0.6376, 1.3945]]]]])
-    assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
-    # Test with yet normalized
-    output = kornia.homography_warp3d(
-        input, kornia.eye_like(4, input), dsize=(2, 2, 2), mode='nearest', align_corners=True,
-        normalized_coordinates=False)
-    expected = torch.tensor([
-        [[[[1.8197, -1.6293],
-           [-0.2188, 1.9218]],
-          [[-0.5692, -0.4798],
-           [-0.0729, 0.1239]]]],
-        [[[[0.2756, 0.8760],
-           [0.2180, -0.5804]],
-          [[-0.9944, 1.0216],
-           [0.6481, 1.3945]]]]])
-    assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
-
-
 class TestHomographyWarper:
 
     num_tests = 10
@@ -396,3 +364,34 @@ class TestHomographyWarper:
             grid[..., 1].to(device), flow[..., 1])
         assert_allclose(
             grid[..., 2].to(device), flow[..., 2])
+
+    def test_homography_warp3d(self, device, dtype):
+        torch.manual_seed(0)
+        input = torch.randn(2, 1, 5, 5, 5, device=device, dtype=dtype)
+        # Test with normalized
+        output = kornia.homography_warp3d(
+            input, kornia.eye_like(4, input), dsize=(2, 2, 2), mode='nearest', align_corners=True)
+        expected = torch.tensor([
+            [[[[0.0000, 0.0000],
+               [0.0000, 0.0000]],
+              [[0.8487, 0.7502],
+               [0.2469, 0.1239]]]],
+            [[[[0.0000, 0.0000],
+               [0.0000, 0.0000]],
+              [[-0.4189, 0.3866],
+               [0.6376, 1.3945]]]]])
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        # Test with yet normalized
+        output = kornia.homography_warp3d(
+            input, kornia.eye_like(4, input), dsize=(2, 2, 2), mode='nearest', align_corners=True,
+            normalized_coordinates=False)
+        expected = torch.tensor([
+            [[[[1.8197, -1.6293],
+               [-0.2188, 1.9218]],
+              [[-0.5692, -0.4798],
+               [-0.0729, 0.1239]]]],
+            [[[[0.2756, 0.8760],
+               [0.2180, -0.5804]],
+              [[-0.9944, 1.0216],
+               [0.6481, 1.3945]]]]])
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
