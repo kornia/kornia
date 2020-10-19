@@ -22,7 +22,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
     r"""Extract crops from 2D images (4D tensor) and resize them.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
+        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
         boxes (torch.Tensor): a tensor containing the coordinates of the bounding boxes to be extracted.
             The tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
@@ -59,12 +59,10 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
     if not isinstance(boxes, torch.Tensor):
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
                         .format(type(boxes)))
-    if not len(tensor.shape) in (3, 4,):
-        raise ValueError("Input tensor must be in the shape of CxHxW or "
-                         "BxCxHxW. Got {}".format(tensor.shape))
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
     # unpack input data
     dst_h, dst_w = size
 
@@ -90,7 +88,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
     r"""Crop the 2D images (4D tensor) at the center.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
+        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
         interpolation (str): Interpolation flag. Default: 'bilinear'.
@@ -113,14 +111,10 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
-
-    if not len(tensor.shape) in (3, 4,):
-        raise ValueError("Input tensor must be in the shape of CxHxW or "
-                         "BxCxHxW. Got {}".format(tensor.shape))
-
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -171,7 +165,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     in a batch must be rectangles with same width and height.
 
     Args:
-        tensor (torch.Tensor): the 2D image tensor with shape (C, H, W) or (B, C, H, W).
+        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
         src_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
@@ -210,12 +204,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     validate_bboxes(src_box)
     validate_bboxes(dst_box)
 
-    if len(tensor.shape) not in [3, 4]:
-        raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
-    # warping needs data in the shape of BCHW
-    is_unbatched: bool = len(tensor.shape) == 3
-    if is_unbatched:
-        tensor = torch.unsqueeze(tensor, dim=0)
+    assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
@@ -229,10 +218,6 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     patches: torch.Tensor = warp_affine(
         tensor, dst_trans_src[:, :2, :], (int(bbox[0][0].item()), int(bbox[1][0].item())),
         flags=interpolation, align_corners=align_corners)
-
-    # return in the original shape
-    if is_unbatched:
-        patches = torch.squeeze(patches, dim=0)
 
     return patches
 
@@ -387,7 +372,7 @@ def bbox_generator(
         [0, 0],
         [0, 0],
         [0, 0],
-    ]], device=device, dtype=dtype).repeat(len(x_start), 1, 1)
+    ]], device=x_start.device, dtype=x_start.dtype).repeat(len(x_start), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)

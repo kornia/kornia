@@ -293,6 +293,7 @@ def random_crop_generator(
         size = torch.tensor(size).repeat(batch_size, 1)
     assert size.shape == torch.Size([batch_size, 2]), \
         f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
+    size = size.long()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1

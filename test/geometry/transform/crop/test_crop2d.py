@@ -67,17 +67,17 @@ class TestBoundingBoxInferring:
 
 class TestCropAndResize:
     def test_crop(self, device, dtype):
-        inp = torch.tensor([[
+        inp = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         height, width = 2, 3
         expected = torch.tensor(
-            [[[6.7222, 7.1667, 7.6111],
-              [9.3889, 9.8333, 10.2778]]], device=device, dtype=dtype)
+            [[[[6.7222, 7.1667, 7.6111],
+               [9.3889, 9.8333, 10.2778]]]], device=device, dtype=dtype)
 
         boxes = torch.tensor([[
             [1., 1.],
@@ -178,12 +178,12 @@ class TestCropAndResize:
                       boxes: torch.Tensor,
                       size: Tuple[int, int]) -> torch.Tensor:
             return kornia.crop_and_resize(input, boxes, size)
-        img = torch.tensor([[
+        img = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
         boxes = torch.tensor([[
             [1., 1.],
             [2., 1.],
@@ -199,64 +199,63 @@ class TestCropAndResize:
 
 class TestCenterCrop:
     def test_center_crop_h2_w4(self, device, dtype):
-        inp = torch.tensor([[
+        inp = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
-        expected = torch.tensor([[
+        expected = torch.tensor([[[
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         out_crop = kornia.center_crop(inp, (2, 4))
         assert_allclose(out_crop, expected)
 
     def test_center_crop_h4_w2(self, device, dtype):
-        inp = torch.tensor([[
+        inp = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         height, width = 4, 2
-        expected = torch.tensor([[
+        expected = torch.tensor([[[
             [2., 3.],
             [6., 7.],
             [10., 11.],
             [14., 15.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         out_crop = kornia.center_crop(inp, (4, 2))
         assert_allclose(out_crop, expected)
 
     def test_center_crop_h4_w2_batch(self, device, dtype):
-        inp = torch.tensor([[
-            [1., 2., 3., 4.],
-            [5., 6., 7., 8.],
-            [9., 10., 11., 12.],
-            [13., 14., 15., 16.],
-        ], [
-            [1., 5., 9., 13.],
-            [2., 6., 10., 14.],
-            [3., 7., 11., 15.],
-            [4., 8., 12., 16.],
-        ]], device=device, dtype=dtype)
+        inp = torch.tensor([
+            [[[1., 2., 3., 4.],
+              [5., 6., 7., 8.],
+              [9., 10., 11., 12.],
+              [13., 14., 15., 16.]]],
+            [[[1., 5., 9., 13.],
+              [2., 6., 10., 14.],
+              [3., 7., 11., 15.],
+              [4., 8., 12., 16.]]]
+        ], device=device, dtype=dtype)
 
-        expected = torch.tensor([[
+        expected = torch.tensor([[[
             [2., 3.],
             [6., 7.],
             [10., 11.],
             [14., 15.],
-        ], [
+        ]], [[
             [5., 9.],
             [6., 10.],
             [7., 11.],
             [8., 12.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         out_crop = kornia.center_crop(inp, (4, 2))
         assert_allclose(out_crop, expected)
@@ -300,12 +299,12 @@ class TestCenterCrop:
 
 class TestCropByBoxes:
     def test_crop_by_boxes_no_resizing(self, device, dtype):
-        inp = torch.tensor([[
+        inp = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         src = torch.tensor([[
             [1., 1.],
@@ -321,21 +320,21 @@ class TestCropByBoxes:
             [0., 1.],
         ]], device=device, dtype=dtype)  # 1x4x2
 
-        expected = torch.tensor([[
+        expected = torch.tensor([[[
             [6., 7.],
             [10., 11.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_boxes(inp, src, dst, align_corners=True)
         assert_allclose(patches, expected)
 
     def test_crop_by_boxes_resizing(self, device, dtype):
-        inp = torch.tensor([[
+        inp = torch.tensor([[[
             [1., 2., 3., 4.],
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         src = torch.tensor([[
             [1., 1.],
@@ -351,16 +350,16 @@ class TestCropByBoxes:
             [0., 1.],
         ]], device=device, dtype=dtype)  # 1x4x2
 
-        expected = torch.tensor([[
+        expected = torch.tensor([[[
             [6., 6.5, 7.],
             [10., 10.5, 11.],
-        ]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype)
 
         patches = kornia.geometry.transform.crop.crop_by_boxes(inp, src, dst, align_corners=True)
         assert_allclose(patches, expected)
 
     def test_gradcheck(self, device, dtype):
-        inp = torch.randn((1, 3, 3), device=device, dtype=dtype)
+        inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)
         src = torch.tensor([[
             [1., 0.],
             [2., 0.],
