@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class Erode(nn.Module):
 
     def __init__(self, se):
@@ -18,7 +19,7 @@ class Erode(nn.Module):
             for i in range(num_feats):
                 y = i % se_h
                 x = i // se_h
-                out[i, 0, x, y] = (se_flat[i] >= 0).float();
+                out[i, 0, x, y] = (se_flat[i] >= 0).float()
             return out
 
         self.kernel = se_to_mask(self.se)
