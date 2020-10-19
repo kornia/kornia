@@ -9,7 +9,7 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
     r"""Check inputs and compute the corresponding factor bounds
     """
     if not isinstance(factor, (torch.Tensor)):
-        factor = torch.tensor(factor)
+        factor = torch.tensor(factor, dtype=torch.float32)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
@@ -20,7 +20,7 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         # Note: I personally think throw an error will be better than a coarse clamp.
         factor_bound = torch.tensor([center - factor, center + factor], dtype=torch.float32).clamp(bounds[0], bounds[1])
     else:
-        factor_bound = factor
+        factor_bound = factor.to(dtype=torch.float32)
 
     if check is not None:
         if check == 'joint':
