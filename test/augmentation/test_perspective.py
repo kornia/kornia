@@ -149,9 +149,18 @@ class TestRandomAffine:
         out = kornia.augmentation.RandomAffine(0.)(x_data)
         assert out.shape == x_data.shape
 
-    def test_batch_multi_params(self, device):
+    @pytest.mark.parametrize("degrees", [45., (-45., 45.), torch.tensor([45., 45.])])
+    @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])
+    @pytest.mark.parametrize("scale", [
+        (0.8, 1.2), (0.8, 1.2, 0.9, 1.1), torch.tensor([0.8, 1.2]), torch.tensor([0.8, 1.2, 0.7, 1.3])])
+    @pytest.mark.parametrize("shear", [
+        5., (-5., 5.), (-5., 5., -3., 3.), torch.tensor(5.),
+        torch.tensor([-5., 5.]), torch.tensor([-5., 5., -3., 3.])
+    ])
+    def test_batch_multi_params(self, degrees, translate, scale, shear, device, dtype):
         x_data = torch.rand(2, 2, 8, 9).to(device)
-        out = kornia.augmentation.RandomAffine((0., 0.))(x_data)
+        out = kornia.augmentation.RandomAffine(
+            degrees=degrees, translate=translate, scale=scale, shear=shear)(x_data)
         assert out.shape == x_data.shape
 
     def test_smoke_transform(self, device):
