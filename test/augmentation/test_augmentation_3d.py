@@ -16,6 +16,8 @@ from kornia.augmentation import (
     RandomVerticalFlip3D,
     RandomAffine3D,
     RandomRotation3D,
+    RandomCrop3D,
+    CenterCrop3D,
     RandomEqualize3D
 )
 
@@ -763,6 +765,165 @@ class TestRandomRotation3D:
         input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0)), (input, ), raise_exception=True)
+
+
+class TestRandomCrop3D:
+    def test_smoke(self):
+        f = RandomCrop3D(size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, p=1.)
+        repr = "RandomCrop3D(crop_size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, "\
+            "padding_mode=constant, resample=BILINEAR, p=1.0, p_batch=1.0, same_on_batch=False, "\
+            "return_transform=False)"
+        assert str(f) == repr
+
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_no_padding(self, batch_size, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.tensor([[[[
+            [0., 1., 2., 3., 4.],
+            [5., 6., 7., 8., 9.],
+            [10, 11, 12, 13, 14],
+            [15, 16, 17, 18, 19],
+            [20, 21, 22, 23, 24]
+        ]]]], device=device, dtype=dtype).repeat(batch_size, 1, 5, 1, 1)
+        f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1.)
+        out = f(inp)
+        if batch_size == 1:
+            expected = torch.tensor([[[[
+                [10, 11, 12, 13],
+                [15, 16, 17, 18],
+                [20, 21, 22, 23]
+            ]]]], device=device, dtype=dtype).repeat(batch_size, 1, 2, 1, 1)
+        if batch_size == 2:
+            expected = torch.tensor([[[
+                [[0., 1., 2., 3.],
+                 [5., 6., 7., 8.],
+                 [10, 11, 12, 13]],
+                [[0., 1., 2., 3.],
+                 [5., 6., 7., 8.],
+                 [10, 11, 12, 13]],
+            ]], [[
+                [[1., 2., 3., 4.],
+                 [6., 7., 8., 9.],
+                 [11, 12, 13, 14]],
+                [[1., 2., 3., 4.],
+                 [6., 7., 8., 9.],
+                 [11, 12, 13, 14]],
+            ]]], device=device, dtype=dtype)
+
+        assert_allclose(out, expected)
+
+    def test_same_on_batch(self, device, dtype):
+        f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1., same_on_batch=True)
+        input = torch.eye(6).unsqueeze(dim=0).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 5, 1, 1)
+        res = f(input)
+        assert (res[0] == res[1]).all()
+
+    @pytest.mark.parametrize("padding", [1, (1, 1, 1), (1, 1, 1, 1, 1, 1)])
+    def test_padding_batch(self, padding, device, dtype):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype).repeat(batch_size, 1, 3, 1, 1)
+        expected = torch.tensor([[[
+            [[10, 10, 10, 10],
+             [10, 0., 1., 2.],
+             [10, 3., 4., 5.]],
+            [[10, 10, 10, 10],
+             [10, 0., 1., 2.],
+             [10, 3., 4., 5.]],
+        ]], [[
+            [[10, 10, 10, 10],
+             [0., 1., 2., 10],
+             [3., 4., 5., 10]],
+            [[10, 10, 10, 10],
+             [0., 1., 2., 10],
+             [3., 4., 5., 10]],
+        ]]], device=device, dtype=dtype)
+        f = RandomCrop3D(size=(2, 3, 4), fill=10., padding=padding, align_corners=True, p=1.)
+        out = f(inp)
+
+        assert_allclose(out, expected)
+
+    def test_pad_if_needed(self, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+        ]], device=device, dtype=dtype)
+        expected = torch.tensor([[[
+            [[9., 9., 9., 9.],
+             [9., 9., 9., 9.],
+             [9., 9., 9., 9.]],
+            [[9., 0., 1., 2.],
+             [9., 9., 9., 9.],
+             [9., 9., 9., 9.]],
+        ]]], device=device, dtype=dtype)
+        rc = RandomCrop3D(size=(2, 3, 4), pad_if_needed=True, fill=9, align_corners=True, p=1.)
+        out = rc(inp)
+
+        assert_allclose(out, expected)
+
+    def test_gradcheck(self, device, dtype):
+        torch.manual_seed(0)  # for random reproductibility
+        inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
+        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.), (inp, ), raise_exception=True)
+
+    @pytest.mark.skip("Need to fix Union type")
+    def test_jit(self, device, dtype):
+        # Define script
+        op = RandomCrop(size=(3, 3), p=1.).forward
+        op_script = torch.jit.script(op)
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        actual = op_script(img)
+        expected = kornia.center_crop3d(img)
+        assert_allclose(actual, expected)
+
+    @pytest.mark.skip("Need to fix Union type")
+    def test_jit_trace(self, device, dtype):
+        # Define script
+        op = RandomCrop(size=(3, 3), p=1.).forward
+        op_script = torch.jit.script(op)
+        # 1. Trace op
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        op_trace = torch.jit.trace(op_script, (img,))
+
+        # 2. Generate new input
+        img = torch.ones(1, 1, 5, 6, device=device, dtype=dtype)
+
+        # 3. Evaluate
+        actual = op_trace(img)
+        expected = op(img)
+        assert_allclose(actual, expected)
+
+
+class TestCenterCrop3D:
+
+    def test_no_transform(self, device, dtype):
+        inp = torch.rand(1, 2, 4, 4, 4, device=device, dtype=dtype)
+        out = kornia.augmentation.CenterCrop3D(2)(inp)
+        assert out.shape == (1, 2, 2, 2, 2)
+
+    def test_transform(self, device, dtype):
+        inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
+        out = kornia.augmentation.CenterCrop3D(2, return_transform=True)(inp)
+        assert len(out) == 2
+        assert out[0].shape == (1, 2, 2, 2, 2)
+        assert out[1].shape == (1, 4, 4)
+
+    def test_no_transform_tuple(self, device, dtype):
+        inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
+        out = kornia.augmentation.CenterCrop3D((3, 4, 5))(inp)
+        assert out.shape == (1, 2, 3, 4, 5)
+
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(kornia.augmentation.CenterCrop3D(3), (input,), raise_exception=True)
 
 
 class TestRandomEqualize3D:

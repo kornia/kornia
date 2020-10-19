@@ -509,22 +509,24 @@ class RandomCrop3D(AugmentationBase3D):
         if self.padding is not None:
             if isinstance(self.padding, int):
                 padding = [self.padding, self.padding, self.padding, self.padding, self.padding, self.padding]
-            elif isinstance(self.padding, tuple) and len(self.padding) == 3:
+            elif isinstance(self.padding, (tuple, list)) and len(self.padding) == 3:
                 padding = [
                     self.padding[0], self.padding[0],
                     self.padding[1], self.padding[1],
                     self.padding[2], self.padding[2],
                 ]
-            elif isinstance(self.padding, tuple) and len(self.padding) == 6:
+            elif isinstance(self.padding, (tuple, list)) and len(self.padding) == 6:
                 padding = [
                     self.padding[0], self.padding[1],
                     self.padding[2], self.padding[3],  # type: ignore
                     self.padding[4], self.padding[5],  # type: ignore
                 ]
+            else:
+                raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {self.padding}.")
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         if self.pad_if_needed and input.shape[-3] < self.size[0]:
-            padding = [self.size[0] - input.shape[-3], self.size[0] - input.shape[-3], 0, 0, 0, 0]
+            padding = [0, 0, 0, 0, self.size[0] - input.shape[-3], self.size[0] - input.shape[-3]]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         if self.pad_if_needed and input.shape[-2] < self.size[1]:
@@ -532,7 +534,7 @@ class RandomCrop3D(AugmentationBase3D):
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         if self.pad_if_needed and input.shape[-1] < self.size[2]:
-            padding = [0, 0, 0, 0, self.size[2] - input.shape[-1], self.size[2] - input.shape[-1]]
+            padding = [self.size[2] - input.shape[-1], self.size[2] - input.shape[-1], 0, 0, 0, 0]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         return input
