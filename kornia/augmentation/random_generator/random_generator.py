@@ -233,7 +233,11 @@ def random_affine_generator(
         assert len(scale.shape) == 1 and (len(scale) == 2 or len(scale) == 4), \
             f"`scale` shall have 2 or 4 elements. Got {scale}."
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
+<<<<<<< refs/remotes/kornia/master
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
+=======
+        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
+>>>>>>> [Bug] Affine scale bug fix (#714)
         if len(scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform(
