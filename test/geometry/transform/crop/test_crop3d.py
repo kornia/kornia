@@ -51,9 +51,9 @@ class TestBoundingBoxInferring3D:
                          (boxes,), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-            return kornia.geometry.transform.crop.infer_box_shape3d(boxes)
+        # Define script
+        op = kornia.infer_box_shape3d
+        op_script = torch.jit.script(op)
 
         boxes = torch.tensor([[
             [0, 0, 1],
@@ -67,7 +67,7 @@ class TestBoundingBoxInferring3D:
         ]], device=device, dtype=dtype)  # 1x8x3
 
         actual = op_script(boxes)
-        expected = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
+        expected = op(boxes)
         assert_allclose(actual, expected)
 
 
@@ -156,11 +156,9 @@ class TestCropAndResize3D:
         assert gradcheck(kornia.crop_and_resize3d, (img, boxes, (4, 3, 2),), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(input: torch.Tensor,
-                      boxes: torch.Tensor,
-                      size: Tuple[int, int, int]) -> torch.Tensor:
-            return kornia.crop_and_resize3d(input, boxes, size)
+        # Define script
+        op = kornia.crop_and_resize3d
+        op_script = torch.jit.script(op)
 
         img = torch.arange(0., 64., device=device, dtype=dtype).view(1, 1, 4, 4, 4)
 
@@ -176,7 +174,7 @@ class TestCropAndResize3D:
         ]], device=device, dtype=dtype)  # 1x8x3
 
         actual = op_script(img, boxes, (4, 3, 2))
-        expected = kornia.crop_and_resize3d(img, boxes, (4, 3, 2))
+        expected = op(img, boxes, (4, 3, 2))
         assert_allclose(actual, expected)
 
 
@@ -215,21 +213,19 @@ class TestCenterCrop3D:
         assert gradcheck(kornia.center_crop3d, (img, (3, 5, 7),), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(input: torch.Tensor,
-                      size: Tuple[int, int, int]) -> torch.Tensor:
-            return kornia.center_crop3d(input, size)
+        # Define script
+        op = kornia.center_crop3d
+        op_script = torch.jit.script(op)
         img = torch.ones(4, 3, 5, 6, 7, device=device, dtype=dtype)
 
         actual = op_script(img, (4, 3, 2))
         expected = kornia.center_crop3d(img, (4, 3, 2))
         assert_allclose(actual, expected)
 
-    def test_jit_trace(self, device, dtype):
-        @torch.jit.script
-        def op_script(input: torch.Tensor,
-                      size: Tuple[int, int, int]) -> torch.Tensor:
-            return kornia.center_crop3d(input, size)
+    def test_jit(self, device, dtype):
+        # Define script
+        op = kornia.center_crop3d
+        op_script = torch.jit.script(op)
         # 1. Trace op
         img = torch.ones(4, 3, 5, 6, 7, device=device, dtype=dtype)
 
@@ -244,7 +240,7 @@ class TestCenterCrop3D:
         crop_height, crop_width = 2, 3
         actual = op_trace(
             img, (torch.tensor(4), torch.tensor(3), torch.tensor(2)))
-        expected = kornia.center_crop3d(img, (4, 3, 2))
+        expected = op(img, (4, 3, 2))
         assert_allclose(actual, expected)
 
 
@@ -311,9 +307,10 @@ class TestCropByBoxes3D:
         assert_allclose(patches, expected)
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(input: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor) -> torch.Tensor:
-            return kornia.geometry.transform.crop.crop_by_boxes3d(input, src_box, dst_box, align_corners=True)
+        # Define script
+        op = kornia.geometry.transform.crop.crop_by_boxes3d
+        op_script = torch.jit.script(op)
+        # Define input
         inp = torch.randn((1, 1, 7, 7, 7), device=device, dtype=dtype)
         src_box = torch.tensor([[
             [1., 1., 1.],
@@ -336,8 +333,8 @@ class TestCropByBoxes3D:
             [0., 1., 1.],
         ]], device=device, dtype=dtype)  # 1x8x3
 
-        actual = op_script(inp, src_box, dst_box)
-        expected = kornia.geometry.transform.crop.crop_by_boxes3d(inp, src_box, dst_box, align_corners=True)
+        actual = op_script(inp, src_box, dst_box, align_corners=True)
+        expected = op(inp, src_box, dst_box, align_corners=True)
         assert_allclose(actual, expected)
 
     def test_gradcheck(self, device, dtype):
