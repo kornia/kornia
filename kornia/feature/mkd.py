@@ -1,4 +1,5 @@
 from typing import Union, Tuple, Dict, List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -73,6 +74,12 @@ class MKDGradients(nn.Module):
         self.grad = grad_fn
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(x):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(x)))
+        if not len(x.shape) == 4:
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
+                             .format(x.shape))
         grads_xy = self.grad(x)[:, 0, :, :, :]
         gx = grads_xy[:, 0, :, :].unsqueeze(1)
         gy = grads_xy[:, 1, :, :].unsqueeze(1)
@@ -113,7 +120,7 @@ class VonMisesKernel(nn.Module):
         super().__init__()
 
         self.patch_size = patch_size
-        b_coeffs: torch.Tensor = torch.Tensor(coeffs).float()
+        b_coeffs: torch.Tensor = torch.tensor(coeffs)
         self.register_buffer('coeffs', b_coeffs)
 
         # Compute parameters.
@@ -122,20 +129,26 @@ class VonMisesKernel(nn.Module):
         self.d: int = 2 * n + 1
 
         # Precompute helper variables.
-        emb0 = torch.ones([1, 1, patch_size, patch_size]).float()
-        frange = torch.arange(n).float() + 1
-        frange = frange.reshape(-1, 1, 1).float()
-        weights = torch.zeros([2 * n + 1]).float()
+        emb0 = torch.ones([1, 1, patch_size, patch_size])
+        frange = torch.arange(n) + 1
+        frange = frange.reshape(-1, 1, 1)
+        weights = torch.zeros([2 * n + 1])
         weights[:n + 1] = torch.sqrt(b_coeffs)
         weights[n + 1:] = torch.sqrt(b_coeffs[1:])
-        weights = weights.reshape(-1, 1, 1).float()
+        weights = weights.reshape(-1, 1, 1)
         self.register_buffer('emb0', emb0)
         self.register_buffer('frange', frange)
         self.register_buffer('weights', weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        emb0 = self.emb0.repeat(x.size(0), 1, 1, 1)  # type: ignore
-        frange = self.frange * x
+        if not torch.is_tensor(x):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(x)))
+        if not len(x.shape) == 4:
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
+                             .format(x.shape))
+        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)  # type: ignore
+        frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
         embedding = torch.cat([emb0, emb1, emb2], dim=1)
@@ -158,7 +171,7 @@ class EmbedGradients(nn.Module):
         patch_size: (int) Input patch size in pixels (32 is default)
         relative: (bool) absolute or relative gradients (False is default)
     Returns:
-        Tensor: Gradient embedding
+        torch.Tensor: Gradient embedding
     Shape:
         - Input: (B, 2, patch_size, patch_size)
         - Output: (B, 7, patch_size, patch_size)
@@ -186,7 +199,7 @@ class EmbedGradients(nn.Module):
                                 width=patch_size,
                                 normalized_coordinates=True)
         _, phi = cart2pol(kgrid[:, :, :, 0], kgrid[:, :, :, 1])
-        self.register_buffer('phi', phi.float())
+        self.register_buffer('phi', phi)
 
     def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
         """Embed square roots of magnitudes with eps for numerical reasons. """
@@ -194,10 +207,16 @@ class EmbedGradients(nn.Module):
         return mags
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(grads):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(grads)))
+        if not len(grads.shape) == 4:
+            raise ValueError("Invalid input shape, we expect Bx2xHxW. Got: {}"
+                             .format(grads.shape))
         mags = grads[:, :1, :, :]
         oris = grads[:, 1:, :, :]
         if self.relative:
-            oris = oris - self.phi
+            oris = oris - self.phi.to(oris)
         y = self.kernel(oris) * self.emb_mags(mags)
         return y
 
@@ -207,13 +226,13 @@ class EmbedGradients(nn.Module):
             ', ' + 'relative=' + str(self.relative) + ')'
 
 
-def spatial_kernel_embedding(dtype, grids: dict) -> torch.Tensor:
+def spatial_kernel_embedding(kerneltype, grids: dict) -> torch.Tensor:
     """Compute embeddings for cartesian and polar parametrizations. """
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
-    if dtype == 'cart':
+    if kerneltype == 'cart':
         coeffs_ = 'xy'
         params_ = ['x', 'y']
-    elif dtype == 'polar':
+    elif kerneltype == 'polar':
         coeffs_ = 'rhophi'
         params_ = ['phi', 'rho']
 
@@ -244,7 +263,7 @@ class ExplicitSpacialEncoding(nn.Module):
     """
     Module that computes explicit cartesian or polar embedding.
     Args:
-        dtype: (str) Parametrization of kernel.
+        kerneltype: (str) Parametrization of kernel.
                      'polar', 'cart' ('polar' is default)
         fmap_size: (int) Input feature map size in pixels (32 is default)
         in_dims: (int) Dimensionality of input feature map (7 is default)
@@ -257,7 +276,7 @@ class ExplicitSpacialEncoding(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> emb_ori = torch.rand(23, 7, 32, 32)
-        >>> ese = kornia.feature.mkd.ExplicitSpacialEncoding(dtype='polar',
+        >>> ese = kornia.feature.mkd.ExplicitSpacialEncoding(kerneltype='polar',
                                                              fmap_size=32,
                                                              in_dims=7,
                                                              do_gmask=True,
@@ -266,14 +285,17 @@ class ExplicitSpacialEncoding(nn.Module):
     """
 
     def __init__(self,
-                 dtype: str = 'polar',
+                 kerneltype: str = 'polar',
                  fmap_size: int = 32,
                  in_dims: int = 7,
                  do_gmask: bool = True,
                  do_l2: bool = True) -> None:
         super().__init__()
 
-        self.dtype = dtype
+        if kerneltype not in ['polar', 'cart']:
+            raise NotImplementedError(f'{kerneltype} is not valid, use polar or cart).')
+
+        self.kerneltype = kerneltype
         self.fmap_size = fmap_size
         self.in_dims = in_dims
         self.do_gmask = do_gmask
@@ -282,12 +304,7 @@ class ExplicitSpacialEncoding(nn.Module):
         self.gmask = None
 
         # Precompute embedding.
-        if self.dtype == 'cart':
-            emb = spatial_kernel_embedding('cart', self.grid)
-        elif self.dtype == 'polar':
-            emb = spatial_kernel_embedding('polar', self.grid)
-        else:
-            raise NotImplementedError(f'{self.dtype} is not implemented.')
+        emb = spatial_kernel_embedding(self.kerneltype, self.grid)
 
         # Gaussian mask.
         if self.do_gmask:
@@ -318,6 +335,12 @@ class ExplicitSpacialEncoding(nn.Module):
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(x):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(x)))
+        if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
+            raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}"
+                             .format(self.in_dims, x.shape))
         emb1 = torch.index_select(x, 1, self.idx1)  # type: ignore
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
@@ -327,7 +350,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
-            '(' + 'dtype=' + str(self.dtype) +\
+            '(' + 'kerneltype=' + str(self.kerneltype) +\
             ', ' + 'fmap_size=' + str(self.fmap_size) +\
             ', ' + 'in_dims=' + str(self.in_dims) +\
             ', ' + 'out_dims=' + str(self.out_dims) +\
@@ -337,15 +360,18 @@ class ExplicitSpacialEncoding(nn.Module):
 
 class Whitening(nn.Module):
     """
-    Module, performs supervised or unsupervised whitening as described in
-    [Understanding and Improving Kernel Local Descriptors](https://arxiv.org/abs/1811.11147) .
+    Module, performs supervised or unsupervised whitening.
+
+    This is based on the paper "Understanding and Improving Kernel Local Descriptors".
+    See :cite:`mukundan2019understanding` for more details.
+
     Args:
         xform: (str) Variant of whitening to use.
                      None, 'lw', 'pca', 'pcaws', 'pcawt'
         whitening_model: (dict) Dictionary with keys
                     'mean', 'eigvecs', 'eigvals' holding torch.Tensors
         in_dims: (int) Dimensionality of input descriptors
-        reduce_dims: (int) Dimensionality reduction (128 is default)
+        output_dims: (int) Dimensionality reduction (128 is default)
         keval: (int) Shrinkage parameter (40 is default)
         t: (float) Attenuation parameter (0.7 is default)
     Returns:
@@ -358,7 +384,7 @@ class Whitening(nn.Module):
         >>> whitening = kornia.feature.mkd.Whitening(xform='pcawt',
                                                      whitening_model,
                                                      in_dims,
-                                                     reduce_dims=128,
+                                                     output_dims=128,
                                                      keval=40,
                                                      t=0.7)
         >>> wdescs = whitening(descs) # 23x128
@@ -368,7 +394,7 @@ class Whitening(nn.Module):
                  xform: str,
                  whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
                  in_dims: int,
-                 reduce_dims: int = 128,
+                 output_dims: int = 128,
                  keval: int = 40,
                  t: float = 0.7) -> None:
         super().__init__()
@@ -379,17 +405,14 @@ class Whitening(nn.Module):
         self.t = t
         self.pval = 1.0
 
-        # Compute true reduce_dims.
-        reduce_dims = min(reduce_dims, in_dims)
-        self.reduce_dims = reduce_dims
+        # Compute true output_dims.
+        output_dims = min(output_dims, in_dims)
+        self.output_dims = output_dims
 
         # Initialize identity transform.
-        self.mean = nn.Parameter(torch.zeros(in_dims).float(),
-                                 requires_grad=True)
-        self.evecs = nn.Parameter(torch.eye(in_dims)[:, :reduce_dims].float(),
-                                  requires_grad=True)
-        self.evals = nn.Parameter(torch.ones(in_dims)[:reduce_dims].float(),
-                                  requires_grad=True)
+        self.mean = nn.Parameter(torch.zeros(in_dims), requires_grad=True)
+        self.evecs = nn.Parameter(torch.eye(in_dims)[:, :output_dims], requires_grad=True)
+        self.evals = nn.Parameter(torch.ones(in_dims)[:output_dims], requires_grad=True)
 
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
@@ -398,9 +421,9 @@ class Whitening(nn.Module):
                                   whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
         algo = 'lw' if self.xform == 'lw' else 'pca'
         wh_model = whitening_model[algo]
-        self.mean.data = wh_model['mean'].float()
-        self.evecs.data = wh_model['eigvecs'][:, :self.reduce_dims].float()
-        self.evals.data = wh_model['eigvals'][:self.reduce_dims].float()
+        self.mean.data = wh_model['mean']
+        self.evecs.data = wh_model['eigvecs'][:, :self.output_dims]
+        self.evals.data = wh_model['eigvals'][:self.output_dims]
 
         modifications = {'pca': self._modify_pca,
                          'lw': self._modify_lw,
@@ -429,6 +452,12 @@ class Whitening(nn.Module):
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(x):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(x)))
+        if not len(x.shape) == 2:
+            raise ValueError("Invalid input shape, we expect NxD. Got: {}"
+                             .format(x.shape))
         x = x - self.mean  # Center the data.
         x = x @ self.evecs  # Apply rotation and/or scaling.
         x = torch.sign(x) * torch.pow(torch.abs(x), self.pval)  # Powerlaw.
@@ -438,22 +467,25 @@ class Whitening(nn.Module):
         return self.__class__.__name__ +\
             '(' + 'xform=' + str(self.xform) +\
             ', ' + 'in_dims=' + str(self.in_dims) +\
-            ', ' + 'reduce_dims=' + str(self.reduce_dims) + ')'
+            ', ' + 'output_dims=' + str(self.output_dims) + ')'
 
 
-class MKD(nn.Module):
+class MKDDescriptor(nn.Module):
     """
-    Module that computes Multiple Kernel local descriptors as described in
-    [Understanding and Improving Kernel Local Descriptors](https://arxiv.org/abs/1811.11147) .
+    Module that computes Multiple Kernel local descriptors.
+
+    This is based on the paper "Understanding and Improving Kernel Local Descriptors".
+    See :cite:`mukundan2019understanding` for more details.
+
     Args:
         patch_size: (int) Input patch size in pixels (32 is default)
-        dtype: (str) Parametrization of kernel
+        kerneltype: (str) Parametrization of kernel
                      'concat', 'cart', 'polar' ('concat' is default)
         whitening: (str) Whitening transform to apply
                      None, 'lw', 'pca', 'pcawt', 'pcaws' ('pcawt' is default)
         training_set: (str) Set that model was trained on
                     'liberty', 'notredame', 'yosemite' ('liberty' is default)
-        reduce_dims: (int) Dimensionality reduction (128 is default)
+        output_dims: (int) Dimensionality reduction (128 is default)
     Returns:
         Tensor: Explicit cartesian or polar embedding
     Shape:
@@ -461,24 +493,24 @@ class MKD(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> patches = torch.rand(23, 1, 32, 32)
-        >>> mkd = kornia.feature.mkd.MKD(patch_size=32,
-                                         dtype='concat',
+        >>> mkd = kornia.feature.mkd.MKDDescriptor(patch_size=32,
+                                         kerneltype='concat',
                                          whitening='pcawt',
                                          training_set='liberty',
-                                         reduce_dims=128)
+                                         output_dims=128)
         >>> desc = mkd(patches) # 23x128
     """
 
     def __init__(self,
                  patch_size: int = 32,
-                 dtype: str = 'concat',
+                 kerneltype: str = 'concat',
                  whitening: str = 'pcawt',
                  training_set: str = 'liberty',
-                 reduce_dims: int = 128) -> None:
+                 output_dims: int = 128) -> None:
         super().__init__()
 
         self.patch_size = patch_size
-        self.dtype = dtype
+        self.kerneltype = kerneltype
         self.whitening = whitening
         self.training_set = training_set
 
@@ -489,63 +521,69 @@ class MKD(nn.Module):
         self.gradients = MKDGradients()
 
         # Cartesian embedding with absolute gradients.
-        if dtype in ['cart', 'concat']:
+        if kerneltype in ['cart', 'concat']:
             ori_abs = EmbedGradients(patch_size=patch_size,
                                      relative=False)
-            cart_emb = ExplicitSpacialEncoding(dtype='cart',
+            cart_emb = ExplicitSpacialEncoding(kerneltype='cart',
                                                fmap_size=patch_size,
                                                in_dims=ori_abs.kernel.d)
             self.cart_feats = nn.Sequential(ori_abs, cart_emb)
 
         # Polar embedding with relative gradients.
-        if dtype in ['polar', 'concat']:
+        if kerneltype in ['polar', 'concat']:
             ori_rel = EmbedGradients(patch_size=patch_size,
                                      relative=True)
-            polar_emb = ExplicitSpacialEncoding(dtype='polar',
+            polar_emb = ExplicitSpacialEncoding(kerneltype='polar',
                                                 fmap_size=patch_size,
                                                 in_dims=ori_rel.kernel.d)
             self.polar_feats = nn.Sequential(ori_rel, polar_emb)
 
         self.odims: int = 0
-        if dtype == 'concat':
+        if kerneltype == 'concat':
             self.odims = polar_emb.odims + cart_emb.odims
-        elif dtype == 'cart':
+        elif kerneltype == 'cart':
             self.odims = cart_emb.odims
-        elif dtype == 'polar':
+        elif kerneltype == 'polar':
             self.odims = polar_emb.odims
 
-        # Compute true reduce_dims.
-        self.reduce_dims: int = min(reduce_dims, self.odims)
+        # Compute true output_dims.
+        self.output_dims: int = min(output_dims, self.odims)
 
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
             whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.dtype], map_location=lambda storage, loc: storage
+                urls[self.kerneltype], map_location=lambda storage, loc: storage
             )
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(whitening,
                                              whitening_model,
                                              in_dims=self.odims,
-                                             reduce_dims=self.reduce_dims)
-            self.odims = self.reduce_dims
+                                             output_dims=self.output_dims)
+            self.odims = self.output_dims
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(patches):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(patches)))
+        if not len(patches.shape) == 4:
+            raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
+                             .format(patches.shape))
         # Extract gradients.
         g = self.smoothing(patches)
         g = self.gradients(g)
 
         # Extract polar and/or cart features.
-        if self.dtype in ['polar', 'concat']:
+        if self.kerneltype in ['polar', 'concat']:
             pe = self.polar_feats(g)
-        if self.dtype in ['cart', 'concat']:
+        if self.kerneltype in ['cart', 'concat']:
             ce = self.cart_feats(g)
 
         # Concatenate.
-        if self.dtype == 'concat':
+        if self.kerneltype == 'concat':
             y = torch.cat([pe, ce], dim=1)
-        elif self.dtype == 'cart':
+        elif self.kerneltype == 'cart':
             y = ce
-        elif self.dtype == 'polar':
+        elif self.kerneltype == 'polar':
             y = pe
 
         # l2-normalize.
@@ -560,15 +598,15 @@ class MKD(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
             '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'dtype=' + str(self.dtype) +\
+            ', ' + 'kerneltype=' + str(self.kerneltype) +\
             ', ' + 'whitening=' + str(self.whitening) +\
             ', ' + 'training_set=' + str(self.training_set) +\
-            ', ' + 'reduce_dims=' + str(self.reduce_dims) + ')'
+            ', ' + 'output_dims=' + str(self.output_dims) + ')'
 
 
-def load_whitening_model(dtype: str, training_set: str) -> Dict:
+def load_whitening_model(kerneltype: str, training_set: str) -> Dict:
     whitening_models = torch.hub.load_state_dict_from_url(
-        urls[dtype], map_location=lambda storage, loc: storage
+        urls[kerneltype], map_location=lambda storage, loc: storage
     )
     whitening_model = whitening_models[training_set]
     return whitening_model
@@ -579,25 +617,25 @@ class SimpleKD(nn.Module):
 
     def __init__(self,
                  patch_size: int = 32,
-                 dtype: str = 'polar',  # 'cart' 'polar'
+                 kerneltype: str = 'polar',  # 'cart' 'polar'
                  whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
                  training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
-                 reduce_dims: int = 128) -> None:
+                 output_dims: int = 128) -> None:
         super().__init__()
 
-        relative = dtype == 'polar'
+        relative = kerneltype == 'polar'
         sigma = 1.4 * (patch_size / 64)
 
         # Sequence of modules.
         smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')
         gradients = MKDGradients()
         ori = EmbedGradients(patch_size=patch_size, relative=relative)
-        ese = ExplicitSpacialEncoding(dtype=dtype,
+        ese = ExplicitSpacialEncoding(kerneltype=kerneltype,
                                       fmap_size=patch_size, in_dims=ori.kernel.d)
         wh = Whitening(whitening,
-                       load_whitening_model(dtype, training_set),
+                       load_whitening_model(kerneltype, training_set),
                        in_dims=ese.odims,
-                       reduce_dims=reduce_dims)
+                       output_dims=output_dims)
 
         self.features = nn.Sequential(smoothing,
                                       gradients,
