@@ -609,7 +609,7 @@ class RandomCrop(AugmentationBase2D):
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -635,11 +635,14 @@ class RandomCrop(AugmentationBase2D):
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
             if isinstance(self.padding, int):
+                self.padding = cast(int, self.padding)
                 padding = [self.padding, self.padding, self.padding, self.padding]
             elif isinstance(self.padding, tuple) and len(self.padding) == 2:
+                self.padding = cast(Tuple[int, int], self.padding)
                 padding = [self.padding[1], self.padding[1], self.padding[0], self.padding[0]]
             elif isinstance(self.padding, tuple) and len(self.padding) == 4:
-                padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]  # type:ignore
+                self.padding = cast(Tuple[int, int, int, int], self.padding)
+                padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]
             input = pad(input, padding, value=self.fill, mode=self.padding_mode)
 
         if self.pad_if_needed and input.shape[-2] < self.size[0]:
@@ -660,11 +663,12 @@ class RandomCrop(AugmentationBase2D):
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
-                ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+                ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if type(input) == tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:
-            input = self.precrop_padding(input)  # type:ignore
+            input = cast(torch.Tensor, input)
+            input = self.precrop_padding(input)
         return super().forward(input, params, return_transform)
 
 

@@ -166,6 +166,9 @@ Set of operators to perform data augmentation on 3D image tensors and volumetric
 .. autoclass:: RandomVerticalFlip3D
 .. autoclass:: RandomRotation3D
 .. autoclass:: RandomAffine3D
+.. autoclass:: RandomCrop3D
+.. autoclass:: CenterCrop3D
+.. autoclass:: RandomEqualize3D
 
 Functional
 ----------

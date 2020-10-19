@@ -5,6 +5,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
+import kornia.testing as utils  # test utils
 import kornia.geometry.transform.projwarp as proj
 
 
@@ -17,7 +18,7 @@ class TestWarpProjective:
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(1, 3, 4, device=device, dtype=dtype)
-        output = proj.warp_projective(input, P, (3, 4, 5))
+        output = proj.warp_affine3d(input, P, (3, 4, 5))
         assert output.shape == (1, 3, 3, 4, 5)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -27,14 +28,14 @@ class TestWarpProjective:
         B, C = batch_size, num_channels
         input = torch.rand(B, C, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(B, 3, 4, device=device, dtype=dtype)
-        output = proj.warp_projective(input, P, out_shape)
+        output = proj.warp_affine3d(input, P, out_shape)
         assert list(output.shape) == [B, C] + list(out_shape)
 
     def test_gradcheck(self, device):
         # generate input data
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=torch.float64, requires_grad=True)
         P = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
-        assert gradcheck(proj.warp_projective, (input, P, (3, 3, 3)), raise_exception=True)
+        assert gradcheck(proj.warp_affine3d, (input, P, (3, 3, 3)), raise_exception=True)
 
     def test_forth_back(self, device, dtype):
         out_shape = (3, 4, 5)
@@ -42,7 +43,7 @@ class TestWarpProjective:
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
-        output = proj.warp_projective(input, P_hat, out_shape)
+        output = proj.warp_affine3d(input, P_hat, out_shape)
         assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
@@ -82,7 +83,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_y(self, device, dtype):
@@ -122,7 +123,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_z(self, device, dtype):
@@ -162,7 +163,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
     def test_rotate_y_large(self, device, dtype):
@@ -227,7 +228,7 @@ class TestWarpProjective:
 
         scales: torch.Tensor = torch.ones_like(angles)
         P = proj.get_projective_transform(center, angles, scales)
-        output = proj.warp_projective(input, P, (3, 3, 3))
+        output = proj.warp_affine3d(input, P, (3, 3, 3))
         assert_allclose(output, expected)
 
 
@@ -302,3 +303,54 @@ class TestGetRotationMatrix3d:
         angle = torch.rand(1, 3, device=device, dtype=torch.float64)
         scales: torch.Tensor = torch.ones_like(angle)
         assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True)
+
+
+@pytest.mark.parametrize("batch_size", [1, 2])
+def test_get_perspective_transform3d(batch_size, device, dtype):
+    torch.manual_seed(0)
+    src = kornia.bbox_generator3d(
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+    )
+    dst = kornia.bbox_generator3d(
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+        torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
+    )
+    out = kornia.get_perspective_transform3d(src, dst)
+    if batch_size == 1:
+        expected = torch.tensor([[
+            [3.3000, 0.0000, 0.0000, -118.2000],
+            [0.0000, 0.0769, 0.0000, 0.0000],
+            [0.0000, 0.0000, 0.5517, 28.7930],
+            [0.0000, 0.0000, 0.0000, 1.0000]
+        ]])
+    if batch_size == 2:
+        expected = torch.tensor([
+            [[0.9630, 0.0000, 0.0000, -9.3702],
+             [0.0000, 2.0000, 0.0000, -49.9999],
+             [0.0000, 0.0000, 0.3830, 44.0213],
+             [0.0000, 0.0000, 0.0000, 1.0000]],
+            [[0.9630, 0.0000, 0.0000, -36.5555],
+             [0.0000, 2.0000, 0.0000, -14.0000],
+             [0.0000, 0.0000, 0.3830, 16.8940],
+             [0.0000, 0.0000, 0.0000, 1.0000]],
+        ])
+
+    assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
+
+    # compute gradient check
+    points_src = utils.tensor_to_gradcheck_var(src)  # to var
+    points_dst = utils.tensor_to_gradcheck_var(dst)  # to var
+    assert gradcheck(
+        kornia.get_perspective_transform3d, (
+            points_src,
+            points_dst,
+        ), raise_exception=True)

@@ -26,6 +26,8 @@ from .augmentation3d import (
     RandomDepthicalFlip3D,
     RandomRotation3D,
     RandomAffine3D,
+    RandomCrop3D,
+    CenterCrop3D,
     RandomEqualize3D
 )
 from .mix_augmentation import (
@@ -64,5 +66,8 @@ __all__ = [
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",
     "RandomRotation3D",
-    "RandomAffine3D"
+    "RandomAffine3D",
+    "RandomCrop3D",
+    "CenterCrop3D",
+    "RandomEqualize3D"
 ]
