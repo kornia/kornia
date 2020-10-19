@@ -505,7 +505,6 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     return transform
 
 
-
 def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
     Args:
