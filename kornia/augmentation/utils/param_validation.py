@@ -17,7 +17,11 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
     r"""Check inputs and compute the corresponding factor bounds
     """
     if not isinstance(factor, (torch.Tensor)):
+<<<<<<< refs/remotes/kornia/master
         factor = torch.tensor(factor, device=device, dtype=dtype)
+=======
+        factor = torch.tensor(factor, dtype=torch.float32)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
@@ -29,7 +33,11 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         factor_bound = torch.tensor(
             [center - factor, center + factor], device=device, dtype=dtype).clamp(bounds[0], bounds[1])
     else:
+<<<<<<< refs/remotes/kornia/master
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
+=======
+        factor_bound = factor.to(dtype=torch.float32)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
     if check is not None:
         if check == 'joint':

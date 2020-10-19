@@ -2530,6 +2530,7 @@ class TestRandomResizedCrop:
 
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 class TestRandomMotionBlur:
     def test_smoke(self):
@@ -2555,6 +2556,8 @@ class TestRandomMotionBlur:
 
 
 >>>>>>> Repr functions and smoke tests fixed (#710)
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
