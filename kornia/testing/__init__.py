@@ -19,6 +19,7 @@ def create_checkerboard(h, w, nw):
                    np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
 
 
+# TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size):
     """Creates a batch of identity matrices of shape Bx3x3
     """
