@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `decompose 3x4projection matrix` ([#650](https://github.com/kornia/kornia/pull/650))
 - Added `normalize_min_max` functionality ([#684](https://github.com/kornia/kornia/pull/684))
 - Added `random equalize3d` ([#653](https://github.com/kornia/kornia/pull/653))
+- Added 3D volumetric crop implementation ([#689](https://github.com/kornia/kornia/pull/689))
 
 ### Changed
 - Replace convolution with `unfold` in `contrib.extract_tensor_patches` ([#626](https://github.com/kornia/kornia/pull/626))
