@@ -228,9 +228,9 @@ def get_perspective_transform3d(src, dst):
 
     # 000, 100, 110, 101, 011
     for i in [0, 1, 2, 5, 7]:
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
-        p.append(_build_perspective_param(src[:, i], dst[:, i], 'z'))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'x'))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'y'))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'z'))
 
     # A is Bx15x15
     A = torch.stack(p, dim=1)
@@ -257,7 +257,7 @@ def get_perspective_transform3d(src, dst):
     return M.view(-1, 4, 4)  # Bx4x4
 
 
-def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
+def _build_perspective_param3d(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
     ones = torch.ones_like(p)[..., 0:1]
     zeros = torch.zeros_like(p)[..., 0:1]
 
@@ -285,7 +285,7 @@ def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> tor
             -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
         ], dim=1)
 
-    raise ValueError(f"axis `{axis}` is not defined.")
+    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 
 
 def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int, int],

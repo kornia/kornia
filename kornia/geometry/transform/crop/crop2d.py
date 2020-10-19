@@ -54,10 +54,10 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         tensor([[[ 6.0000,  7.0000],
                  [ 10.0000, 11.0000]]])
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
-    if not torch.is_tensor(boxes):
+    if not isinstance(boxes, torch.Tensor):
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
                         .format(type(boxes)))
     if not len(tensor.shape) in (3, 4,):
@@ -67,8 +67,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
     # unpack input data
-    dst_h: torch.Tensor = torch.tensor(size[0])
-    dst_w: torch.Tensor = torch.tensor(size[1])
+    dst_h, dst_w = size
 
     # [x, y] origin
     # top-left, top-right, bottom-right, bottom-left
@@ -112,7 +111,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         tensor([[[ 5.0000,  6.0000,  7.0000,  8.0000],
                  [ 9.0000, 10.0000, 11.0000, 12.0000]]])
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
 
@@ -212,10 +211,10 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     validate_bboxes(src_box)
     validate_bboxes(dst_box)
 
-    if tensor.ndimension() not in [3, 4]:
+    if len(tensor.shape) not in [3, 4]:
         raise TypeError("Only tensor with shape (C, H, W) and (B, C, H, W) supported. Got %s" % str(tensor.shape))
     # warping needs data in the shape of BCHW
-    is_unbatched: bool = tensor.ndimension() == 3
+    is_unbatched: bool = len(tensor.shape) == 3
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 
@@ -226,10 +225,10 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = infer_box_shape(dst_box)
-    assert len(bbox[0].unique()) == 1 and len(bbox[1].unique()) == 1, "cropping height and width" \
-        f" must be exact same in a batch. Got height {bbox[0].unique()} and width {bbox[1].unique()}"
+    assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
+        f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}.")
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0].unique().item()), int(bbox[1].unique().item())),
+        tensor, dst_trans_src[:, :2, :], (int(bbox[0][0].item()), int(bbox[1][0].item())),
         flags=interpolation, align_corners=align_corners)
 
     # return in the original shape

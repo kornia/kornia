@@ -120,11 +120,11 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
        See a working example `here <https://kornia.readthedocs.io/en/latest/
        tutorials/warp_affine.html>`__.
     """
-    if not torch.is_tensor(src):
+    if not isinstance(src, torch.Tensor):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"
                         .format(type(src)))
 
-    if not torch.is_tensor(M):
+    if not isinstance(M, torch.Tensor):
         raise TypeError("Input M type is not a torch.Tensor. Got {}"
                         .format(type(M)))
 
@@ -143,10 +143,10 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, dsize_src, out_size)
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
+    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
                          [B, C, out_size[0], out_size[1]],
                          align_corners=align_corners)
-    return F.grid_sample(src, grid,  # type: ignore
+    return F.grid_sample(src, grid,
                          align_corners=align_corners,
                          mode=flags,
                          padding_mode=padding_mode)
@@ -190,10 +190,10 @@ def get_perspective_transform(src, dst):
         - Input: :math:`(B, 4, 2)` and :math:`(B, 4, 2)`
         - Output: :math:`(B, 3, 3)`
     """
-    if not torch.is_tensor(src):
+    if not isinstance(src, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(src)))
-    if not torch.is_tensor(dst):
+    if not isinstance(dst, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(dst)))
     if not src.shape[-2:] == (4, 2):
@@ -206,35 +206,13 @@ def get_perspective_transform(src, dst):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 
-    def ax(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat(
-            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros,
-             -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]
-             ], dim=1)
-
-    def ay(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat(
-            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones,
-             -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1)
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
     # we could even pass more correspondence
     p = []
-    p.append(ax(src[:, 0], dst[:, 0]))
-    p.append(ay(src[:, 0], dst[:, 0]))
-
-    p.append(ax(src[:, 1], dst[:, 1]))
-    p.append(ay(src[:, 1], dst[:, 1]))
-
-    p.append(ax(src[:, 2], dst[:, 2]))
-    p.append(ay(src[:, 2], dst[:, 2]))
-
-    p.append(ax(src[:, 3], dst[:, 3]))
-    p.append(ay(src[:, 3], dst[:, 3]))
+    for i in [0, 1, 2, 3]:
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
 
     # A is Bx8x8
     A = torch.stack(p, dim=1)
@@ -255,6 +233,23 @@ def get_perspective_transform(src, dst):
     M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
     M[..., :8] = torch.squeeze(X, dim=-1)
     return M.view(-1, 3, 3)  # Bx3x3
+
+
+def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
+    ones = torch.ones_like(p)[..., 0:1]
+    zeros = torch.zeros_like(p)[..., 0:1]
+    if axis == 'x':
+        return torch.cat(
+            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros,
+             -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]
+             ], dim=1)
+
+    if axis == 'y':
+        return torch.cat(
+            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones,
+             -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1)
+
+    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
@@ -326,13 +321,13 @@ def get_rotation_matrix2d(
         tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])
     """
-    if not torch.is_tensor(center):
+    if not isinstance(center, torch.Tensor):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))
-    if not torch.is_tensor(angle):
+    if not isinstance(angle, torch.Tensor):
         raise TypeError("Input angle type is not a torch.Tensor. Got {}"
                         .format(type(angle)))
-    if not torch.is_tensor(scale):
+    if not isinstance(scale, torch.Tensor):
         raise TypeError("Input scale type is not a torch.Tensor. Got {}"
                         .format(type(scale)))
     if not (len(center.shape) == 2 and center.shape[1] == 2):
@@ -404,13 +399,13 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
                   [0., 0.]]]])
 
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
-    if not torch.is_tensor(map_x):
+    if not isinstance(map_x, torch.Tensor):
         raise TypeError("Input map_x type is not a torch.Tensor. Got {}"
                         .format(type(map_x)))
-    if not torch.is_tensor(map_y):
+    if not isinstance(map_y, torch.Tensor):
         raise TypeError("Input map_y type is not a torch.Tensor. Got {}"
                         .format(type(map_y)))
     if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
@@ -452,7 +447,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     Return:
         torch.Tensor: the reverse affine transform.
     """
-    if not torch.is_tensor(matrix):
+    if not isinstance(matrix, torch.Tensor):
         raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
                         .format(type(matrix)))
     if not (len(matrix.shape) == 3 and matrix.shape[-2:] == (2, 3)):

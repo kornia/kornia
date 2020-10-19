@@ -310,7 +310,6 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = infer_box_shape3d(dst_box)
-    (bbox[0] == bbox[0][0]).all()
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}.")
@@ -393,15 +392,18 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
     widths = (left - right + 1)
-    assert torch.allclose(widths.T, widths[:, 0]), f"Boxes must have be cube, while get different widths {widths}."
+    assert torch.allclose(widths.permute(1, 0), widths[:, 0]), \
+        f"Boxes must have be cube, while get different widths {widths}."
 
     bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
     upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
     heights = (bot - upper + 1)
-    assert torch.allclose(heights.T, heights[:, 0]), f"Boxes must have be cube, while get different heights {heights}."
+    assert torch.allclose(heights.permute(1, 0), heights[:, 0]), \
+        f"Boxes must have be cube, while get different heights {heights}."
 
     depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)
-    assert torch.allclose(depths.T, depths[:, 0]), f"Boxes must have be cube, while get different depths {depths}."
+    assert torch.allclose(depths.permute(1, 0), depths[:, 0]), \
+        f"Boxes must have be cube, while get different depths {depths}."
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
