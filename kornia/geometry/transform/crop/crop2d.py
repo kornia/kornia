@@ -376,13 +376,21 @@ def bbox_generator(
         f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."
     assert width.shape == height.shape and width.dim() in [0, 1], \
         f"`width` and `height` must be a scalar or (B,). Got {width}, {height}."
+    assert x_start.dtype == y_start.dtype == width.dtype == height.dtype, (
+        "All tensors must be in the same dtype. Got "
+        f"`x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `width`({width.dtype}), `height`({height.dtype})."
+    )
+    assert x_start.device == y_start.device == width.device == height.device, (
+        "All tensors must be in the same device. Got "
+        f"`x_start`({x_start.device}), `y_start`({x_start.device}), `width`({width.device}), `height`({height.device})."
+    )
 
     bbox = torch.tensor([[
         [0, 0],
         [0, 0],
         [0, 0],
         [0, 0],
-    ]]).repeat(len(x_start), 1, 1)
+    ]], device=device, dtype=dtype).repeat(len(x_start), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)

@@ -527,6 +527,16 @@ def bbox_generator3d(
         f"`x_start`, `y_start` and `z_start` must be a scalar or (B,). Got {x_start}, {y_start}, {z_start}."
     assert width.shape == height.shape == depth.shape and width.dim() in [0, 1], \
         f"`width`, `height` and `depth` must be a scalar or (B,). Got {width}, {height}, {depth}."
+    assert x_start.dtype == y_start.dtype == z_start.dtype == width.dtype == height.dtype == depth.dtype, (
+        "All tensors must be in the same dtype. "
+        f"Got `x_start`({x_start.dtype}), `y_start`({x_start.dtype}), `z_start`({x_start.dtype}), "
+        f"`width`({width.dtype}), `height`({height.dtype}) and `depth`({depth.dtype})."
+    )
+    assert x_start.device == y_start.device == z_start.device == width.device == height.device == depth.device, (
+        "All tensors must be in the same device. "
+        f"Got `x_start`({x_start.device}), `y_start`({x_start.device}), `z_start`({x_start.device}), "
+        f"`width`({width.device}), `height`({height.device}) and `depth`({depth.device})."
+    )
 
     # front
     bbox = torch.tensor([[
@@ -534,7 +544,7 @@ def bbox_generator3d(
         [0, 0, 0],
         [0, 0, 0],
         [0, 0, 0],
-    ]]).repeat(len(x_start), 1, 1)
+    ]], device=x_start.device, dtype=x_start.dtype).repeat(len(x_start), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
