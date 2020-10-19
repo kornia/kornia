@@ -97,7 +97,7 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
 
 
 def cart2pol(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Function that converts cartesian coordinates to polar coordinates.
+    """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
         rho (torch.Tensor): Tensor of arbitrary shape.
