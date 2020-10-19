@@ -170,8 +170,8 @@ def random_affine_generator(
     # compute tensor ranges
     if scale is not None:
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
-        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
-        if len(scale) == 4:
+        _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
+        if len(_scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
