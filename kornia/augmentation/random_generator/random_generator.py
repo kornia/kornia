@@ -301,6 +301,7 @@ def random_affine_generator(
         _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
 =======
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
+<<<<<<< master
         if len(scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform(
@@ -316,7 +317,17 @@ def random_affine_generator(
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
         _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+        if len(_scale) == 4:
+            _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
+            _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
+    else:
+        _scale = torch.ones((batch_size, 2))
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     if translate is not None:
         translate = translate.to(device=device, dtype=dtype)
@@ -470,10 +481,14 @@ def random_crop_generator(
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     if not isinstance(size, torch.Tensor):
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
     if not isinstance(size, torch.Tensor):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         size = torch.tensor(size, device=device, dtype=dtype).repeat(batch_size, 1)
     else:
         size = size.to(device=device, dtype=dtype)
@@ -481,13 +496,19 @@ def random_crop_generator(
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
         size = torch.tensor(size).repeat(batch_size, 1)
     assert size.shape == torch.Size([batch_size, 2]), \
         f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     size = size.long()
 
     x_diff = input_size[1] - size[:, 1] + 1

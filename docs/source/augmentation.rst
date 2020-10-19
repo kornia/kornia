@@ -170,12 +170,19 @@ Set of operators to perform data augmentation on 3D image tensors and volumetric
 .. autoclass:: CenterCrop3D
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 .. autoclass:: RandomMotionBlur3D
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
 .. autoclass:: RandomMotionBlur3D
 >>>>>>> Augmentation documentation update (#730)
+=======
+<<<<<<< master
+.. autoclass:: RandomMotionBlur3D
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 .. autoclass:: RandomEqualize3D
 
 Functional

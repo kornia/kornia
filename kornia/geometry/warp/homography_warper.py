@@ -151,17 +151,25 @@ def homography_warp3d(patch_src: torch.Tensor,
         >>> homography = torch.eye(3).view(1, 3, 3)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         >>> output = homography_warp(input, homography, (32, 32))
 =======
         >>> output = kornia.homography_warp(input, homography, (32, 32))
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         >>> output = homography_warp(input, homography, (32, 32))
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError("Patch and homography must be on the same device. \
                          Got patch.device: {} src_H_dst.device: {}.".format(
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
             patch_src.device, src_homo_dst.device))
@@ -171,6 +179,13 @@ def homography_warp3d(patch_src: torch.Tensor,
 =======
             patch_src.device, src_homo_dst.device))
 >>>>>>> Fixed divide by zero bug (#812)
+=======
+<<<<<<< master
+            patch_src.device, src_homo_dst.device))
+=======
+                        patch_src.device, src_homo_dst.device))
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     depth, height, width = dsize
     grid = create_meshgrid3d(depth, height, width, normalized_coordinates=normalized_coordinates,

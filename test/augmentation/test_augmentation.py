@@ -1244,8 +1244,12 @@ class TestColorJitter:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor([
             [[[0.2529, 0.3529, 0.4529],
@@ -1268,10 +1272,15 @@ class TestColorJitter:
               [0.8660, 0.9660, 1.0000]]]], device=device, dtype=dtype)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     def test_random_brightness(self, device, dtype):
         torch.manual_seed(42)
         f = ColorJitter(brightness=0.2)
@@ -1280,6 +1289,7 @@ class TestColorJitter:
                                 [0.6, 0.5, 0.4],
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
 
@@ -1293,6 +1303,19 @@ class TestColorJitter:
 
 <<<<<<< refs/remotes/kornia/master
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
+=======
+<<<<<<< master
+=======
+
+        expected = torch.tensor([[[[0.2529, 0.3529, 0.4529],
+                                   [0.7529, 0.6529, 0.5529],
+                                   [0.8529, 0.9529, 1.0000]],
+
+                                  [[0.2529, 0.3529, 0.4529],
+                                   [0.7529, 0.6529, 0.5529],
+                                   [0.8529, 0.9529, 1.0000]],
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
 <<<<<<< refs/remotes/kornia/master
 =======
@@ -1334,6 +1357,25 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+                                 [[[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]],
+
+                                  [[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]],
+
+                                  [[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
+
+        assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
     def test_random_brightness_tuple(self, device, dtype):
         torch.manual_seed(42)
@@ -1343,6 +1385,7 @@ class TestColorJitter:
                                 [0.6, 0.5, 0.4],
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 
         expected = self._get_expected_brightness(device, dtype)
@@ -1370,6 +1413,9 @@ class TestColorJitter:
               [0.7102, 0.5919, 0.4735],
               [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         expected = self._get_expected_brightness(device, dtype)
 
@@ -1396,6 +1442,36 @@ class TestColorJitter:
              [[0.1184, 0.2367, 0.3551],
               [0.7102, 0.5919, 0.4735],
               [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
+=======
+
+        expected = torch.tensor([[[[0.2529, 0.3529, 0.4529],
+                                   [0.7529, 0.6529, 0.5529],
+                                   [0.8529, 0.9529, 1.0000]],
+
+                                  [[0.2529, 0.3529, 0.4529],
+                                   [0.7529, 0.6529, 0.5529],
+                                   [0.8529, 0.9529, 1.0000]],
+
+                                  [[0.2529, 0.3529, 0.4529],
+                                   [0.7529, 0.6529, 0.5529],
+                                   [0.8529, 0.9529, 1.0000]]],
+
+
+                                 [[[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]],
+
+                                  [[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]],
+
+                                  [[0.2660, 0.3660, 0.4660],
+                                   [0.7660, 0.6660, 0.5660],
+                                   [0.8660, 0.9660, 1.0000]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
+        expected = expected.to(device)
+
+        assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     def test_random_contrast(self, device, dtype):
         torch.manual_seed(42)
@@ -1407,10 +1483,14 @@ class TestColorJitter:
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
 
+<<<<<<< master
         expected = self._get_expected_contrast(device, dtype)
 =======
+<<<<<<< refs/remotes/kornia/master
 
 <<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = torch.tensor([[[[0.0953, 0.1906, 0.2859],
                                    [0.5719, 0.4766, 0.3813],
                                    [0.6672, 0.7625, 0.9531]],
@@ -1425,6 +1505,9 @@ class TestColorJitter:
 
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
                                  [[[0.1184, 0.2367, 0.3551],
                                    [0.7102, 0.5919, 0.4735],
                                    [0.8286, 0.9470, 1.0000]],
@@ -1438,6 +1521,7 @@ class TestColorJitter:
                                    [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
         expected = expected.to(device)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[[[0.0849, 0.1699, 0.2548],
                                    [0.5097, 0.4247, 0.3398],
@@ -1461,6 +1545,8 @@ class TestColorJitter:
 =======
         expected = self._get_expected_contrast(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
@@ -1473,6 +1559,10 @@ class TestColorJitter:
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         expected = self._get_expected_contrast(device, dtype)
 
@@ -1501,6 +1591,7 @@ class TestColorJitter:
 
 =======
 
+<<<<<<< refs/remotes/kornia/master
         expected = self._get_expected_contrast(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
@@ -1530,6 +1621,37 @@ class TestColorJitter:
               [0.8000, 0.3530, 0.4413]]]], device=device, dtype=dtype)
 
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+        expected = torch.tensor([[[[0.0953, 0.1906, 0.2859],
+                                   [0.5719, 0.4766, 0.3813],
+                                   [0.6672, 0.7625, 0.9531]],
+
+                                  [[0.0953, 0.1906, 0.2859],
+                                   [0.5719, 0.4766, 0.3813],
+                                   [0.6672, 0.7625, 0.9531]],
+
+                                  [[0.0953, 0.1906, 0.2859],
+                                   [0.5719, 0.4766, 0.3813],
+                                   [0.6672, 0.7625, 0.9531]]],
+
+
+                                 [[[0.1184, 0.2367, 0.3551],
+                                   [0.7102, 0.5919, 0.4735],
+                                   [0.8286, 0.9470, 1.0000]],
+
+                                  [[0.1184, 0.2367, 0.3551],
+                                   [0.7102, 0.5919, 0.4735],
+                                   [0.8286, 0.9470, 1.0000]],
+
+                                  [[0.1184, 0.2367, 0.3551],
+                                   [0.7102, 0.5919, 0.4735],
+                                   [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
+        expected = expected.to(device)
+
+        assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
     def test_random_saturation(self, device, dtype):
         torch.manual_seed(42)
         f = ColorJitter(saturation=0.2)
@@ -1547,9 +1669,15 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 
 <<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
                                    [6.2921e-01, 5.0000e-01, 4.0000e-01],
                                    [7.0974e-01, 8.0000e-01, 1.0000e+00]],
@@ -1559,6 +1687,10 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
                                   [[6.3895e-01, 8.0000e-01, 7.0000e-01],
                                    [9.0000e-01, 3.1947e-01, 2.1947e-01],
@@ -1570,6 +1702,9 @@ class TestColorJitter:
                                    [6.8825e-01, 8.0000e-01, 1.0000e+00]],
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
                                   [[1.0000e+00, 4.6476e-01, 5.8825e-01],
                                    [5.6476e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 1.7781e-02, 1.0603e-01]],
@@ -1578,6 +1713,7 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+<<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[[[0.0000, 0.0907, 0.2272],
                                    [0.5454, 0.5000, 0.4000],
@@ -1601,6 +1737,8 @@ class TestColorJitter:
 =======
         expected = self._get_expected_saturation(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
@@ -1621,9 +1759,15 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 
 <<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
                                    [6.2921e-01, 5.0000e-01, 4.0000e-01],
                                    [7.0974e-01, 8.0000e-01, 1.0000e+00]],
@@ -1639,6 +1783,10 @@ class TestColorJitter:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
                                  [[[1.1921e-07, 1.2953e-01, 2.5302e-01],
                                    [5.6476e-01, 5.0000e-01, 4.0000e-01],
@@ -1652,6 +1800,7 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+<<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[[[0.0000, 0.0907, 0.2272],
                                    [0.5454, 0.5000, 0.4000],
@@ -1675,6 +1824,8 @@ class TestColorJitter:
 =======
         expected = self._get_expected_saturation(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -1699,6 +1850,7 @@ class TestColorJitter:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         expected = self._get_expected_saturation(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
@@ -1770,6 +1922,9 @@ class TestColorJitter:
                                    [0.8000, 0.3429, 0.4142]]]], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = self._get_expected_saturation(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
@@ -1796,6 +1951,35 @@ class TestColorJitter:
              [[0.6347, 0.8000, 0.7000],
               [0.9000, 0.3000, 0.2000],
               [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
+=======
+        expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
+                                   [6.2921e-01, 5.0000e-01, 4.0000e-01],
+                                   [7.0974e-01, 8.0000e-01, 1.0000e+00]],
+
+                                  [[1.0000e+00, 5.2921e-01, 6.0974e-01],
+                                   [6.2921e-01, 3.1947e-01, 2.1947e-01],
+                                   [8.0000e-01, 1.6816e-01, 2.7790e-01]],
+
+                                  [[6.3895e-01, 8.0000e-01, 7.0000e-01],
+                                   [9.0000e-01, 3.1947e-01, 2.1947e-01],
+                                   [8.0000e-01, 4.3895e-01, 5.4869e-01]]],
+
+
+                                 [[[1.1921e-07, 1.2953e-01, 2.5302e-01],
+                                   [5.6476e-01, 5.0000e-01, 4.0000e-01],
+                                   [6.8825e-01, 8.0000e-01, 1.0000e+00]],
+
+                                  [[1.0000e+00, 4.6476e-01, 5.8825e-01],
+                                   [5.6476e-01, 2.7651e-01, 1.7651e-01],
+                                   [8.0000e-01, 1.7781e-02, 1.0603e-01]],
+
+                                  [[5.5556e-01, 8.0000e-01, 7.0000e-01],
+                                   [9.0000e-01, 2.7651e-01, 1.7651e-01],
+                                   [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
+        expected = expected.to(device)
+
+        assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
     def test_random_hue(self, device, dtype):
         torch.manual_seed(42)
@@ -1814,7 +1998,17 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
+=======
+<<<<<<< master
+=======
+
+        expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
 <<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
@@ -1853,6 +2047,26 @@ class TestColorJitter:
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+                                 [[[0.1000, 0.2000, 0.3000],
+                                   [0.6116, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+
+                                  [[1.0000, 0.4769, 0.5846],
+                                   [0.6000, 0.3077, 0.2077],
+                                   [0.7961, 0.1000, 0.2000]],
+
+                                  [[0.6347, 0.8000, 0.7000],
+                                   [0.9000, 0.3000, 0.2000],
+                                   [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
+        expected = expected.to(device)
+
+        assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
+
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
     def test_random_hue_list(self, device, dtype):
         torch.manual_seed(42)
@@ -1871,6 +2085,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 
 <<<<<<< refs/remotes/kornia/master
@@ -1878,6 +2093,14 @@ class TestColorJitter:
                                    [0.6030, 0.5000, 0.4000],
                                    [0.7000, 0.8000, 1.0000]],
 <<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+
+        expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
                                   [[1.0000, 0.5251, 0.6167],
                                    [0.6126, 0.3000, 0.2000],
@@ -1893,6 +2116,10 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
                                   [[1.0000, 0.4769, 0.5846],
                                    [0.6000, 0.3077, 0.2077],
@@ -1902,6 +2129,7 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+<<<<<<< refs/remotes/kornia/master
 =======
                                   [[1.0000, 0.4940, 0.5960],
                                    [0.6000, 0.3020, 0.2020],
@@ -1922,6 +2150,8 @@ class TestColorJitter:
 =======
         expected = self._get_expected_hue(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -1943,6 +2173,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 
 <<<<<<< refs/remotes/kornia/master
@@ -1950,6 +2181,14 @@ class TestColorJitter:
                                    [0.6030, 0.5000, 0.4000],
                                    [0.7000, 0.8000, 1.0000]],
 <<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+=======
+
+        expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
                                   [[1.0000, 0.5251, 0.6167],
                                    [0.6126, 0.3000, 0.2000],
@@ -1966,11 +2205,16 @@ class TestColorJitter:
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
                                   [[0.6347, 0.8000, 0.7000],
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+<<<<<<< refs/remotes/kornia/master
 =======
                                   [[1.0000, 0.4940, 0.5960],
                                    [0.6000, 0.3020, 0.2020],
@@ -1991,6 +2235,8 @@ class TestColorJitter:
 =======
         expected = self._get_expected_hue(device, dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -2594,6 +2840,7 @@ class TestRandomCrop:
     def test_no_padding_batch(self, device, dtype):
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         torch.manual_seed(42)
 =======
         torch.manual_seed(0)
@@ -2601,6 +2848,13 @@ class TestRandomCrop:
 =======
         torch.manual_seed(42)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+        torch.manual_seed(42)
+=======
+        torch.manual_seed(0)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -2609,22 +2863,32 @@ class TestRandomCrop:
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = torch.tensor([
             [[[0., 1., 2.],
               [3., 4., 5.]]],
             [[[3., 4., 5.],
               [6., 7., 8.]]]], device=device, dtype=dtype)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
         expected = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
@@ -2639,13 +2903,20 @@ class TestRandomCrop:
     def test_padding_batch_1(self, device, dtype):
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         torch.manual_seed(42)
 =======
         torch.manual_seed(0)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         torch.manual_seed(42)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -2658,6 +2929,7 @@ class TestRandomCrop:
         ]], [[
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             [7., 8., 0.],
             [0., 0., 0.]
 =======
@@ -2668,6 +2940,15 @@ class TestRandomCrop:
             [7., 8., 0.],
             [0., 0., 0.]
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+            [7., 8., 0.],
+            [0., 0., 0.]
+=======
+            [0., 0., 0.],
+            [1., 2., 0.]
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         ]]], device=device, dtype=dtype)
         rc = RandomCrop(size=(2, 3), padding=1, align_corners=True, p=1.)
         out = rc(inp)
@@ -2677,13 +2958,20 @@ class TestRandomCrop:
     def test_padding_batch_2(self, device, dtype):
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         torch.manual_seed(42)
 =======
         torch.manual_seed(0)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         torch.manual_seed(42)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         batch_size = 2
         inp = torch.tensor([[
             [0., 1., 2.],
@@ -2695,16 +2983,23 @@ class TestRandomCrop:
             [4., 5., 10.]
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         ]], [[
             [4., 5., 10.],
             [7., 8., 10.],
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         ]], [[
             [4., 5., 10.],
             [7., 8., 10.],
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         ]]], device=device, dtype=dtype)
         rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True, p=1.)
         out = rc(inp)
@@ -2739,6 +3034,10 @@ class TestRandomCrop:
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         expected = torch.tensor([
             [[[9., 9., 9.],
               [0., 1., 2.]]],
@@ -2750,6 +3049,7 @@ class TestRandomCrop:
             [0., 1., 2.]
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([
             [[[9., 9., 9.],
@@ -2762,6 +3062,8 @@ class TestRandomCrop:
             [[[9., 9., 9.],
               [0., 1., 2.]]]], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
         rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True, p=1.)
         out = rc(inp)
 
@@ -2915,6 +3217,10 @@ class TestRandomResizedCrop:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 =======
 class TestRandomMotionBlur:
     def test_smoke(self):
@@ -2939,9 +3245,13 @@ class TestRandomMotionBlur:
             kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
 
 
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Repr functions and smoke tests fixed (#710)
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
+>>>>>>> [Feat] 3D volumetric crop implementation (#689)
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
