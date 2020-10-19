@@ -522,17 +522,28 @@ class RandomRotation3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 class RandomMotionBlur3D(AugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 class RandomMotionBlur3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
     r"""Perform motion blur on 3D volumes (5D tensor).
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
     r"""Apply random motion blur on 3D volumes (5D tensor).
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Augmentation documentation update (#730)
+=======
+=======
+class RandomMotionBlur3D(AugmentationBase3D):
+    r"""Perform motion blur on 3D volumes (5D tensor).
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -557,6 +568,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -571,6 +583,9 @@ class RandomMotionBlur3D(AugmentationBase3D):
 
 =======
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
@@ -587,7 +602,17 @@ class RandomMotionBlur3D(AugmentationBase3D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Augmentation documentation update (#730)
+=======
+=======
+
+    Shape:
+        - Input: :math:`(B, C, D, H, W)`
+        - Output: :math:`(B, C, D, H, W)`
+
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 5, 5)
@@ -595,8 +620,12 @@ class RandomMotionBlur3D(AugmentationBase3D):
         >>> motion_blur(input)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
         tensor([[[[[0.1654, 0.4772, 0.2004, 0.3566, 0.2613],
                    [0.4557, 0.3131, 0.4809, 0.2574, 0.2696],
                    [0.2721, 0.5998, 0.3956, 0.5363, 0.1541],
@@ -643,13 +672,39 @@ class RandomMotionBlur3D(AugmentationBase3D):
                    [0.4307, 0.4217, 0.2977, 0.5086, 0.5406],
                    [0.3686, 0.2778, 0.5228, 0.7592, 0.6455],
                    [0.2033, 0.3014, 0.4898, 0.6164, 0.3117]]]]])
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+=======
+=======
+        tensor([[[[[ 0.1654,  5.0626,  3.7446,  6.8393,  3.5563],
+                   [-5.0999,  2.1964,  2.4311, -1.8043,  1.4908],
+                   [-3.2720, -2.1332,  2.1459,  1.7491,  1.3186],
+                   [-2.6045,  5.2450,  6.0367,  1.0320,  6.7205],
+                   [-4.5962, -5.2259, -0.9809, -1.6601,  0.1398]],
+        <BLANKLINE>
+                  [[ 0.1843,  2.6303,  7.0769,  1.3952,  2.1699],
+                   [-6.4852,  0.3011,  0.3557,  4.5564,  5.5316],
+                   [-6.4329,  2.8427,  0.2914,  3.6307,  0.4988],
+                   [-1.2635, -4.5109,  1.3771,  0.8912,  2.1555],
+                   [-1.6038, -3.7698,  0.0352, -0.8663,  0.1607]],
+        <BLANKLINE>
+                  [[ 0.2733,  1.8909,  4.7292,  1.0408,  1.4417],
+                   [-6.8248,  0.8740,  1.4280, -4.1784,  5.0158],
+                   [-3.8589,  2.7687,  2.9419,  3.2143,  6.3996],
+                   [-4.7014, -0.3668, -1.8947,  0.1953,  7.2572],
+                   [-3.5506, -4.1522, -5.3692, -6.4713,  0.3117]]]]])
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     """
 
     def __init__(
             self, kernel_size: Union[int, Tuple[int, int]],
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
             angle: Union[torch.Tensor, float, Tuple[float, float, float],
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
@@ -661,10 +716,13 @@ class RandomMotionBlur3D(AugmentationBase3D):
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
 =======
             angle: Union[torch.Tensor, float, Tuple[float, float]],
+<<<<<<< refs/remotes/kornia/master
 =======
             angle: Union[torch.Tensor, float, Tuple[float, float, float],
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
 >>>>>>> Augmentation documentation update (#730)
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
@@ -672,11 +730,14 @@ class RandomMotionBlur3D(AugmentationBase3D):
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 =======
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         self.angle: torch.Tensor = _tuple_range_reader(angle, 3)
@@ -698,13 +759,20 @@ class RandomMotionBlur3D(AugmentationBase3D):
         return rg.random_motion_blur_generator3d(
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 =======
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 =======
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input)
@@ -714,6 +782,10 @@ class RandomMotionBlur3D(AugmentationBase3D):
 
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 class CenterCrop3D(AugmentationBase3D):
     r"""Apply center crop on 3D volumes (5D tensor).
 
@@ -725,6 +797,7 @@ class CenterCrop3D(AugmentationBase3D):
 =======
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 class CenterCrop3D(AugmentationBase3D):
     r"""Apply center crop on 3D volumes (5D tensor).
 
@@ -743,6 +816,8 @@ class CenterCrop3D(AugmentationBase3D):
 >>>>>>> Augmentation documentation update (#730)
 =======
 =======
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 class CenterCrop3D(AugmentationBase3D):
     r"""Crops a given image tensor at the center.
 

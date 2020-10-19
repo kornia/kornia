@@ -1118,6 +1118,7 @@ class RandomMotionBlur(AugmentationBase2D):
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
@@ -1128,11 +1129,22 @@ class RandomMotionBlur(AugmentationBase2D):
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                keepdim=keepdim)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+=======
+            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
+    ) -> None:
+        super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         angle = cast(torch.Tensor, angle) if isinstance(angle, torch.Tensor) else torch.tensor(angle)
@@ -1155,6 +1167,7 @@ class RandomMotionBlur(AugmentationBase2D):
         return rg.random_motion_blur_generator(
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 =======
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
@@ -1162,6 +1175,13 @@ class RandomMotionBlur(AugmentationBase2D):
 =======
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
+=======
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)

@@ -353,6 +353,51 @@ def random_motion_blur_generator3d(
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
 
+def random_motion_blur_generator3d(
+    batch_size: int,
+    kernel_size: Union[int, Tuple[int, int]],
+    angle: torch.Tensor,
+    direction: torch.Tensor,
+    same_on_batch: bool = False
+) -> Dict[str, torch.Tensor]:
+    r"""Get parameters for motion blur.
+
+    Args:
+        batch_size (int): the tensor batch size.
+        kernel_size (int or (int, int)): motion kernel size (odd and positive) or range.
+        angle (torch.Tensor): yaw, pitch and roll range of the motion blur in degrees :math:`(3, 2)`.
+        direction (torch.Tensor): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with
+            angle provided via angle), while higher values towards 1.0 will point the motion
+            blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Returns:
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+    """
+    if isinstance(kernel_size, int):
+        ksize_factor = torch.tensor([kernel_size] * batch_size)
+    elif isinstance(kernel_size, tuple):
+        # kernel_size is fixed across the batch
+        ksize_factor = _adapted_uniform(
+            (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
+    else:
+        raise TypeError(f"Unsupported type: {type(kernel_size)}")
+
+    assert angle.shape == torch.Size([3, 2]), f"'angle' must be the shape of (3, 2). Got {angle.shape}."
+    yaw = _adapted_uniform((batch_size,), angle[0][0], angle[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), angle[1][0], angle[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), angle[2][0], angle[2][1], same_on_batch)
+    angle_factor = torch.stack([yaw, pitch, roll], dim=1)
+
+    direction_factor = _adapted_uniform(
+        (batch_size,), direction[0], direction[1], same_on_batch)
+
+    return dict(ksize_factor=ksize_factor,
+                angle_factor=angle_factor,
+                direction_factor=direction_factor)
+
+
 def center_crop_generator3d(
     batch_size: int,
     depth: int,

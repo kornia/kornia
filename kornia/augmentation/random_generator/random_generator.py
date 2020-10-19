@@ -983,6 +983,7 @@ def random_motion_blur_generator(
     direction: torch.Tensor,
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32
@@ -994,6 +995,15 @@ def random_motion_blur_generator(
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+    same_on_batch: bool = False,
+    device: torch.device = torch.device('cpu'),
+    dtype: torch.dtype = torch.float32
+=======
+    same_on_batch: bool = False
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for motion blur.
 
@@ -1050,6 +1060,7 @@ def random_motion_blur_generator(
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
+<<<<<<< master
         assert len(kernel_size) == 2, f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}."
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         ksize_factor = _adapted_uniform(
@@ -1059,7 +1070,14 @@ def random_motion_blur_generator(
 =======
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2,
             same_on_batch=True).int() * 2 + 1
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+        ksize_factor = _adapted_uniform(
+            (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 

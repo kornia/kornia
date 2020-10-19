@@ -6,12 +6,19 @@ from math import sqrt
 from kornia.geometry.transform.affwarp import rotate, rotate3d
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 from kornia.utils import _extract_device_dtype
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
 from kornia.utils import _extract_device_dtype
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+=======
+<<<<<<< master
+from kornia.utils import _extract_device_dtype
+=======
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -806,6 +813,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
@@ -906,6 +914,9 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
 =======
     kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
@@ -1004,6 +1015,87 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
         [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
+<<<<<<< refs/remotes/kornia/master
+=======
+=======
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+
+    # Element-wise linspace
+    kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
+        [(direction - (1 / (kernel_tuple[0] - 1)) * i) for i in range(kernel_tuple[0])], dim=-1)
+    kernel = kernel.unsqueeze(1)
+    # rotate (counterclockwise) kernel by given angle
+    kernel = rotate(kernel, angle, mode='nearest', align_corners=True)
+    kernel = kernel[:, 0]
+    kernel = kernel / kernel.sum(dim=(1, 2), keepdim=True)
+
+    return kernel
+
+
+def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float, float, float]],
+                        direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
+    r"""Return 3D motion blur filter.
+
+    Args:
+        kernel_size (int): motion kernel width, height and depth. It should be odd and positive.
+        angle (tensor or float): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+            If tensor, it must be :math:`(B, 3)`.
+        direction (float): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+
+    Returns:
+        torch.Tensor: the motion blur kernel.
+
+    Shape:
+        - Output: :math:`(ksize, ksize)`
+
+    Examples::
+        >>> kornia.filters.get_motion_kernel2d(5, 0., 0.)
+        tensor([[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.2000, 0.2000, 0.2000, 0.2000, 0.2000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]])
+        >>> kornia.filters.get_motion_kernel2d(3, 215., -0.5)
+            tensor([[0.0000, 0.0412, 0.0732],
+                    [0.1920, 0.3194, 0.0804],
+                    [0.2195, 0.0743, 0.0000]])
+    """
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
+        raise TypeError("ksize must be an odd integer >= than 3")
+
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.tensor([angle])
+
+    angle = cast(torch.Tensor, angle)
+    if angle.dim() == 1:
+        angle = angle.unsqueeze(0)
+    assert len(angle.shape) == 2 and angle.size(1) == 3, f"angle must be (B, 3). Got {angle}."
+
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.tensor([direction])
+
+    direction = cast(torch.Tensor, direction)
+    if direction.dim() == 0:
+        direction = direction.unsqueeze(0)
+    assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+
+    assert direction.size(0) == angle.size(0), \
+        f"direction and angle must have the same length. Got {direction} and {angle}."
+
+    kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
+    # direction from [-1, 1] to [0, 1] range
+    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+
+    # Element-wise linspace
+    kernel[:, kernel_tuple[0] // 2, kernel_tuple[0] // 2, :] = torch.stack(
+        [(direction - (1 / (kernel_tuple[0] - 1)) * i) for i in range(kernel_tuple[0])], dim=-1)
+    kernel = kernel.unsqueeze(1)
+    # rotate (counterclockwise) kernel by given angle
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode='nearest', align_corners=True)
     kernel = kernel[:, 0]

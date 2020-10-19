@@ -366,7 +366,11 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                         flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform motion blur on an image.
@@ -421,11 +425,22 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
 =======
 <<<<<<< master
 =======
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
+                        flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Perform motion blur on an image.
+
+    The input image is expected to be in the range of [0, 1].
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
@@ -463,7 +478,42 @@ def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+            - params['ksize_factor']: motion kernel width and height (odd and positive).
+            - params['angle_factor']: yaw, pitch and roll range of the motion blur in degrees :math:`(B, 3)`.
+            - params['direction_factor']: forward/backward direction of the motion blur.
+              Lower values towards -1.0 will point the motion blur towards the back (with
+              angle provided via angle), while higher values towards 1.0 will point the motion
+              blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
+        flags (Dict[str, torch.Tensor]):
+            - flags['border_type']: the padding mode to be applied before convolving.
+              CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+
+    Returns:
+        torch.Tensor: Adjusted image with the shape as the inpute (\*, C, H, W).
+
+    """
+    input = _transform_input3d(input)
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+    kernel_size: int = cast(int, params['ksize_factor'].unique().item())
+    angle = params['angle_factor']
+    direction = params['direction_factor']
+    border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
+
+    return motion_blur3d(input, kernel_size, angle, direction, border_type)
+
+
+def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Apply cropping by src bounding box and dst bounding box.
+
+    Order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+        back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
             - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
         flags (Dict[str, torch.Tensor]):

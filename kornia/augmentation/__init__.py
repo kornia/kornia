@@ -37,10 +37,17 @@ from .augmentation3d import (
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
 <<<<<<< master
+<<<<<<< master
     RandomMotionBlur3D,
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    RandomMotionBlur3D,
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     RandomCrop3D,
     CenterCrop3D,
     RandomEqualize3D
@@ -92,10 +99,17 @@ __all__ = [
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
 <<<<<<< master
+<<<<<<< master
     "RandomMotionBlur3D",
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    "RandomMotionBlur3D",
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
     "RandomAffine3D",
     "RandomCrop3D",
     "CenterCrop3D",
