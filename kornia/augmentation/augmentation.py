@@ -352,16 +352,17 @@ class RandomAffine(AugmentationBase2D):
             If (a, b, c, d), the scale is randomly sampled from the range a <= scale_x <= b, c <= scale_y <= d.
             Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-            will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 2 tuples, then
-            x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in (shear[1][0], shear[1][1]) will be applied.
-            Will not apply shear by default
-        resample (int, str or kornia.Resample): Default: Resample.BILINEAR
-        padding_mode (int, str or kornia.SamplePadding): Default: SamplePadding.ZEROS
+            If float, a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
+            If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be apllied.
+            If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
+            will be applied. Will not apply shear by default.
+        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
+            Default: Resample.BILINEAR.
+        padding_mode (int, str or kornia.SamplePadding): padding mode from "zeros" (0), "border" (1)
+            or "refection" (2). Default: SamplePadding.ZEROS.
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
     Examples:
@@ -397,7 +398,7 @@ class RandomAffine(AugmentationBase2D):
             if len(scale) == 2:
                 self.scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
             elif len(scale) == 4:
-                self.scale = torch.stack([
+                self.scale = torch.cat([
                     _range_bound(scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
                     _range_bound(scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular')
                 ])
