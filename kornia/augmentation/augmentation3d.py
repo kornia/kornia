@@ -430,7 +430,8 @@ class RandomMotionBlur3D(AugmentationBase3D):
 
     def __init__(
             self, kernel_size: Union[int, Tuple[int, int]],
-            angle: Union[torch.Tensor, float, Tuple[float, float]],
+            angle: Union[torch.Tensor, float, Tuple[float, float, float],
+                         Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
