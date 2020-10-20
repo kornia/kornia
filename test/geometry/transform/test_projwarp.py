@@ -9,12 +9,7 @@ import kornia.testing as utils  # test utils
 import kornia.geometry.transform.projwarp as proj
 
 
-@pytest.fixture
-def dtype():
-    return torch.float32
-
-
-class TestWarpProjective:
+class TestWarpAffine3d:
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(1, 3, 4, device=device, dtype=dtype)
@@ -305,9 +300,43 @@ class TestGetRotationMatrix3d:
         assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True)
 
 
+# TODO: make a class
+@pytest.mark.skip("disable for a while")
+@pytest.mark.parametrize("batch_size", [1, 2, 5])
+def test_get_perspective_transform3d(batch_size, device):
+    # generate input data
+    d_max, h_max, w_max = 16, 64, 32  # height, width
+    d = torch.ceil(d_max * torch.rand(batch_size)).to(device)
+    h = torch.ceil(h_max * torch.rand(batch_size)).to(device)
+    w = torch.ceil(w_max * torch.rand(batch_size)).to(device)
+
+    norm = torch.rand(batch_size, 8, 3).to(device)
+    points_src = torch.rand_like(norm)
+    points_dst = points_src + norm
+
+    # compute transform from source to target
+    dst_homo_src = kornia.get_perspective_transform3d(points_src, points_dst)
+
+    assert_allclose(
+        kornia.transform_points(dst_homo_src, points_src), points_dst)
+
+    # compute gradient check
+    points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
+    points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
+    assert gradcheck(
+        kornia.get_perspective_transform, (
+            points_src,
+            points_dst,
+        ),
+        raise_exception=True)
+
+
+# TODO: make a class
+@pytest.mark.skip("disable for a while")
 @pytest.mark.parametrize("batch_size", [1, 2])
-def test_get_perspective_transform3d(batch_size, device, dtype):
-    torch.manual_seed(0)
+def test_get_perspective_transform3d_2(batch_size, device, dtype):
+    import pdb
+    pdb.set_trace()
     src = kornia.bbox_generator3d(
         torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
         torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
@@ -331,7 +360,7 @@ def test_get_perspective_transform3d(batch_size, device, dtype):
             [0.0000, 0.0769, 0.0000, 0.0000],
             [0.0000, 0.0000, 0.5517, 28.7930],
             [0.0000, 0.0000, 0.0000, 1.0000]
-        ]])
+        ]], device=device, dtype=dtype)
     if batch_size == 2:
         expected = torch.tensor([
             [[0.9630, 0.0000, 0.0000, -9.3702],
@@ -342,7 +371,7 @@ def test_get_perspective_transform3d(batch_size, device, dtype):
              [0.0000, 2.0000, 0.0000, -14.0000],
              [0.0000, 0.0000, 0.3830, 16.8940],
              [0.0000, 0.0000, 0.0000, 1.0000]],
-        ])
+        ], device=device, dtype=dtype)
 
     assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 
