@@ -1,9 +1,9 @@
-from typing import Tuple, Union
+from typing import Tuple
 
 import torch
 
 from kornia.geometry.transform.projwarp import (
-    get_perspective_transform3d, get_projective_transform, warp_affine3d
+    get_perspective_transform3d, warp_affine3d
 )
 
 __all__ = [
@@ -450,13 +450,13 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     for m, box in zip(mask, boxes):
         m = m.index_fill(0, torch.arange(
             box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long
-            ), torch.tensor(1, device=box.device, dtype=box.dtype))
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
         m = m.index_fill(1, torch.arange(
             box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long
-            ), torch.tensor(1, device=box.device, dtype=box.dtype))
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
         m = m.index_fill(2, torch.arange(
             box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long
-            ), torch.tensor(1, device=box.device, dtype=box.dtype))
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
         m = m.unsqueeze(dim=0)
         m_out = torch.ones_like(m)
         m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)
