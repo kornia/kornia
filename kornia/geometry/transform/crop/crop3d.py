@@ -1,9 +1,9 @@
-from typing import Tuple, Union
+from typing import Tuple
 
 import torch
 
 from kornia.geometry.transform.projwarp import (
-    get_perspective_transform3d, get_projective_transform, warp_affine3d
+    get_perspective_transform3d, warp_affine3d
 )
 
 __all__ = [
@@ -350,12 +350,12 @@ def infer_box_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, 
     """
     validate_bboxes3d(boxes)
 
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
+    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = (left - right + 1)[:, 0]
 
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
+    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
     heights = (bot - upper + 1)[:, 0]
 
     depths = (boxes[:, 4:, 2] - boxes[:, :4, 2] + 1)[:, 0]
@@ -376,14 +376,14 @@ def validate_bboxes3d(boxes: torch.Tensor) -> None:
     assert len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3]), \
         f"Box shape must be (B, 8, 3). Got {boxes.shape}."
 
-    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6]))[:, :, 0]
-    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7]))[:, :, 0]
+    left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
+    right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
     widths = (left - right + 1)
     assert torch.allclose(widths.permute(1, 0), widths[:, 0]), \
         f"Boxes must have be cube, while get different widths {widths}."
 
-    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7]))[:, :, 1]
-    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5]))[:, :, 1]
+    bot = torch.index_select(boxes, 1, torch.tensor([2, 3, 6, 7], device=boxes.device, dtype=torch.long))[:, :, 1]
+    upper = torch.index_select(boxes, 1, torch.tensor([0, 1, 4, 5], device=boxes.device, dtype=torch.long))[:, :, 1]
     heights = (bot - upper + 1)
     assert torch.allclose(heights.permute(1, 0), heights[:, 0]), \
         f"Boxes must have be cube, while get different heights {heights}."
@@ -448,9 +448,15 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     mask_out = []
     # TODO: Looking for a vectorized way
     for m, box in zip(mask, boxes):
-        m = m.index_fill(0, torch.arange(box[0, 2].item(), box[4, 2].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(1, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
-        m = m.index_fill(2, torch.arange(box[0, 0].item(), box[1, 0].item() + 1, dtype=torch.long), torch.tensor(1))
+        m = m.index_fill(0, torch.arange(
+            box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
+        m = m.index_fill(1, torch.arange(
+            box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
+        m = m.index_fill(2, torch.arange(
+            box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long
+        ), torch.tensor(1, device=box.device, dtype=box.dtype))
         m = m.unsqueeze(dim=0)
         m_out = torch.ones_like(m)
         m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)
