@@ -292,12 +292,11 @@ class TestGetRotationMatrix3d:
         ], device=device, dtype=dtype)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.skip("Not working")
     def test_gradcheck(self, device, dtype):
         # generate input data
-        center = torch.rand(1, 3, device=device, dtype=dtype, requires_grad=True)
-        angle = torch.rand(1, 3, device=device, dtype=dtype)
-        scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=dtype)
+        center = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
+        angle = torch.rand(1, 3, device=device, dtype=torch.float64)
+        scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=torch.float64)
         assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True)
 
 
@@ -327,7 +326,7 @@ class TestPerspectiveTransform3D:
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(points_dst)  # to var
         assert gradcheck(
-            kornia.get_perspective_transform, (
+            kornia.get_perspective_transform3d, (
                 points_src,
                 points_dst,
             ),
