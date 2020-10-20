@@ -333,26 +333,25 @@ class TestPerspectiveTransform3D:
             ),
             raise_exception=True)
 
-    @pytest.mark.skip("Breaks in CUDA, values are different from CPU")
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_get_perspective_transform3d_2(self, batch_size, device, dtype):
         torch.manual_seed(0)
         src = kornia.bbox_generator3d(
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-        )
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+        ).to(device=device, dtype=dtype)
         dst = kornia.bbox_generator3d(
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint_like(torch.ones(batch_size), 0, 50, device=device, dtype=dtype),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-            torch.randint(0, 50, (1,), device=device, dtype=dtype).repeat(batch_size),
-        )
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint_like(torch.ones(batch_size), 0, 50, dtype=dtype),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+            torch.randint(0, 50, (1,), dtype=dtype).repeat(batch_size),
+        ).to(device=device, dtype=dtype)
         out = kornia.get_perspective_transform3d(src, dst)
         if batch_size == 1:
             expected = torch.tensor([[
