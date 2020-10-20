@@ -35,6 +35,15 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> x = torch.eye(3).repeat(3, 1, 1)
         >>> seq = RandomHorizontalFlip3D(p=1.0, return_transform=True)
@@ -103,6 +112,15 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> x = torch.eye(3).repeat(3, 1, 1)
         >>> seq = RandomVerticalFlip3D(p=1.0, return_transform=True)
@@ -161,6 +179,15 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -251,6 +278,15 @@ class RandomAffine3D(AugmentationBase3D):
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -381,6 +417,15 @@ class RandomRotation3D(AugmentationBase3D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
@@ -445,8 +490,12 @@ class RandomMotionBlur3D(AugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 =======
 class RandomMotionBlur3D(AugmentationBase3D):
+<<<<<<< refs/remotes/kornia/master
     r"""Perform motion blur on 3D volumes (5D tensor).
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+    r"""Apply random motion blur on 3D volumes (5D tensor).
+>>>>>>> Augmentation documentation update (#730)
 
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
@@ -485,10 +534,18 @@ class RandomMotionBlur3D(AugmentationBase3D):
 =======
 
     Shape:
-        - Input: :math:`(B, C, D, H, W)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
         - Output: :math:`(B, C, D, H, W)`
 
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
+>>>>>>> Augmentation documentation update (#730)
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 5, 5)
@@ -536,6 +593,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
     def __init__(
             self, kernel_size: Union[int, Tuple[int, int]],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             angle: Union[torch.Tensor, float, Tuple[float, float, float],
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
@@ -546,6 +604,10 @@ class RandomMotionBlur3D(AugmentationBase3D):
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
 =======
             angle: Union[torch.Tensor, float, Tuple[float, float]],
+=======
+            angle: Union[torch.Tensor, float, Tuple[float, float, float],
+                         Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
+>>>>>>> Augmentation documentation update (#730)
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
@@ -598,14 +660,20 @@ class CenterCrop3D(AugmentationBase3D):
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 class CenterCrop3D(AugmentationBase3D):
-    r"""Crops a given image tensor at the center.
+    r"""Apply center crop on 3D volumes (5D tensor).
 
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.
+<<<<<<< refs/remotes/kornia/master
         size (sequence or int): Desired output size of the crop. If size is an
             int instead of sequence like (d, h, w), a square crop (size, size, size) is
             made.
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        size (Tuple[int, int, int] or int): Desired output size (out_d, out_h, out_w) of the crop.
+            If integer, out_d = out_h = out_w = size.
+            If Tuple[int, int, int], out_d = size[0], out_h = size[1], out_w = size[2].
+>>>>>>> Augmentation documentation update (#730)
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
@@ -645,6 +713,15 @@ class CenterCrop3D(AugmentationBase3D):
                   [[-0.6136,  0.0316],
                    [ 0.6408,  0.4412]]]]])
 =======
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, out_d, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -705,6 +782,7 @@ class CenterCrop3D(AugmentationBase3D):
 
 class RandomCrop3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     r"""Apply random crop on 3D volumes (5D tensor).
 
     Crops random sub-volumes on a given size.
@@ -720,6 +798,16 @@ class RandomCrop3D(AugmentationBase3D):
         p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
         size (tuple): Desired output size of the crop, like (d, h, w).
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+    r"""Apply random crop on 3D volumes (5D tensor).
+
+    Crops random sub-volumes on a given size.
+
+    Args:
+        p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
+        size (Tuple[int, int, int]): Desired output size (out_d, out_h, out_w) of the crop.
+            Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
+>>>>>>> Augmentation documentation update (#730)
         padding (int or sequence, optional): Optional padding on each border of the image.
             Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to pad
             left, top, right, bottom, front, back borders respectively.
@@ -752,6 +840,15 @@ class RandomCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, , out_d, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -866,10 +963,14 @@ class RandomCrop3D(AugmentationBase3D):
 
 class RandomPerspective3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     r"""Apply andom perspective transformation to 3D volumes (5D tensor).
 =======
     r"""Applies a random perspective transformation to an image tensor with a given probability.
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+    r"""Apply andom perspective transformation to 3D volumes (5D tensor).
+>>>>>>> Augmentation documentation update (#730)
 
     Args:
         p (float): probability of the image being perspectively transformed. Default value is 0.5.
@@ -893,6 +994,15 @@ class RandomPerspective3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -978,6 +1088,15 @@ class RandomEqualize3D(AugmentationBase3D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
+
+    Shape:
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Output: :math:`(B, C, D, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
