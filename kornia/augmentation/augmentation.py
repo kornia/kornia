@@ -40,6 +40,15 @@ class RandomHorizontalFlip(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],
@@ -71,18 +80,21 @@ class RandomVerticalFlip(AugmentationBase2D):
 
     r"""Applies a random vertical flip to a tensor image or a batch of tensor images with a given probability.
 
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will Vertically flip the tensors and concatenate the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
-
     Args:
         p (float): probability of the image being flipped. Default value is 0.5
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
@@ -115,8 +127,6 @@ class ColorJitter(AugmentationBase2D):
 
     r"""Applies a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
-
     Args:
         p (float): probability of applying the transformation. Default value is 1.
         brightness (float or tuple): Default value is 0.
@@ -127,6 +137,15 @@ class ColorJitter(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -184,6 +203,15 @@ class RandomGrayscale(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn((1, 3, 3, 3))
@@ -234,6 +262,15 @@ class RandomErasing(AugmentationBase2D):
         ratio (Tuple[float, float]): range of aspect ratio of erased area.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
@@ -282,6 +319,15 @@ class RandomPerspective(AugmentationBase2D):
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -365,6 +411,15 @@ class RandomAffine(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3)
@@ -443,11 +498,20 @@ class CenterCrop(AugmentationBase2D):
 
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.
-        size (sequence or int): Desired output size of the crop. If size is an
-            int instead of sequence like (h, w), a square crop (size, size) is
-            made.
+        size (Tuple[int, int] or int): Desired output size (out_h, out_w) of the crop.
+            If integer,  out_h = out_w = size.
+            If Tuple[int, int], out_h = size[0], out_w = size[1].
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -498,12 +562,6 @@ class CenterCrop(AugmentationBase2D):
 class RandomRotation(AugmentationBase2D):
     r"""Applies a random rotation to a tensor image or a batch of tensor images given an amount of degrees.
 
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
-    If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
-    the corresponding transformation matrix that has been applied to them. In this case the module
-    will rotate the tensors and concatenate the corresponding transformation matrix to the
-    previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
-
     Args:
         p (float): probability of applying the transformation. Default value is 0.5.
         degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
@@ -514,6 +572,15 @@ class RandomRotation(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -572,7 +639,8 @@ class RandomCrop(AugmentationBase2D):
 
     Args:
         p (float): probability of applying the transformation for the whole batch. Default value is 1.0.
-        size (tuple): Desired output size of the crop, like (h, w).
+        size (Tuple[int, int]): Desired output size (out_h, out_w) of the crop.
+            Must be Tuple[int, int], then out_h = size[0], out_w = size[1].
         padding (int or sequence, optional): Optional padding on each border
             of the image. Default is None, i.e no padding. If a sequence of length
             4 is provided, it is used to pad left, top, right, bottom borders
@@ -591,6 +659,15 @@ class RandomCrop(AugmentationBase2D):
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners(bool): interpolation flag. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -676,7 +753,8 @@ class RandomResizedCrop(AugmentationBase2D):
     r"""Crops random patches in an image tensor and resizes to a given size.
 
     Args:
-        size (Tuple[int, int]): expected output size of each edge.
+        size (Tuple[int, int]): Desired output size (out_h, out_w) of each edge.
+            Must be Tuple[int, int], then out_h = size[0], out_w = size[1].
         scale: range of size of the origin size cropped.
         ratio: range of aspect ratio of the origin aspect ratio cropped.
         resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
@@ -685,6 +763,15 @@ class RandomResizedCrop(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -761,8 +848,13 @@ class RandomMotionBlur(AugmentationBase2D):
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -827,9 +919,15 @@ class RandomSolarize(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -886,8 +984,13 @@ class RandomPosterize(AugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -937,9 +1040,15 @@ class RandomSharpness(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -1001,9 +1110,15 @@ class RandomEqualize(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+
     Shape:
-        - Input: :math:`(B, C, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
         - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
