@@ -21,7 +21,6 @@ from kornia.augmentation import (
     RandomEqualize3D
 )
 
-torch.set_printoptions(edgeitems=8)
 
 class TestRandomHorizontalFlip3D:
 
@@ -696,16 +695,16 @@ class TestRandomRotation3D:
 
         expected = expected.to(device)
 
-        expected_transform = torch.tensor([[[ 0.8369,  0.0343, -0.5463,  0.7395],
-                                            [-0.5104,  0.4091, -0.7563,  2.4083],
-                                            [ 0.1976,  0.9118,  0.3599, -1.0240],
-                                            [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+        expected_transform = torch.tensor([[[0.8369, 0.0343, -0.5463, 0.7395],
+                                            [-0.5104, 0.4091, -0.7563, 2.4083],
+                                            [0.1976, 0.9118, 0.3599, -1.0240],
+                                            [0.0000, 0.0000, 0.0000, 1.0000]]])
         expected_transform = expected_transform.to(device)
 
-        expected_transform_2 = torch.tensor([[[ 0.9869, -0.1351,  0.0879,  0.1343],
-                                              [ 0.1598,  0.7501, -0.6417,  0.7769],
-                                              [ 0.0208,  0.6474,  0.7619, -0.7641],
-                                              [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+        expected_transform_2 = torch.tensor([[[0.9869, -0.1351, 0.0879, 0.1343],
+                                              [0.1598, 0.7501, -0.6417, 0.7769],
+                                              [0.0208, 0.6474, 0.7619, -0.7641],
+                                              [0.0000, 0.0000, 0.0000, 1.0000]]])
         expected_transform_2 = expected_transform_2.to(device)
 
         out, mat = f(input)
