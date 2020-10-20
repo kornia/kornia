@@ -25,7 +25,10 @@ version = '0.4.2'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+<<<<<<< refs/remotes/kornia/master
     '0.4.2': '>=1.5.1',
+=======
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
     '0.4.1': '>=1.6.0',
     '0.4.0': '>=1.6.0,<1.7.0',
     '0.3.2': '>=1.5.0,<1.6.0',

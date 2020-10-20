@@ -12,10 +12,14 @@ from torch.autograd import gradcheck
 
 class TestBoundingBoxInferring3D:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     def test_bounding_boxes_dim_inferring(self, device, dtype):
 =======
     def test_bounding_boxes_dim_inferring(self, device):
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+    def test_bounding_boxes_dim_inferring(self, device, dtype):
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
         boxes = torch.tensor([
             [[0, 1, 2],
              [10, 1, 2],
@@ -33,6 +37,7 @@ class TestBoundingBoxInferring3D:
              [43, 4, 65],
              [43, 54, 65],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
              [3, 54, 65]
              ]], device=device, dtype=dtype)  # 2x8x3
         d, h, w = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
@@ -48,6 +53,15 @@ class TestBoundingBoxInferring3D:
         assert (h == torch.tensor([21, 51])).all()
         assert (w == torch.tensor([11, 41])).all()
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+             [3, 54, 65]
+             ]], device=device, dtype=dtype)  # 2x8x3
+        d, h, w = kornia.geometry.transform.crop.infer_box_shape3d(boxes)
+
+        assert_allclose(d, torch.tensor([31., 61.], device=device, dtype=dtype))
+        assert_allclose(h, torch.tensor([21., 51.], device=device, dtype=dtype))
+        assert_allclose(w, torch.tensor([11., 41.], device=device, dtype=dtype))
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
 
     def test_gradcheck(self, device, dtype):
         boxes = torch.tensor([[
@@ -237,6 +251,7 @@ class TestCenterCrop3D:
         assert_allclose(actual, expected)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
     def test_jit_trace(self, device, dtype):
         # Define script
@@ -260,6 +275,8 @@ class TestCenterCrop3D:
         assert_allclose(actual, expected)
 
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
 
 class TestCropByBoxes3D:
     def test_crop_by_boxes_no_resizing(self, device, dtype):

@@ -131,10 +131,14 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
     """
     w = input.shape[-1]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
 =======
     return input[..., torch.arange(w - 1, -1, -1)]
 >>>>>>> Accelerate augmentations (#708)
+=======
+    return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
 
 
 def vflip(input: torch.Tensor) -> torch.Tensor:
@@ -151,7 +155,11 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
 
     h = input.shape[-2]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     return input[..., torch.arange(h - 1, -1, -1, device=input.device), :]
 =======
     return input[..., torch.arange(h - 1, -1, -1), :]
 >>>>>>> Accelerate augmentations (#708)
+=======
+    return input[..., torch.arange(h - 1, -1, -1, device=input.device), :]
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)

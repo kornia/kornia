@@ -221,12 +221,18 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
     assert src.device == dst.device and src.dtype == dst.dtype, (
         f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
         f"with the same dtype (Got {src.dtype}, {dst.dtype})."
     )
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> [Fix] gpu tests for crop3d and flip (#727)
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
