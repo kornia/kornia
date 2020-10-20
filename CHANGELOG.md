@@ -17,7 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `decompose 3x4projection matrix` ([#650](https://github.com/kornia/kornia/pull/650))
 - Added `normalize_min_max` functionality ([#684](https://github.com/kornia/kornia/pull/684))
 - Added `random equalize3d` ([#653](https://github.com/kornia/kornia/pull/653))
+- Added 3D motion blur ([#713](https://github.com/kornia/kornia/pull/713))
 - Added 3D volumetric crop implementation ([#689](https://github.com/kornia/kornia/pull/689))
+  - `warp_affine3d`
+  - `warp_perspective3d`
+  - `get_perspective_transform3d`
+  - `crop_by_boxes3d`
+  - `warp_grid3d`
+
 
 ### Changed
 - Replace convolution with `unfold` in `contrib.extract_tensor_patches` ([#626](https://github.com/kornia/kornia/pull/626))
@@ -39,3 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix/random perspective returns wrong transformation matrix ([#667](https://github.com/kornia/kornia/pull/667))
 - Fixes Zca inverse transform ([#695](https://github.com/kornia/kornia/pull/695))
 - Fixes Affine scale bug ([#714](https://github.com/kornia/kornia/pull/714))
+
+## Removed
+- Removed `warp_projective` ([#689](https://github.com/kornia/kornia/pull/689))
