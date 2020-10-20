@@ -13,6 +13,8 @@ from .utils import (
     _infer_batch_shape3d,
     _transform_input,
     _transform_input3d,
+    _transform_shape,
+    _transform_shape3d,
     _validate_input_dtype,
     _adapted_sampling
 )
@@ -143,14 +145,15 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def __infer_input__(  # type: ignore
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> Tuple[torch.Tensor, Tuple, Optional[torch.Tensor]]:
         if isinstance(input, tuple):
-            in_tensor = self.transform_tensor(input[0])
+            in_tensor: torch.Tensor = input[0]
+            in_tensor_shape = self.transform_tensor(in_tensor)
             in_transformation = input[1]
-            return (in_tensor, in_transformation)
+            return input[0], in_tensor_shape, in_transformation
         else:
-            in_tensor = self.transform_tensor(input)
-            return in_tensor, None
+            in_tensor_shape = self.transform_tensor(input)
+            return input, in_tensor_shape, None
 
     def apply_func(self, in_tensor: torch.Tensor, in_transform: Optional[torch.Tensor],  # type: ignore
                    params: Dict[str, torch.Tensor], return_transform: bool = False
@@ -190,8 +193,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
-        in_tensor, in_transform = self.__infer_input__(input)
-        batch_shape = in_tensor.shape
+        in_tensor, batch_shape, in_transform = self.__infer_input__(input)
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -221,10 +223,10 @@ class AugmentationBase2D(_AugmentationBase):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
+    def transform_tensor(self, input: torch.Tensor) -> tuple:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-        return _transform_input(input)
+        return _transform_shape(input)
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""

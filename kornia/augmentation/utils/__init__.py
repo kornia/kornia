@@ -8,7 +8,9 @@ from kornia.augmentation.utils.helpers import (
     _infer_batch_shape,
     _infer_batch_shape3d,
     _transform_input,
+    _transform_shape,
     _transform_input3d,
+    _transform_shape3d,
     _validate_input_dtype,
     _validate_shape,
     _validate_input_shape,
@@ -17,6 +19,7 @@ from kornia.augmentation.utils.helpers import (
     _adapted_uniform,
     _adapted_beta,
     _shape_validation,
+    _apply_keep_shape
 )
 
 __all__ = [
@@ -36,4 +39,7 @@ __all__ = [
     "_joint_range_check",
     "_singular_range_check",
     "_tuple_range_reader",
+    "_transform_shape",
+    "_transform_shape3d",
+    "_apply_keep_shape"
 ]
