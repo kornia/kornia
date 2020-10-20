@@ -65,6 +65,15 @@ class RandomHorizontalFlip(AugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],
@@ -116,6 +125,15 @@ class RandomVerticalFlip(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -181,6 +199,15 @@ class ColorJitter(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -302,6 +329,15 @@ class RandomGrayscale(AugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn((1, 3, 3, 3))
@@ -377,6 +413,15 @@ class RandomErasing(AugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)
@@ -441,6 +486,15 @@ class RandomPerspective(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -548,6 +602,15 @@ class RandomAffine(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -666,6 +729,15 @@ class CenterCrop(AugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 4, 4)
@@ -744,6 +816,15 @@ class RandomRotation(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -847,6 +928,15 @@ class RandomCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -981,6 +1071,15 @@ class RandomResizedCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, out_h, out_w)`
+
+    Note:
+        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation tensor and returned.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1206,6 +1305,7 @@ class RandomSolarize(AugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 =======
@@ -1214,6 +1314,13 @@ class RandomSolarize(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+=======
+>>>>>>> Augmentation documentation update (#730)
+>>>>>>> Augmentation documentation update (#730)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1341,14 +1448,21 @@ class RandomSharpness(AugmentationBase2D):
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Augmentation documentation update (#730)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 =======
 >>>>>>> Augmentation documentation update (#730)
+<<<<<<< refs/remotes/kornia/master
 =======
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+>>>>>>> Augmentation documentation update (#730)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1422,6 +1536,7 @@ class RandomEqualize(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                                       wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
@@ -1433,6 +1548,15 @@ class RandomEqualize(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+                                      wont be concatenated.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+=======
+                                      wont be concatenated
+>>>>>>> Augmentation documentation update (#730)
+>>>>>>> Augmentation documentation update (#730)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
