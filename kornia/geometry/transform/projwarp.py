@@ -220,6 +220,10 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     if not (src.shape[0] == dst.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
+    assert src.device == dst.device and src.dtype == dst.dtype, (
+        f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
+        f"with the same dtype (Got {src.dtype}, {dst.dtype})."
+    )
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
