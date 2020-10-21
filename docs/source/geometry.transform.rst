@@ -6,9 +6,11 @@ kornia.geometry.transform
 The functions in this section perform various geometrical transformations of 2D images.
 
 .. autofunction:: warp_perspective
+.. autofunction:: warp_perspective3d
 .. autofunction:: warp_affine
-.. autofunction:: warp_projective
+.. autofunction:: warp_affine3d
 .. autofunction:: get_perspective_transform
+.. autofunction:: get_perspective_transform3d
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
 .. autofunction:: get_shear_matrix2d
