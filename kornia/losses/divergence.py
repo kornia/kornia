@@ -9,8 +9,8 @@ def _kl_div_2d(p, q):
     # D_KL(P || Q)
     batch, chans, height, width = p.shape
     unsummed_kl = F.kl_div(
-        q.view(batch * chans, height * width).log(),
-        p.view(batch * chans, height * width),
+        q.reshape(batch * chans, height * width).log(),
+        p.reshape(batch * chans, height * width),
         reduction='none',
     )
     kl_values = unsummed_kl.sum(-1).view(batch, chans)
