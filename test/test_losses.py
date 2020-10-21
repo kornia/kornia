@@ -256,6 +256,30 @@ class TestDivergenceLoss:
         actual = kornia.losses.kl_div_loss_2d(input.to(device), target.to(device), reduction='none')
         assert_allclose(actual, expected.to(device))
 
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.0),
+        (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), math.inf),
+    ])
+    def test_noncontiguous_kl(self, device, input, target, expected):
+        input = input.to(device).view(input.shape[::-1]).T
+        target = target.to(device).view(target.shape[::-1]).T
+        actual = kornia.losses.kl_div_loss_2d(input, target).item()
+        assert_allclose(actual, expected)
+
+    @pytest.mark.parametrize('input,target,expected', [
+        (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
+        (torch.full((1, 7, 2, 4), 0.125), torch.zeros((1, 7, 2, 4)), 0.346574),
+        (torch.zeros((1, 7, 2, 4)), torch.full((1, 7, 2, 4), 0.125), 0.346574),
+    ])
+    def test_noncontiguous_js(self, device, input, target, expected):
+        input = input.to(device).view(input.shape[::-1]).T
+        target = target.to(device).view(target.shape[::-1]).T
+        actual = kornia.losses.js_div_loss_2d(input, target).item()
+        assert_allclose(actual, expected)
+
     def test_gradcheck_kl(self, device):
         input = torch.rand(1, 1, 10, 16).to(device)
         target = torch.rand(1, 1, 10, 16).to(device)
