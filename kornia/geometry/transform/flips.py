@@ -124,7 +124,7 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     """
     w = input.shape[-1]
-    return input[..., torch.arange(w - 1, -1, -1)]
+    return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
 
 
 def vflip(input: torch.Tensor) -> torch.Tensor:
@@ -140,4 +140,4 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
     """
 
     h = input.shape[-2]
-    return input[..., torch.arange(h - 1, -1, -1), :]
+    return input[..., torch.arange(h - 1, -1, -1, device=input.device), :]

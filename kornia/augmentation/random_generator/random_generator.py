@@ -170,12 +170,12 @@ def random_affine_generator(
     # compute tensor ranges
     if scale is not None:
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
-        scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
-        if len(scale) == 4:
+        _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
+        if len(_scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
-            scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
+            _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
-        scale = torch.ones((batch_size, 2))
+        _scale = torch.ones((batch_size, 2))
 
     if translate is not None:
         _joint_range_check(cast(torch.Tensor, translate), "translate")
@@ -202,7 +202,7 @@ def random_affine_generator(
 
     return dict(translations=translations,
                 center=center,
-                scale=scale,
+                scale=_scale,
                 angle=angle,
                 sx=sx,
                 sy=sy)
@@ -291,6 +291,7 @@ def random_crop_generator(
         size = torch.tensor(size).repeat(batch_size, 1)
     assert size.shape == torch.Size([batch_size, 2]), \
         f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
+    size = size.long()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1
@@ -514,13 +515,13 @@ def random_motion_blur_generator(
     kernel_size: Union[int, Tuple[int, int]],
     angle: torch.Tensor,
     direction: torch.Tensor,
-    same_on_batch: bool = True
+    same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for motion blur.
 
     Args:
         batch_size (int): the tensor batch size.
-        kernel_size (int or (int, int)): motion kernel width and height (odd and positive).
+        kernel_size (int or (int, int)): motion kernel size (odd and positive) or range.
         angle (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
         direction (torch.Tensor): forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with
@@ -537,9 +538,9 @@ def random_motion_blur_generator(
     if isinstance(kernel_size, int):
         ksize_factor = torch.tensor([kernel_size] * batch_size)
     elif isinstance(kernel_size, tuple):
-        ksize_x, ksize_y = kernel_size
+        # kernel_size is fixed across the batch
         ksize_factor = _adapted_uniform(
-            (batch_size,), ksize_x // 2, ksize_y // 2, same_on_batch).int() * 2 + 1
+            (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
