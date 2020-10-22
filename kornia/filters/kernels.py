@@ -431,11 +431,21 @@ def get_gaussian_kernel1d(kernel_size: int,
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
 =======
 
+<<<<<<< master
         >>> get_gaussian_kernel1d(3, 2.5)
         tensor([0.3243, 0.3513, 0.3243])
 
         >>> get_gaussian_kernel1d(5, 1.5)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+=======
+        >>> kornia.filters.get_gaussian_kernel1d(3, 2.5)
+        tensor([0.3243, 0.3513, 0.3243])
+
+        >>> kornia.filters.get_gaussian_kernel1d(5, 1.5)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
     if (not isinstance(kernel_size, int) or (
@@ -469,6 +479,7 @@ def get_gaussian_discrete_kernel1d(kernel_size: int,
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Examples:
 
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
@@ -478,6 +489,9 @@ def get_gaussian_discrete_kernel1d(kernel_size: int,
 =======
     Examples::
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
     Examples:
 >>>>>>> [Feat] Enabled doctest for CI (#641)
 
@@ -489,7 +503,18 @@ def get_gaussian_discrete_kernel1d(kernel_size: int,
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
 =======
         >>> get_gaussian_discrete_kernel1d(5, 1.5)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+=======
+    Examples::
+
+        >>> kornia.filters.get_gaussian_discrete_kernel1d(3, 2.5)
+        tensor([0.3235, 0.3531, 0.3235])
+
+        >>> kornia.filters.get_gaussian_discrete_kernel1d(5, 1.5)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([0.1096, 0.2323, 0.3161, 0.2323, 0.1096])
     """
     if (not isinstance(kernel_size, int) or (
@@ -523,6 +548,7 @@ def get_gaussian_erf_kernel1d(kernel_size: int,
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Examples:
 
         >>> get_gaussian_erf_kernel1d(3, 2.5)
@@ -532,6 +558,9 @@ def get_gaussian_erf_kernel1d(kernel_size: int,
 =======
     Examples::
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
     Examples:
 >>>>>>> [Feat] Enabled doctest for CI (#641)
 
@@ -543,7 +572,18 @@ def get_gaussian_erf_kernel1d(kernel_size: int,
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
 =======
         >>> get_gaussian_erf_kernel1d(5, 1.5)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+=======
+    Examples::
+
+        >>> kornia.filters.get_gaussian_erf_kernel1d(3, 2.5)
+        tensor([0.3245, 0.3511, 0.3245])
+
+        >>> kornia.filters.get_gaussian_erf_kernel1d(5, 1.5)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([0.1226, 0.2331, 0.2887, 0.2331, 0.1226])
     """
     if (not isinstance(kernel_size, int) or (
@@ -578,6 +618,10 @@ def get_gaussian_kernel2d(
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
     Examples:
         >>> get_gaussian_kernel2d((3, 3), (1.5, 1.5))
         tensor([[0.0947, 0.1183, 0.0947],
@@ -594,6 +638,7 @@ def get_gaussian_kernel2d(
 
         >>> kornia.filters.get_gaussian_kernel2d((3, 5), (1.5, 1.5))
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+<<<<<<< refs/remotes/kornia/master
 =======
     Examples:
         >>> get_gaussian_kernel2d((3, 3), (1.5, 1.5))
@@ -602,6 +647,8 @@ def get_gaussian_kernel2d(
                 [0.0947, 0.1183, 0.0947]])
         >>> get_gaussian_kernel2d((3, 5), (1.5, 1.5))
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
@@ -640,6 +687,7 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Examples:
         >>> get_laplacian_kernel1d(3)
         tensor([ 1., -2.,  1.])
@@ -652,11 +700,24 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
         >>> kornia.filters.get_laplacian_kernel(5)
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
     Examples:
         >>> get_laplacian_kernel1d(3)
         tensor([ 1., -2.,  1.])
         >>> get_laplacian_kernel1d(5)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+=======
+    Examples::
+        >>> kornia.filters.get_laplacian_kernel(3)
+        tensor([ 1., -2.,  1.])
+
+        >>> kornia.filters.get_laplacian_kernel(5)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
@@ -682,6 +743,10 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
     Examples:
         >>> get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
@@ -698,6 +763,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
         >>> kornia.filters.get_laplacian_kernel2d(5)
 >>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
+<<<<<<< refs/remotes/kornia/master
 =======
     Examples:
         >>> get_laplacian_kernel2d(3)
@@ -706,6 +772,8 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
                 [ 1.,  1.,  1.]])
         >>> get_laplacian_kernel2d(5)
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+>>>>>>> [Feat] Adds discrete gaussian from project-monai (#736)
         tensor([[  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1., -24.,   1.,   1.],
