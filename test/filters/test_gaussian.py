@@ -16,6 +16,22 @@ def test_get_gaussian_kernel(window_size, sigma):
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("window_size", [5, 11])
+@pytest.mark.parametrize("sigma", [1.5, 5.0])
+def test_get_gaussian_discrete_kernel(window_size, sigma):
+    kernel = kornia.get_gaussian_discrete_kernel1d(window_size, sigma)
+    assert kernel.shape == (window_size,)
+    assert kernel.sum().item() == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("window_size", [5, 11])
+@pytest.mark.parametrize("sigma", [1.5, 5.0])
+def test_get_gaussian_erf_kernel(window_size, sigma):
+    kernel = kornia.get_gaussian_erf_kernel1d(window_size, sigma)
+    assert kernel.shape == (window_size,)
+    assert kernel.sum().item() == pytest.approx(1.0)
+
+
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [1.5, 2.1])

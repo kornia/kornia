@@ -15,6 +15,8 @@ from .kernels import (
     get_diff_kernel2d,
     get_spatial_gradient_kernel2d,
     get_gaussian_kernel1d,
+    get_gaussian_discrete_kernel1d,
+    get_gaussian_erf_kernel1d,
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
@@ -24,6 +26,8 @@ from .kernels import (
 
 __all__ = [
     "get_gaussian_kernel1d",
+    "get_gaussian_discrete_kernel1d",
+    "get_gaussian_erf_kernel1d",
     "get_gaussian_kernel2d",
     "get_laplacian_kernel1d",
     "get_laplacian_kernel2d",
