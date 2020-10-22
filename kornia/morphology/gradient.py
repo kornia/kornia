@@ -1,9 +1,11 @@
 from kornia.morphology import Dilate, Erode
 import torch
 
+
 def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
-        Returns the morphological gradient of an image, (that means, dilation - erosion) applying the same kernel in each channel.
+        Returns the morphological gradient of an image,
+        (that means, dilation - erosion) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.
 
         Args
@@ -19,4 +21,4 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> gradient_img = gradient(tensor, kernel)
         """
 
-    return Dilate(kernel)(tensor)-Erode(kernel)(tensor)
+    return Dilate(kernel)(tensor) - Erode(kernel)(tensor)

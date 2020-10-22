@@ -1,6 +1,7 @@
 from kornia.morphology import Dilate, Erode
 import torch
 
+
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
         Returns the closed image, (that means, dilation after an erosion) applying the same kernel in each channel.
