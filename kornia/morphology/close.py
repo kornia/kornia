@@ -1,5 +1,5 @@
 from kornia.morphology import Dilate, Erode
-
+import torch
 
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""

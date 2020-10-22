@@ -1,5 +1,5 @@
 from kornia.morphology import close
-
+import torch
 
 def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""

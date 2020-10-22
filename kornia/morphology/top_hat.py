@@ -1,4 +1,5 @@
 from kornia.morphology import open
+import torch
 
 
 def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:

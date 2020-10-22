@@ -1,5 +1,5 @@
 from kornia.morphology import Dilate, Erode
-
+import torch
 
 def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
