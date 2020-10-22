@@ -1,9 +1,9 @@
-from typing import Tuple, List, Union, cast
+from typing import Tuple, List, Union, cast, Optional
 
 import torch
-import torch.nn as nn
+from math import sqrt
 
-from kornia.geometry.transform.affwarp import rotate
+from kornia.geometry.transform.affwarp import rotate, rotate3d
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -22,6 +22,99 @@ def gaussian(window_size, sigma):
         x = x + 0.5
     gauss = torch.exp((-x.pow(2.0) / float(2 * sigma ** 2)))
     return gauss / gauss.sum()
+
+
+def gaussian_discrete_erf(window_size, sigma):
+    r"""Discrete Gaussian by interpolating the error function. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    """
+    device = sigma.device if isinstance(sigma, torch.Tensor) else None
+    sigma = torch.as_tensor(sigma, dtype=torch.float, device=device)
+    x = torch.arange(window_size).float() - window_size // 2
+    t = 0.70710678 / torch.abs(sigma)
+    gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
+    gauss = gauss.clamp(min=0)
+    return gauss / gauss.sum()
+
+
+def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
+    r"""Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    """
+    if torch.abs(x) < 3.75:
+        y = (x / 3.75) * (x / 3.75)
+        return 1.0 + y * (
+            3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
+        )
+    ax = torch.abs(x)
+    y = 3.75 / ax
+    ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
+    return (torch.exp(ax) / torch.sqrt(ax)) * (
+        0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
+    )
+
+
+def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
+    r"""adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    """
+    if torch.abs(x) < 3.75:
+        y = (x / 3.75) * (x / 3.75)
+        ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
+        return torch.abs(x) * (0.5 + y * (0.87890594 + y * ans))
+    ax = torch.abs(x)
+    y = 3.75 / ax
+    ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
+    ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
+    ans = ans * torch.exp(ax) / torch.sqrt(ax)
+    return -ans if x < 0.0 else ans
+
+
+def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
+    r"""adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    """
+    if n < 2:
+        raise ValueError("n must be greater than 1.")
+    if x == 0.0:
+        return x
+    device = x.device
+    tox = 2.0 / torch.abs(x)
+    ans = torch.tensor(0.0, device=device)
+    bip = torch.tensor(0.0, device=device)
+    bi = torch.tensor(1.0, device=device)
+    m = int(2 * (n + int(sqrt(40.0 * n))))
+    for j in range(m, 0, -1):
+        bim = bip + float(j) * tox * bi
+        bip = bi
+        bi = bim
+        if abs(bi) > 1.0e10:
+            ans = ans * 1.0e-10
+            bi = bi * 1.0e-10
+            bip = bip * 1.0e-10
+        if j == n:
+            ans = bip
+    ans = ans * _modified_bessel_0(x) / bi
+    return -ans if x < 0.0 and (n % 2) == 1 else ans
+
+
+def gaussian_discrete(window_size, sigma) -> torch.Tensor:
+    r"""Discrete Gaussian kernel based on the modified Bessel functions. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    """
+    device = sigma.device if isinstance(sigma, torch.Tensor) else None
+    sigma = torch.as_tensor(sigma, dtype=torch.float, device=device)
+    sigma2 = sigma * sigma
+    tail = int(window_size // 2)
+    out_pos: List[Optional[torch.Tensor]] = [None] * (tail + 1)
+    out_pos[0] = _modified_bessel_0(sigma2)
+    out_pos[1] = _modified_bessel_1(sigma2)
+    for k in range(2, len(out_pos)):
+        out_pos[k] = _modified_bessel_i(k, sigma2)
+    out = out_pos[:0:-1]
+    out.extend(out_pos)
+    out = torch.stack(out) * torch.exp(sigma2)  # type: ignore
+    return out / out.sum()  # type: ignore
 
 
 def laplacian_1d(window_size) -> torch.Tensor:
@@ -309,10 +402,10 @@ def get_gaussian_kernel1d(kernel_size: int,
 
     Examples::
 
-        >>> kornia.image.get_gaussian_kernel(3, 2.5)
+        >>> kornia.filters.get_gaussian_kernel1d(3, 2.5)
         tensor([0.3243, 0.3513, 0.3243])
 
-        >>> kornia.image.get_gaussian_kernel(5, 1.5)
+        >>> kornia.filters.get_gaussian_kernel1d(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
     if (not isinstance(kernel_size, int) or (
@@ -323,6 +416,80 @@ def get_gaussian_kernel1d(kernel_size: int,
             "Got {}".format(kernel_size)
         )
     window_1d: torch.Tensor = gaussian(kernel_size, sigma)
+    return window_1d
+
+
+def get_gaussian_discrete_kernel1d(kernel_size: int,
+                                   sigma: float,
+                                   force_even: bool = False) -> torch.Tensor:
+    r"""Function that returns Gaussian filter coefficients
+    based on the modified Bessel functions. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+
+    Args:
+        kernel_size (int): filter size. It should be odd and positive.
+        sigma (float): gaussian standard deviation.
+        force_even (bool): overrides requirement for odd kernel size.
+
+    Returns:
+        Tensor: 1D tensor with gaussian filter coefficients.
+
+    Shape:
+        - Output: :math:`(\text{kernel_size})`
+
+    Examples::
+
+        >>> kornia.filters.get_gaussian_discrete_kernel1d(3, 2.5)
+        tensor([0.3235, 0.3531, 0.3235])
+
+        >>> kornia.filters.get_gaussian_discrete_kernel1d(5, 1.5)
+        tensor([0.1096, 0.2323, 0.3161, 0.2323, 0.1096])
+    """
+    if (not isinstance(kernel_size, int) or (
+            (kernel_size % 2 == 0) and not force_even) or (
+            kernel_size <= 0)):
+        raise TypeError(
+            "kernel_size must be an odd positive integer. "
+            "Got {}".format(kernel_size)
+        )
+    window_1d = gaussian_discrete(kernel_size, sigma)
+    return window_1d
+
+
+def get_gaussian_erf_kernel1d(kernel_size: int,
+                              sigma: float,
+                              force_even: bool = False) -> torch.Tensor:
+    r"""Function that returns Gaussian filter coefficients by interpolating the error fucntion,
+    adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+
+    Args:
+        kernel_size (int): filter size. It should be odd and positive.
+        sigma (float): gaussian standard deviation.
+        force_even (bool): overrides requirement for odd kernel size.
+
+    Returns:
+        Tensor: 1D tensor with gaussian filter coefficients.
+
+    Shape:
+        - Output: :math:`(\text{kernel_size})`
+
+    Examples::
+
+        >>> kornia.filters.get_gaussian_erf_kernel1d(3, 2.5)
+        tensor([0.3245, 0.3511, 0.3245])
+
+        >>> kornia.filters.get_gaussian_erf_kernel1d(5, 1.5)
+        tensor([0.1226, 0.2331, 0.2887, 0.2331, 0.1226])
+    """
+    if (not isinstance(kernel_size, int) or (
+            (kernel_size % 2 == 0) and not force_even) or (
+            kernel_size <= 0)):
+        raise TypeError(
+            "kernel_size must be an odd positive integer. "
+            "Got {}".format(kernel_size)
+        )
+    window_1d = gaussian_discrete_erf(kernel_size, sigma)
     return window_1d
 
 
@@ -347,12 +514,12 @@ def get_gaussian_kernel2d(
 
     Examples::
 
-        >>> kornia.image.get_gaussian_kernel2d((3, 3), (1.5, 1.5))
+        >>> kornia.filters.get_gaussian_kernel2d((3, 3), (1.5, 1.5))
         tensor([[0.0947, 0.1183, 0.0947],
                 [0.1183, 0.1478, 0.1183],
                 [0.0947, 0.1183, 0.0947]])
 
-        >>> kornia.image.get_gaussian_kernel2d((3, 5), (1.5, 1.5))
+        >>> kornia.filters.get_gaussian_kernel2d((3, 5), (1.5, 1.5))
         tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
@@ -390,10 +557,10 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
         - Output: math:`(\text{kernel_size})`
 
     Examples::
-        >>> kornia.image.get_laplacian_kernel(3)
+        >>> kornia.filters.get_laplacian_kernel(3)
         tensor([ 1., -2.,  1.])
 
-        >>> kornia.image.get_laplacian_kernel(5)
+        >>> kornia.filters.get_laplacian_kernel(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
@@ -419,12 +586,12 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
     Examples::
 
-        >>> kornia.image.get_laplacian_kernel2d(3)
+        >>> kornia.filters.get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
                 [ 1., -8.,  1.],
                 [ 1.,  1.,  1.]])
 
-        >>> kornia.image.get_laplacian_kernel2d(5)
+        >>> kornia.filters.get_laplacian_kernel2d(5)
         tensor([[  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1., -24.,   1.,   1.],
@@ -446,7 +613,7 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 
 def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
                         direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
-    r"""Function that returns motion blur filter.
+    r"""Return 2D motion blur filter.
 
     Args:
         kernel_size (int): motion kernel width and height. It should be odd and positive.
@@ -482,7 +649,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
-        angle = angle.unsqueeze(dim=0)
+        angle = angle.unsqueeze(0)
     assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
@@ -490,17 +657,94 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
-        direction = direction.unsqueeze(dim=0)
+        direction = direction.unsqueeze(0)
     assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+
+    assert direction.size(0) == angle.size(0), \
+        f"direction and angle must have the same length. Got {direction} and {angle}."
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
-    direction = (torch.clamp(direction, -1., 1.).item() + 1.) / 2.
-    kernel = torch.zeros(kernel_tuple, dtype=torch.float)
-    kernel[kernel_tuple[0] // 2, :] = torch.linspace(direction, 1. - direction, steps=kernel_tuple[0])
-    kernel = kernel.unsqueeze(0).unsqueeze(0)
+    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+
+    # Element-wise linspace
+    kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
+        [(direction - (1 / (kernel_tuple[0] - 1)) * i) for i in range(kernel_tuple[0])], dim=-1)
+    kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
-    kernel = rotate(kernel, angle)
-    kernel = kernel[0][0]
-    kernel = kernel / kernel.sum()
+    kernel = rotate(kernel, angle, mode='nearest', align_corners=True)
+    kernel = kernel[:, 0]
+    kernel = kernel / kernel.sum(dim=(1, 2), keepdim=True)
+
+    return kernel
+
+
+def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float, float, float]],
+                        direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
+    r"""Return 3D motion blur filter.
+
+    Args:
+        kernel_size (int): motion kernel width, height and depth. It should be odd and positive.
+        angle (tensor or float): Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
+            If tensor, it must be :math:`(B, 3)`.
+        direction (float): forward/backward direction of the motion blur.
+            Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
+            while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
+            uniformly (but still angled) motion blur.
+
+    Returns:
+        torch.Tensor: the motion blur kernel.
+
+    Shape:
+        - Output: :math:`(ksize, ksize)`
+
+    Examples::
+        >>> kornia.filters.get_motion_kernel2d(5, 0., 0.)
+        tensor([[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.2000, 0.2000, 0.2000, 0.2000, 0.2000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]])
+        >>> kornia.filters.get_motion_kernel2d(3, 215., -0.5)
+            tensor([[0.0000, 0.0412, 0.0732],
+                    [0.1920, 0.3194, 0.0804],
+                    [0.2195, 0.0743, 0.0000]])
+    """
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
+        raise TypeError("ksize must be an odd integer >= than 3")
+
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.tensor([angle])
+
+    angle = cast(torch.Tensor, angle)
+    if angle.dim() == 1:
+        angle = angle.unsqueeze(0)
+    assert len(angle.shape) == 2 and angle.size(1) == 3, f"angle must be (B, 3). Got {angle}."
+
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.tensor([direction])
+
+    direction = cast(torch.Tensor, direction)
+    if direction.dim() == 0:
+        direction = direction.unsqueeze(0)
+    assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
+
+    assert direction.size(0) == angle.size(0), \
+        f"direction and angle must have the same length. Got {direction} and {angle}."
+
+    kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
+    # direction from [-1, 1] to [0, 1] range
+    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+
+    # Element-wise linspace
+    kernel[:, kernel_tuple[0] // 2, kernel_tuple[0] // 2, :] = torch.stack(
+        [(direction - (1 / (kernel_tuple[0] - 1)) * i) for i in range(kernel_tuple[0])], dim=-1)
+    kernel = kernel.unsqueeze(1)
+    # rotate (counterclockwise) kernel by given angle
+    kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode='nearest', align_corners=True)
+    kernel = kernel[:, 0]
+    kernel = kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
+
     return kernel
