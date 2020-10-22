@@ -1,7 +1,7 @@
 from kornia.morphology import close
 
 
-def black_hat(tensor, kernel):
+def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
         Returns the black hat tranformation of an image, (that means, closed_image - image) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.

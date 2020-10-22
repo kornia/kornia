@@ -1,7 +1,7 @@
 from kornia.morphology import open
 
 
-def top_hat(tensor, kernel):
+def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
         Returns the top hat tranformation of an image, (that means, image - opened_image) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.

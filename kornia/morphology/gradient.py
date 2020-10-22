@@ -1,7 +1,7 @@
 from kornia.morphology import Dilate, Erode
 
 
-def gradient(tensor, kernel):
+def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""
         Returns the morphological gradient of an image, (that means, dilation - erosion) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.

@@ -5,13 +5,13 @@ import torch.nn.functional as F
 
 class Dilate(nn.Module):
 
-    def __init__(self, se):
+    def __init__(self, se: torch.Tensor) -> None:
         super().__init__()
         self.se = se - 1
         self.se_h, self.se_w = se.shape
         self.pad = (self.se_h // 2, self.se_w // 2)
 
-        def se_to_mask(se):
+        def se_to_mask(se: torch.Tensor) -> torch.Tensor:
             se_h, se_w = se.size()
             se_flat = se.view(-1)
             num_feats = se_h * se_w
@@ -24,14 +24,14 @@ class Dilate(nn.Module):
 
         self.kernel = se_to_mask(self.se)
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         output = input.view(input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
         output = (F.conv2d(output, self.kernel, padding=self.pad) + self.se.view(1, -1, 1, 1)).max(dim=1)[0]
 
         return output.view(*input.shape)
 
 
-def dilation(tensor, kernel):
+def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     r"""
     Returns the dilated image applying the same kernel in each channel.
