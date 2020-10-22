@@ -25,11 +25,11 @@ def gaussian(window_size, sigma):
 
 
 def gaussian_discrete_erf(window_size, sigma):
-    r"""discrete Gaussian by interpolating the error function.
-    adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Discrete Gaussian by interpolating the error function. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
-    sigma = torch.as_tensor(sigma, dtype=torch.float, device=sigma.device if torch.is_tensor(sigma) else None)
+    device = sigma.device if isinstance(sigma, torch.Tensor) else None
+    sigma = torch.as_tensor(sigma, dtype=torch.float, device=device)
     x = torch.arange(window_size).float() - window_size // 2
     t = 0.70710678 / torch.abs(sigma)
     gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
@@ -38,8 +38,8 @@ def gaussian_discrete_erf(window_size, sigma):
 
 
 def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
-    r"""adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if torch.abs(x) < 3.75:
         y = (x / 3.75) * (x / 3.75)
@@ -56,7 +56,7 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
 
 def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
     r"""adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if torch.abs(x) < 3.75:
         y = (x / 3.75) * (x / 3.75)
@@ -72,7 +72,7 @@ def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
 
 def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
     r"""adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     if n < 2:
         raise ValueError("n must be greater than 1.")
@@ -99,10 +99,11 @@ def _modified_bessel_i(n: int, x: torch.Tensor) -> torch.Tensor:
 
 
 def gaussian_discrete(window_size, sigma) -> torch.Tensor:
-    r"""adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Discrete Gaussian kernel based on the modified Bessel functions. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
-    sigma = torch.as_tensor(sigma, dtype=torch.float, device=sigma.device if torch.is_tensor(sigma) else None)
+    device = sigma.device if isinstance(sigma, torch.Tensor) else None
+    sigma = torch.as_tensor(sigma, dtype=torch.float, device=device)
     sigma2 = sigma * sigma
     tail = int(window_size // 2)
     out_pos: List[Optional[torch.Tensor]] = [None] * (tail + 1)
@@ -421,9 +422,9 @@ def get_gaussian_kernel1d(kernel_size: int,
 def get_gaussian_discrete_kernel1d(kernel_size: int,
                                    sigma: float,
                                    force_even: bool = False) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error fucntion.
-    adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    r"""Function that returns Gaussian filter coefficients
+    based on the modified Bessel functions. Adapted from:
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
 
     Args:
         kernel_size (int): filter size. It should be odd and positive.
@@ -458,9 +459,9 @@ def get_gaussian_discrete_kernel1d(kernel_size: int,
 def get_gaussian_erf_kernel1d(kernel_size: int,
                               sigma: float,
                               force_even: bool = False) -> torch.Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error fucntion.
+    r"""Function that returns Gaussian filter coefficients by interpolating the error fucntion,
     adapted from:
-        https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
 
     Args:
         kernel_size (int): filter size. It should be odd and positive.
