@@ -17,7 +17,7 @@ jobs:
       run: ./setup_dev_env.sh
 
     - name: activate environment
-      run: path.bash.inc
+      run: source path.bash.inc
 
     - name: install package
       run: make install
