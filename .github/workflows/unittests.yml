@@ -2,7 +2,8 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    #runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, linux, x64]
     strategy:
       max-parallel: 10
       fail-fast: false
