@@ -24,7 +24,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-
     - name: install dependencies
       run: ./setup_dev_env.sh
 
