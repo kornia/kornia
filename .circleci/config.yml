@@ -31,6 +31,7 @@ commands:
           command: make build-docs
   install_dep_torch_151:
     steps:
+      - checkout
       - run:
           name: install dependencies with torch 1.5.1
           command: |
@@ -39,6 +40,7 @@ commands:
             $conda_bin install pytorch==1.5.1 -c pytorch
   install_dep_torch_160:
     steps:
+      - checkout
       - run:
           name: install dependencies with torch 1.6.0
           command: |
