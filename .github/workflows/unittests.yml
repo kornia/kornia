@@ -1,0 +1,44 @@
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 10
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ]
+        python-version: [3.6, 3.7, 3.8]
+        pytorch-channel: [pytorch, pytorch-nightly]
+        include:
+          # includes a single build on windows
+          - os: windows-latest
+            pytorch-channel: pytorch
+            python-version: 3.7
+            skip-distrib-tests: 1
+          # includes a single build on macosx
+          - os: macos-latest
+            pytorch-channel: pytorch
+            python-version: 3.7
+            skip-distrib-tests: 1
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: install dependencies
+      run: ./setup_dev_env.sh
+
+    - name: activate environment
+      run: source path.bash.inc
+
+    - name: install package
+      run: make install
+
+    - name: lint check
+      run: make lint
+
+    - name: static check
+      command: make mypy
+
+    - name: unit tests
+      run: make test-cpu
