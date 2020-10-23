@@ -1,7 +1,7 @@
 on: [push, pull_request]
 
 jobs:
-  build:
+  build-cuda:
     runs-on: [self-hosted, Linux, x64]
     strategy:
       max-parallel: 10
@@ -17,16 +17,10 @@ jobs:
       run: ./setup_dev_env.sh
 
     - name: activate environment
-      run: source activate venv
+      run: path.bash.inc
 
     - name: install package
       run: make install
 
-    - name: lint check
-      run: make lint
-
-    - name: static check
-      run: make mypy
-
     - name: unit tests
-      run: make test-cpu
+      run: make test-cuda
