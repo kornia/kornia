@@ -35,24 +35,16 @@ commands:
       - run:
           name: install dependencies with torch 1.5.1
           command: |
+            echo "\$conda_bin install pytorch==1.5.1 -c pytorch" >> ./setup_dev_env.sh
             ./setup_dev_env.sh
-            # $conda_bin introduced by ./setup_dev_env.sh
-            echo "Below shall output condabin"
-            echo $conda_bin
-            echo "Above shall output condabin"
-            $conda_bin install pytorch==1.5.1 -c pytorch
   install_dep_torch_160:
     steps:
       - checkout
       - run:
           name: install dependencies with torch 1.6.0
           command: |
+            echo "\$conda_bin install pytorch==1.6.0 -c pytorch" >> ./setup_dev_env.sh
             ./setup_dev_env.sh
-            # $conda_bin introduced by ./setup_dev_env.sh
-            echo "Below shall output condabin"
-            echo $conda_bin
-            echo "Above shall output condabin"
-            $conda_bin install pytorch==1.6.0 -c pytorch
 
 
 jobs:
