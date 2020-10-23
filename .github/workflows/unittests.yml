@@ -2,7 +2,7 @@ on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, Linux, x64]
     strategy:
       max-parallel: 10
       fail-fast: false
@@ -10,6 +10,7 @@ jobs:
         os: [ubuntu-latest, ]
         python-version: [3.6, 3.7, 3.8]
         pytorch-channel: [pytorch, pytorch-nightly]
+
     steps:
     - uses: actions/checkout@v2
     - name: install dependencies
