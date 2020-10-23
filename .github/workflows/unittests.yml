@@ -14,8 +14,11 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install dependencies
+      run: ./setup_dev_env.sh
+
+    - name: activate environment
       run: |
-        ./setup_dev_env.sh
+        source $BASH_ENV
         source path.bash.inc
 
     - name: install package
