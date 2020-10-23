@@ -37,7 +37,7 @@ jobs:
       run: make lint
 
     - name: static check
-      command: make mypy
+      run: make mypy
 
     - name: unit tests
       run: make test-cpu
