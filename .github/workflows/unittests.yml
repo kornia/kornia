@@ -2,7 +2,6 @@ on: [push, pull_request]
 
 jobs:
   build:
-    #runs-on: ${{ matrix.os }}
     runs-on: [self-hosted, linux, x64]
     strategy:
       max-parallel: 10
@@ -11,18 +10,6 @@ jobs:
         os: [ubuntu-latest, ]
         python-version: [3.6, 3.7, 3.8]
         pytorch-channel: [pytorch, pytorch-nightly]
-        include:
-          # includes a single build on windows
-          - os: windows-latest
-            pytorch-channel: pytorch
-            python-version: 3.7
-            skip-distrib-tests: 1
-          # includes a single build on macosx
-          - os: macos-latest
-            pytorch-channel: pytorch
-            python-version: 3.7
-            skip-distrib-tests: 1
-
     steps:
     - uses: actions/checkout@v2
     - name: install dependencies
