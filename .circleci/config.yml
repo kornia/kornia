@@ -3,13 +3,13 @@ version: 2.1
 commands:
   common:
     steps:
-      - checkout
+      # - checkout
       - run:
           name: activate environment
           command: source path.bash.inc
-      - run:
-          name: install package
-          command: make install
+      # - run:
+      #     name: install package
+      #     command: make install
       - run:
           name: lint check
           command: make lint
