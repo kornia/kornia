@@ -94,7 +94,7 @@ def homography_warp(patch_src: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
                                        coordinates or not.
 
