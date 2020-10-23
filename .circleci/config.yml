@@ -37,6 +37,9 @@ commands:
           command: |
             ./setup_dev_env.sh
             # $conda_bin introduced by ./setup_dev_env.sh
+            echo "Below shall output condabin"
+            echo $conda_bin
+            echo "Above shall output condabin"
             $conda_bin install pytorch==1.5.1 -c pytorch
   install_dep_torch_160:
     steps:
@@ -46,6 +49,9 @@ commands:
           command: |
             ./setup_dev_env.sh
             # $conda_bin introduced by ./setup_dev_env.sh
+            echo "Below shall output condabin"
+            echo $conda_bin
+            echo "Above shall output condabin"
             $conda_bin install pytorch==1.6.0 -c pytorch
 
 
