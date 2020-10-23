@@ -5,9 +5,6 @@ commands:
     steps:
       - checkout
       - run:
-          name: install dependencies
-          command: ./setup_dev_env.sh
-      - run:
           name: activate environment
           command: source path.bash.inc
       - run:
@@ -32,38 +29,84 @@ commands:
       - run:
           name: docs
           command: make build-docs
+  install_dep_torch_151:
+    steps:
+      - run:
+          name: install dependencies with torch 1.5.1
+          command: |
+            ./setup_dev_env.sh
+            # $conda_bin introduced by ./setup_dev_env.sh
+            $conda_bin install pytorch==1.5.1 -c pytorch
+  install_dep_torch_160:
+    steps:
+      - run:
+          name: install dependencies with torch 1.6.0
+          command: |
+            ./setup_dev_env.sh
+            # $conda_bin introduced by ./setup_dev_env.sh
+            $conda_bin install pytorch==1.6.0 -c pytorch
 
 
 jobs:
-  python_3_6:
+  python_36_torch151:
     docker:
       - image: circleci/python:3.6.5
         environment:
           - PYTHON_VERSION: "3.6"
     steps:
+      - install_dep_torch_151
+      - common
+  python_36_torch160:
+    docker:
+      - image: circleci/python:3.6.5
+        environment:
+          - PYTHON_VERSION: "3.6"
+    steps:
+      - install_dep_torch_160
       - common
       - docs
 
-  python_3_7:
+  python_37_torch151:
     docker:
       - image: circleci/python:3.7.3
         environment:
           - PYTHON_VERSION: "3.7"
     steps:
+      - install_dep_torch_151
+      - common
+  python_37_torch160:
+    docker:
+      - image: circleci/python:3.7.3
+        environment:
+          - PYTHON_VERSION: "3.7"
+    steps:
+      - install_dep_torch_160
       - common
 
-  python_3_8:
+  python_38_torch151:
     docker:
       - image: circleci/python:3.8.0
         environment:
           - PYTHON_VERSION: "3.8"
     steps:
+      - install_dep_torch_151
+      - common
+  python_38_torch160:
+    docker:
+      - image: circleci/python:3.8.0
+        environment:
+          - PYTHON_VERSION: "3.8"
+    steps:
+      - install_dep_torch_160
       - common
 
 workflows:
   version: 2
   test:
     jobs:
-      - python_3_6
-      - python_3_7
-      - python_3_8
+      - python_36_torch151
+      - python_36_torch160
+      - python_37_torch151
+      - python_37_torch160
+      - python_38_torch151
+      - python_38_torch160
