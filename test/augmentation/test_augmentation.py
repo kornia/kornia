@@ -69,6 +69,9 @@ class CommonTests(BaseTester):
     def test_random_p_1_return_transform(self):
         raise NotImplementedError("Implement a stupid routine.")
 
+    def test_inverse_coordinate_check(self):
+        self._test_inverse_coordinate_check_implementation(params=self._default_param_set)
+    
     def test_exception(self):
         raise NotImplementedError("Implement a stupid routine.")
 
@@ -251,6 +254,35 @@ class CommonTests(BaseTester):
         assert_allclose(out2,out_sequence)
         assert_allclose(transform,transform_sequence)
 
+    def _test_inverse_coordinate_check_implementation(self, params):
+        torch.manual_seed(42)
+
+        input_tensor = torch.zeros((1,3,50,100),device=self.device, dtype=self.dtype)
+        input_tensor[:,:,20:30,40:60]=1.
+
+        augmentation = self._create_augmentation_from_params(**params, p=1.0, return_transform=True)
+        output, transform = augmentation(input_tensor)
+
+        if (transform == kornia.eye_like(3,transform)).all():
+            pytest.skip("Test not relevant for intensity augmentations.")
+
+        grid_y,grid_x = torch.meshgrid(
+            torch.tensor(range(output.shape[-2]),device=self.device),
+            torch.tensor(range(output.shape[-1]),device=self.device))
+        indices = torch.stack([grid_x,grid_y],axis=0).to(device=self.device, dtype=self.dtype)
+        output_indices = indices.permute((1,2,0)).reshape((1,-1,2))
+        input_indices = kornia.geometry.transform_points(transform.float().inverse(),output_indices)
+
+        output_indices = output_indices.round().long().squeeze(0)
+        input_indices = input_indices.round().long().squeeze(0)
+        output_values = output[0,0,output_indices[:,1],output_indices[:,0]]
+        value_mask = output_values > 0.9999
+
+        output_values = output[0,:,output_indices[:,1][value_mask],output_indices[:,0][value_mask]]
+        input_values = input_tensor[0,:,input_indices[:,1][value_mask],input_indices[:,0][value_mask]]
+        
+        assert_allclose(output_values,input_values)
+
     def _test_gradcheck_implementation(self,params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
@@ -354,6 +386,54 @@ class TestColorJitterAlternative(CommonTests):
         parameters = {"brightness":[0.2, 1.2], "contrast":0.2, "saturation":[0.2, 1.2], "hue":0.2}
         self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
 
+    def test_exception(self):
+        # Wrong type
+        with pytest.raises(TypeError):
+            self._create_augmentation_from_params(brightness="")
+        with pytest.raises(TypeError):
+            self._create_augmentation_from_params(contrast="")
+        with pytest.raises(TypeError):
+            self._create_augmentation_from_params(saturation="")
+        with pytest.raises(TypeError):
+            self._create_augmentation_from_params(hue="")
+        # with pytest.raises(TypeError):
+        #     self._create_augmentation_from_params(return_transform="False")
+        # with pytest.raises(TypeError):
+        #     self._create_augmentation_from_params(same_on_batch="False")
+        # with pytest.raises(TypeError):
+        #     self._create_augmentation_from_params(p="0.0")
+
+        # Single value lower bound check
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(brightness=-0.1)
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(contrast=-0.1)
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(saturation=-0.1)
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(hue=-0.1)
+
+        # Single value upper bound check
+        # with pytest.raises(ValueError):
+        #     self._create_augmentation_from_params(brightness=2.1)
+        # with pytest.raises(ValueError):
+        #     self._create_augmentation_from_params(hue=0.51)
+
+        # Bound lower bound check
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(brightness=[-0.1,1.0])
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(contrast=[-0.1,1.0])
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(saturation=[-0.1,1.0])
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(hue=[-0.51,0.5])
+
+        # Bound upper bound check
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(brightness=[0.0,2.1])
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(hue=[-0.5,0.51])
 
 class TestRandomHorizontalFlip:
 
