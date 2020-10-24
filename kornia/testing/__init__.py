@@ -84,9 +84,8 @@ class BaseTester(ABC):
 
     @pytest.fixture(autouse=True)
     def auto_injector_fixture(self, request):
-        names = self.fixture_names
-        for name in names:
-            setattr(self, name, request.getfixturevalue(name))
+        for fixture_name in self.fixture_names:
+            setattr(self, fixture_name, request.getfixturevalue(fixture_name))
 
     @abstractmethod
     def test_smoke(self):
