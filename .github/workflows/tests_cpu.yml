@@ -1,4 +1,5 @@
-#on: [push, pull_request]
+name: tests-cpu
+
 on:
   push:
     branches:
@@ -8,7 +9,7 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  test-cpu:
+  tests-cpu:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

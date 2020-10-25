@@ -1,3 +1,5 @@
+name: code-format
+
 on:
   push:
     branches:

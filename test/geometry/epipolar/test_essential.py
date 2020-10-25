@@ -156,6 +156,7 @@ class TestEssentalFromRt:
         E_mat = epi.essential_from_Rt(R1, t1, R2, t2)
         assert E_mat.shape == (B, 3, 3)
 
+    @pytest.mark.xfail(reason="TODO: fix #685")
     def test_from_fundamental_Rt(self, device, dtype):
 
         scene = utils.generate_two_view_random_scene(device, dtype)

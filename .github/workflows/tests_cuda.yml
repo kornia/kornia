@@ -1,4 +1,5 @@
-#on: [push, pull_request]
+name: tests-cuda
+
 on:
   push:
     branches:
@@ -8,7 +9,7 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  build-cuda:
+  tests-cuda:
     container:
       image: nvcr.io/nvidia/pytorch:20.03-py3
       options: --gpus all

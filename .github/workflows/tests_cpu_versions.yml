@@ -1,4 +1,5 @@
-#on: [pull_request]
+name: test-cpu-versions
+
 on:
   push:
     branches:
@@ -8,7 +9,7 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  build-cpu-versions:
+  test-cpu-versions:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
