@@ -291,6 +291,16 @@ class PinholeCamera:
             self.width.to(*args, **kwargs),
         )
 
+    def __getitem__(self, ixs) -> 'PinholeCamera':
+        assert isinstance(ixs, (int, slice))
+
+        return PinholeCamera(
+            self.intrinsics[ixs],
+            self.extrinsics[ixs],
+            self.height[ixs],
+            self.width[ixs],
+        )
+
     @property
     def device(self) -> torch.device:
         return self.intrinsics.device
