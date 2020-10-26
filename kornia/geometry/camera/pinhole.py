@@ -294,6 +294,10 @@ class PinholeCamera:
     def __getitem__(self, ixs) -> 'PinholeCamera':
         assert isinstance(ixs, (int, slice))
 
+        # we have to keep the batch dimension
+        if isinstance(ixs, int):
+            ixs = slice(ixs, ixs+1)
+
         return PinholeCamera(
             self.intrinsics[ixs],
             self.extrinsics[ixs],
