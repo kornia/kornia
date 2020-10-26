@@ -35,7 +35,7 @@ class DepthWarper(nn.Module):
         padding_mode (str): padding mode for outside grid values
            'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: True. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
     def __init__(self,
