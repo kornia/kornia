@@ -28,6 +28,7 @@ from kornia.augmentation import (
 from kornia.testing import BaseTester,default_with_one_parameter_changed,cartesian_product_of_parameters
 from kornia.augmentation.base import AugmentationBase2D
 
+# TODO same_on_batch tests?
 
 class CommonTests(BaseTester):
 
@@ -289,6 +290,80 @@ class CommonTests(BaseTester):
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
         assert gradcheck(self._create_augmentation_from_params(**params,p=1.,return_transform=False), (input_tensor, ), raise_exception=True)
 
+class TestRandomResizedCropAlternative(CommonTests):
+    possible_params = {
+        "size": ((2,2),),
+        "scale": ((0.08, 1.0),torch.tensor((3.0, 3.0))),
+        "ratio": ((1e-3, 1e3),torch.tensor((3.0, 3.0))),
+        "interpolation": (0,Resample.BILINEAR.name,Resample.BILINEAR,None),
+        "resample": (0,Resample.BILINEAR.name,Resample.BILINEAR),
+        "align_corners": (False,True),
+    }
+    _augmentation_cls = RandomResizedCrop
+    _default_param_set = {"size": (2,2),"scale":(3., 3.), "ratio":(1., 1.),"align_corners":True}
+
+    @pytest.fixture(params=default_with_one_parameter_changed(default=_default_param_set,**possible_params), scope="class")
+    def param_set(self, request):
+        return request.param
+
+    @pytest.mark.xfail(reason="Small size results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
+    @pytest.mark.xfail(reason="P doesn't have an effect.")
+    @pytest.mark.parametrize("input_shape,expected_output_shape", [((8, 10), (1, 1, 2, 3)),((3, 8, 10), (1, 3, 2, 3)), ((2, 3, 8, 10),(2, 3, 2, 3))])
+    def test_consistent_output_shape(self,  input_shape, expected_output_shape):
+        self._test_consistent_output_shape_implementation(
+             input_shape=input_shape,expected_output_shape=expected_output_shape, params={"size": (2,3),"align_corners": True})
+
+    # @pytest.mark.xfail(reason="size=(1,2) results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
+    # def test_random_p_1(self):
+    #     torch.manual_seed(42)
+        
+    #     input_tensor = torch.tensor([[[0.1, 0.2, 0.3, 0.4],
+    #                                   [0.5, 0.6, 0.7, 0.8],
+    #                                   [0.9, 0.0, 0.1, 0.2]]], device=self.device, dtype=self.dtype)
+    #     expected_output = torch.tensor([[[
+    #         [0.6, 0.7,],
+    #         ]]],device=self.device, dtype=self.dtype)
+        
+    #     parameters = {"size":(1,2), "align_corners": True, "resample": 0}
+    #     self._test_random_p_1_implementation( input_tensor=input_tensor, expected_output=expected_output,params=parameters)
+
+    # def test_random_p_1_return_transform(self):
+    #     torch.manual_seed(42)
+        
+    #     input_tensor = torch.tensor([[[0.1, 0.2, 0.3, 0.4],
+    #                                   [0.5, 0.6, 0.7, 0.8],
+    #                                   [0.9, 0.0, 0.1, 0.2]]], device=self.device, dtype=self.dtype)
+    #     expected_output = torch.tensor([[[
+    #         [0.2, 0.3,],
+    #         [0.6, 0.7,],
+    #         [0.0, 0.1,],
+    #         ]]],device=self.device, dtype=self.dtype)
+    #     expected_transformation = torch.tensor([[[1., 0.,-1.],
+    #                                              [0., 1., 0.],
+    #                                              [0., 0., 1.]]], device=self.device, dtype=self.dtype)
+    #     parameters = {"size":(3,2), "align_corners": True, "resample": 0}
+    #     self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    # # TODO Adjust
+    # def test_batch(self):
+    #     torch.manual_seed(42)
+        
+    #     input_tensor = torch.rand((2,3,4,4),device=self.device, dtype=self.dtype)
+    #     expected_output = input_tensor[:,:,1:3,1:3]
+    #     expected_transformation = torch.tensor([[[1., 0.,-1.],
+    #                                              [0., 1.,-1.],
+    #                                              [0., 0., 1.]]], device=self.device, dtype=self.dtype).repeat(2,1,1,)
+    #     parameters = {"size":(2,2), "align_corners": True, "resample": 0}
+    #     self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    # def test_exception(self):
+    #     # Wrong type
+    #     with pytest.raises(TypeError):
+    #         self._create_augmentation_from_params(size=0.0)
+        
+    #     # Bound check
+    #     with pytest.raises(ValueError):
+    #         self._create_augmentation_from_params(size=-1)
 
 class TestCenterCropAlternative(CommonTests):
     possible_params = {
@@ -303,7 +378,7 @@ class TestCenterCropAlternative(CommonTests):
     def param_set(self, request):
         return request.param
 
-    @pytest.mark.parametrize("input_shape,expected_output_shape", [((3, 4, 5), (1, 3, 2, 3)), ((2, 3, 4, 5),(2, 3, 2, 3))])
+    @pytest.mark.parametrize("input_shape,expected_output_shape", [((4, 5), (1, 1, 2, 3)),((3, 4, 5), (1, 3, 2, 3)), ((2, 3, 4, 5),(2, 3, 2, 3))])
     def test_consistent_output_shape(self,  input_shape, expected_output_shape):
         self._test_consistent_output_shape_implementation(
              input_shape=input_shape,expected_output_shape=expected_output_shape, params={"size": (2,3),"align_corners":True})
