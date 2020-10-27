@@ -1,5 +1,5 @@
 import torch
-from kornia.morphology import open
+import kornia.morphology
 
 
 def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
@@ -24,4 +24,4 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> top_hat_img = top_hat(tensor, kernel)
         """
 
-    return tensor - open(tensor, kernel)
+    return tensor - kornia.morphology.open(tensor, kernel)

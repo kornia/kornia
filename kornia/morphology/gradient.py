@@ -1,5 +1,5 @@
 import torch
-from kornia.morphology import Dilate, Erode
+import kornia.morphology
 
 
 def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
@@ -21,4 +21,4 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> gradient_img = gradient(tensor, kernel)
         """
 
-    return Dilate(kernel)(tensor) - Erode(kernel)(tensor)
+    return kornia.morphology.Dilate(kernel)(tensor) - kornia.morphology.Erode(kernel)(tensor)

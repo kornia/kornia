@@ -1,5 +1,5 @@
 import torch
-from kornia.morphology import Dilate, Erode
+import kornia.morphology
 
 
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
@@ -20,4 +20,4 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> closed_img = close(tensor, kernel)
         """
 
-    return Erode(kernel)((Dilate(kernel)(tensor)))
+    return kornia.morphology.Erode(kernel)((kornia.morphology.Dilate(kernel)(tensor)))

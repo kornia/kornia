@@ -1,5 +1,5 @@
 import torch
-from kornia.morphology import Dilate, Erode
+import kornia.morphology
 
 
 def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
@@ -20,4 +20,4 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> opened_img = open(tensor, kernel)
         """
 
-    return Dilate(kernel)((Erode(kernel)(tensor)))
+    return kornia.morphology.Dilate(kernel)((kornia.morphology.Erode(kernel)(tensor)))
