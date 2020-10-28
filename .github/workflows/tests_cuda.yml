@@ -1,8 +1,9 @@
 name: tests-cuda
 
-on:
-  schedule:
-    - cron: "0 4 * * *"
+on: [pull_request]
+#on:
+#  schedule:
+#    - cron: "0 4 * * *"
 
 jobs:
   tests-cuda:
@@ -14,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
-        cuda-version: [9.2, 10.1, 10.2]
+        cuda-version: [9.2, 10.1, 10.2, 11.0]
         pytorch-channel: [pytorch, pytorch-nightly]
     steps:
     - uses: actions/checkout@v2

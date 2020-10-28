@@ -14,10 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.6, 3.7, 3.8]
-        pytorch-version: [1.5.1, 1.6.0]
+        pytorch-version: [1.5.1, 1.6.0, 1.7.0]
         pytorch-channel: [pytorch]
+        include:
+        - os: [ubuntu-latest]
+          pytorch-channel: pytorch-nightly
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
