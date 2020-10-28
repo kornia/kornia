@@ -17,7 +17,7 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         Example:
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> opened_img = open(tensor, kernel)
+            >>> opened_img = kornia.morphology.open(tensor, kernel)
         """
 
 

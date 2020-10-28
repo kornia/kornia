@@ -17,7 +17,7 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         Example:
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> closed_img = close(tensor, kernel)
+            >>> closed_img = kornia.morphology.close(tensor, kernel)
         """
 
 

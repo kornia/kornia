@@ -18,7 +18,7 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         Example:
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> gradient_img = gradient(tensor, kernel)
+            >>> gradient_img = kornia.morphology.gradient(tensor, kernel)
         """
 
 

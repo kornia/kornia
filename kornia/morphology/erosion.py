@@ -46,7 +46,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     Example:
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(5, 5)
-        >>> output = erosion(tensor, kernel)
+        >>> output = kornia.morphology.erosion(tensor, kernel)
 
     """
 

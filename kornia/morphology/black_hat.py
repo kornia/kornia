@@ -21,7 +21,7 @@ def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         Example:
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> black_hat_img = black_hat(tensor, kernel)
+            >>> black_hat_img = kornia.morphology.black_hat(tensor, kernel)
         """
 
     assert torch.is_tensor(tensor), "Invalid type for image. Expected torch.Tensor"

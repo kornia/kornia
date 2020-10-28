@@ -21,7 +21,7 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         Example:
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> top_hat_img = top_hat(tensor, kernel)
+            >>> top_hat_img = kornia.morphology.top_hat(tensor, kernel)
         """
 
     assert torch.is_tensor(tensor), "Invalid type for image. Expected torch.Tensor"
