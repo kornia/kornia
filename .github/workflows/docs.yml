@@ -11,17 +11,25 @@ on:
 jobs:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
   build-docs:
 =======
   test-docs:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 =======
   build-docs:
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
@@ -31,6 +39,13 @@ jobs:
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+<<<<<<< master
+      uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6

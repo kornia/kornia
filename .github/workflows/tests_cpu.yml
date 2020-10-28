@@ -18,17 +18,25 @@ jobs:
         python-version: [3.6, 3.7, 3.8]
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         pytorch-version: [1.7.0]
 =======
         pytorch-version: [1.6.0]
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 =======
         pytorch-version: [1.7.0]
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
 
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
@@ -38,6 +46,13 @@ jobs:
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+<<<<<<< master
+      uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: ${{ matrix.python-version }}

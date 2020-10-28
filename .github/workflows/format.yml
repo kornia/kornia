@@ -11,18 +11,26 @@ on:
 jobs:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
   linter:
 =======
   code-format:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 =======
   linter:
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
     runs-on: [ubuntu-latest]
 
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
@@ -32,6 +40,13 @@ jobs:
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+<<<<<<< master
+      uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -55,13 +70,20 @@ jobs:
     - name: Setup conda dependencies
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       uses: conda-incubator/setup-miniconda@v2
 =======
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -78,8 +100,12 @@ jobs:
       run: make mypy
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] enable doctest in the CI (#764)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       
   doctest:
     runs-on: [ubuntu-latest]
@@ -111,7 +137,12 @@ jobs:
       shell: bash -l {0}
       run: make doctest
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 =======
 >>>>>>> [Feat] enable doctest in the CI (#764)
+=======
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)

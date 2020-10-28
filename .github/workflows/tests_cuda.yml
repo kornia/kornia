@@ -3,8 +3,12 @@ name: tests-cuda
 on:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> add cuda version and pull_requests workflows (#799)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
   push:
     branches:
       - master
@@ -17,6 +21,7 @@ on:
   #  branches:
   #    - master
   #pull_request:
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> add cuda version and pull_requests workflows (#799)
   schedule:
@@ -26,6 +31,11 @@ on:
 =======
     - cron: "0 0 * * *"
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+  schedule:
+    - cron: "0 4 * * *"
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
 
 jobs:
   tests-cuda:
@@ -41,6 +51,10 @@ jobs:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         pytorch-version: [1.7.0]
         cuda-version: [10.2]
     steps:
@@ -51,6 +65,7 @@ jobs:
         miniconda-version: "latest"
         auto-update-conda: true
 =======
+<<<<<<< refs/remotes/kornia/master
 =======
         pytorch-version: [1.6.0]
 <<<<<<< refs/remotes/kornia/master
@@ -81,10 +96,22 @@ jobs:
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
         auto-update-conda: true
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+        cuda-version: [9.2, 10.1, 10.2, 11.0]
+        pytorch-channel: [pytorch, pytorch-nightly]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup conda dependencies
+      uses: goanpeca/setup-miniconda@v1
+      with:
+        miniconda-version: "latest"
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       shell: bash -l {0}
       run: |
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
         conda install pytorch=${{ matrix.pytorch-version }} cudatoolkit=${{ matrix.cuda-version }} -c pytorch
@@ -94,6 +121,13 @@ jobs:
 =======
         conda install pytorch=${{ matrix.pytorch-version }} cudatoolkit=${{ matrix.cuda-version }} -c pytorch
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
+=======
+<<<<<<< master
+        conda install pytorch=${{ matrix.pytorch-version }} cudatoolkit=${{ matrix.cuda-version }} -c pytorch
+=======
+        conda install pytorch cudatoolkit=${{ matrix.cuda-version }} -c ${{ matrix.pytorch-channel }}
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         pip install -r requirements-dev.txt
         python setup.py install
     - name: Run Tests
