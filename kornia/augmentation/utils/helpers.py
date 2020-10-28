@@ -4,26 +4,6 @@ import torch
 from torch.distributions import Uniform, Beta
 
 
-def _apply_keep_shape(f):
-    def wrapper(input, *args, **kwargs):
-        shape = input.shape
-        input = _transform_input(input)
-        output = f(input, *args, **kwargs)
-        return _transform_input_to(output, shape)
-    return wrapper
-
-
-def _transform_input_to(input: torch.Tensor, shape: Union[List, Tuple]):
-    assert len(input.shape) == 4
-    assert 2 < len(shape) <= 4
-
-    for _ in range(len(input.shape) - len(shape)):
-        assert input.shape[0] == 1
-        input = input.squeeze(0)
-
-    return input
-
-
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
     r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
     """
@@ -68,31 +48,6 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
     return input
 
 
-def _transform_shape(input: torch.Tensor) -> tuple:
-    r"""Return shape of (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
-    Args:
-        input: torch.Tensor
-
-    Returns:
-        torch.Tensor
-    """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(
-            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
-
-    shape = tuple(input.shape)
-    if len(input.shape) == 2:
-        shape = (1,) + shape
-
-    if len(input.shape) == 3:
-        shape = (1,) + shape
-
-    return shape
-
-
 def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
     r"""Reshape an input tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
     Args:
@@ -115,31 +70,6 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
         input = input.unsqueeze(0)
 
     return input
-
-
-def _transform_shape3d(input: torch.Tensor) -> tuple:
-    r"""Return shape of (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
-    Args:
-        input: torch.Tensor
-
-    Returns:
-        tuple
-    """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    if len(input.shape) not in [3, 4, 5]:
-        raise ValueError(
-            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}")
-
-    shape = tuple(input.shape)
-    if len(input.shape) == 3:
-        shape = (1,) + shape
-
-    if len(input.shape) == 4:
-        shape = (1,) + shape
-
-    return shape
 
 
 def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
