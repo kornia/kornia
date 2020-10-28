@@ -9,13 +9,21 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
+<<<<<<< refs/remotes/kornia/master
   linter:
+=======
+  code-format:
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
     runs-on: [ubuntu-latest]
 
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -37,7 +45,11 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -52,6 +64,7 @@ jobs:
     - name: Run mypy
       shell: bash -l {0}
       run: make mypy
+<<<<<<< refs/remotes/kornia/master
       
   doctest:
     runs-on: [ubuntu-latest]
@@ -74,3 +87,5 @@ jobs:
     - name: Run mypy
       shell: bash -l {0}
       run: make doctest
+=======
+>>>>>>> [Feat] Add Github Actions as main CI (#744)

@@ -9,12 +9,20 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
+<<<<<<< refs/remotes/kornia/master
   build-docs:
+=======
+  test-docs:
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
       with:
         auto-update-conda: true
         python-version: 3.6

@@ -1,12 +1,21 @@
 name: tests-cuda
 
 on:
+<<<<<<< refs/remotes/kornia/master
   push:
     branches:
       - master
   pull_request:
   schedule:
     - cron: "0 0 * * *"
+=======
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
+  schedule:
+    - cron: "0 4 * * *"
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
 
 jobs:
   tests-cuda:
@@ -18,6 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
+<<<<<<< refs/remotes/kornia/master
         pytorch-version: [1.7.0]
         cuda-version: [10.2]
     steps:
@@ -27,11 +37,25 @@ jobs:
       with:
         miniconda-version: "latest"
         auto-update-conda: true
+=======
+        cuda-version: [9.2, 10.1, 10.2, 11.0]
+        pytorch-channel: [pytorch, pytorch-nightly]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup conda dependencies
+      uses: goanpeca/setup-miniconda@v1
+      with:
+        miniconda-version: "latest"
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       shell: bash -l {0}
       run: |
+<<<<<<< refs/remotes/kornia/master
         conda install pytorch=${{ matrix.pytorch-version }} cudatoolkit=${{ matrix.cuda-version }} -c pytorch
+=======
+        conda install pytorch cudatoolkit=${{ matrix.cuda-version }} -c ${{ matrix.pytorch-channel }}
+>>>>>>> [Feat] Add Github Actions as main CI (#744)
         pip install -r requirements-dev.txt
         python setup.py install
     - name: Run Tests
