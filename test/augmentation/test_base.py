@@ -25,7 +25,7 @@ class TestBasicAugmentationBase:
         augmentation = _BasicAugmentationBase(p=1., p_batch=1)
         with patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
-            output = augmentation.__infer_input__(input)
+            output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
             assert_allclose(input, output[:, :, 0, :, :])
 
