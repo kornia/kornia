@@ -1,10 +1,10 @@
 name: test-cpu-versions
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
   schedule:
     - cron: "0 4 * * *"
 
@@ -19,7 +19,13 @@ jobs:
         pytorch-version: [1.5.1, 1.6.0, 1.7.0]
         pytorch-channel: [pytorch]
         include:
-        - os: [ubuntu-latest]
+        - os: ubuntu-latest
+          pytorch-channel: pytorch-nightly
+        include:
+        - os: macos-latest
+          pytorch-channel: pytorch-nightly
+        include:
+        - os: windows-latest
           pytorch-channel: pytorch-nightly
     steps:
     - uses: actions/checkout@v2

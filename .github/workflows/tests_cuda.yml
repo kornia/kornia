@@ -1,9 +1,12 @@
 name: tests-cuda
 
-on: [pull_request]
-#on:
-#  schedule:
-#    - cron: "0 4 * * *"
+on:
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
+  schedule:
+    - cron: "0 4 * * *"
 
 jobs:
   tests-cuda:
