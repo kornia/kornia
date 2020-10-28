@@ -24,4 +24,12 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> top_hat_img = top_hat(tensor, kernel)
         """
 
+    assert torch.is_tensor(tensor), "Invalid type for image. Expected torch.Tensor"
+
+    assert torch.is_tensor(kernel), "Invalid type for kernel. Expected torch.Tensor"
+
+    assert tensor.dim() == 4, f"Invalid number of dimensions for image. Expected 4. Got {tensor.dim()}"
+
+    assert kernel.dim() == 2, f"Invalid number of dimensions for kernel. Expected 2. Got {kernel.dim()}"
+
     return tensor - kornia.morphology.open(tensor, kernel)

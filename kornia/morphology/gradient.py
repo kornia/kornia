@@ -21,4 +21,13 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             >>> gradient_img = gradient(tensor, kernel)
         """
 
+
+    assert torch.is_tensor(tensor), "Invalid type for image. Expected torch.Tensor"
+
+    assert torch.is_tensor(kernel), "Invalid type for kernel. Expected torch.Tensor"
+
+    assert tensor.dim() == 4, f"Invalid number of dimensions for image. Expected 4. Got {tensor.dim()}"
+
+    assert kernel.dim() == 2, f"Invalid number of dimensions for kernel. Expected 2. Got {kernel.dim()}"
+
     return kornia.morphology.Dilate(kernel)(tensor) - kornia.morphology.Erode(kernel)(tensor)
