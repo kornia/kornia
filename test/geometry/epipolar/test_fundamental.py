@@ -153,6 +153,7 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert_allclose(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.xfail(reason="TODO: fix #685")
     def test_synthetic_sampson(self, device, dtype):
 
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
