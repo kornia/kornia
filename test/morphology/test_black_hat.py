@@ -21,5 +21,4 @@ class TestBlackHat:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=dtype)
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(black_hat, (input, kernel), raise_exception=True)
