@@ -1,7 +1,53 @@
-from typing import Tuple, Union, List, cast, Optional
+from typing import Tuple, Union, List, Callable
 
 import torch
 from torch.distributions import Uniform, Beta
+from functools import wraps
+
+
+def _validate_input(f: Callable) -> Callable:
+    r"""Validates the 2D input of the wrapped function.
+
+    Args:
+        f: a function that takes the first argument as tensor.
+
+    Returns:
+        the wrapped function after input is validated.
+    """
+    @wraps(f)
+    def wrapper(input: torch.Tensor, *args, **kwargs):
+        if not torch.is_tensor(input):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+        _validate_shape(input.shape, required_shapes=('BCHW',))
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+        return f(input, *args, **kwargs)
+
+    return wrapper
+
+
+def _validate_input3D(f: Callable) -> Callable:
+    r"""Validates the 3D input of the wrapped function.
+
+    Args:
+        f: a function that takes the first argument as tensor.
+
+    Returns:
+        the wrapped function after input is validated.
+    """
+    @wraps(f)
+    def wrapper(input: torch.Tensor, *args, **kwargs):
+        if not torch.is_tensor(input):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+        input_shape = len(input.shape)
+        assert input_shape == 5, f'Expect input of 5 dimensions, got {input_shape} instead'
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+        return f(input, *args, **kwargs)
+
+    return wrapper
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
@@ -82,10 +128,10 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: List[str] = ["BCHW"]) -> None:
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
-        input: torch.Tensor
+        shape: tensor shape
         required_shapes: List. e.g. ["BCHW", "BCDHW"]
     """
     passed = False

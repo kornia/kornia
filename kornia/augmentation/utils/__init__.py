@@ -17,6 +17,8 @@ from kornia.augmentation.utils.helpers import (
     _adapted_uniform,
     _adapted_beta,
     _shape_validation,
+    _validate_input,
+    _validate_input3D
 )
 
 __all__ = [
@@ -36,4 +38,6 @@ __all__ = [
     "_joint_range_check",
     "_singular_range_check",
     "_tuple_range_reader",
+    "_validate_input",
+    "_validate_input3D"
 ]
