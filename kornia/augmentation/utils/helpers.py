@@ -128,7 +128,27 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str] = ("BCHW",)) -> None:
+def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+                            shape: Tuple) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    is_tuple = isinstance(output, tuple)
+    if is_tuple:
+        out_tensor, trans_matrix = output
+    else:
+        out_tensor = output
+        trans_matrix = None
+
+    for _ in range(len(out_tensor.shape) - len(shape)):
+        assert out_tensor.shape[0] == 1, f'Broadcasted dim has been changed to non-broadcasted dim.'
+        out_tensor = out_tensor.squeeze(0)
+
+    if trans_matrix is not None:
+        # TODO: convert shape of transformation matrix as well
+        ...
+
+    return (out_tensor, trans_matrix) if is_tuple else out_tensor
+
+
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape

@@ -7,12 +7,10 @@ import torch.nn as nn
 from torch.distributions import Bernoulli
 
 from . import functional as F
-from . import random_generator as rg
 from .utils import (
-    _infer_batch_shape,
-    _infer_batch_shape3d,
     _transform_input,
     _transform_input3d,
+    _transform_output_shape,
     _validate_input_dtype,
     _adapted_sampling
 )
@@ -31,11 +29,14 @@ class _BasicAugmentationBase(nn.Module):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False) -> None:
+    def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False,
+                 keepdim: Optional[bool] = False) -> None:
         super(_BasicAugmentationBase, self).__init__()
         self.p = p
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
+        self.keepdim = keepdim
+        self._params = None
         if p != 0. or p != 1.:
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0. or p_batch != 1.:
@@ -47,8 +48,7 @@ class _BasicAugmentationBase(nn.Module):
     def __infer_input__(
         self, input: torch.Tensor
     ) -> torch.Tensor:
-        in_tensor = self.transform_tensor(input)
-        return in_tensor
+        return input
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Standardize input tensors."""
@@ -101,12 +101,15 @@ class _BasicAugmentationBase(nn.Module):
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         in_tensor = self.__infer_input__(input)
+        ori_shape = in_tensor.shape
+        in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
         if params is None:
             params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         self._params = params
 
-        return self.apply_func(input, self._params)
+        output = self.apply_func(input, self._params)
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
 class _AugmentationBase(_BasicAugmentationBase):
@@ -145,11 +148,11 @@ class _AugmentationBase(_BasicAugmentationBase):
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if isinstance(input, tuple):
-            in_tensor = self.transform_tensor(input[0])
+            in_tensor = input[0]
             in_transformation = input[1]
-            return (in_tensor, in_transformation)
+            return in_tensor, in_transformation
         else:
-            in_tensor = self.transform_tensor(input)
+            in_tensor = input
             return in_tensor, None
 
     def apply_func(self, in_tensor: torch.Tensor, in_transform: Optional[torch.Tensor],  # type: ignore
@@ -188,10 +191,13 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-                return_transform: Optional[bool] = None
+                return_transform: Optional[bool] = None,
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         in_tensor, in_transform = self.__infer_input__(input)
+        ori_shape = in_tensor.shape
+        in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
+
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
@@ -201,7 +207,8 @@ class _AugmentationBase(_BasicAugmentationBase):
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         self._params = params
-        return self.apply_func(in_tensor, in_transform, self._params, return_transform)
+        output = self.apply_func(in_tensor, in_transform, self._params, return_transform)
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -304,9 +311,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
                 params: Optional[Dict[str, torch.Tensor]] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_tensor = self.__infer_input__(input)
+        ori_shape = in_tensor.shape
+        in_tensor = self.transform_tensor(in_tensor)
         if params is None:
             batch_shape = in_tensor.shape
             params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         self._params = params
 
-        return self.apply_func(in_tensor, label, self._params)
+        output = self.apply_func(in_tensor, label, self._params)
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output
