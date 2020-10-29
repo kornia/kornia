@@ -37,10 +37,8 @@ jobs:
         include:
         - os: ubuntu-latest
           pytorch-channel: pytorch-nightly
-        include:
         - os: macos-latest
           pytorch-channel: pytorch-nightly
-        include:
         - os: windows-latest
           pytorch-channel: pytorch-nightly
     steps:
