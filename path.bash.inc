@@ -16,7 +16,7 @@ cmd="source $sdk_dir/.dev_env/bin/activate $sdk_dir/.dev_env/envs/venv"
 if [ -z $CI ]; then
     eval $cmd
 else
-    echo $cmd >> $BASH_ENV
+    echo $cmd >> "$BASH_ENV"
 fi
 
 export PYTHONPATH=$PYTHONPATH:$sdk_dir
