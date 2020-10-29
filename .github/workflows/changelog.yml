@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2.3.3
       - name: Run Changelog CI
-        uses: saadmk11/changelog-ci@master
+        uses: shijianjian/changelog-ci@master
         with:
           changelog_filename: CHANGELOG.md
           config_file: .github/configurations/changelog-ci-config.json
