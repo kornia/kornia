@@ -46,19 +46,23 @@ def random_color_jitter_generator(
 
     Args:
         batch_size (int): the number of images.
-        brightness (torch.Tensor, optional): Default value is 0.
-        contrast (torch.Tensor, optional): Default value is 0.
-        saturation (torch.Tensor, optional): Default value is 0.
-        hue (torch.Tensor, optional): Default value is 0.
+        brightness (torch.Tensor, optional): Brightness factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b <= 2. Default value is [0., 0.].
+        contrast (torch.Tensor, optional): Contrast factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b. Default value is [0., 0.].
+        saturation (torch.Tensor, optional): Saturation factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b. Default value is [0., 0.].
+        hue (torch.Tensor, optional): Saturation factor tensor of range (a, b).
+            The provided range must follow -0.5 <= a <= b < 0.5. Default value is [0., 0.].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    brightness = torch.tensor(0.) if brightness is None else cast(torch.Tensor, brightness)
-    contrast = torch.tensor(0.) if contrast is None else cast(torch.Tensor, contrast)
-    hue = torch.tensor(0.) if hue is None else cast(torch.Tensor, hue)
-    saturation = torch.tensor(0.) if saturation is None else cast(torch.Tensor, saturation)
+    brightness = torch.tensor([0., 0.]) if brightness is None else cast(torch.Tensor, brightness)
+    contrast = torch.tensor([0., 0.]) if contrast is None else cast(torch.Tensor, contrast)
+    hue = torch.tensor([0., 0.]) if hue is None else cast(torch.Tensor, hue)
+    saturation = torch.tensor([0., 0.]) if saturation is None else cast(torch.Tensor, saturation)
 
     _joint_range_check(brightness, "brightness", (0, 2))
     _joint_range_check(contrast, "contrast", (0, float('inf')))
