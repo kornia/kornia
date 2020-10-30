@@ -18,8 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
+        pytorch-version: [1.6.0]
         cuda-version: [9.2, 10.1, 10.2, 11.0]
-        pytorch-channel: [pytorch, pytorch-nightly]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -30,7 +30,7 @@ jobs:
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        conda install pytorch cudatoolkit=${{ matrix.cuda-version }} -c ${{ matrix.pytorch-channel }}
+        conda install pytorch=${{ matrix.pytorch-version }} cudatoolkit=${{ matrix.cuda-version }} -c pytorch
         pip install -r requirements-dev.txt
         python setup.py install
     - name: Run Tests
