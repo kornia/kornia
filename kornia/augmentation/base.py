@@ -27,10 +27,12 @@ class _BasicAugmentationBase(nn.Module):
         p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
                          probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
     """
 
     def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False,
-                 keepdim: Optional[bool] = False) -> None:
+                 keepdim: bool = False) -> None:
         super(_BasicAugmentationBase, self).__init__()
         self.p = p
         self.p_batch = p_batch
@@ -126,11 +128,13 @@ class _AugmentationBase(_BasicAugmentationBase):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
     """
 
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
-                 p_batch: float = 1.) -> None:
-        super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
+                 p_batch: float = 1., keepdim: bool = False) -> None:
+        super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
         self.p_batch = p_batch
         self.return_transform = return_transform
@@ -226,6 +230,8 @@ class AugmentationBase2D(_AugmentationBase):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
     """
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
@@ -277,10 +283,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
         p_batch (float): probability for applying an augmentation to a batch. This param controls the augmentation
                          probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
     """
 
-    def __init__(self, p: float, p_batch: float, same_on_batch: bool = False) -> None:
-        super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch)
+    def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
+        super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""

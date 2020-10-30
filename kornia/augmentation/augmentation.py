@@ -17,8 +17,10 @@ from .utils import (
 class AugmentationBase(AugmentationBase2D):
     __doc__ = AugmentationBase2D.__doc__
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
-        super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+                 keepdim: bool = False) -> None:
+        super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                                 keepdim=keepdim)
         raise DeprecationWarning(
             "`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
 
@@ -39,6 +41,8 @@ class RandomHorizontalFlip(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -86,6 +90,8 @@ class RandomVerticalFlip(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -137,6 +143,8 @@ class ColorJitter(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -170,9 +178,11 @@ class ColorJitter(AugmentationBase2D):
         contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
         hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.,
-        return_transform: bool = False, same_on_batch: bool = False, p: float = 1.
+        return_transform: bool = False, same_on_batch: bool = False, p: float = 1.,
+        keepdim: bool = False
     ) -> None:
-        super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                          keepdim=keepdim)
         self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
         self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
         self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
@@ -202,6 +212,8 @@ class RandomGrayscale(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -230,8 +242,10 @@ class RandomGrayscale(AugmentationBase2D):
                   [-0.1717, -0.9023,  0.0819]]]])
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.1) -> None:
-        super(RandomGrayscale, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.1,
+                 keepdim: bool = False) -> None:
+        super(RandomGrayscale, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                              keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -261,6 +275,8 @@ class RandomErasing(AugmentationBase2D):
         scale (Tuple[float, float]): range of proportion of erased area against input image.
         ratio (Tuple[float, float]): range of aspect ratio of erased area.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -285,9 +301,11 @@ class RandomErasing(AugmentationBase2D):
     def __init__(
             self, scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
             ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
-            value: float = 0., return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
+            value: float = 0., return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+            keepdim: bool = False
     ) -> None:
-        super(RandomErasing, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomErasing, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                            keepdim=keepdim)
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
         self.value: float = value
@@ -319,6 +337,8 @@ class RandomPerspective(AugmentationBase2D):
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -346,9 +366,10 @@ class RandomPerspective(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 0.5
+        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                                keepdim=keepdim)
         self.distortion_scale = cast(torch.Tensor, distortion_scale) \
             if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample: Resample
@@ -410,6 +431,8 @@ class RandomAffine(AugmentationBase2D):
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -439,9 +462,10 @@ class RandomAffine(AugmentationBase2D):
         shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
-        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name, p: float = 0.5
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomAffine, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomAffine, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                           keepdim=keepdim)
         degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
         self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
         self.translate: Optional[torch.Tensor] = None
@@ -503,6 +527,8 @@ class CenterCrop(AugmentationBase2D):
             If Tuple[int, int], out_h = size[0], out_w = size[1].
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -524,11 +550,11 @@ class CenterCrop(AugmentationBase2D):
 
     def __init__(self, size: Union[int, Tuple[int, int]], align_corners: bool = True,
                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-                 return_transform: bool = False, p: float = 1.) -> None:
+                 return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super(CenterCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
+        super(CenterCrop, self).__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=p,
+                                         keepdim=keepdim)
         self.size = size
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -572,6 +598,8 @@ class RandomRotation(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -603,9 +631,11 @@ class RandomRotation(AugmentationBase2D):
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 0.5
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 0.5,
+        keepdim: bool = False
     ) -> None:
-        super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                             keepdim=keepdim)
         degrees = cast(torch.Tensor, degrees) if isinstance(degrees, torch.Tensor) else torch.tensor(degrees)
         self.degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
         self.resample: Resample
@@ -659,6 +689,8 @@ class RandomCrop(AugmentationBase2D):
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -682,11 +714,12 @@ class RandomCrop(AugmentationBase2D):
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0,
+        keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -763,6 +796,8 @@ class RandomResizedCrop(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -791,11 +826,11 @@ class RandomResizedCrop(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 1.
+        align_corners: bool = False, p: float = 1., keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
@@ -846,6 +881,8 @@ class RandomMotionBlur(AugmentationBase2D):
             If Tuple[int, int], it will randomly generate the value from the range.
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -873,9 +910,10 @@ class RandomMotionBlur(AugmentationBase2D):
             angle: Union[torch.Tensor, float, Tuple[float, float]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
+            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                               keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         angle = cast(torch.Tensor, angle) if isinstance(angle, torch.Tensor) else torch.tensor(angle)
@@ -919,6 +957,8 @@ class RandomSolarize(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -944,7 +984,7 @@ class RandomSolarize(AugmentationBase2D):
     def __init__(
         self, thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 
@@ -982,6 +1022,8 @@ class RandomPosterize(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1006,9 +1048,10 @@ class RandomPosterize(AugmentationBase2D):
 
     def __init__(
         self, bits: Union[int, Tuple[int, int], torch.Tensor] = 3,
-        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomPosterize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomPosterize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                              keepdim=keepdim)
         bits = cast(torch.Tensor, bits) if isinstance(bits, torch.Tensor) else torch.tensor(bits)
         if len(bits.size()) == 0:
             self.bits = torch.tensor([bits, torch.tensor(8)], dtype=torch.float32)
@@ -1040,6 +1083,8 @@ class RandomSharpness(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1076,9 +1121,10 @@ class RandomSharpness(AugmentationBase2D):
 
     def __init__(
         self, sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
-        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
+        same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomSharpness, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomSharpness, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                              keepdim=keepdim)
         sharpness = cast(torch.Tensor, sharpness) if isinstance(sharpness, torch.Tensor) else torch.tensor(sharpness)
         if sharpness.dim() == 0:
             self.sharpness = torch.tensor([0, sharpness], dtype=torch.float32)
@@ -1110,6 +1156,8 @@ class RandomEqualize(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1133,9 +1181,10 @@ class RandomEqualize(AugmentationBase2D):
     """
 
     def __init__(
-        self, same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5
+        self, same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomEqualize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomEqualize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                             keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
