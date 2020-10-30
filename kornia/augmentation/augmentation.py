@@ -1114,6 +1114,7 @@ class RandomResizedCrop(AugmentationBase2D):
         super(RandomResizedCrop, self).__init__(
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
 =======
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
@@ -1121,6 +1122,13 @@ class RandomResizedCrop(AugmentationBase2D):
 =======
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+=======
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+>>>>>>> RandomREsizedCrop fixed (#748)
+>>>>>>> RandomREsizedCrop fixed (#748)
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
