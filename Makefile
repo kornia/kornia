@@ -11,6 +11,9 @@ test-cpu: FORCE
 test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
+test-module: FORCE
+	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
+
 lint: FORCE
 	pytest -v --flake8 -m flake8
 
