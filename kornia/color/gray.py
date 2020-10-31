@@ -4,49 +4,20 @@ import torch.nn as nn
 from kornia.color.rgb import bgr_to_rgb
 
 
-class RgbToGrayscale(nn.Module):
+def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Convert RGB image to grayscale version of image.
 
-    the image data is assumed to be in the range of (0, 1).
-
-    args:
-        input (torch.Tensor): RGB image to be converted to grayscale.
-
-    returns:
-        torch.Tensor: grayscale version of the image.
-
-    shape:
-        - input: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
-
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-    Examples:
-        >>> import torch
-        >>> import kornia
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.RgbToGrayscale()
-        >>> output = gray(input)  # 2x1x4x5
-    """
-
-    def __init__(self) -> None:
-        super(RgbToGrayscale, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return rgb_to_grayscale(input)
-
-
-def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
-    r"""Convert a RGB image to grayscale.
-
-    See :class:`~kornia.color.RgbToGrayscale` for details.
+    The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): RGB image to be converted to grayscale.
+        input (torch.Tensor): RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: Grayscale version of the image.
+        torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> gray = kornia.color.rgb_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -61,50 +32,20 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     return gray
 
 
-class BgrToGrayscale(nn.Module):
-    r"""convert BGR image to grayscale version of image.
-
-    the image data is assumed to be in the range of (0, 1).
-
-    args:
-        input (torch.Tensor): BGR image to be converted to grayscale.
-
-    returns:
-        torch.Tensor: grayscale version of the image.
-
-    shape:
-        - input: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
-
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-    Examples::
-
-        >>> import torch
-        >>> import kornia
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.BgrToGrayscale()
-        >>> output = gray(input)  # 2x1x4x5
-    """
-
-    def __init__(self) -> None:
-        super(BgrToGrayscale, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return bgr_to_grayscale(input)
-
-
 def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to grayscale.
 
-    See :class:`~kornia.color.BgrToGrayscale` for details.
+    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
     Args:
-        input (torch.Tensor): BGR image to be converted to grayscale.
+        input (torch.Tensor): BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: Grayscale version of the image.
+        torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> gray = kornia.color.bgr_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -117,3 +58,53 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     input_rgb = bgr_to_rgb(input)
     gray: torch.Tensor = rgb_to_grayscale(input_rgb)
     return gray
+
+
+class RgbToGrayscale(nn.Module):
+    r"""Module to convert RGB image to grayscale version of image.
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Shape:
+        - input: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 1, H, W)`
+
+    reference:
+        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> gray = kornia.color.RgbToGrayscale()
+        >>> output = gray(input)  # 2x1x4x5
+    """
+
+    def __init__(self) -> None:
+        super(RgbToGrayscale, self).__init__()
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return rgb_to_grayscale(input)
+
+
+class BgrToGrayscale(nn.Module):
+    r"""Module to convert BGR image to grayscale version of image.
+
+    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
+
+    Shape:
+        - input: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 1, H, W)`
+
+    reference:
+        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> gray = kornia.color.BgrToGrayscale()
+        >>> output = gray(input)  # 2x1x4x5
+    """
+
+    def __init__(self) -> None:
+        super(BgrToGrayscale, self).__init__()
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return bgr_to_grayscale(input)

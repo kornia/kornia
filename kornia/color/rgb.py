@@ -7,28 +7,31 @@ import torch.nn as nn
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to BGR.
 
-    See :class:`~kornia.color.RgbToBgr` for details.
-
     Args:
-        image (torch.Tensor): RGB Image to be converted to BGR.
+        image (torch.Tensor): RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: BGR version of the image.
-    """
+        torch.Tensor: BGR version of the image with shape of shape :math:`(*,3,H,W)`.
 
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = kornia.color.rgb_to_bgr(input) # 2x3x4x5
+    """
     return bgr_to_rgb(image)
 
 
 def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to RGB.
 
-    See :class:`~kornia.color.BgrToRgb` for details.
-
     Args:
-        image (torch.Tensor): BGR Image to be converted to RGB.
+        image (torch.Tensor): BGR Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        torch.Tensor: RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = kornia.color.bgr_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -40,23 +43,24 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     # flip image channels
     out: torch.Tensor = image.flip(-3)
-
     return out
 
 
 def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert image from RGB to RGBA.
 
-    See :class:`~kornia.color.RgbToRgba` for details.
-
     Args:
-        image (torch.Tensor): RGB Image to be converted to RGBA.
-        alpha_val (float, torch.Tensor): A float number for the alpha value.
+        image (torch.Tensor): RGB Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+          of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image.
-    """
+        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
 
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = kornia.color.rgb_to_rgba(input, 1.) # 2x4x4x5
+    """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
@@ -80,16 +84,18 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Convert image from BGR to RGBA.
 
-    See :class:`~kornia.color.BgrToRgba` for details.
-
     Args:
-        image (torch.Tensor): BGR Image to be converted to RGBA.
-        alpha_val (float, torch.Tensor): A float number for the alpha value.
+        image (torch.Tensor): BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+          of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image.
-    """
+        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
 
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = kornia.color.bgr_to_rgba(input, 1.) # 2x4x4x5
+    """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
@@ -107,15 +113,16 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert image from RGBA to RGB.
 
-    See :class:`~kornia.color.RgbaToRgb` for details.
-
     Args:
-        image (torch.Tensor): RGBA Image to be converted to RGB.
+        image (torch.Tensor): RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image.
-    """
+        torch.Tensor: RGB version of the image with shape :math:`(*,3,H,W)`.
 
+    Example:
+        >>> input = torch.rand(2, 4, 4, 5)
+        >>> output = kornia.color.rgba_to_rgb(input) # 2x3x4x5
+    """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
@@ -137,15 +144,16 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
 def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert image from RGBA to BGR.
 
-    See :class:`~kornia.color.RgbaToBgr` for details.
-
     Args:
-        image (torch.Tensor): RGBA Image to be converted to BGR.
+        image (torch.Tensor): RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
 
     Returns:
-        torch.Tensor: BGR version of the image.
-    """
+        torch.Tensor: RGB version of the image with shape :math:`(*,3,H,W)`.
 
+    Example:
+        >>> input = torch.rand(2, 4, 4, 5)
+        >>> output = kornia.color.rgba_to_bgr(input) # 2x3x4x5
+    """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
@@ -169,14 +177,10 @@ class BgrToRgb(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = kornia.color.BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -198,14 +202,10 @@ class RgbToBgr(nn.Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> bgr = kornia.color.RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
@@ -221,17 +221,17 @@ class RgbToRgba(nn.Module):
     Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val (float, torch.Tensor): A float number for the alpha value.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+          of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image.
+        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 4, H, W)`
 
-    Examples::
-
+    Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgba = kornia.color.RgbToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
@@ -248,20 +248,20 @@ class RgbToRgba(nn.Module):
 class BgrToRgba(nn.Module):
     r"""Convert image from BGR to RGBA.
 
-    Add an alpha channel to existing BGR image.
+    Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val (float, torch.Tensor): A float number for the alpha value.
+        alpha_val (float, torch.Tensor): A float number for the alpha value or a tensor
+          of shape :math:`(*,1,H,W)`.
 
     Returns:
-        torch.Tensor: RGBA version of the image.
+        torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 4, H, W)`
 
-    Examples::
-
+    Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgba = kornia.color.BgrToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
@@ -280,15 +280,14 @@ class RgbaToRgb(nn.Module):
 
     Remove an alpha channel from RGB image.
 
-    returns:
+    Returns:
         torch.Tensor: RGB version of the image.
 
-    shape:
+    Shape:
         - image: :math:`(*, 4, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
+    Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = kornia.color.RgbaToRgb()
         >>> output = rgba(input)  # 2x3x4x5
@@ -306,15 +305,14 @@ class RgbaToBgr(nn.Module):
 
     Remove an alpha channel from BGR image.
 
-    returns:
+    Returns:
         torch.Tensor: BGR version of the image.
 
-    shape:
+    Shape:
         - image: :math:`(*, 4, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
+    Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = kornia.color.RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5

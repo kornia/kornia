@@ -74,6 +74,7 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
     H_right = create_random_homography(batch_size, 3, std_val)
     return H_left.permute(0, 2, 1) @ F_rect @ H_right
 
+
 class BaseTester(ABC):
     @abstractmethod
     def test_smoke(self):
