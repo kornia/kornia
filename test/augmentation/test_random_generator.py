@@ -6,7 +6,8 @@ from torch.testing import assert_allclose
 from kornia.augmentation.random_generator import (
     random_prob_generator,
     random_color_jitter_generator,
-    random_perspective_generator
+    random_perspective_generator,
+    random_affine_generator,
 )
 
 
@@ -258,3 +259,106 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_allclose(res['start_points'], expected['start_points'])
         assert_allclose(res['end_points'], expected['end_points'])
+
+
+class TestRandomAffineGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('height', [200])
+    @pytest.mark.parametrize('width', [300])
+    @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
+    @pytest.mark.parametrize('translate', [None, torch.tensor([0.1, 0.1])])
+    @pytest.mark.parametrize('scale', [None, torch.tensor([0.7, 1.2])])
+    @pytest.mark.parametrize('shear', [None, torch.tensor([[0, 20], [0, 20]])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(
+        self, batch_size, height, width, degrees, translate, scale, shear, same_on_batch, device, dtype
+    ):
+        random_affine_generator(
+            batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('height,width,degrees,translate,scale,shear', [
+        pytest.param(-100, 100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, 0.5, None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20, 30]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None, marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1]), None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1, 2, 3]), None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1]), marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1, 2]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(
+        self, batch_size, height, width, degrees, translate, scale, shear, same_on_batch, device, dtype
+    ):
+        batch_size = 8
+        random_affine_generator(
+            batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        translate = torch.tensor([0.1, 0.1])
+        scale = torch.tensor([0.7, 1.2])
+        shear = torch.tensor([[10, 20], [10, 20]])
+        res = random_affine_generator(
+            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=False)
+        expected = dict(
+            translations=torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
+            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            scale=torch.tensor([[0.8914, 0.8914], [1.1797, 1.1797]], device=device, dtype=dtype),
+            angle=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
+            sx=torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
+            sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['translations'], expected['translations'])
+        assert_allclose(res['center'], expected['center'])
+        assert_allclose(res['scale'], expected['scale'])
+        assert_allclose(res['angle'], expected['angle'])
+        assert_allclose(res['sx'], expected['sx'])
+        assert_allclose(res['sy'], expected['sy'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        translate = torch.tensor([0.1, 0.1])
+        scale = torch.tensor([0.7, 1.2])
+        shear = torch.tensor([[10, 20], [10, 20]])
+        res = random_affine_generator(
+            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=True)
+        expected = dict(
+            translations=torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
+            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            scale=torch.tensor([[1.1575, 1.1575], [1.1575, 1.1575]], device=device, dtype=dtype),
+            angle=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
+            sx=torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
+            sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['translations'], expected['translations'])
+        assert_allclose(res['center'], expected['center'])
+        assert_allclose(res['scale'], expected['scale'])
+        assert_allclose(res['angle'], expected['angle'])
+        assert_allclose(res['sx'], expected['sx'])
+        assert_allclose(res['sy'], expected['sy'])

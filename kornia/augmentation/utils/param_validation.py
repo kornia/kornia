@@ -3,10 +3,11 @@ from typing import Tuple, Union, List, Optional, cast
 import torch
 
 
-def _common_param_check(batch_size: int, same_on_batch: bool):
+def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
     """Valid batch_szie and same_on_batch params."""
-    assert type(batch_size) == int and batch_size > 0, "`batchsize` shall be a positive integer. Got {batch_size}."
-    assert type(same_on_batch) == bool, "`same_on_batch` shall be boolean. Got {same_on_batch}."
+    assert type(batch_size) == int and batch_size >= 0, f"`batchsize` shall be a positive integer. Got {batch_size}."
+    if same_on_batch is not None:
+        assert type(same_on_batch) == bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
 
 
 def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
@@ -51,7 +52,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a float number or a tuple with length 2 whose values between {bounds}."
+            f"{name} should be a tensor with length 2 whose values between {bounds}. "
             f"Got {ranged_factor}.")
 
 

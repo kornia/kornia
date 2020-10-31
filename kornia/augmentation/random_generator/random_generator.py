@@ -160,21 +160,16 @@ def random_affine_generator(
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        degrees (float or tuple): Range of degrees to select from.
-            If degrees is a number instead of sequence like (min, max), the range of degrees
-            will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+        degrees (tensor): Range of degrees to select from like (min, max).
+        translate (tensor, optional): tuple of maximum absolute fraction for horizontal
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+        scale (tensor, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
-        shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-            will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
-            Will not apply shear by default
+        shear (tensor, optional): Range of degrees to select from.
+            Shear is a 2x2 tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
+            (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
@@ -182,7 +177,10 @@ def random_affine_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
+    assert isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0, \
+        f"`width` and `height` must be positive integers. Got {width}, {height}."
 
+    device, dtype = _extract_device_dtype([degrees, translate, scale, shear])
     angle = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
     # compute tensor ranges
@@ -491,7 +489,7 @@ def center_crop_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    _common_param_check(batch_size, same_on_batch)
+    _common_param_check(batch_size)
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
