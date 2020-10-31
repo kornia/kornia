@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
-from .rgb import bgr_to_rgb
+
+from kornia.color.rgb import bgr_to_rgb
 
 
 class RgbToGrayscale(nn.Module):
-    r"""convert RGB image to grayscale version of image.
+    r"""Convert RGB image to grayscale version of image.
 
     the image data is assumed to be in the range of (0, 1).
 
@@ -21,8 +22,7 @@ class RgbToGrayscale(nn.Module):
     reference:
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
-    Examples::
-
+    Examples:
         >>> import torch
         >>> import kornia
         >>> input = torch.rand(2, 3, 4, 5)
@@ -52,7 +52,7 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(input)))
 
-    if len(input.shape) < 3 and input.shape[-3] != 3:
+    if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(input.shape))
 
@@ -106,11 +106,11 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: Grayscale version of the image.
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(input)))
 
-    if len(input.shape) < 3 and input.shape[-3] != 3:
+    if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(input.shape))
 

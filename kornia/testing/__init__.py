@@ -74,7 +74,6 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
     H_right = create_random_homography(batch_size, 3, std_val)
     return H_left.permute(0, 2, 1) @ F_rect @ H_right
 
-
 class BaseTester(ABC):
     @abstractmethod
     def test_smoke(self):
@@ -85,7 +84,7 @@ class BaseTester(ABC):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_batch(self):
+    def test_cardinality(self):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
@@ -94,4 +93,8 @@ class BaseTester(ABC):
 
     @abstractmethod
     def test_gradcheck(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")

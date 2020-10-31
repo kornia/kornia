@@ -1,8 +1,7 @@
-from typing import cast
+from typing import Union, cast
 
 import torch
 import torch.nn as nn
-from typing import Union
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
@@ -31,7 +30,7 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: RGB version of the image.
     """
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
@@ -58,7 +57,7 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
         torch.Tensor: RGBA version of the image.
     """
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
@@ -91,7 +90,7 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
         torch.Tensor: RGBA version of the image.
     """
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
@@ -99,6 +98,7 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     if not isinstance(alpha_val, (float, torch.Tensor)):
         raise TypeError(f"alpha_val type is not a float or torch.Tensor. Got {type(alpha_val)}")
+
     # convert first to RGB, then add alpha channel
     x_rgb: torch.Tensor = bgr_to_rgb(image)
     return rgb_to_rgba(x_rgb, alpha_val)
@@ -116,7 +116,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
         torch.Tensor: RGB version of the image.
     """
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 4:
@@ -146,7 +146,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
         torch.Tensor: BGR version of the image.
     """
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 4:
