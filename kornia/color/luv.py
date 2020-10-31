@@ -81,7 +81,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     Args:
         image (torch.Tensor): Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         eps (float): for numerically stability when dividing. Default: 1e-12.
-      
+
     Returns:
         torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
 
@@ -156,7 +156,9 @@ class RgbToLuv(nn.Module):
 
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
         [2] https://www.easyrgb.com/en/math.php
+
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
@@ -184,7 +186,9 @@ class LuvToRgb(nn.Module):
 
     References:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
         [2] https://www.easyrgb.com/en/math.php
+
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
