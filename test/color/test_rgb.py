@@ -1,7 +1,6 @@
 import pytest
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.testing import BaseTester
 
 import torch
@@ -13,11 +12,10 @@ class TestRgbToBgr(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.empty(C, H, W, device=device, dtype=dtype)
-        assert kornia.rgb_to_bgr(img) is not None
-        assert kornia.color.rgb_to_bgr(img) is not None
+        assert isinstance(kornia.color.rgb_to_bgr(img), torch.Tensor)
 
     @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1)])
+        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_bgr(img).shape == shape
@@ -91,15 +89,15 @@ class TestRgbToRgba(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.empty(C, H, W, device=device, dtype=dtype)
-        assert kornia.rgb_to_rgba(img, 0.) is not None
-        assert kornia.color.rgb_to_rgba(img, 0.) is not None
+        assert isinstance(kornia.color.rgb_to_rgba(img, 0.), torch.Tensor)
 
     @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1)])
+        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
-        out_shape = (shape[0], shape[1] + 1, shape[2], shape[3])
+        out_shape = list(shape)
+        out_shape[-3] += 1
         img = torch.ones(shape, device=device, dtype=dtype)
-        assert kornia.color.rgb_to_rgba(img, 0.).shape == out_shape
+        assert kornia.color.rgb_to_rgba(img, 0.).shape == tuple(out_shape)
 
     def test_exception(self, device, dtype):
         # rgb to rgba

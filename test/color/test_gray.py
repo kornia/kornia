@@ -12,7 +12,7 @@ class TestRgbToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.empty(C, H, W, device=device, dtype=dtype)
-        assert kornia.rgb_to_grayscale(img) is not None
+        assert isinstance(kornia.rgb_to_grayscale(img), torch.Tensor)
 
     @pytest.mark.parametrize(
         "batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
