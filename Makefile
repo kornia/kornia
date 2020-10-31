@@ -12,6 +12,7 @@ test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
 test-module: FORCE
+<<<<<<< refs/remotes/kornia/master
 	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
 
 test-jit: FORCE
@@ -28,6 +29,9 @@ test-quick: FORCE
 
 test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
+=======
+	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
+>>>>>>> refactor setup_dev_env script (#756)
 
 lint: FORCE
 	pytest -v --flake8 -m flake8
