@@ -219,3 +219,24 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
 
 def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
     assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"
+
+
+def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
+    """This function will check if all the input tensors are in the same device.
+
+    If so, it would return a tuple of (device, dtype)
+    """
+    device, dtype = None, None
+    for tensor in tensor_list:
+        if tensor is not None:
+            if not isinstance(tensor, (torch.Tensor,)):
+                raise ValueError(f"Expected None or Tensor. Got {tensor}.")
+            _device = tensor.device
+            _dtype = tensor.dtype
+            if device is None and dtype is None:
+                device = _device
+                dtype = _dtype
+            elif device != _device or dtype != _dtype:
+                raise ValueError(f"Passed values are not in the same device and dtype."
+                                 "Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+    return (device, dtype)
