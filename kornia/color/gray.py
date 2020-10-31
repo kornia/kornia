@@ -4,13 +4,13 @@ import torch.nn as nn
 from kornia.color.rgb import bgr_to_rgb
 
 
-def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
+def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     r"""Convert RGB image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image (torch.Tensor): RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
     Returns:
         torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
@@ -19,26 +19,26 @@ def rgb_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.rgb_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(input, torch.Tensor):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(input)))
+            type(image)))
 
-    if len(input.shape) < 3 or input.shape[-3] != 3:
+    if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(input.shape))
+                         .format(image.shape))
 
-    r, g, b = torch.chunk(input, chunks=3, dim=-3)
+    r, g, b = torch.chunk(image, chunks=3, dim=-3)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 
 
-def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
+def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
     Args:
-        input (torch.Tensor): BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image (torch.Tensor): BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
     Returns:
         torch.Tensor: grayscale version of the image with shape :math:`(*,1,H,W)`.
@@ -47,16 +47,16 @@ def bgr_to_grayscale(input: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = kornia.color.bgr_to_grayscale(input) # 2x1x4x5
     """
-    if not isinstance(input, torch.Tensor):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(input)))
+            type(image)))
 
-    if len(input.shape) < 3 or input.shape[-3] != 3:
+    if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(input.shape))
+                         .format(image.shape))
 
-    input_rgb = bgr_to_rgb(input)
-    gray: torch.Tensor = rgb_to_grayscale(input_rgb)
+    image_rgb = bgr_to_rgb(image)
+    gray: torch.Tensor = rgb_to_grayscale(image_rgb)
     return gray
 
 
@@ -66,7 +66,7 @@ class RgbToGrayscale(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Shape:
-        - input: :math:`(*, 3, H, W)`
+        - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 1, H, W)`
 
     reference:
@@ -81,8 +81,8 @@ class RgbToGrayscale(nn.Module):
     def __init__(self) -> None:
         super(RgbToGrayscale, self).__init__()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return rgb_to_grayscale(input)
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return rgb_to_grayscale(image)
 
 
 class BgrToGrayscale(nn.Module):
@@ -91,7 +91,7 @@ class BgrToGrayscale(nn.Module):
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
     Shape:
-        - input: :math:`(*, 3, H, W)`
+        - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 1, H, W)`
 
     reference:
@@ -106,5 +106,5 @@ class BgrToGrayscale(nn.Module):
     def __init__(self) -> None:
         super(BgrToGrayscale, self).__init__()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return bgr_to_grayscale(input)
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return bgr_to_grayscale(image)

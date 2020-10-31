@@ -2,7 +2,6 @@ import pytest
 
 import kornia
 from kornia.testing import BaseTester
-import kornia.testing as utils  # test utils
 
 import torch
 from torch.autograd import gradcheck
