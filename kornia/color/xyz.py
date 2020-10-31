@@ -76,7 +76,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         torch.Tensor: XYZ version of the image.
     """
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
@@ -108,7 +108,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: RGB version of the image.
     """
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
