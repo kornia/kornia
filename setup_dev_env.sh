@@ -38,6 +38,10 @@ fi
 python_version=${PYTHON_VERSION:-"3.7"}
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> refactor setup_dev_env script (#756)
 pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
 cuda_version=${CUDA_VERSION:-"10.2"}
@@ -58,6 +62,7 @@ fi
 =======
 pytorch_version=${PYTORCH_VERSION:-"1.6.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 >>>>>>> refactor setup_dev_env script (#756)
 =======
@@ -83,6 +88,9 @@ then
     cuda_toolkit=""
 fi
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+>>>>>>> refactor setup_dev_env script (#756)
+>>>>>>> refactor setup_dev_env script (#756)
 
 # create an environment with the specific python version
 $conda_bin config --append channels conda-forge
@@ -97,6 +105,7 @@ source $conda_bin_dir/activate $dev_env_dir/envs/venv
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 =======
 conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
@@ -107,6 +116,13 @@ conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -
 =======
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
+=======
+conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
+>>>>>>> refactor setup_dev_env script (#756)
+>>>>>>> refactor setup_dev_env script (#756)
 
 # install testing dependencies
 pip install -r requirements-dev.txt

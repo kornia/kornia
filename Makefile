@@ -14,8 +14,12 @@ test-cuda: FORCE
 test-module: FORCE
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> refactor setup_dev_env script (#756)
 	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
 
 test-jit: FORCE
@@ -33,11 +37,17 @@ test-quick: FORCE
 test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
 >>>>>>> refactor setup_dev_env script (#756)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
+>>>>>>> refactor setup_dev_env script (#756)
+>>>>>>> refactor setup_dev_env script (#756)
 
 lint: FORCE
 	pytest -v --flake8 -m flake8
