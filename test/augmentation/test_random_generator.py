@@ -11,6 +11,7 @@ from kornia.augmentation.random_generator import (
     random_rotation_generator,
     random_crop_generator,
     random_crop_size_generator,
+    random_rectangles_params_generator,
 )
 
 
@@ -575,3 +576,86 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
+
+
+class TestRandomRectangleGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('height', [200])
+    @pytest.mark.parametrize('width', [300])
+    @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.1])])
+    @pytest.mark.parametrize('ratio', [torch.tensor([.7, 1.1])])
+    @pytest.mark.parametrize('value', [0])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(
+        self, batch_size, height, width, scale, ratio, value, same_on_batch, device, dtype
+    ):
+        random_rectangles_params_generator(
+            batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('height,width,scale,ratio,value', [
+        pytest.param(-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3, 1.5]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2, marks=pytest.mark.xfail),
+        pytest.param(
+            100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(
+        self, height, width, scale, ratio, value, device, dtype
+    ):
+        batch_size = 8
+        random_rectangles_params_generator(
+            batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        width, height = 100, 150
+        scale = torch.tensor([0.7, 1.3])
+        ratio = torch.tensor([0.7, 1.3])
+        value = 0.5
+        res = random_rectangles_params_generator(
+            batch_size=2, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=False)
+        expected = dict(
+            widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
+            heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
+            xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
+            ys=torch.tensor([6, 8], device=device, dtype=torch.int32),
+            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['widths'], expected['widths'])
+        assert_allclose(res['widths'], expected['widths'])
+        assert_allclose(res['xs'], expected['xs'])
+        assert_allclose(res['ys'], expected['ys'])
+        assert_allclose(res['values'], expected['values'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        width, height = 100, 150
+        scale = torch.tensor([0.7, 1.3])
+        ratio = torch.tensor([0.7, 1.3])
+        value = 0.5
+        res = random_rectangles_params_generator(
+            batch_size=2, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=True)
+        expected = dict(
+            widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
+            heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
+            xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
+            ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
+            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['widths'], expected['widths'])
+        assert_allclose(res['widths'], expected['widths'])
+        assert_allclose(res['xs'], expected['xs'])
+        assert_allclose(res['ys'], expected['ys'])
+        assert_allclose(res['values'], expected['values'])

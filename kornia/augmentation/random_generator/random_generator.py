@@ -438,17 +438,24 @@ def random_rectangles_params_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     _common_param_check(batch_size, same_on_batch)
+    device, dtype = _extract_device_dtype([ratio, scale])
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
+    assert isinstance(value, (int, float)) and value >= 0 and value <= 1, \
+        f"'value' must be a number between 0 - 1. Got {value}."
     _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
     _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
-    zeros = torch.zeros((batch_size,))
     images_area = height * width
     target_areas = _adapted_uniform(
         (batch_size,), scale[0], scale[1], same_on_batch) * images_area
     if ratio[0] < 1. and ratio[1] > 1.:
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0], 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1], same_on_batch)
-        rand_idxs = torch.round(torch.rand((batch_size,))).bool()
+        if same_on_batch:
+            rand_idxs = torch.round(torch.rand((1,), device=device, dtype=dtype)).repeat(batch_size).bool()
+        else:
+            rand_idxs = torch.round(torch.rand((batch_size,), device=device, dtype=dtype)).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
         aspect_ratios = _adapted_uniform((batch_size,), ratio[0], ratio[1], same_on_batch)
@@ -456,24 +463,26 @@ def random_rectangles_params_generator(
     # based on target areas and aspect ratios, rectangle params are computed
     heights = torch.min(
         torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)),
-                  torch.tensor(1.)),
-        torch.tensor(float(height))
+                  torch.tensor(1., device=device, dtype=dtype)),
+        torch.tensor(height, device=device, dtype=dtype)
     ).int()
 
     widths = torch.min(
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)),
-                  torch.tensor(1.)),
-        torch.tensor(float(width))
+                  torch.tensor(1., device=device, dtype=dtype)),
+        torch.tensor(width, device=device, dtype=dtype)
     ).int()
 
-    xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(width) - widths + 1).float()).int()
-    ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(height) - heights + 1).float()).int()
+    xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (
+        torch.tensor(width, device=device, dtype=dtype) - widths + 1)).int()
+    ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (
+        torch.tensor(height, device=device, dtype=dtype) - heights + 1)).int()
 
     return dict(widths=widths,
                 heights=heights,
                 xs=xs,
                 ys=ys,
-                values=torch.tensor([value] * batch_size))
+                values=torch.tensor([value] * batch_size, device=device, dtype=dtype))
 
 
 def center_crop_generator(
