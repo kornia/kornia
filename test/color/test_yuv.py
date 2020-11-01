@@ -2,81 +2,128 @@ import pytest
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.testing import BaseTester
 
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestRgbYuvConversion:
-    # Parameterize for CHW and NCHW shapes
-    @pytest.mark.parametrize('shape', ((3, 4, 5), (2, 3, 4, 5)))
-    # RGB to YUV and YUV to RGB should be inverse operations
-    def test_inverse_operations(self, device, shape):
-        input = torch.rand(*shape).to(device)
-        yuv_to_rgb_converter = kornia.color.YuvToRgb()
-        rgb_to_yuv_converter = kornia.color.RgbToYuv()
+class TestRgbToYuv(BaseTester):
+    def test_smoke(self, device, dtype):
+        C, H, W = 3, 4, 5
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        assert isinstance(kornia.color.rgb_to_yuv(img), torch.Tensor)
 
-        assert_allclose(input, yuv_to_rgb_converter(rgb_to_yuv_converter(input)), rtol=0.005, atol=0.005)
-        assert_allclose(input, rgb_to_yuv_converter(yuv_to_rgb_converter(input)), rtol=0.005, atol=0.005)
+    @pytest.mark.parametrize(
+        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.ones(shape, device=device, dtype=dtype)
+        assert kornia.color.rgb_to_yuv(img).shape == shape
 
-    def test_gradcheck(self, device):
-
-        # prepare input data
-        data = torch.tensor([[[0.1, 0.2],
-                              [0.1, 0.1]],
-
-                             [[0.2, 0.5],
-                              [0.4, 0.2]],
-
-                             [[0.3, 0.3],
-                              [0.5, 0.5]]]).to(device)  # 3x2x2
-
-        data = utils.tensor_to_gradcheck_var(data)  # to var
-
-        assert gradcheck(kornia.color.YuvToRgb(), (data,),
-                         raise_exception=True)
-        assert gradcheck(kornia.color.RgbToYuv(), (data,),
-                         raise_exception=True)
-
-    def test_rgb_to_yuv_shape(self, device):
-        channels, height, width = 3, 4, 5
-        img = torch.ones(channels, height, width).to(device)
-        assert kornia.rgb_to_yuv(img).shape == (channels, height, width)
-
-    def test_rgb_to_yuv_batch_shape(self, device):
-        batch_size, channels, height, width = 2, 3, 4, 5
-        img = torch.ones(batch_size, channels, height, width).to(device)
-        assert kornia.rgb_to_yuv(img).shape == \
-            (batch_size, channels, height, width)
-
-    def test_yuv_to_rgb_shape(self, device):
-        channels, height, width = 3, 4, 5
-        img = torch.ones(channels, height, width).to(device)
-        assert kornia.yuv_to_rgb(img).shape == (channels, height, width)
-
-    def test_yuv_to_rgb_batch_shape(self, device):
-        batch_size, channels, height, width = 2, 3, 4, 5
-        img = torch.ones(batch_size, channels, height, width).to(device)
-        assert kornia.yuv_to_rgb(img).shape == \
-            (batch_size, channels, height, width)
-
-    def test_rgb_to_yuv_type(self):
+    def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            out = kornia.rgb_to_yuv(1)
+            assert kornia.color.rgb_to_yuv([0.])
 
-    def test_yuv_to_rbg_type(self):
+        with pytest.raises(ValueError):
+            img = torch.ones(1, 1, device=device, dtype=dtype)
+            assert kornia.color.rgb_to_yuv(img)
+
+        with pytest.raises(ValueError):
+            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
+            assert kornia.color.rgb_to_yuv(img)
+
+    # TODO: investigate and implement me
+    # def test_unit(self, device, dtype):
+    #    pass
+
+    # TODO: improve accuracy
+    def test_forth_and_back(self, device, dtype):
+        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
+        yuv = kornia.color.rgb_to_yuv
+        rgb = kornia.color.yuv_to_rgb
+
+        data_out = rgb(yuv(data))
+        assert_allclose(data_out, data, rtol=1e-2, atol=1e-2)
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.rgb_to_yuv
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(img), op_jit(img))
+
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        ops = kornia.color.RgbToYuv().to(device, dtype)
+        fcn = kornia.color.rgb_to_yuv
+        assert_allclose(ops(img), fcn(img))
+
+
+class TestYuvToRgb(BaseTester):
+    def test_smoke(self, device, dtype):
+        C, H, W = 3, 4, 5
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        assert isinstance(kornia.color.yuv_to_rgb(img), torch.Tensor)
+
+    @pytest.mark.parametrize(
+        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.ones(shape, device=device, dtype=dtype)
+        assert kornia.color.yuv_to_rgb(img).shape == shape
+
+    def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            out = kornia.yuv_to_rgb(1)
+            assert kornia.color.yuv_to_rgb([0.])
 
-    @pytest.mark.parametrize("bad_input_shapes", [([2, 2],), ([3, 3, 3, 3, 3],), ([2, 2, 2],), ([2, 2, 2, 2],)])
-    def test_rgb_to_yuv_shape_bad(self, bad_input_shapes):
         with pytest.raises(ValueError):
-            out = kornia.rgb_to_yuv(torch.ones(*bad_input_shapes))
+            img = torch.ones(1, 1, device=device, dtype=dtype)
+            assert kornia.color.yuv_to_rgb(img)
 
-    @pytest.mark.parametrize("bad_input_shapes", [([2, 2],), ([3, 3, 3, 3, 3],), ([2, 2, 2],), ([2, 2, 2, 2],)])
-    def test_yuv_to_rbg_shape_bad(self, bad_input_shapes):
         with pytest.raises(ValueError):
-            out = kornia.yuv_to_rgb(torch.ones(*bad_input_shapes))
+            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
+            assert kornia.color.yuv_to_rgb(img)
 
-    # TODO add cv2 comparision test
+    # TODO: investigate and implement me
+    # def test_unit(self, device, dtype):
+    #    pass
+
+    # TODO: improve accuracy
+    def test_forth_and_back(self, device, dtype):
+        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
+        rgb = kornia.color.yuv_to_rgb
+        yuv = kornia.color.rgb_to_yuv
+
+        data_out = rgb(yuv(data))
+        assert_allclose(data_out, data, rtol=1e-2, atol=1e-2)
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.yuv_to_rgb
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(img), op_jit(img))
+
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        ops = kornia.color.YuvToRgb().to(device, dtype)
+        fcn = kornia.color.yuv_to_rgb
+        assert_allclose(ops(img), fcn(img))
