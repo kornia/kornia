@@ -190,8 +190,8 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
-    'numpy': ('http://docs.scipy.org/doc/numpy/', None),
-    'torch': ('http://pytorch.org/docs/master/', None),
+    'numpy': ('http://numpy.org/doc/stable/', None),
+    'torch': ('http://pytorch.org/docs/stable/', None),
 }
 
 examples_dir = os.path.join(current_path, "tutorials")
