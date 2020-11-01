@@ -572,12 +572,15 @@ def random_motion_blur_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(angle, 'angle')
-    _joint_range_check(direction, 'direction')
+    _joint_range_check(direction, 'direction', (-1, 1))
+
+    device, dtype = _extract_device_dtype([angle, direction])
 
     if isinstance(kernel_size, int):
-        ksize_factor = torch.tensor([kernel_size] * batch_size)
+        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
+        assert len(kernel_size) == 2, f"`kernal_size` must be (2,) if it is a tuple. Got {kernal_size}."
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
     else:

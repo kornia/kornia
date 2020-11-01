@@ -13,6 +13,7 @@ from kornia.augmentation.random_generator import (
     random_crop_size_generator,
     random_rectangles_params_generator,
     center_crop_generator,
+    random_motion_blur_generator
 )
 
 
@@ -713,3 +714,64 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         pass
+
+
+class TestRandomMotionBlur(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
+    @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
+    @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([1, 1])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, kernel_size, angle, direction, same_on_batch, device, dtype):
+        random_motion_blur_generator(
+            batch_size=batch_size, kernel_size=kernel_size,
+            angle=angle.to(device=device, dtype=dtype),
+            direction=direction.to(device=device, dtype=dtype),
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('kernel_size,angle,direction', [
+        pytest.param(4, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(1, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-2, 1]), marks=pytest.mark.xfail),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-1, 2]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
+        random_motion_blur_generator(
+            batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
+            direction=direction.to(device=device, dtype=dtype))
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        angle = torch.tensor([30, 90])
+        direction = torch.tensor([-1, 1])
+        res = random_motion_blur_generator(
+            batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
+            direction=direction.to(device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=dtype),
+            angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
+            direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['ksize_factor'], expected['ksize_factor'])
+        assert_allclose(res['angle_factor'], expected['angle_factor'])
+        assert_allclose(res['direction_factor'], expected['direction_factor'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        angle = torch.tensor([30, 90])
+        direction = torch.tensor([-1, 1])
+        res = random_motion_blur_generator(
+            batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
+            direction=direction.to(device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=dtype),
+            angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
+            direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['ksize_factor'], expected['ksize_factor'])
+        assert_allclose(res['angle_factor'], expected['angle_factor'])
+        assert_allclose(res['direction_factor'], expected['direction_factor'])
