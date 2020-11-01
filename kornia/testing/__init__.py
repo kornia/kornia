@@ -85,7 +85,7 @@ class BaseTester(ABC):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_batch(self):
+    def test_cardinality(self):
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
@@ -94,4 +94,8 @@ class BaseTester(ABC):
 
     @abstractmethod
     def test_gradcheck(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")

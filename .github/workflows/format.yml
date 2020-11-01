@@ -9,7 +9,7 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  code-format:
+  linter:
     runs-on: [ubuntu-latest]
 
     steps:

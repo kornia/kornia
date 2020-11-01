@@ -12,7 +12,22 @@ test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/ --flake8 --mypy
 
 test-module: FORCE
-	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
+	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
+
+test-jit: FORCE
+	pytest -v --device all --dtype all -m jit
+
+test-gradcheck: FORCE
+	pytest -v --device all --dtype all -m grad
+
+test-nn: FORCE
+	pytest -v --device all --dtype all -m nn
+
+test-quick: FORCE
+	pytest -v --device all --dtype all -m "not (jit or grad or nn)"
+
+test-slow: FORCE
+	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
 	pytest -v --flake8 -m flake8
@@ -22,6 +37,9 @@ mypy: FORCE
 
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
+
+doctest:
+	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
 
 docstyle: FORCE
 	pydocstyle kornia/
