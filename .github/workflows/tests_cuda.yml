@@ -105,9 +105,13 @@ jobs:
 =======
 =======
         pytorch-version: [1.6.0]
+<<<<<<< master
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
         cuda-version: [9.2, 10.1, 10.2, 11.0]
+=======
+        cuda-version: [9.2, 10.1, 10.2]
+>>>>>>> drop cuda 11.0 support for nightly tests
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
