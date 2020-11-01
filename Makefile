@@ -40,6 +40,7 @@ autopep8: FORCE
 
 doctest:
 	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
+
 docstyle: FORCE
 	pydocstyle kornia/
 

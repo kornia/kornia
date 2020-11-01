@@ -260,4 +260,3 @@ TypedField.make_field = patched_make_field
 # @jpchen's hack to get rtd builder to install latest pytorch
 if 'READTHEDOCS' in os.environ:
     os.system('pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl')
-"""

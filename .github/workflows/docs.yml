@@ -9,7 +9,7 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  test-docs:
+  build-docs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
