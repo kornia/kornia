@@ -115,7 +115,13 @@ jobs:
 >>>>>>> [Feat] enable doctest in the CI (#764)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Feat] enable doctest in the CI (#764)
+>>>>>>> [Feat] enable doctest in the CI (#764)
       
   doctest:
     runs-on: [ubuntu-latest]
@@ -125,13 +131,20 @@ jobs:
     - name: Setup conda dependencies
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] enable doctest in the CI (#764)
       uses: conda-incubator/setup-miniconda@v2
 =======
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] enable doctest in the CI (#764)
+<<<<<<< refs/remotes/kornia/master
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
+=======
+>>>>>>> [Feat] enable doctest in the CI (#764)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -148,11 +161,18 @@ jobs:
       run: make doctest
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] enable doctest in the CI (#764)
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 =======
 >>>>>>> [Feat] enable doctest in the CI (#764)
+<<<<<<< refs/remotes/kornia/master
 =======
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+>>>>>>> [Feat] enable doctest in the CI (#764)
