@@ -5,15 +5,15 @@ import torch.nn as nn
 
 
 def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert image from RGB to HSV.
+    r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        image (torch.Tensor): RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
+        torch.Tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -59,15 +59,15 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
 
 def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert image from HSV to RGB.
+    r"""Convert an image from HSV to RGB.
 
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        image (torch.Tensor): HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.tensor: RGB version of the image with shape of :math:`(*, 3, H, W)`.
+        torch.Tensor: RGB version of the image with shape of :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -105,7 +105,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToHsv(nn.Module):
-    r"""Convert image from RGB to HSV.
+    r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -130,7 +130,7 @@ class RgbToHsv(nn.Module):
 
 
 class HsvToRgb(nn.Module):
-    r"""Convert image from HSV to RGB.
+    r"""Convert an image from HSV to RGB.
 
     The image data is assumed to be in the range of (0, 1).
 

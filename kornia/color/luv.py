@@ -21,7 +21,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Args:
         image (torch.Tensor): RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
-         eps (float): for numerically stability when dividing. Default: 1e-12.
+        eps (float): for numerically stability when dividing. Default: 1e-12.
 
     Returns:
         torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.

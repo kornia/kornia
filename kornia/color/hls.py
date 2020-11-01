@@ -8,7 +8,7 @@ from kornia.constants import pi
 
 
 def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to HLS.
+    r"""Convert a RGB image to HLS.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -62,7 +62,7 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
 
 def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an HLS image to RGB.
+    r"""Convert a HLS image to RGB.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -108,7 +108,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToHls(nn.Module):
-    r"""Convert image from RGB to HLS.
+    r"""Convert an image from RGB to HLS.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -133,7 +133,7 @@ class RgbToHls(nn.Module):
 
 
 class HlsToRgb(nn.Module):
-    r"""Convert image from HLS to Rgb.
+    r"""Convert an image from HLS to RGB.
 
     The image data is assumed to be in the range of (0, 1).
 

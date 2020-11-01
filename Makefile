@@ -27,7 +27,7 @@ test-quick: FORCE
 	pytest -v --device all --dtype all -m "not (jit or grad or nn)"
 
 test-slow: FORCE
-	pytest -v --device all --dtype all -m "(jit or gradcheck or nn)"
+	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
 	pytest -v --flake8 -m flake8

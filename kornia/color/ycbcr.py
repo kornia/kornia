@@ -72,7 +72,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToYcbcr(nn.Module):
-    r"""Convert image from RGB to YCbCr.
+    r"""Convert an image from RGB to YCbCr.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -97,7 +97,7 @@ class RgbToYcbcr(nn.Module):
 
 
 class YcbcrToRgb(nn.Module):
-    r"""Convert image from YCbCr to Rgb.
+    r"""Convert an image from YCbCr to Rgb.
 
     The image data is assumed to be in the range of (0, 1).
 

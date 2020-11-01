@@ -71,7 +71,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 class RgbToXyz(nn.Module):
-    r"""Converts an image from RGB to XYZ
+    r"""Converts an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -99,7 +99,7 @@ class RgbToXyz(nn.Module):
 
 
 class XyzToRgb(nn.Module):
-    r"""Converts an image from XYZ to RGB
+    r"""Converts an image from XYZ to RGB.
 
     Returns:
         torch.Tensor: RGB version of the image.

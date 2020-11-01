@@ -66,7 +66,7 @@ class TestRgbToLuv(BaseTester):
 
         assert_allclose(kornia.color.rgb_to_luv(data), expected)
 
-    def test_inverse(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
@@ -156,7 +156,7 @@ class TestLuvToRgb(BaseTester):
 
         assert_allclose(kornia.color.luv_to_rgb(data), expected)
 
-    def test_inverse(self, device, dtype):
+    def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
