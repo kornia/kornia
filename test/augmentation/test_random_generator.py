@@ -9,6 +9,7 @@ from kornia.augmentation.random_generator import (
     random_perspective_generator,
     random_affine_generator,
     random_rotation_generator,
+    random_crop_generator,
 )
 
 
@@ -404,3 +405,95 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['degrees'], expected['degrees'])
+
+
+class TestRandomCropGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('input_size', [(200, 200)])
+    @pytest.mark.parametrize('size', [(100, 100), torch.tensor([[50, 50], [60, 60]])])
+    @pytest.mark.parametrize('resize_to', [None, (100, 100)])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(
+        self, batch_size, input_size, size, resize_to, same_on_batch, device, dtype
+    ):
+        random_crop_generator(
+            batch_size=batch_size, input_size=input_size,
+            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+            resize_to=resize_to,
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('input_size,size,resize_to', [
+        pytest.param((-300, 300), (200, 200), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((100, 100), (200, 200), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((200, 200), torch.tensor([50, 50]), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
+        batch_size = 2
+        random_crop_generator(
+            batch_size=batch_size, input_size=input_size,
+            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+            resize_to=resize_to)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_crop_generator(
+            batch_size=2, input_size=(100, 100),
+            size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
+            resize_to=(200, 200))
+        expected = dict(
+            src=torch.tensor([
+                [[36, 19],
+                 [95, 19],
+                 [95, 68],
+                 [36, 68]],
+                [[19, 29],
+                 [98, 29],
+                 [98, 98],
+                 [19, 98]]], device=device, dtype=torch.long),
+            dst=torch.tensor([
+                [[0, 0],
+                 [199, 0],
+                 [199, 199],
+                 [0, 199]],
+                [[0, 0],
+                 [199, 0],
+                 [199, 199],
+                 [0, 199]]], device=device, dtype=torch.long),
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['src'], expected['src'])
+        assert_allclose(res['dst'], expected['dst'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_crop_generator(
+            batch_size=2, input_size=(100, 100),
+            size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
+            resize_to=(200, 200), same_on_batch=True)
+        expected = dict(
+            src=torch.tensor([
+                [[36, 46],
+                 [95, 46],
+                 [95, 95],
+                 [36, 95]],
+                [[36, 46],
+                 [115, 46],
+                 [115, 115],
+                 [36, 115]]], device=device, dtype=torch.long),
+            dst=torch.tensor([
+                [[0, 0],
+                 [199, 0],
+                 [199, 199],
+                 [0, 199]],
+                [[0, 0],
+                 [199, 0],
+                 [199, 199],
+                 [0, 199]]], device=device, dtype=torch.long),
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['src'], expected['src'])
+        assert_allclose(res['dst'], expected['dst'])

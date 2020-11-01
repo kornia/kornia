@@ -330,14 +330,16 @@ def random_crop_generator(
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size), torch.tensor([0] * batch_size), size[:, 1] - 1, size[:, 0] - 1)
+            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
+            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
+            size[:, 1] - 1, size[:, 0] - 1)
     else:
         crop_dst = torch.tensor([[
             [0, 0],
             [resize_to[1] - 1, 0],
             [resize_to[1] - 1, resize_to[0] - 1],
             [0, resize_to[0] - 1],
-        ]]).repeat(batch_size, 1, 1)
+        ]], device=x_start.device, dtype=x_start.dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
                 dst=crop_dst)
