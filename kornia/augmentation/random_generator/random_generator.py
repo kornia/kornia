@@ -354,6 +354,9 @@ def random_crop_size_generator(
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
 
+    if batch_size == 0:
+        return dict(size=torch.zeros([0, 2]))
+
     # 10 trails for each element
     area = _adapted_uniform(
         (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
