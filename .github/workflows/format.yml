@@ -69,6 +69,9 @@ jobs:
       shell: bash -l {0}
       run: make mypy
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] enable doctest in the CI (#764)
       
   doctest:
     runs-on: [ubuntu-latest]
@@ -76,7 +79,11 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< refs/remotes/kornia/master
       uses: conda-incubator/setup-miniconda@v2
+=======
+      uses: conda-incubator/setup-miniconda@v1
+>>>>>>> [Feat] enable doctest in the CI (#764)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -91,5 +98,8 @@ jobs:
     - name: Run mypy
       shell: bash -l {0}
       run: make doctest
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+>>>>>>> [Feat] enable doctest in the CI (#764)
