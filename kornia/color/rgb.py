@@ -15,7 +15,7 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_bgr(input) # 2x3x4x5
+        >>> output = rgb_to_bgr(input) # 2x3x4x5
     """
     return bgr_to_rgb(image)
 
@@ -31,7 +31,7 @@ def bgr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.bgr_to_rgb(input) # 2x3x4x5
+        >>> output = bgr_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -61,7 +61,7 @@ def rgb_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_rgba(input, 1.) # 2x4x4x5
+        >>> output = rgb_to_rgba(input, 1.) # 2x4x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -98,7 +98,7 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.bgr_to_rgba(input, 1.) # 2x4x4x5
+        >>> output = bgr_to_rgba(input, 1.) # 2x4x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -125,7 +125,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> output = kornia.color.rgba_to_rgb(input) # 2x3x4x5
+        >>> output = rgba_to_rgb(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -156,7 +156,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> output = kornia.color.rgba_to_bgr(input) # 2x3x4x5
+        >>> output = rgba_to_bgr(input) # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -183,7 +183,7 @@ class BgrToRgb(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.BgrToRgb()
+        >>> rgb = BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 
@@ -208,7 +208,7 @@ class RgbToBgr(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> bgr = kornia.color.RgbToBgr()
+        >>> bgr = RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
     """
 
@@ -239,7 +239,7 @@ class RgbToRgba(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgba = kornia.color.RgbToRgba(1.)
+        >>> rgba = RgbToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
     """
 
@@ -271,7 +271,7 @@ class BgrToRgba(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgba = kornia.color.BgrToRgba(1.)
+        >>> rgba = BgrToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
     """
 
@@ -297,7 +297,7 @@ class RgbaToRgb(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> rgba = kornia.color.RgbaToRgb()
+        >>> rgba = RgbaToRgb()
         >>> output = rgba(input)  # 2x3x4x5
     """
 
@@ -322,7 +322,7 @@ class RgbaToBgr(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
-        >>> rgba = kornia.color.RgbaToBgr()
+        >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
     """
 

@@ -13,7 +13,7 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_ycbcr(input)  # 2x3x4x5
+        >>> output = rgb_to_ycbcr(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -47,7 +47,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.ycbcr_to_rgb(input)  # 2x3x4x5
+        >>> output = ycbcr_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -85,7 +85,7 @@ class RgbToYcbcr(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> ycbcr = kornia.color.RgbToYcbcr()
+        >>> ycbcr = RgbToYcbcr()
         >>> output = ycbcr(input)  # 2x3x4x5
     """
 
@@ -110,7 +110,7 @@ class YcbcrToRgb(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.YcbcrToRgb()
+        >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 

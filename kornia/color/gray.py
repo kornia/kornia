@@ -17,7 +17,7 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.rgb_to_grayscale(input) # 2x1x4x5
+        >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -45,7 +45,7 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.bgr_to_grayscale(input) # 2x1x4x5
+        >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -74,7 +74,7 @@ class RgbToGrayscale(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.RgbToGrayscale()
+        >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
@@ -99,7 +99,7 @@ class BgrToGrayscale(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = kornia.color.BgrToGrayscale()
+        >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 

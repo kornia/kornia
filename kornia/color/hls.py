@@ -20,7 +20,7 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_hls(input)  # 2x3x4x5
+        >>> output = rgb_to_hls(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -74,7 +74,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.hls_to_rgb(input)  # 2x3x4x5
+        >>> output = hls_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -121,14 +121,14 @@ class RgbToHls(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hls = kornia.color.RgbToHls()
+        >>> hls = RgbToHls()
         >>> output = hls(input)  # 2x3x4x5
     """
 
     def __init__(self) -> None:
         super(RgbToHls, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_hls(image)
 
 
@@ -149,12 +149,12 @@ class HlsToRgb(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.HlsToRgb()
+        >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 
     def __init__(self) -> None:
         super(HlsToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return hls_to_rgb(image)

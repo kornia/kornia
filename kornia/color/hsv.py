@@ -17,7 +17,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_hsv(input)  # 2x3x4x5
+        >>> output = rgb_to_hsv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -71,7 +71,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.hsv_to_rgb(input)  # 2x3x4x5
+        >>> output = hsv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -118,7 +118,7 @@ class RgbToHsv(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hsv = kornia.color.RgbToHsv()
+        >>> hsv = RgbToHsv()
         >>> output = hsv(input)  # 2x3x4x5
     """
 
@@ -143,7 +143,7 @@ class HsvToRgb(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.HsvToRgb()
+        >>> rgb = HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
 

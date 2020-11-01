@@ -190,8 +190,8 @@ texinfo_documents = [
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
-    'numpy': ('http://docs.scipy.org/doc/numpy/', None),
-    'torch': ('http://pytorch.org/docs/master/', None),
+    'numpy': ('http://numpy.org/doc/stable/', None),
+    'torch': ('http://pytorch.org/docs/stable/', None),
 }
 
 examples_dir = os.path.join(current_path, "tutorials")
@@ -260,3 +260,4 @@ TypedField.make_field = patched_make_field
 # @jpchen's hack to get rtd builder to install latest pytorch
 if 'READTHEDOCS' in os.environ:
     os.system('pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl')
+"""

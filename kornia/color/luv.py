@@ -28,7 +28,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.rgb_to_luv(input)  # 2x3x4x5
+        >>> output = rgb_to_luv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -87,7 +87,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> output = kornia.color.luv_to_rgb(input)  # 2x3x4x5
+        >>> output = luv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -151,7 +151,7 @@ class RgbToLuv(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> luv = kornia.color.RgbToLuv()
+        >>> luv = RgbToLuv()
         >>> output = luv(input)  # 2x3x4x5
 
     Reference:
@@ -181,7 +181,7 @@ class LuvToRgb(nn.Module):
 
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.LuvToRgb()
+        >>> rgb = LuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
     References:
