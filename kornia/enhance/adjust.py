@@ -588,7 +588,11 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         [1, 1, 1],
         [1, 5, 1],
         [1, 1, 1]
+<<<<<<< refs/remotes/kornia/master
     ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
+=======
+    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(3, 1, 1, 1)
+>>>>>>> added device call to kernel creation (#760)
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
