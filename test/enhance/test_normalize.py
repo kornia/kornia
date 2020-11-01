@@ -298,7 +298,10 @@ class TestNormalizeMinMax(BaseTester):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.normalize_min_max, (x,), raise_exception=True)
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.skip(reason="not implemented yet")
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     @pytest.mark.nn
     def test_module(self, device, dtype):
         pass

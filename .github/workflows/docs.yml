@@ -10,10 +10,14 @@ on:
 
 jobs:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
   build-docs:
 =======
   test-docs:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+  build-docs:
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2

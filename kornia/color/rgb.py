@@ -93,9 +93,15 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     Returns:
         torch.Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
+<<<<<<< refs/remotes/kornia/master
 
     .. note:: The current functionality is NOT supported by Torchscript.
 
+=======
+
+    .. note:: The current functionality is NOT supported by Torchscript.
+
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = bgr_to_rgba(input, 1.) # 2x4x4x5

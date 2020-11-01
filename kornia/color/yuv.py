@@ -25,15 +25,23 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
+<<<<<<< refs/remotes/kornia/master
     r: torch.Tensor = image[..., 0, :, :]
     g: torch.Tensor = image[..., 1, :, :]
     b: torch.Tensor = image[..., 2, :, :]
+=======
+    r, g, b = torch.chunk(image, chunks=3, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     y: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     u: torch.Tensor = -0.147 * r - 0.289 * g + 0.436 * b
     v: torch.Tensor = 0.615 * r - 0.515 * g - 0.100 * b
 
+<<<<<<< refs/remotes/kornia/master
     out: torch.Tensor = torch.stack([y, u, v], -3)
+=======
+    out: torch.Tensor = torch.cat([y, u, v], -3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     return out
 
@@ -61,15 +69,23 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
+<<<<<<< refs/remotes/kornia/master
     y: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
+=======
+    y, u, v = torch.chunk(image, chunks=3, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     r: torch.Tensor = y + 1.14 * v  # coefficient for g is 0
     g: torch.Tensor = y + -0.396 * u - 0.581 * v
     b: torch.Tensor = y + 2.029 * u  # coefficient for b is 0
 
+<<<<<<< refs/remotes/kornia/master
     out: torch.Tensor = torch.stack([r, g, b], -3)
+=======
+    out: torch.Tensor = torch.cat([r, g, b], -3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     return out
 

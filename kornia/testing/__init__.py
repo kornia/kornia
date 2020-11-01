@@ -109,6 +109,7 @@ class BaseTester(ABC):
     @abstractmethod
     def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")
+<<<<<<< refs/remotes/kornia/master
 
 
 def cartesian_product_of_parameters(**possible_parameters):
@@ -148,3 +149,5 @@ def _get_precision_by_name(device: torch.device, device_target: str,
         return tol_val
 
     return tol_val_default
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)

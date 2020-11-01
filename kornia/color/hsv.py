@@ -27,11 +27,15 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
+<<<<<<< refs/remotes/kornia/master
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.max(-3)
     maxc_mask = image == maxc.unsqueeze(-3)
     _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
+=======
+    maxc, max_indices = image.max(-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
@@ -41,12 +45,18 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     # avoid division by zero
     deltac = torch.where(
+<<<<<<< refs/remotes/kornia/master
         deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
 
     maxc_tmp = maxc.unsqueeze(-3) - image
     rc: torch.Tensor = maxc_tmp[..., 0, :, :]
     gc: torch.Tensor = maxc_tmp[..., 1, :, :]
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
+=======
+        deltac == 0, torch.ones_like(deltac), deltac)
+
+    rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     h = torch.stack([
         bc - gc,
@@ -143,6 +153,7 @@ class HsvToRgb(nn.Module):
 
     Returns:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         torch.Tensor: RGB version of the image.
 
     Shape:
@@ -179,17 +190,26 @@ class HsvToRgb(nn.Module):
         deltac == 0, torch.ones_like(deltac), deltac)
 
     rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
+=======
+        torch.Tensor: RGB version of the image.
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
-    h = torch.stack([
-        bc - gc,
-        2.0 * deltac + rc - bc,
-        4.0 * deltac + gc - rc,
-    ], dim=-3)
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
 
+<<<<<<< refs/remotes/kornia/master
     h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
     h = h.squeeze(-3)
     h = h / deltac
 >>>>>>> Accelerate augmentations (#708)
+=======
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = HsvToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     def __init__(self) -> None:
         super(HsvToRgb, self).__init__()

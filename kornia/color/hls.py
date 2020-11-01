@@ -56,10 +56,14 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
     image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
 
+<<<<<<< refs/remotes/kornia/master
     # JIT indexing is not supported before 1.6.0 https://github.com/pytorch/pytorch/issues/38962
     # image_hls[torch.isnan(image_hls)] = 0.
     image_hls = torch.where(
         torch.isnan(image_hls), torch.tensor(0., device=image_hls.device, dtype=image_hls.dtype), image_hls)
+=======
+    image_hls[torch.isnan(image_hls)] = 0.
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     return image_hls
 
@@ -70,7 +74,11 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
+<<<<<<< refs/remotes/kornia/master
         image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+=======
+        image (torch.Tensor): HLS image to be converted to RGB woth shape :math:`(*, 3, H, W)`.
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     Returns:
         torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.

@@ -26,11 +26,16 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
+<<<<<<< refs/remotes/kornia/master
 
     r: torch.Tensor = image[..., 0:1, :, :]
     g: torch.Tensor = image[..., 1:2, :, :]
     b: torch.Tensor = image[..., 2:3, :, :]
 
+=======
+
+    r, g, b = torch.chunk(image, chunks=3, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 

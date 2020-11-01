@@ -234,6 +234,7 @@ class TestRgbToRgba(BaseTester):
         ops = kornia.color.BgrToRgba(1.).to(device, dtype)
         fcn = kornia.color.bgr_to_rgba
         assert_allclose(ops(img), fcn(img, 1.))
+<<<<<<< refs/remotes/kornia/master
 
     @pytest.mark.nn
     def test_module_bgra2rgb(self, device, dtype):
@@ -250,3 +251,5 @@ class TestRgbToRgba(BaseTester):
         ops = kornia.color.RgbaToBgr().to(device, dtype)
         fcn = kornia.color.rgba_to_bgr
         assert_allclose(ops(img), fcn(img))
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)

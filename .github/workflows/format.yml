@@ -10,10 +10,14 @@ on:
 
 jobs:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
   linter:
 =======
   code-format:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+  linter:
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     runs-on: [ubuntu-latest]
 
     steps:
