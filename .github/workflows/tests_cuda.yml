@@ -19,7 +19,7 @@ jobs:
       matrix:
         python-version: [3.7]
         pytorch-version: [1.6.0]
-        cuda-version: [9.2, 10.1, 10.2, 11.0]
+        cuda-version: [9.2, 10.1, 10.2]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
