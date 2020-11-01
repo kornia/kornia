@@ -14,7 +14,8 @@ from kornia.augmentation.random_generator import (
     random_rectangles_params_generator,
     center_crop_generator,
     random_motion_blur_generator,
-    random_solarize_generator
+    random_solarize_generator,
+    random_posterize_generator,
 )
 
 
@@ -833,3 +834,47 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
         assert_allclose(res['additions_factor'], expected['additions_factor'], rtol=1e-4, atol=1e-4)
+
+
+class TestRandomPosterizeGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('bits', [torch.tensor([0, 8])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
+        random_posterize_generator(
+            batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('bits', [
+        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 9]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
+        pytest.param([0, 8], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, bits, device, dtype):
+        random_posterize_generator(
+            batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 8
+        res = random_posterize_generator(
+            batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            bits_factor=torch.tensor(
+                [7, 7, 3, 7, 3, 4, 2, 6], device=device, dtype=torch.int32)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 8
+        res = random_posterize_generator(
+            batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            bits_factor=torch.tensor(
+                [7, 7, 7, 7, 7, 7, 7, 7],, device=device, dtype=torch.int32)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)

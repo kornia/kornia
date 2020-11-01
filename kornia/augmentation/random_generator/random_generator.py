@@ -636,20 +636,21 @@ def random_solarize_generator(
 
 def random_posterize_generator(
     batch_size: int,
-    bits: torch.Tensor = torch.tensor(3),
+    bits: torch.Tensor = torch.tensor([3, 5]),
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generate random posterize parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
-        bits (int or tuple): Default value is 3. Integer that ranged from 0 ~ 8.
+        bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5]. 
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     _common_param_check(batch_size, same_on_batch)
+    _joint_range_check(bits, 'bits', (0, 8))
     bits_factor = _adapted_uniform((batch_size,), bits[0], bits[1], same_on_batch).int()
 
     return dict(
