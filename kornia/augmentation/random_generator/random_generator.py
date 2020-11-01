@@ -611,7 +611,7 @@ def random_solarize_generator(
     Args:
         batch_size (int): the number of images.
         thresholds (torch.Tensor): Pixels less than threshold will selected. Otherwise, subtract 1.0 from the pixel.
-            Default value will be sampled from [0.4, 0.6].
+            Takes in a range tensor of (0, 1). Default value will be sampled from [0.4, 0.6].
         additions (torch.Tensor): The value is between -0.5 and 0.5. Default value will be sampled from [-0.1, 0.1]
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
@@ -619,8 +619,8 @@ def random_solarize_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
     _common_param_check(batch_size, same_on_batch)
-    _joint_range_check(thresholds, 'thresholds')
-    _joint_range_check(additions, 'additions')
+    _joint_range_check(thresholds, 'thresholds', (0, 1))
+    _joint_range_check(additions, 'additions', (-0.5, 0.5))
 
     thresholds_factor = _adapted_uniform(
         (batch_size,), thresholds[0], thresholds[1], same_on_batch)
