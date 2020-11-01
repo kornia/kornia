@@ -290,6 +290,119 @@ class CommonTests(BaseTester):
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
         assert gradcheck(self._create_augmentation_from_params(**params,p=1.,return_transform=False), (input_tensor, ), raise_exception=True)
 
+
+class TestRandomHorizontalFlipAlternative(CommonTests):
+    possible_params = {}
+    _augmentation_cls = RandomHorizontalFlip
+    _default_param_set = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+    
+    def test_random_p_1(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[[0.1, 0.2, 0.3,],
+                                      [0.4, 0.5, 0.6,],
+                                      [0.7, 0.8, 0.9,]]], device=self.device, dtype=self.dtype)
+        expected_output = torch.tensor([[[[0.3, 0.2, 0.1,],
+                                          [0.6, 0.5, 0.4,],
+                                          [0.9, 0.8, 0.7,]]]], device=self.device, dtype=self.dtype)
+        
+        parameters = {}
+        self._test_random_p_1_implementation( input_tensor=input_tensor, expected_output=expected_output,params=parameters)
+
+    def test_random_p_1_return_transform(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[[0.1, 0.2, 0.3,],
+                                      [0.4, 0.5, 0.6,],
+                                      [0.7, 0.8, 0.9,]]], device=self.device, dtype=self.dtype)
+        expected_output = torch.tensor([[[[0.3, 0.2, 0.1,],
+                                          [0.6, 0.5, 0.4,],
+                                          [0.9, 0.8, 0.7,]]]], device=self.device, dtype=self.dtype)
+        expected_transformation = torch.tensor([[[-1.0,  0.0,  2.0],
+                                                 [ 0.0,  1.0,  0.0],
+                                                 [ 0.0,  0.0,  1.0]]], device=self.device, dtype=self.dtype)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    def test_batch(self):
+        torch.manual_seed(12)
+        
+        input_tensor = torch.tensor([[[[0.1, 0.2, 0.3,],
+                                       [0.4, 0.5, 0.6,],
+                                       [0.7, 0.8, 0.9,]]]], device=self.device, dtype=self.dtype).repeat((2,1,1,1))
+        expected_output = torch.tensor([[[[0.3, 0.2, 0.1,],
+                                          [0.6, 0.5, 0.4,],
+                                          [0.9, 0.8, 0.7,]]]], device=self.device, dtype=self.dtype).repeat((2,1,1,1))
+        expected_transformation = torch.tensor([[[-1.0,  0.0,  2.0],
+                                                 [ 0.0,  1.0,  0.0],
+                                                 [ 0.0,  0.0,  1.0]]], device=self.device, dtype=self.dtype).repeat((2,1,1))
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    @pytest.mark.skip(reason="No special parameters to validate.")
+    def test_exception(self):
+        pass
+
+class TestRandomVerticalFlipAlternative(CommonTests):
+    possible_params = {}
+    _augmentation_cls = RandomVerticalFlip
+    _default_param_set = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+    
+    def test_random_p_1(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[[0.1, 0.2, 0.3,],
+                                      [0.4, 0.5, 0.6,],
+                                      [0.7, 0.8, 0.9,]]], device=self.device, dtype=self.dtype)
+        expected_output = torch.tensor([[[[0.7, 0.8, 0.9,],
+                                          [0.4, 0.5, 0.6,],
+                                          [0.1, 0.2, 0.3,]]]], device=self.device, dtype=self.dtype)
+        
+        parameters = {}
+        self._test_random_p_1_implementation( input_tensor=input_tensor, expected_output=expected_output,params=parameters)
+
+    def test_random_p_1_return_transform(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[[0.1, 0.2, 0.3,],
+                                      [0.4, 0.5, 0.6,],
+                                      [0.7, 0.8, 0.9,]]], device=self.device, dtype=self.dtype)
+        expected_output = torch.tensor([[[[0.7, 0.8, 0.9,],
+                                          [0.4, 0.5, 0.6,],
+                                          [0.1, 0.2, 0.3,]]]], device=self.device, dtype=self.dtype)
+        expected_transformation = torch.tensor([[[ 1.0,  0.0,  0.0],
+                                                 [ 0.0, -1.0,  2.0],
+                                                 [ 0.0,  0.0,  1.0]]], device=self.device, dtype=self.dtype)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    def test_batch(self):
+        torch.manual_seed(12)
+        
+        input_tensor = torch.tensor([[[[0.1, 0.2, 0.3,],
+                                       [0.4, 0.5, 0.6,],
+                                       [0.7, 0.8, 0.9,]]]], device=self.device, dtype=self.dtype).repeat((2,1,1,1))
+        expected_output = torch.tensor([[[[0.7, 0.8, 0.9,],
+                                          [0.4, 0.5, 0.6,],
+                                          [0.1, 0.2, 0.3,]]]], device=self.device, dtype=self.dtype).repeat((2,1,1,1))
+        expected_transformation = torch.tensor([[[ 1.0,  0.0,  0.0],
+                                                 [ 0.0, -1.0,  2.0],
+                                                 [ 0.0,  0.0,  1.0]]], device=self.device, dtype=self.dtype).repeat((2,1,1))
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    @pytest.mark.skip(reason="No special parameters to validate.")
+    def test_exception(self):
+        pass
+
 class TestRandomRotationAlternative(CommonTests):
     possible_params = {
         "degrees": (0.,(-360.,360.),[0.,0.],torch.Tensor((-180.,180))),
