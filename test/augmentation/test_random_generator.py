@@ -10,6 +10,7 @@ from kornia.augmentation.random_generator import (
     random_affine_generator,
     random_rotation_generator,
     random_crop_generator,
+    random_crop_size_generator,
 )
 
 
@@ -497,3 +498,80 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
         assert_allclose(res['dst'], expected['dst'])
+
+
+class TestRandomCropSizeGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('size', [(200, 200)])
+    @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.3])])
+    @pytest.mark.parametrize('ratio', [torch.tensor([.9, 1.1])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(
+        self, batch_size, size, scale, ratio, same_on_batch, device, dtype
+    ):
+        random_crop_size_generator(
+            batch_size=batch_size, size=size,
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('size,scale,ratio', [
+        pytest.param((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3, 1.5]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
+        batch_size = 2
+        random_crop_size_generator(
+            batch_size=batch_size, size=size,
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_crop_size_generator(
+            batch_size=8, size=(100, 100),
+            scale=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
+            ratio=torch.tensor([0.9, 1.1], device=device, dtype=dtype),
+            same_on_batch=False)
+        expected = dict(
+            size=torch.tensor([
+                [89, 87],
+                [90, 94],
+                [81, 86],
+                [92, 98],
+                [89, 91],
+                [87, 89],
+                [86, 94],
+                [91, 87]], device=device, dtype=torch.long),
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['size'], expected['size'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_crop_size_generator(
+            batch_size=8, size=(100, 100),
+            scale=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
+            ratio=torch.tensor([0.9, 1.1], device=device, dtype=dtype),
+            same_on_batch=True)
+        expected = dict(
+            size=torch.tensor([
+                [89, 87],
+                [89, 87],
+                [89, 87],
+                [89, 87],
+                [89, 87],
+                [89, 87],
+                [89, 87],
+                [89, 87]], device=device, dtype=torch.long),
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['size'], expected['size'])

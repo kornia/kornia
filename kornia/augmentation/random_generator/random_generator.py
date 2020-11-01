@@ -374,6 +374,8 @@ def random_crop_size_generator(
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
+    assert len(size) == 2 and type(size[0]) == int and size[1] > 0 and type(size[1]) == int and size[1] > 0, \
+        f"'height' and 'width' must be integers. Got {size}."
 
     # 10 trails for each element
     area = _adapted_uniform(
