@@ -741,18 +741,14 @@ class TestColorJitterAlternative(CommonTests):
                                         [0.0000, 0.2574, 0.0000, 0.0000, 0.0999],
                                         [0.4441, 0.1561, 0.3641, 0.2125, 0.0000],
                                         [0.0000, 0.2833, 0.1300, 0.1255, 0.3487]]]], device=self.device, dtype=self.dtype)
-        expected_transformation = torch.tensor([[[1., 0., 0.],
-                                                [0., 1., 0.],
-                                                [0., 0., 1.]],
-
-                                                [[1., 0., 0.],
-                                                [0., 1., 0.],
-                                                [0., 0., 1.]]], device=self.device, dtype=self.dtype)
+        expected_transformation = kornia.eye_like(3,input_tensor)
         parameters = {"brightness":[0.2, 1.2], "contrast":0.2, "saturation":[0.2, 1.2], "hue":0.2}
         self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
 
     @pytest.mark.xfail(reason="No input validation is implemented yet.")
     def test_exception(self):
+        torch.manual_seed(42)
+
         # Wrong type
         with pytest.raises(TypeError):
             self._create_augmentation_from_params(brightness="")
@@ -801,6 +797,72 @@ class TestColorJitterAlternative(CommonTests):
         with pytest.raises(ValueError):
             self._create_augmentation_from_params(hue=[-0.5,0.51])
 
+        # Proper channel count check
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(p=0.)(torch.rand((1,1,4,5), device=self.device, dtype=self.dtype))
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(p=1.)(torch.rand((1,4,4,5), device=self.device, dtype=self.dtype))
+
+class TestRandomGrayscaleAlternative(CommonTests):
+
+    possible_params = {}
+
+    _augmentation_cls = RandomGrayscale
+    _default_param_set = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+
+    @pytest.mark.parametrize("input_shape,expected_output_shape", [((3, 4, 5),(1, 3, 4, 5)), ((2, 3, 4, 5),(2, 3, 4, 5))])
+    def test_consistent_output_shape(self,  input_shape, expected_output_shape):
+        self._test_consistent_output_shape_implementation(
+             input_shape=input_shape,expected_output_shape=expected_output_shape, params=self._default_param_set)
+
+
+    def test_random_p_1(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[0.1, 0.2, 0.3, 0.4],
+                                     [0.5, 0.6, 0.7, 0.8],
+                                     [0.9, 0.0, 0.1, 0.2]], device=self.device, dtype=self.dtype).repeat(1,3, 1, 1)
+        expected_output = (input_tensor * torch.tensor([0.299,0.587,0.114], device=self.device, dtype=self.dtype).view(1,3,1,1)).sum(dim=1,keepdim=True).repeat(1,3,1,1)
+        
+        parameters = {}
+        self._test_random_p_1_implementation( input_tensor=input_tensor, expected_output=expected_output,params=parameters)
+
+    def test_random_p_1_return_transform(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[0.1, 0.2, 0.3, 0.4],
+                                     [0.5, 0.6, 0.7, 0.8],
+                                     [0.9, 0.0, 0.1, 0.2]], device=self.device, dtype=self.dtype).repeat(1,3, 1, 1)
+        expected_output = (input_tensor * torch.tensor([0.299,0.587,0.114], device=self.device, dtype=self.dtype).view(1,3,1,1)).sum(dim=1,keepdim=True).repeat(1,3,1,1)
+        
+        expected_transformation = kornia.eye_like(3,input_tensor)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    def test_batch(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.tensor([[0.1, 0.2, 0.3, 0.4],
+                                     [0.5, 0.6, 0.7, 0.8],
+                                     [0.9, 0.0, 0.1, 0.2]], device=self.device, dtype=self.dtype).repeat(2, 3, 1, 1)
+        expected_output = (input_tensor * torch.tensor([0.299,0.587,0.114], device=self.device, dtype=self.dtype).view(1,3,1,1)).sum(dim=1,keepdim=True).repeat(1,3,1,1)
+        
+        expected_transformation = kornia.eye_like(3,input_tensor)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    @pytest.mark.xfail(reason="No input validation is implemented yet when p=0.")
+    def test_exception(self):
+        torch.manual_seed(42)
+
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(p=0.)(torch.rand((1,1,4,5), device=self.device, dtype=self.dtype))
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(p=1.)(torch.rand((1,4,4,5), device=self.device, dtype=self.dtype))
 
 
 
