@@ -8,6 +8,7 @@ from kornia.augmentation.random_generator import (
     random_color_jitter_generator,
     random_perspective_generator,
     random_affine_generator,
+    random_rotation_generator,
 )
 
 
@@ -297,15 +298,14 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5]), marks=pytest.mark.xfail),
     ])
     def test_invalid_param_combinations(
-        self, batch_size, height, width, degrees, translate, scale, shear, same_on_batch, device, dtype
+        self, batch_size, height, width, degrees, translate, scale, shear, device, dtype
     ):
         batch_size = 8
         random_affine_generator(
             batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
             translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=same_on_batch)
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -362,3 +362,45 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         assert_allclose(res['angle'], expected['angle'])
         assert_allclose(res['sx'], expected['sx'])
         assert_allclose(res['sy'], expected['sy'])
+
+
+class TestRandomRotationGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
+        random_rotation_generator(
+            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('degrees', [
+        pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([10, 20, 30]), marks=pytest.mark.xfail)
+    ])
+    def test_invalid_param_combinations(self, degrees, device, dtype):
+        batch_size = 8
+        random_rotation_generator(
+            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_rotation_generator(
+            batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['degrees'], expected['degrees'])
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        res = random_rotation_generator(
+            batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['degrees'], expected['degrees'])
