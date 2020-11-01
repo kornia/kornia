@@ -12,6 +12,7 @@ from kornia.augmentation.random_generator import (
     random_crop_generator,
     random_crop_size_generator,
     random_rectangles_params_generator,
+    center_crop_generator,
 )
 
 
@@ -659,3 +660,56 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         assert_allclose(res['xs'], expected['xs'])
         assert_allclose(res['ys'], expected['ys'])
         assert_allclose(res['values'], expected['values'])
+
+
+class TestCenterCropGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('height', [200])
+    @pytest.mark.parametrize('width', [200])
+    @pytest.mark.parametrize('size', [(100, 100)])
+    def test_valid_param_combinations(
+        self, batch_size, height, width, size, device, dtype
+    ):
+        center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+
+    @pytest.mark.parametrize('height,width,size', [
+        pytest.param(200, -200, (100, 100), marks=pytest.mark.xfail),
+        pytest.param(-200, 200, (100, 100), marks=pytest.mark.xfail),
+        pytest.param(100, 100, (120, 120), marks=pytest.mark.xfail),
+        pytest.param(150, 100, (120, 120), marks=pytest.mark.xfail),
+        pytest.param(100, 150, (120, 120), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, height, width, size, device, dtype):
+        batch_size = 2
+        center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
+        expected = dict(
+            src=torch.tensor([
+                [[25, 40],
+                 [174, 40],
+                 [174, 159],
+                 [25, 159]],
+                [[25, 40],
+                 [174, 40],
+                 [174, 159],
+                 [25, 159]]], device=device, dtype=torch.long),
+            dst=torch.tensor([
+                [[0, 0],
+                 [149, 0],
+                 [149, 119],
+                 [0, 119]],
+                [[0, 0],
+                 [149, 0],
+                 [149, 119],
+                 [0, 119]]], device=device, dtype=torch.long),
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['src'], expected['src'])
+        assert_allclose(res['dst'], expected['dst'])
+
+    def test_same_on_batch(self, device, dtype):
+        pass

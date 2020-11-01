@@ -506,6 +506,10 @@ def center_crop_generator(
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
+    assert height >= size[0] and width >= size[1], \
+        f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}."
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -530,7 +534,7 @@ def center_crop_generator(
         [end_x, start_y],
         [end_x, end_y],
         [start_x, end_y],
-    ]])
+    ]]).expand(batch_size, -1, -1).long()
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -539,7 +543,7 @@ def center_crop_generator(
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).expand(points_src.shape[0], -1, -1)
+    ]]).expand(batch_size, -1, -1).long()
     return dict(src=points_src,
                 dst=points_dst)
 
