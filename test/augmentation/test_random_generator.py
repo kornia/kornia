@@ -16,6 +16,7 @@ from kornia.augmentation.random_generator import (
     random_motion_blur_generator,
     random_solarize_generator,
     random_posterize_generator,
+    random_sharpness_generator,
 )
 
 
@@ -874,7 +875,50 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
             bits_factor=torch.tensor(
-                [7, 7, 7, 7, 7, 7, 7, 7],, device=device, dtype=torch.int32)
+                [7, 7, 7, 7, 7, 7, 7, 7], device=device, dtype=torch.int32)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
+
+
+class TestRandomPosterizeGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, sharpness, same_on_batch, device, dtype):
+        random_sharpness_generator(
+            batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('sharpness', [
+        pytest.param(torch.tensor([-1, 5]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
+        pytest.param([0, 1.], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, sharpness, device, dtype):
+        random_sharpness_generator(
+            batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 8
+        res = random_sharpness_generator(
+            batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            sharpness_factor=torch.tensor(
+                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 8
+        res = random_sharpness_generator(
+            batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            sharpness_factor=torch.tensor(
+                [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
