@@ -11,7 +11,7 @@ from torch.testing import assert_allclose
 class TestRgbToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.rgb_to_grayscale(img), torch.Tensor)
 
     @pytest.mark.parametrize(
@@ -91,7 +91,7 @@ class TestRgbToGrayscale(BaseTester):
 class TestBgrToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert kornia.bgr_to_grayscale(img) is not None
 
     @pytest.mark.parametrize(

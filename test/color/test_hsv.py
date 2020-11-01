@@ -12,7 +12,7 @@ from torch.testing import assert_allclose
 class TestRgbToHsv(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.rgb_to_hsv(img), torch.Tensor)
 
     @pytest.mark.parametrize(
@@ -106,7 +106,7 @@ class TestRgbToHsv(BaseTester):
 class TestHsvToRgb(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.hsv_to_rgb(img), torch.Tensor)
 
     @pytest.mark.parametrize(

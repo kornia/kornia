@@ -11,7 +11,7 @@ from torch.testing import assert_allclose
 class TestRgbToBgr(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.rgb_to_bgr(img), torch.Tensor)
 
     @pytest.mark.parametrize(
@@ -88,7 +88,7 @@ class TestRgbToBgr(BaseTester):
 class TestRgbToRgba(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
-        img = torch.empty(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.rgb_to_rgba(img, 0.), torch.Tensor)
 
     @pytest.mark.parametrize(
