@@ -14,17 +14,27 @@ jobs:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
   linter:
 =======
   code-format:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
   linter:
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+  linter:
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     runs-on: [ubuntu-latest]
 
     steps:

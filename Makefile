@@ -19,7 +19,13 @@ test-module: FORCE
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> refactor setup_dev_env script (#756)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 	pytest -v --device all --dtype all  test/$(module) --flake8 --mypy
 
 test-jit: FORCE
@@ -38,16 +44,23 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
 	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
 >>>>>>> refactor setup_dev_env script (#756)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 =======
 =======
 	pytest -v --device all --dtype all --cov=kornia test/$(module) --flake8 --mypy
 >>>>>>> refactor setup_dev_env script (#756)
 >>>>>>> refactor setup_dev_env script (#756)
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
 lint: FORCE
 	pytest -v --flake8 -m flake8
@@ -62,6 +75,7 @@ doctest:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 	pytest -v --doctest-modules kornia
 =======
 	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
@@ -72,6 +86,13 @@ doctest:
 =======
 	pytest -v --doctest-modules kornia
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+=======
+<<<<<<< master
+	pytest -v --doctest-modules kornia
+=======
+	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
 docstyle: FORCE
 	pydocstyle kornia/

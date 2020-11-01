@@ -30,13 +30,18 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.max(-3)
     maxc_mask = image == maxc.unsqueeze(-3)
     _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     maxc, max_indices = image.max(-3)
@@ -55,6 +60,11 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 >>>>>>> fix few jit and cuda errors in color (#767)
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+=======
+    maxc, max_indices = image.max(-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
@@ -66,6 +76,10 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     deltac = torch.where(
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
         deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
 
     maxc_tmp = maxc.unsqueeze(-3) - image
@@ -74,6 +88,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
 =======
         deltac == 0, torch.ones_like(deltac), deltac)
+<<<<<<< refs/remotes/kornia/master
 =======
         deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
@@ -87,6 +102,11 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     gc: torch.Tensor = maxc_tmp[..., 1, :, :]
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
 >>>>>>> fix few jit and cuda errors in color (#767)
+=======
+
+    rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     h = torch.stack([
         bc - gc,

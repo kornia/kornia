@@ -27,6 +27,10 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     r: torch.Tensor = image[..., 0:1, :, :]
     g: torch.Tensor = image[..., 1:2, :, :]
@@ -34,6 +38,7 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 =======
 
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
     r, g, b = torch.chunk(image, chunks=3, dim=-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
@@ -43,6 +48,10 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     b: torch.Tensor = image[..., 2:3, :, :]
 
 >>>>>>> fix few jit and cuda errors in color (#767)
+=======
+    r, g, b = torch.chunk(image, chunks=3, dim=-3)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 

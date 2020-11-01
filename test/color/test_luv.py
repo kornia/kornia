@@ -3,13 +3,20 @@ import pytest
 import kornia
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 from kornia.testing import BaseTester, _get_precision
 =======
 from kornia.testing import BaseTester
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 =======
 from kornia.testing import BaseTester, _get_precision
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
 import torch
 from torch.autograd import gradcheck
@@ -74,6 +81,7 @@ class TestRgbToLuv(BaseTester):
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         tol_val: float = _get_precision(device, dtype)
         assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
 =======
@@ -83,6 +91,14 @@ class TestRgbToLuv(BaseTester):
         tol_val: float = _get_precision(device, dtype)
         assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
+=======
+<<<<<<< master
+        tol_val: float = _get_precision(device, dtype)
+        assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
+=======
+        assert_allclose(kornia.color.rgb_to_luv(data), expected)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -106,13 +122,20 @@ class TestRgbToLuv(BaseTester):
         op_jit = torch.jit.script(op)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
         assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
 =======
         assert_allclose(op(img), op_jit(img))
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 =======
         assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
 >>>>>>> fix few jit and cuda errors in color (#767)
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -182,6 +205,7 @@ class TestLuvToRgb(BaseTester):
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
 =======
         assert_allclose(kornia.color.luv_to_rgb(data), expected)
@@ -189,6 +213,13 @@ class TestLuvToRgb(BaseTester):
 =======
         assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
+=======
+<<<<<<< master
+        assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
+=======
+        assert_allclose(kornia.color.luv_to_rgb(data), expected)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)

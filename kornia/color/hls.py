@@ -58,18 +58,28 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
     # JIT indexing is not supported before 1.6.0 https://github.com/pytorch/pytorch/issues/38962
     # image_hls[torch.isnan(image_hls)] = 0.
     image_hls = torch.where(
         torch.isnan(image_hls), torch.tensor(0., device=image_hls.device, dtype=image_hls.dtype), image_hls)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     image_hls[torch.isnan(image_hls)] = 0.
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+=======
+    image_hls[torch.isnan(image_hls)] = 0.
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     return image_hls
 
@@ -82,13 +92,20 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     Args:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
         image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 =======
         image (torch.Tensor): HLS image to be converted to RGB woth shape :math:`(*, 3, H, W)`.
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 =======
         image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
+=======
+>>>>>>> [Feat] refactor tests for kornia.color (#759)
 
     Returns:
         torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
