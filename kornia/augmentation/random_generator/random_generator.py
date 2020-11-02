@@ -377,6 +377,9 @@ def random_crop_size_generator(
     assert len(size) == 2 and type(size[0]) == int and size[1] > 0 and type(size[1]) == int and size[1] > 0, \
         f"'height' and 'width' must be integers. Got {size}."
 
+    if batch_size == 0:
+        return dict(size=torch.zeros([0, 2]))
+
     # 10 trails for each element
     area = _adapted_uniform(
         (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
