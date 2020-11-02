@@ -28,6 +28,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
                          .format(image.shape))
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.max(-3)
@@ -36,6 +37,18 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 =======
     maxc, max_indices = image.max(-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+    # TODO: enable again for later versions than 1.6.0 or find a different implementation.
+    # It turns out that .max(...) does not return the index in the first position when
+    # all the inputs have the same value in CUDA.
+    # maxc, max_indices = image.max(-3)
+    if image.is_cuda and torch.__version__ == '1.6.0':
+        maxc, max_indices = image.cpu().max(-3)
+        maxc, max_indices = maxc.to(image), max_indices.to(image.device)
+    else:
+        maxc, max_indices = image.max(-3)
+
+>>>>>>> fix few jit and cuda errors in color (#767)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
@@ -55,8 +68,15 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 =======
         deltac == 0, torch.ones_like(deltac), deltac)
 
+<<<<<<< refs/remotes/kornia/master
     rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+    maxc_tmp = maxc.unsqueeze(-3) - image
+    rc: torch.Tensor = maxc_tmp[..., 0, :, :]
+    gc: torch.Tensor = maxc_tmp[..., 1, :, :]
+    bc: torch.Tensor = maxc_tmp[..., 2, :, :]
+>>>>>>> fix few jit and cuda errors in color (#767)
 
     h = torch.stack([
         bc - gc,

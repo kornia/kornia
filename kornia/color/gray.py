@@ -34,8 +34,15 @@ def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
 
 =======
 
+<<<<<<< refs/remotes/kornia/master
     r, g, b = torch.chunk(image, chunks=3, dim=-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+    r: torch.Tensor = image[..., 0:1, :, :]
+    g: torch.Tensor = image[..., 1:2, :, :]
+    b: torch.Tensor = image[..., 2:3, :, :]
+
+>>>>>>> fix few jit and cuda errors in color (#767)
     gray: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return gray
 
