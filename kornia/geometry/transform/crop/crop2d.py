@@ -372,7 +372,7 @@ def bbox_generator(
         [0, 0],
         [0, 0],
         [0, 0],
-    ]], device=x_start.device, dtype=x_start.dtype).repeat(len(x_start), 1, 1)
+    ]], device=x_start.device, dtype=x_start.dtype).repeat(1 if x_start.dim() == 0 else len(x_start), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)

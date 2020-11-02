@@ -712,7 +712,7 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
                     [0.2195, 0.0743, 0.0000]])
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
-        raise TypeError("ksize must be an odd integer >= than 3")
+        raise TypeError(f"ksize must be an odd integer >= than 3. Got {kernel_size}.")
 
     if not isinstance(angle, torch.Tensor):
         angle = torch.tensor([angle])
