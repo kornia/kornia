@@ -1196,9 +1196,9 @@ class TestRandomRotation:
                                             [-1.0000, -0.0049, 3.0073],
                                             [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
 
-        expected_transform_2 = torch.tensor([[[ 0.9562,  0.2927, -0.3733],
-                                              [-0.2927,  0.9562,  0.5046],
-                                              [ 0.0000,  0.0000,  1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
+        expected_transform_2 = torch.tensor([[[0.9562, 0.2927, -0.3733],
+                                              [-0.2927, 0.9562, 0.5046],
+                                              [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
 
         out, mat = f(input)
         _, mat_2 = f1(input)

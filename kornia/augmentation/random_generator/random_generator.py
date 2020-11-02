@@ -589,7 +589,7 @@ def random_motion_blur_generator(
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
-        assert len(kernel_size) == 2, f"`kernal_size` must be (2,) if it is a tuple. Got {kernal_size}."
+        assert len(kernel_size) == 2, f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}."
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
     else:
@@ -652,7 +652,7 @@ def random_posterize_generator(
 
     Args:
         batch_size (int): the number of images.
-        bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5]. 
+        bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:

@@ -883,7 +883,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
 
-class TestRandomPosterizeGen(RandomGeneratorBaseTests):
+class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('batch_size', [1, 8])
     @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
@@ -935,7 +935,8 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
     def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
         random_mixup_generator(
             batch_size=batch_size, p=p,
-            lambda_val=lambda_val.to(device=device, dtype=dtype) if isinstance(lambda_val, (torch.Tensor)) else lambda_val,
+            lambda_val=lambda_val.to(
+                device=device, dtype=dtype) if isinstance(lambda_val, (torch.Tensor)) else lambda_val,
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('lambda_val', [
