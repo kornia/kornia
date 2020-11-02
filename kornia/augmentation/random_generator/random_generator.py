@@ -717,6 +717,10 @@ def random_crop_size_generator(
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Fixed (#762)
     _device, _dtype = _extract_device_dtype([scale, ratio])
 
     if batch_size == 0:
@@ -725,6 +729,7 @@ def random_crop_size_generator(
     scale = scale.to(device=device, dtype=dtype)
     ratio = ratio.to(device=device, dtype=dtype)
 =======
+<<<<<<< refs/remotes/kornia/master
 =======
     _device, _dtype = _extract_device_dtype([scale, ratio])
 
@@ -738,6 +743,12 @@ def random_crop_size_generator(
     scale = scale.to(device=device, dtype=dtype)
     ratio = ratio.to(device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+    if batch_size == 0:
+        return dict(size=torch.zeros([0, 2]))
+
+>>>>>>> Fixed (#762)
+>>>>>>> Fixed (#762)
     # 10 trails for each element
     area = _adapted_uniform(
         (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
