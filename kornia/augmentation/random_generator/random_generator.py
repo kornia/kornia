@@ -29,8 +29,8 @@ def random_prob_generator(
         torch.Tensor: parameters to be passed for transformation.
     """
     _common_param_check(batch_size, same_on_batch)
-    if not isinstance(p, float):
-        raise TypeError(f"The probability should be a float number. Got {type(p)}")
+    if not isinstance(p, (int, float)) or p > 1 or p < 0:
+        raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
     probs: torch.Tensor = _adapted_sampling((batch_size,), Bernoulli(p), same_on_batch).bool()
 
@@ -750,9 +750,9 @@ def random_cutmix_generator(
         height (int): image height.
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
-        beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+        beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
@@ -795,15 +795,17 @@ def random_cutmix_generator(
                   [ 97,  69]]]])}
 
     """
+    device, dtype = _extract_device_dtype([beta, cut_size])
     if beta is None:
-        beta = torch.tensor(1.)
+        beta = torch.tensor(1., device=device, dtype=dtype)
     if cut_size is None:
-        cut_size = torch.tensor([0., 1.])
+        cut_size = torch.tensor([0., 1.], device=device, dtype=dtype)
     assert num_mix >= 1 and isinstance(num_mix, (int,)), \
         f"`num_mix` must be an integer greater than 1. Got {num_mix}."
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
     _common_param_check(batch_size, same_on_batch)
-    device, dtype = _extract_device_dtype([beta, cut_size])
 
     batch_probs: torch.Tensor = random_prob_generator(
         batch_size * num_mix, p, same_on_batch).to(device=device, dtype=dtype)

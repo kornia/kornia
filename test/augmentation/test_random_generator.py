@@ -17,6 +17,8 @@ from kornia.augmentation.random_generator import (
     random_solarize_generator,
     random_posterize_generator,
     random_sharpness_generator,
+    random_mixup_generator,
+    random_cutmix_generator,
 )
 
 
@@ -922,3 +924,137 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
+
+
+class TestRandomMixUpGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('p', [0., 0.5, 1.])
+    @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0., 1.])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
+        random_mixup_generator(
+            batch_size=batch_size, p=p,
+            lambda_val=lambda_val.to(device=device, dtype=dtype) if isinstance(lambda_val, (torch.Tensor)) else lambda_val,
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('lambda_val', [
+        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 2]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 0.5, 1]), marks=pytest.mark.xfail),
+        pytest.param([0., 1.], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, lambda_val, device, dtype):
+        random_mixup_generator(
+            batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 8
+        res = random_mixup_generator(
+            batch_size=batch_size, p=0.5,
+            lambda_val=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            mixup_pairs=torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
+            mixup_lambdas=torch.tensor(
+                [0.0000, 0.0000, 0.0196, 0.0000, 0.6535, 0.0000, 0.5949, 0.0000], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
+        assert_allclose(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(9)
+        batch_size = 8
+        res = random_mixup_generator(
+            batch_size=batch_size, p=.9999,
+            lambda_val=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            mixup_pairs=torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
+            mixup_lambdas=torch.tensor(
+                [0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
+        assert_allclose(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
+
+
+class TestRandomCutMixGen(RandomGeneratorBaseTests):
+
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('p', [0, 0.5, 1.])
+    @pytest.mark.parametrize('width,height', [(200, 200)])
+    @pytest.mark.parametrize('num_mix', [1, 3])
+    @pytest.mark.parametrize('beta', [None, torch.tensor(0.), torch.tensor(1.)])
+    @pytest.mark.parametrize('cut_size', [None, torch.tensor([0., 1.]), torch.tensor([0.3, 0.6])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(
+        self, batch_size, p, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype
+    ):
+        random_cutmix_generator(
+            batch_size=batch_size, p=p, width=width, height=height,
+            beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
+            cut_size=cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
+            same_on_batch=same_on_batch)
+
+    @pytest.mark.parametrize('width,height,num_mix,beta,cut_size', [
+        pytest.param(200, -200, 1, None, None, marks=pytest.mark.xfail),
+        pytest.param(-200, 200, 1, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 0, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1.5, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, torch.tensor([0., 1.]), None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, None, torch.tensor([-1., 1.]), marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, None, torch.tensor([0., 2.]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
+        random_cutmix_generator(
+            batch_size=8, p=p, width=width, height=height,
+            beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
+            cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
+            same_on_batch=same_on_batch)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 2
+        res = random_cutmix_generator(
+            batch_size=batch_size, width=200, height=200, p=0.5, num_mix=1,
+            beta=torch.tensor(1., device=device, dtype=dtype),
+            cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            mix_pairs=torch.tensor([[0., 1.]], device=device, dtype=torch.long),
+            crop_src=torch.tensor([[
+                [[174, 122],
+                 [173, 122],
+                 [173, 121],
+                 [174, 121]],
+                [[75, 17],
+                 [74, 17],
+                 [74, 16],
+                 [75, 16]]]], device=device, dtype=torch.long)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
+        assert_allclose(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
+
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        batch_size = 2
+        res = random_cutmix_generator(
+            batch_size=batch_size, width=200, height=200, p=0.5, num_mix=1,
+            beta=torch.tensor(1., device=device, dtype=dtype),
+            cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            mix_pairs=torch.tensor([[1., 0.]], device=device, dtype=torch.long),
+            crop_src=torch.tensor([[
+                [[118, 3],
+                 [117, 3],
+                 [117, 2],
+                 [118, 2]],
+                [[118, 3],
+                 [117, 3],
+                 [117, 2],
+                 [118, 2]]]], device=device, dtype=torch.long)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
+        assert_allclose(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
