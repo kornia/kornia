@@ -125,17 +125,27 @@ class TestRgbToLuv(BaseTester):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> fix few jit and cuda errors in color (#767)
         assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
 =======
         assert_allclose(op(img), op_jit(img))
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
 >>>>>>> fix few jit and cuda errors in color (#767)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
+>>>>>>> fix few jit and cuda errors in color (#767)
+>>>>>>> fix few jit and cuda errors in color (#767)
 
     @pytest.mark.nn
     def test_module(self, device, dtype):

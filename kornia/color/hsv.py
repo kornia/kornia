@@ -35,7 +35,11 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> fix few jit and cuda errors in color (#767)
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.max(-3)
@@ -64,7 +68,22 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 =======
     maxc, max_indices = image.max(-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+    # TODO: enable again for later versions than 1.6.0 or find a different implementation.
+    # It turns out that .max(...) does not return the index in the first position when
+    # all the inputs have the same value in CUDA.
+    # maxc, max_indices = image.max(-3)
+    if image.is_cuda and torch.__version__ == '1.6.0':
+        maxc, max_indices = image.cpu().max(-3)
+        maxc, max_indices = maxc.to(image), max_indices.to(image.device)
+    else:
+        maxc, max_indices = image.max(-3)
+
+>>>>>>> fix few jit and cuda errors in color (#767)
+>>>>>>> fix few jit and cuda errors in color (#767)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
@@ -94,6 +113,10 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> fix few jit and cuda errors in color (#767)
     rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
@@ -102,11 +125,14 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     gc: torch.Tensor = maxc_tmp[..., 1, :, :]
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
 >>>>>>> fix few jit and cuda errors in color (#767)
+<<<<<<< refs/remotes/kornia/master
 =======
 
     rc, gc, bc = torch.unbind(maxc.unsqueeze(-3) - image, dim=-3)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+>>>>>>> fix few jit and cuda errors in color (#767)
 
     h = torch.stack([
         bc - gc,
