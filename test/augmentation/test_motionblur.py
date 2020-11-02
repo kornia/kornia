@@ -36,6 +36,10 @@ class TestRandomMotionBlur:
 
 
 class TestRandomMotionBlur:
+
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000,  0.5000]), "\
@@ -112,6 +116,7 @@ class TestRandomMotionBlur:
 
 class TestRandomMotionBlur3D:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -120,6 +125,11 @@ class TestRandomMotionBlur3D:
         repr = "RandomMotionBlur3D(kernel_size=(3, 5), angle=tensor([[10., 30.],"\
             "\n        [10., 30.],\n        [10., 30.]]), direction=tensor([-0.5000, 0.5000]), " \
 =======
+=======
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self, device, dtype):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur3D(kernel_size=(3, 5), angle=tensor([[10., 30.],"\

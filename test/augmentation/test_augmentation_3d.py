@@ -25,11 +25,17 @@ from kornia.augmentation import (
 class TestRandomHorizontalFlip3D:
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
 =======
 >>>>>>> Repr functions and smoke tests fixed (#710)
+=======
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self):
         f = RandomHorizontalFlip3D(0.5)
         repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -193,11 +199,17 @@ class TestRandomHorizontalFlip3D:
 class TestRandomVerticalFlip3D:
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
 =======
 >>>>>>> Repr functions and smoke tests fixed (#710)
+=======
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self):
         f = RandomVerticalFlip3D(0.5)
         repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -356,11 +368,17 @@ class TestRandomVerticalFlip3D:
 class TestRandomDepthicalFlip3D:
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
 =======
 >>>>>>> Repr functions and smoke tests fixed (#710)
+=======
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self):
         f = RandomDepthicalFlip3D(0.5)
         repr = "RandomDepthicalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
@@ -532,6 +550,7 @@ class TestRandomRotation3D:
     torch.manual_seed(0)  # for random reproductibility
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -541,6 +560,11 @@ class TestRandomRotation3D:
         [-45.5000, 45.5000],
         [-45.5000, 45.5000]]), resample=BILINEAR, align_corners=False, p=0.5, """\
 =======
+=======
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self):
         f = RandomRotation3D(degrees=45.5)
         repr = """RandomRotation3D(degrees=tensor([[-45.5000,  45.5000],
@@ -1039,6 +1063,9 @@ class TestCenterCrop3D:
 
 
 class TestRandomCrop3D:
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomCrop3D(size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, p=1.)
         repr = "RandomCrop3D(crop_size=(2, 3, 4), padding=(0, 1, 2), fill=10, pad_if_needed=False, "\
