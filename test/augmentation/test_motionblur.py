@@ -195,7 +195,11 @@ class TestRandomMotionBlur3D:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -211,9 +215,12 @@ class TestRandomMotionBlur3D:
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
 >>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
+<<<<<<< refs/remotes/kornia/master
 =======
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Fix] fixes windows issues with augmentation smoke tests (#766)
     def test_smoke(self, device, dtype):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur3D(kernel_size=(3, 5), angle=tensor([[10., 30.],"\
