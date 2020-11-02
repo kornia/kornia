@@ -755,7 +755,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
-            ksize_factor=torch.tensor([3., 3.], device=device, dtype=dtype),
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([33.4893, 33.7746], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.7528, -0.8948], device=device, dtype=dtype)
         )
@@ -772,7 +772,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
-            ksize_factor=torch.tensor([3., 3.], device=device, dtype=dtype),
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([33.4893, 33.4893], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.8742, -0.8742], device=device, dtype=dtype)
         )
@@ -859,25 +859,25 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
-        torch.manual_seed(42)
+        torch.manual_seed(9)
         batch_size = 8
         res = random_posterize_generator(
             batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
             bits_factor=torch.tensor(
-                [7, 7, 3, 7, 3, 4, 2, 6], device=device, dtype=torch.int32)
+                [1, 6, 2, 0, 0, 4, 0, 0], device=device, dtype=torch.int32)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
-        torch.manual_seed(42)
+        torch.manual_seed(9)
         batch_size = 8
         res = random_posterize_generator(
             batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
             bits_factor=torch.tensor(
-                [7, 7, 7, 7, 7, 7, 7, 7], device=device, dtype=torch.int32)
+                [1, 1, 1, 1, 1, 1, 1, 1], device=device, dtype=torch.int32)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)

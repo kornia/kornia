@@ -601,7 +601,7 @@ def random_motion_blur_generator(
     direction_factor = _adapted_uniform(
         (batch_size,), direction[0], direction[1], same_on_batch)
 
-    return dict(ksize_factor=ksize_factor,
+    return dict(ksize_factor=ksize_factor.int(),
                 angle_factor=angle_factor,
                 direction_factor=direction_factor)
 
