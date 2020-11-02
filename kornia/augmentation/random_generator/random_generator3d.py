@@ -9,6 +9,7 @@ from kornia.geometry import bbox_generator3d
 from ..utils import (
     _adapted_uniform,
     _tuple_range_reader,
+    _extract_device_dtype
 )
 
 
@@ -61,17 +62,14 @@ def random_affine_generator3d(
         scale (torch.Tensor, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be apllied.
-            If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
-            If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
-            will be applied.
-            If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
-            will be applied.
+            Shaped as (6, 2) for 6 facet (xy, xz, yx, yz, zx, zy).
+            The shear to the i-th facet in the range (-shear[i, 0], shear[i, 1]) will be applied.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    device, dtype = _extract_device_dtype([degrees, translate, scale, shears])
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
     pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
@@ -87,7 +85,7 @@ def random_affine_generator3d(
             _adapted_uniform((batch_size,), scale[2, 0], scale[2, 1], same_on_batch),
         ], dim=1)
     else:
-        scale = torch.ones(batch_size).repeat(1, 3)
+        scale = torch.ones(batch_size, device=device, dtype=dtype).repeat(1, 3)
 
     if translate is not None:
         assert translate.shape == torch.Size([3]), f"'translate' must be the shape of (2). Got {translate.shape}."
@@ -101,11 +99,11 @@ def random_affine_generator3d(
             _adapted_uniform((batch_size,), -max_dz, max_dz, same_on_batch)
         ], dim=1)
     else:
-        translations = torch.zeros(batch_size, 3)
+        translations = torch.zeros((batch_size, 3), device=device, dtype=dtype)
 
     # center should be in x,y,z
     center: torch.Tensor = torch.tensor(
-        [width, height, depth], dtype=torch.float32).view(1, 3) / 2. - 0.5
+        [width, height, depth], device=device, dtype=dtype).view(1, 3) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     if shears is not None:
@@ -117,7 +115,7 @@ def random_affine_generator3d(
         szx = _adapted_uniform((batch_size,), shears[4, 0], shears[4, 1], same_on_batch)
         szy = _adapted_uniform((batch_size,), shears[5, 0], shears[5, 1], same_on_batch)
     else:
-        sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size)
+        sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=device, dtype=dtype)
 
     return dict(translations=translations,
                 center=center,
@@ -338,6 +336,7 @@ def random_perspective_generator3d(
     """
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
         f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
+    device, dtype = distortion_scale.device, distortion_scale.dtype
 
     start_points: torch.Tensor = torch.tensor([[
         [0., 0, 0],
@@ -348,7 +347,7 @@ def random_perspective_generator3d(
         [width - 1, 0, depth - 1],
         [width - 1, height - 1, depth - 1],
         [0, height - 1, depth - 1],
-    ]]).expand(batch_size, -1, -1)
+    ]], device=device, dtype=dtype).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
     fx = distortion_scale * width / 2
@@ -369,7 +368,7 @@ def random_perspective_generator3d(
         [-1, 1, -1],
         [-1, -1, -1],
         [1, -1, -1],
-    ]])
+    ]], device=device, dtype=dtype)
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(start_points=start_points,
