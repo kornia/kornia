@@ -593,6 +593,7 @@ class TestRandomRotation3D:
                                [0., 0., 0., 0.],
                                [0., 1., 2., 0.],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                                [0., 0., 1., 2.]]], device=device, dtype=dtype)  # 3 x 4 x 4
 =======
                                [0., 0., 1., 2.]]])  # 3 x 4 x 4
@@ -641,10 +642,50 @@ class TestRandomRotation3D:
                                       [0.0587, 0.8768, 1.1815, 0.0000]]]]])
         expected_2 = expected_2.to(device)
 >>>>>>> [Fix] gpu tests for crop3d and flip (#727)
+=======
+                               [0., 0., 1., 2.]]], device=device, dtype=dtype)  # 3 x 4 x 4
+
+        expected = torch.tensor([[[[[0.2771, 0.0000, 0.0036, 0.0000],
+                                    [0.5751, 0.0183, 0.7505, 0.4702],
+                                    [0.0262, 0.2591, 0.5776, 0.4764],
+                                    [0.0000, 0.0093, 0.0000, 0.0393]],
+                                   [[0.0000, 0.0000, 0.0583, 0.0222],
+                                    [0.1665, 0.0000, 1.0424, 1.0224],
+                                    [0.1296, 0.4846, 1.4200, 1.2287],
+                                    [0.0078, 0.3851, 0.3965, 0.3612]],
+                                   [[0.0000, 0.7704, 0.6704, 0.0000],
+                                    [0.0000, 0.0332, 0.2414, 0.0524],
+                                    [0.0000, 0.3349, 1.4545, 1.3689],
+                                    [0.0000, 0.0312, 0.5874, 0.8702]]]]], device=device, dtype=dtype)
+
+        expected_transform = torch.tensor([[[0.5784, 0.7149, -0.3929, -0.0471],
+                                            [-0.3657, 0.6577, 0.6585, 0.4035],
+                                            [0.7292, -0.2372, 0.6419, -0.3799],
+                                            [0.0000, 0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)
+
+        expected_2 = torch.tensor([[[[[1., 0., 0., 2.],
+                                      [0., 0., 0., 0.],
+                                      [0., 1., 2., 0.],
+                                      [0., 0., 1., 2.]],
+                                     [[1., 0., 0., 2.],
+                                      [0., 0., 0., 0.],
+                                      [0., 1., 2., 0.],
+                                      [0., 0., 1., 2.]],
+                                     [[1., 0., 0., 2.],
+                                      [0., 0., 0., 0.],
+                                      [0., 1., 2., 0.],
+                                      [0., 0., 1., 2.]]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         out, mat = f(input)
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
         assert_allclose(mat, expected_transform, rtol=1e-6, atol=1e-4)
+<<<<<<< refs/remotes/kornia/master
+=======
+        assert_allclose(f1(input), expected_2, rtol=1e-6, atol=1e-4)
+
+    def test_batch_random_rotation(self, device, dtype):
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         torch.manual_seed(0)  # for random reproductibility
         assert_allclose(f1(input), expected, rtol=1e-6, atol=1e-4)
@@ -667,9 +708,27 @@ class TestRandomRotation3D:
                                 [0., 0., 0., 0.],
                                 [0., 1., 2., 0.],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                                 [0., 0., 1., 2.]]]], device=device, dtype=dtype)  # 1 x 1 x 4 x 4
 
         expected = torch.tensor([[[[[1.0000, 0.0000, 0.0000, 2.0000],
+=======
+                                [0., 0., 1., 2.]]]], device=device, dtype=dtype)  # 1 x 1 x 4 x 4
+
+        expected = torch.tensor([[[[[0.0000, 0.5106, 0.1146, 0.0000],
+                                    [0.0000, 0.1261, 0.0000, 0.4723],
+                                    [0.1714, 0.9931, 0.5442, 0.4684],
+                                    [0.0193, 0.5802, 0.4195, 0.0000]],
+                                   [[0.0000, 0.2386, 0.0000, 0.0000],
+                                    [0.0187, 0.3527, 0.0000, 0.6119],
+                                    [0.1294, 1.2251, 0.9130, 0.0942],
+                                    [0.0962, 1.0769, 0.8448, 0.0000]],
+                                   [[0.0000, 0.0202, 0.0000, 0.0000],
+                                    [0.1092, 0.5845, 0.1038, 0.4598],
+                                    [0.0000, 1.1218, 1.0796, 0.0000],
+                                    [0.0780, 0.9513, 1.1278, 0.0000]]]],
+                                 [[[[1.0000, 0.0000, 0.0000, 2.0000],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
                                     [0.0000, 0.0000, 0.0000, 0.0000],
                                     [0.0000, 1.0000, 2.0000, 0.0000],
                                     [0.0000, 0.0000, 1.0000, 2.0000]],
@@ -680,6 +739,7 @@ class TestRandomRotation3D:
                                    [[1.0000, 0.0000, 0.0000, 2.0000],
                                     [0.0000, 0.0000, 0.0000, 0.0000],
                                     [0.0000, 1.0000, 2.0000, 0.0000],
+<<<<<<< refs/remotes/kornia/master
                                     [0.0000, 0.0000, 1.0000, 2.0000]]]],
                                  [[[[0.0000, 0.0726, 0.0000, 0.0000],
                                     [0.1038, 1.0134, 0.5566, 0.1519],
@@ -736,14 +796,24 @@ class TestRandomRotation3D:
         expected_transform = torch.tensor([[[0.8017, 0.4358, -0.4090, 0.0527],
                                             [-0.0877, 0.7627, 0.6408, -0.1533],
                                             [0.5912, -0.4779, 0.6497, 0.1803],
-                                            [0.0000, 0.0000, 0.0000, 1.0000]],
+=======
+                                    [0.0000, 0.0000, 1.0000, 2.0000]]]]], device=device, dtype=dtype)
 
+        expected_transform = torch.tensor([[[0.7894, -0.6122, 0.0449, 1.1892],
+                                            [0.5923, 0.7405, -0.3176, -0.1816],
+                                            [0.1612, 0.2773, 0.9472, -0.6049],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+                                            [0.0000, 0.0000, 0.0000, 1.0000]],
                                            [[1.0000, 0.0000, 0.0000, 0.0000],
                                             [0.0000, 1.0000, 0.0000, 0.0000],
                                             [0.0000, 0.0000, 1.0000, 0.0000],
+<<<<<<< refs/remotes/kornia/master
                                             [0.0000, 0.0000, 0.0000, 1.0000]]])
         expected_transform = expected_transform.to(device)
 >>>>>>> [Fix] gpu tests for crop3d and flip (#727)
+=======
+                                            [0.0000, 0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         input = input.repeat(2, 1, 1, 1, 1)  # 5 x 4 x 4 x 3
 
@@ -753,7 +823,11 @@ class TestRandomRotation3D:
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
+<<<<<<< refs/remotes/kornia/master
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
+=======
+        input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1, 1)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         res = f(input)
         assert (res[0] == res[1]).all()
 
@@ -781,6 +855,7 @@ class TestRandomRotation3D:
                               [[1., 0., 0., 2.],
                                [0., 0., 0., 0.],
                                [0., 1., 2., 0.],
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
                                [0., 0., 1., 2.]]], device=device, dtype=dtype)  # 3 x 4 x 4
 
@@ -839,6 +914,32 @@ class TestRandomRotation3D:
                                               [0.0000, 0.0000, 0.0000, 1.0000]]])
         expected_transform_2 = expected_transform_2.to(device)
 >>>>>>> [Fix] gpu tests for crop3d and flip (#727)
+=======
+                               [0., 0., 1., 2.]]], device=device, dtype=dtype)  # 3 x 4 x 4
+
+        expected = torch.tensor([[[[[0.2752, 0.0000, 0.0000, 0.0000],
+                                    [0.5767, 0.0059, 0.6440, 0.4307],
+                                    [0.0000, 0.2793, 0.6638, 0.5716],
+                                    [0.0000, 0.0049, 0.0000, 0.0685]],
+                                   [[0.0000, 0.0000, 0.1806, 0.0000],
+                                    [0.2138, 0.0000, 0.9061, 0.7966],
+                                    [0.0657, 0.5395, 1.4299, 1.2912],
+                                    [0.0000, 0.3600, 0.3088, 0.3655]],
+                                   [[0.0000, 0.6515, 0.8861, 0.0000],
+                                    [0.0000, 0.0000, 0.2278, 0.0000],
+                                    [0.0027, 0.4403, 1.5462, 1.3480],
+                                    [0.0000, 0.1182, 0.6297, 0.8623]]]]], device=device, dtype=dtype)
+
+        expected_transform = torch.tensor([[[0.6306, 0.6496, -0.4247, 0.0044],
+                                            [-0.3843, 0.7367, 0.5563, 0.4151],
+                                            [0.6743, -0.1876, 0.7142, -0.4443],
+                                            [0.0000, 0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)
+
+        expected_transform_2 = torch.tensor([[[0.9611, 0.0495, -0.2717, 0.2557],
+                                              [0.1255, 0.7980, 0.5894, -0.4747],
+                                              [0.2460, -0.6006, 0.7608, 0.7710],
+                                              [0.0000, 0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         out, mat = f(input)
         _, mat_2 = f1(input)
@@ -1087,26 +1188,24 @@ class TestRandomCrop3D:
         out = f(inp)
         if batch_size == 1:
             expected = torch.tensor([[[[
-                [10, 11, 12, 13],
-                [15, 16, 17, 18],
-                [20, 21, 22, 23]
+                [11, 12, 13, 14],
+                [16, 17, 18, 19],
+                [21, 22, 23, 24]
             ]]]], device=device, dtype=dtype).repeat(batch_size, 1, 2, 1, 1)
         if batch_size == 2:
-            expected = torch.tensor([[[
-                [[0., 1., 2., 3.],
-                 [5., 6., 7., 8.],
-                 [10, 11, 12, 13]],
-                [[0., 1., 2., 3.],
-                 [5., 6., 7., 8.],
-                 [10, 11, 12, 13]],
-            ]], [[
-                [[1., 2., 3., 4.],
-                 [6., 7., 8., 9.],
-                 [11, 12, 13, 14]],
-                [[1., 2., 3., 4.],
-                 [6., 7., 8., 9.],
-                 [11, 12, 13, 14]],
-            ]]], device=device, dtype=dtype)
+            expected = torch.tensor([
+                [[[[6.0000, 7.0000, 8.0000, 9.0000],
+                   [11.0000, 12.0000, 13.0000, 14.0000],
+                   [16.0000, 17.0000, 18.0000, 19.0000]],
+                  [[6.0000, 7.0000, 8.0000, 9.0000],
+                   [11.0000, 12.0000, 13.0000, 14.0000],
+                   [16.0000, 17.0000, 18.0000, 19.0000]]]],
+                [[[[11.0000, 12.0000, 13.0000, 14.0000],
+                   [16.0000, 17.0000, 18.0000, 19.0000],
+                   [21.0000, 22.0000, 23.0000, 24.0000]],
+                  [[11.0000, 12.0000, 13.0000, 14.0000],
+                   [16.0000, 17.0000, 18.0000, 19.0000],
+                   [21.0000, 22.0000, 23.0000, 24.0000]]]]], device=device, dtype=dtype)
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
@@ -1126,19 +1225,19 @@ class TestRandomCrop3D:
             [6., 7., 8.]
         ]]], device=device, dtype=dtype).repeat(batch_size, 1, 3, 1, 1)
         expected = torch.tensor([[[
-            [[10, 10, 10, 10],
-             [10, 0., 1., 2.],
-             [10, 3., 4., 5.]],
-            [[10, 10, 10, 10],
-             [10, 0., 1., 2.],
-             [10, 3., 4., 5.]],
+            [[0., 1., 2., 10.],
+             [3., 4., 5., 10.],
+             [6., 7., 8., 10.]],
+            [[0., 1., 2., 10.],
+             [3., 4., 5., 10.],
+             [6., 7., 8., 10.]],
         ]], [[
-            [[10, 10, 10, 10],
-             [0., 1., 2., 10],
-             [3., 4., 5., 10]],
-            [[10, 10, 10, 10],
-             [0., 1., 2., 10],
-             [3., 4., 5., 10]],
+            [[3., 4., 5., 10.],
+             [6., 7., 8., 10.],
+             [10, 10, 10, 10.]],
+            [[10, 10, 10, 10.],
+             [10, 10, 10, 10.],
+             [10, 10, 10, 10.]],
         ]]], device=device, dtype=dtype)
         f = RandomCrop3D(size=(2, 3, 4), fill=10., padding=padding, align_corners=True, p=1.)
         out = f(inp)
@@ -1154,7 +1253,7 @@ class TestRandomCrop3D:
             [[9., 9., 9., 9.],
              [9., 9., 9., 9.],
              [9., 9., 9., 9.]],
-            [[9., 0., 1., 2.],
+            [[0., 1., 2., 9.],
              [9., 9., 9., 9.],
              [9., 9., 9., 9.]],
         ]]], device=device, dtype=dtype)

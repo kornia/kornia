@@ -40,19 +40,31 @@ class RandomGeneratorBaseTests():
 class TestRandomProbGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('p', [0., 0.5, 1.])
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, p, batch_size, same_on_batch, device, dtype):
         random_prob_generator(batch_size=batch_size, p=p, same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('p', [
         # Should be failed if p > 1. or p < 0.
+<<<<<<< refs/remotes/kornia/master
         (-1.),
         (2.)
     ])
     def test_invalid_param_combinations(self, p, device, dtype):
         with pytest.raises(Exception):
             random_prob_generator(batch_size=8, p=p)
+=======
+        pytest.param(-1., marks=pytest.mark.xfail),
+        pytest.param(2., marks=pytest.mark.xfail)
+    ])
+    def test_invalid_param_combinations(self, p, device, dtype):
+        random_prob_generator(batch_size=8, p=p)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     @pytest.mark.parametrize('p,expected', [
         (0., [False] * 8),
@@ -82,7 +94,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('contrast', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('saturation', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('hue', [None, torch.tensor([-0.1, 0.1])])
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
@@ -98,6 +114,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('brightness,contrast,saturation,hue', [
         # Should be failed if value out of bounds or tensor.shape != [1, 2]
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor([-1., 2.]), None, None, None),
         (torch.tensor([0., 3.]), None, None, None),
         (torch.tensor(0.), None, None, None),
@@ -119,10 +136,34 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         (None, None, None, torch.tensor(0.)),
         (None, None, None, torch.tensor([0.])),
         (None, None, None, torch.tensor([0., 1., 2.])),
+=======
+        pytest.param(torch.tensor([-1., 2.]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0., 3.]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(torch.tensor(0.), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0.]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0., 1., 2.]), None, None, None, marks=pytest.mark.xfail),
+
+        pytest.param(None, torch.tensor([-1., 2.]), None, None, marks=pytest.mark.xfail),
+        pytest.param(None, torch.tensor(0.), None, None, marks=pytest.mark.xfail),
+        pytest.param(None, torch.tensor([0.]), None, None, marks=pytest.mark.xfail),
+        pytest.param(None, torch.tensor([0., 1., 2.]), None, None, marks=pytest.mark.xfail),
+
+        pytest.param(None, None, torch.tensor([-1., 2.]), None, marks=pytest.mark.xfail),
+        pytest.param(None, None, torch.tensor(0.), None, marks=pytest.mark.xfail),
+        pytest.param(None, None, torch.tensor([0.]), None, marks=pytest.mark.xfail),
+        pytest.param(None, None, torch.tensor([0., 1., 2.]), None, marks=pytest.mark.xfail),
+
+        pytest.param(None, None, None, torch.tensor([-1., 0.]), marks=pytest.mark.xfail),
+        pytest.param(None, None, None, torch.tensor([0, 1.]), marks=pytest.mark.xfail),
+        pytest.param(None, None, None, torch.tensor(0.), marks=pytest.mark.xfail),
+        pytest.param(None, None, None, torch.tensor([0.]), marks=pytest.mark.xfail),
+        pytest.param(None, None, None, torch.tensor([0., 1., 2.]), marks=pytest.mark.xfail),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     ])
     def test_invalid_param_combinations(
         self, brightness, contrast, saturation, hue, device, dtype
     ):
+<<<<<<< refs/remotes/kornia/master
         with pytest.raises(Exception):
             random_color_jitter_generator(
                 8,
@@ -131,6 +172,15 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
                 saturation.to(device=device, dtype=dtype) if saturation is not None else None,
                 hue.to(device=device, dtype=dtype) if hue is not None else None
             )
+=======
+        random_color_jitter_generator(
+            8,
+            brightness.to(device=device, dtype=dtype) if brightness is not None else None,
+            contrast.to(device=device, dtype=dtype) if contrast is not None else None,
+            saturation.to(device=device, dtype=dtype) if saturation is not None else None,
+            hue.to(device=device, dtype=dtype) if hue is not None else None
+        )
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -143,6 +193,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
         expected_jitter_params = {
             'brightness_factor': torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype),
             'contrast_factor': torch.tensor(
                 [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576], device=device, dtype=dtype),
@@ -151,6 +202,16 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'saturation_factor': torch.tensor(
                 [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype),
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype)
+=======
+                [0.8233, 0.8252, 0.8494, 0.8210, 1.0105, 0.9907, 1.1821, 1.1715], device=device, dtype=dtype),
+            'contrast_factor': torch.tensor(
+                [0.7501, 0.7796, 0.7942, 0.9252, 1.2055, 1.2223, 0.9265, 1.0675], device=device, dtype=dtype),
+            'hue_factor': torch.tensor(
+                [-0.0824, 0.0402, 0.0247, -0.0125, -0.0851, 0.0367, -0.0376, -0.0382], device=device, dtype=dtype),
+            'saturation_factor': torch.tensor(
+                [0.6251, 0.6323, 1.3455, 0.7217, 0.8120, 0.7043, 0.8015, 0.7867], device=device, dtype=dtype),
+            'order': torch.tensor([2, 3, 1, 0], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         }
 
         assert set(list(jitter_params.keys())) == set([
@@ -179,10 +240,17 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype), same_on_batch=True)
 
         expected_res = {
+<<<<<<< refs/remotes/kornia/master
             'brightness_factor': torch.tensor([1.1529] * batch_size, device=device, dtype=dtype),
             'contrast_factor': torch.tensor([1.2490] * batch_size, device=device, dtype=dtype),
             'hue_factor': torch.tensor([-0.0234] * batch_size, device=device, dtype=dtype),
             'saturation_factor': torch.tensor([1.3674] * batch_size, device=device, dtype=dtype),
+=======
+            'brightness_factor': torch.tensor([0.8233] * batch_size, device=device, dtype=dtype),
+            'contrast_factor': torch.tensor([0.7377] * batch_size, device=device, dtype=dtype),
+            'hue_factor': torch.tensor([-0.0753] * batch_size, device=device, dtype=dtype),
+            'saturation_factor': torch.tensor([0.6421] * batch_size, device=device, dtype=dtype),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype)
         }
 
@@ -202,7 +270,11 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('height,width', [(200, 200)])
     @pytest.mark.parametrize('distortion_scale', [torch.tensor(0.), torch.tensor(0.5), torch.tensor(1.)])
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, height, width, distortion_scale, batch_size, same_on_batch, device, dtype
@@ -213,6 +285,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('height,width,distortion_scale', [
         # Should be failed if distortion_scale > 1. or distortion_scale < 0.
+<<<<<<< refs/remotes/kornia/master
         (-100, 100, torch.tensor(0.5)),
         (100, -100, torch.tensor(0.5)),
         (100, 100, torch.tensor(-0.5)),
@@ -224,6 +297,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             random_perspective_generator(
                 batch_size=8, height=height, width=width,
                 distortion_scale=distortion_scale.to(device=device, dtype=dtype))
+=======
+        pytest.param(-100, 100, torch.tensor(0.5), marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor(0.5), marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor(-0.5), marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor(1.5), marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0., 0.5]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
+        random_perspective_generator(
+            batch_size=8, height=height, width=width,
+            distortion_scale=distortion_scale.to(device=device, dtype=dtype))
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -240,6 +325,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [199., 199.],
                  [0., 199.]]], device=device, dtype=dtype),
             end_points=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [[44.1135, 45.7502],
                  [179.8568, 47.9653],
                  [179.4776, 168.9552],
@@ -248,6 +334,16 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [152.2701, 29.6790],
                  [155.5298, 170.6142],
                  [37.0547, 177.5298]]], device=device, dtype=dtype),
+=======
+                [[2.9077, 3.1455],
+                 [192.8207, 2.6290],
+                 [172.6914, 175.1608],
+                 [47.7618, 152.5624]],
+                [[4.1772, 6.6320],
+                 [191.1473, 18.7684],
+                 [156.8740, 155.4749],
+                 [18.8766, 168.3782]]], device=device, dtype=dtype),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['start_points'], expected['start_points'])
@@ -265,10 +361,17 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [199., 199.],
                  [0., 199.]]], device=device, dtype=dtype).repeat(2, 1, 1),
             end_points=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [[44.1135, 45.7502],
                  [179.8568, 47.9653],
                  [179.4776, 168.9552],
                  [12.8286, 159.3179]]], device=device, dtype=dtype).repeat(2, 1, 1),
+=======
+                [[2.9077, 3.1455],
+                 [192.8207, 2.6290],
+                 [172.6914, 175.1608],
+                 [47.7618, 152.5624]]], device=device, dtype=dtype).repeat(2, 1, 1),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['start_points'], expected['start_points'])
@@ -277,7 +380,11 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
@@ -296,6 +403,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('height,width,degrees,translate,scale,shear', [
+<<<<<<< refs/remotes/kornia/master
         (-100, 100, torch.tensor([10, 20]), None, None, None),
         (100, -100, torch.tensor([10, 20]), None, None, None),
         (100, 100, 0.5, None, None, None),
@@ -336,6 +444,51 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             angle=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
             sx=torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
             sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype)
+=======
+        pytest.param(-100, 100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, 0.5, None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20, 30]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None, marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1]), None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1, 2, 3]), None, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1]), marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1, 2]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4]), marks=pytest.mark.xfail),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(
+        self, batch_size, height, width, degrees, translate, scale, shear, device, dtype
+    ):
+        batch_size = 8
+        random_affine_generator(
+            batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
+
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([10, 20])
+        translate = torch.tensor([0.1, 0.1])
+        scale = torch.tensor([0.7, 1.2])
+        shear = torch.tensor([[10, 20], [10, 20]])
+        res = random_affine_generator(
+            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=False)
+        expected = dict(
+            translations=torch.tensor([[1.0469, 18.2094], [-0.9286, 17.1501]], device=device, dtype=dtype),
+            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            scale=torch.tensor([[0.7618, 0.7618], [0.7263, 0.7263]], device=device, dtype=dtype),
+            angle=torch.tensor([10.5815, 10.6291], device=device, dtype=dtype),
+            sx=torch.tensor([10.8354, 11.3264], device=device, dtype=dtype),
+            sy=torch.tensor([11.5705, 13.7537], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -347,6 +500,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
+<<<<<<< refs/remotes/kornia/master
         degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
         scale = torch.tensor([0.7, 1.2], device=device, dtype=dtype)
@@ -361,6 +515,25 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             angle=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
             sx=torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
             sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype)
+=======
+        degrees = torch.tensor([10, 20])
+        translate = torch.tensor([0.1, 0.1])
+        scale = torch.tensor([0.7, 1.2])
+        shear = torch.tensor([[10, 20], [10, 20]])
+        res = random_affine_generator(
+            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
+            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+            same_on_batch=True)
+        expected = dict(
+            translations=torch.tensor([[-15.0566, -17.8968], [-15.0566, -17.8968]], device=device, dtype=dtype),
+            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            scale=torch.tensor([[0.7315, 0.7315], [0.7315, 0.7315]], device=device, dtype=dtype),
+            angle=torch.tensor([10.5815, 10.5815], device=device, dtype=dtype),
+            sx=torch.tensor([15.2617, 15.2617], device=device, dtype=dtype),
+            sy=torch.tensor([14.7678, 14.7678], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -373,7 +546,11 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
 class TestRandomRotationGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
@@ -381,6 +558,7 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('degrees', [
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor(10)),
         (torch.tensor([10])),
         (torch.tensor([10, 20, 30]))
@@ -390,6 +568,16 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_rotation_generator(
                 batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+=======
+        pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([10, 20, 30]), marks=pytest.mark.xfail)
+    ])
+    def test_invalid_param_combinations(self, degrees, device, dtype):
+        batch_size = 8
+        random_rotation_generator(
+            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -397,7 +585,11 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         res = random_rotation_generator(
             batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype)
+=======
+            degrees=torch.tensor([10.5815, 10.6291], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['degrees'], expected['degrees'])
@@ -408,7 +600,11 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         res = random_rotation_generator(
             batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype)
+=======
+            degrees=torch.tensor([10.5815, 10.5815], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['degrees'], expected['degrees'])
@@ -416,23 +612,36 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200)])
     @pytest.mark.parametrize('size', [(100, 100), torch.tensor([50, 50])])
+=======
+    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('input_size', [(200, 200)])
+    @pytest.mark.parametrize('size', [(100, 100), torch.tensor([[50, 50], [60, 60]])])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('resize_to', [None, (100, 100)])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, batch_size, input_size, size, resize_to, same_on_batch, device, dtype
     ):
+<<<<<<< refs/remotes/kornia/master
         if isinstance(size, torch.Tensor):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
         random_crop_generator(
             batch_size=batch_size, input_size=input_size,
             size=size,
+=======
+        random_crop_generator(
+            batch_size=batch_size, input_size=input_size,
+            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             resize_to=resize_to,
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
+<<<<<<< refs/remotes/kornia/master
         ((-300, 300), (200, 200), (100, 100)),
         ((100, 100), (200, 200), (100, 100)),
         ((200, 200), torch.tensor([50, 50]), (100, 100)),
@@ -445,6 +654,19 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 batch_size=batch_size, input_size=input_size,
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to)
+=======
+        pytest.param((-300, 300), (200, 200), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((100, 100), (200, 200), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((200, 200), torch.tensor([50, 50]), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
+        batch_size = 2
+        random_crop_generator(
+            batch_size=batch_size, input_size=input_size,
+            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+            resize_to=resize_to)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -455,6 +677,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             resize_to=(200, 200))
         expected = dict(
             src=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [[36, 19],
                  [95, 19],
                  [95, 68],
@@ -463,6 +686,16 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [98, 29],
                  [98, 98],
                  [19, 98]]], device=device, dtype=torch.long),
+=======
+                [[2, 6],
+                 [61, 6],
+                 [61, 55],
+                 [2, 55]],
+                [[1, 1],
+                 [80, 1],
+                 [80, 70],
+                 [1, 70]]], device=device, dtype=torch.long),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -486,6 +719,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             resize_to=(200, 200), same_on_batch=True)
         expected = dict(
             src=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [[36, 46],
                  [95, 46],
                  [95, 95],
@@ -494,6 +728,16 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [115, 46],
                  [115, 115],
                  [36, 115]]], device=device, dtype=torch.long),
+=======
+                [[2, 3],
+                 [61, 3],
+                 [61, 52],
+                 [2, 52]],
+                [[2, 3],
+                 [81, 3],
+                 [81, 72],
+                 [2, 72]]], device=device, dtype=torch.long),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -511,7 +755,11 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('size', [(200, 200)])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.3])])
     @pytest.mark.parametrize('ratio', [torch.tensor([.9, 1.1])])
@@ -526,6 +774,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('size,scale,ratio', [
+<<<<<<< refs/remotes/kornia/master
         ((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
         ((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
         ((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1])),
@@ -541,6 +790,22 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
                 same_on_batch=same_on_batch)
+=======
+        pytest.param((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3, 1.5]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9]), marks=pytest.mark.xfail),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
+        batch_size = 2
+        random_crop_size_generator(
+            batch_size=batch_size, size=size,
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            same_on_batch=same_on_batch)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -552,6 +817,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=False)
         expected = dict(
             size=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [99, 94],
                 [91, 95],
                 [90, 96],
@@ -571,6 +837,16 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=False)
         expected = dict(
             size=torch.tensor([[100, 100]], device=device, dtype=torch.long)
+=======
+                [84, 92],
+                [87, 86],
+                [89, 87],
+                [98, 97],
+                [89, 84],
+                [90, 96],
+                [89, 87],
+                [92, 95]], device=device, dtype=torch.long)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -585,6 +861,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=True)
         expected = dict(
             size=torch.tensor([
+<<<<<<< refs/remotes/kornia/master
                 [99, 95],
                 [99, 95],
                 [99, 95],
@@ -593,6 +870,16 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [99, 95],
                 [99, 95],
                 [99, 95]], device=device, dtype=torch.long),
+=======
+                [87, 89],
+                [87, 89],
+                [87, 89],
+                [87, 89],
+                [87, 89],
+                [87, 89],
+                [87, 89],
+                [87, 89]], device=device, dtype=torch.long),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -600,7 +887,11 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
 class TestRandomRectangleGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.1])])
@@ -615,6 +906,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('height,width,scale,ratio,value', [
+<<<<<<< refs/remotes/kornia/master
         (-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
         (100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
         (100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0),
@@ -625,15 +917,33 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2),
         (
             100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5)),
+=======
+        pytest.param(-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3, 1.5]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1, marks=pytest.mark.xfail),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2, marks=pytest.mark.xfail),
+        pytest.param(
+            100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5), marks=pytest.mark.xfail),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     ])
     def test_invalid_param_combinations(
         self, height, width, scale, ratio, value, device, dtype
     ):
         batch_size = 8
+<<<<<<< refs/remotes/kornia/master
         with pytest.raises(Exception):
             random_rectangles_params_generator(
                 batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
+=======
+        random_rectangles_params_generator(
+            batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -648,7 +958,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
             heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
             xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
+<<<<<<< refs/remotes/kornia/master
             ys=torch.tensor([6, 8], device=device, dtype=torch.int32),
+=======
+            ys=torch.tensor([9, 23], device=device, dtype=torch.int32),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -671,7 +985,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
             heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
             xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
+<<<<<<< refs/remotes/kornia/master
             ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
+=======
+            ys=torch.tensor([20, 20], device=device, dtype=torch.int32),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -684,7 +1002,11 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 2])
+=======
+    @pytest.mark.parametrize('batch_size', [2])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [200])
     @pytest.mark.parametrize('size', [(100, 100)])
@@ -694,6 +1016,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     @pytest.mark.parametrize('height,width,size', [
+<<<<<<< refs/remotes/kornia/master
         (200, -200, (100, 100)),
         (-200, 200, (100, 100)),
         (100, 100, (120, 120)),
@@ -704,6 +1027,17 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         batch_size = 2
         with pytest.raises(Exception):
             center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+=======
+        pytest.param(200, -200, (100, 100), marks=pytest.mark.xfail),
+        pytest.param(-200, 200, (100, 100), marks=pytest.mark.xfail),
+        pytest.param(100, 100, (120, 120), marks=pytest.mark.xfail),
+        pytest.param(150, 100, (120, 120), marks=pytest.mark.xfail),
+        pytest.param(100, 150, (120, 120), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, height, width, size, device, dtype):
+        batch_size = 2
+        center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -729,8 +1063,13 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
                  [0, 119]]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
+<<<<<<< refs/remotes/kornia/master
         assert_allclose(res['src'].to(device=device), expected['src'])
         assert_allclose(res['dst'].to(device=device), expected['dst'])
+=======
+        assert_allclose(res['src'], expected['src'])
+        assert_allclose(res['dst'], expected['dst'])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_same_on_batch(self, device, dtype):
         pass
@@ -738,8 +1077,13 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([1, 1])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -751,6 +1095,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('kernel_size,angle,direction', [
+<<<<<<< refs/remotes/kornia/master
         (4, torch.tensor([30, 100]), torch.tensor([-1, 1])),
         (1, torch.tensor([30, 100]), torch.tensor([-1, 1])),
         ((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1])),
@@ -762,6 +1107,18 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             random_motion_blur_generator(
                 batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
                 direction=direction.to(device=device, dtype=dtype))
+=======
+        pytest.param(4, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(1, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-2, 1]), marks=pytest.mark.xfail),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-1, 2]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
+        random_motion_blur_generator(
+            batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
+            direction=direction.to(device=device, dtype=dtype))
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -771,9 +1128,15 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
+=======
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
+            angle_factor=torch.tensor([33.4893, 33.7746], device=device, dtype=dtype),
+            direction_factor=torch.tensor([-0.7528, -0.8948], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -788,9 +1151,15 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
             direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
+=======
+            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
+            angle_factor=torch.tensor([33.4893, 33.4893], device=device, dtype=dtype),
+            direction_factor=torch.tensor([-0.8742, -0.8742], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -800,7 +1169,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
 class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('thresholds', [torch.tensor([0, 1]), torch.tensor([0.4, 0.6])])
     @pytest.mark.parametrize('additions', [torch.tensor([-0.5, 0.5])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -810,6 +1183,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions=additions.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('thresholds,additions', [
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor([0, 2]), torch.tensor([-0.5, 0.5])),
         (torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5])),
         ([0, 1], torch.tensor([-0.5, 0.5])),
@@ -822,6 +1196,19 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             random_solarize_generator(
                 batch_size=batch_size, thresholds=thresholds.to(device=device, dtype=dtype),
                 additions=additions.to(device=device, dtype=dtype))
+=======
+        pytest.param(torch.tensor([0, 2]), torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
+        pytest.param([0, 1], torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 1]), torch.tensor([-0.5, 1]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 1]), torch.tensor([-1, 0.5]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 1]), [-0.5, 0.5], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
+        random_solarize_generator(
+            batch_size=batch_size, thresholds=thresholds.to(device=device, dtype=dtype),
+            additions=additions.to(device=device, dtype=dtype))
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -831,9 +1218,15 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions=torch.tensor([-0.5, 0.5], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
             thresholds_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype),
             additions_factor=torch.tensor(
                 [0.4408, -0.3668, 0.4346, 0.0936, 0.3694, 0.0677, 0.2411, -0.0706], device=device, dtype=dtype),
+=======
+                [0.0582, 0.0629, 0.1236, 0.0526, 0.5262, 0.4768, 0.9552, 0.9288], device=device, dtype=dtype),
+            additions_factor=torch.tensor(
+                [-0.4165, -0.3674, -0.3429, -0.1246, 0.3425, 0.3705, -0.1225, 0.1124], device=device, dtype=dtype),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
@@ -847,9 +1240,15 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions=torch.tensor([-0.5, 0.5], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
             thresholds_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype),
             additions_factor=torch.tensor(
                 [0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150], device=device, dtype=dtype),
+=======
+                [0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582], device=device, dtype=dtype),
+            additions_factor=torch.tensor(
+                [-0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371], device=device, dtype=dtype),
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
@@ -858,7 +1257,11 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('bits', [torch.tensor([0, 8])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
@@ -866,6 +1269,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('bits', [
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor([-1, 1])),
         (torch.tensor([0, 9])),
         (torch.tensor([3])),
@@ -875,6 +1279,16 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_posterize_generator(
                 batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+=======
+        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 9]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
+        pytest.param([0, 8], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, bits, device, dtype):
+        random_posterize_generator(
+            batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)
@@ -883,7 +1297,11 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
             bits_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [5, 2, 3, 6, 7, 7, 2, 7], device=device, dtype=torch.int32)
+=======
+                [1, 6, 2, 0, 0, 4, 0, 0], device=device, dtype=torch.int32)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
@@ -895,7 +1313,11 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=torch.tensor([0, 8], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
             bits_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32)
+=======
+                [1, 1, 1, 1, 1, 1, 1, 1], device=device, dtype=torch.int32)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
@@ -903,7 +1325,11 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 
 class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, sharpness, same_on_batch, device, dtype):
@@ -911,6 +1337,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('sharpness', [
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor([-1, 5])),
         (torch.tensor([3])),
         ([0, 1.]),
@@ -919,6 +1346,15 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_sharpness_generator(
                 batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+=======
+        pytest.param(torch.tensor([-1, 5]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
+        pytest.param([0, 1.], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, sharpness, device, dtype):
+        random_sharpness_generator(
+            batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -927,7 +1363,11 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
             sharpness_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
+=======
+                [0.0582, 0.0629, 0.1236, 0.0526, 0.5262, 0.4768, 0.9552, 0.9288], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
@@ -939,7 +1379,11 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
             sharpness_factor=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype)
+=======
+                [0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
@@ -947,7 +1391,11 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('p', [0., 0.5, 1.])
     @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -959,6 +1407,7 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('lambda_val', [
+<<<<<<< refs/remotes/kornia/master
         (torch.tensor([-1, 1])),
         (torch.tensor([0, 2])),
         (torch.tensor([0, 0.5, 1])),
@@ -968,6 +1417,16 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             random_mixup_generator(
                 batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
+=======
+        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 2]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 0.5, 1]), marks=pytest.mark.xfail),
+        pytest.param([0., 1.], marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, lambda_val, device, dtype):
+        random_mixup_generator(
+            batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -978,7 +1437,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         expected = dict(
             mixup_pairs=torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
             mixup_lambdas=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype)
+=======
+                [0.0000, 0.0000, 0.0196, 0.0000, 0.6535, 0.0000, 0.5949, 0.0000], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -993,7 +1456,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         expected = dict(
             mixup_pairs=torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
             mixup_lambdas=torch.tensor(
+<<<<<<< refs/remotes/kornia/master
                 [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype)
+=======
+                [0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -1002,7 +1469,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
+=======
+    @pytest.mark.parametrize('batch_size', [1, 8])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     @pytest.mark.parametrize('p', [0, 0.5, 1.])
     @pytest.mark.parametrize('width,height', [(200, 200)])
     @pytest.mark.parametrize('num_mix', [1, 3])
@@ -1019,6 +1490,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('width,height,num_mix,beta,cut_size', [
+<<<<<<< refs/remotes/kornia/master
         (200, -200, 1, None, None),
         (-200, 200, 1, None, None),
         (200, 200, 0, None, None),
@@ -1034,6 +1506,22 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
                 cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
                 same_on_batch=same_on_batch)
+=======
+        pytest.param(200, -200, 1, None, None, marks=pytest.mark.xfail),
+        pytest.param(-200, 200, 1, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 0, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1.5, None, None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, torch.tensor([0., 1.]), None, marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, None, torch.tensor([-1., 1.]), marks=pytest.mark.xfail),
+        pytest.param(200, 200, 1, None, torch.tensor([0., 2.]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
+        random_cutmix_generator(
+            batch_size=8, p=p, width=width, height=height,
+            beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
+            cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
+            same_on_batch=same_on_batch)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1043,6 +1531,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             beta=torch.tensor(1., device=device, dtype=dtype),
             cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[71, 108],
@@ -1053,6 +1542,18 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                  [38, 1],
                  [38, 0],
                  [39, 0]]]], device=device, dtype=torch.long)
+=======
+            mix_pairs=torch.tensor([[0., 1.]], device=device, dtype=torch.long),
+            crop_src=torch.tensor([[
+                [[174, 122],
+                 [173, 122],
+                 [173, 121],
+                 [174, 121]],
+                [[75, 17],
+                 [74, 17],
+                 [74, 16],
+                 [75, 16]]]], device=device, dtype=torch.long)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
@@ -1066,6 +1567,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             beta=torch.tensor(1., device=device, dtype=dtype),
             cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
+<<<<<<< refs/remotes/kornia/master
             mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[114, 53],
@@ -1076,6 +1578,18 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                  [113, 53],
                  [113, 52],
                  [114, 52]]]], device=device, dtype=torch.long)
+=======
+            mix_pairs=torch.tensor([[1., 0.]], device=device, dtype=torch.long),
+            crop_src=torch.tensor([[
+                [[118, 3],
+                 [117, 3],
+                 [117, 2],
+                 [118, 2]],
+                [[118, 3],
+                 [117, 3],
+                 [117, 2],
+                 [118, 2]]]], device=device, dtype=torch.long)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)

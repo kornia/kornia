@@ -1277,6 +1277,7 @@ class TestColorJitter:
 <<<<<<< refs/remotes/kornia/master
 =======
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.2529, 0.3529, 0.4529],
                                    [0.7529, 0.6529, 0.5529],
                                    [0.8529, 0.9529, 1.0000]],
@@ -1300,6 +1301,26 @@ class TestColorJitter:
                                   [[0.2660, 0.3660, 0.4660],
                                    [0.7660, 0.6660, 0.5660],
                                    [0.8660, 0.9660, 1.0000]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
+=======
+        expected = torch.tensor([[[[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]],
+                                  [[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]],
+                                  [[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]]],
+                                 [[[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]],
+                                  [[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]],
+                                  [[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]]]], device=device, dtype=dtype)   # 1 x 1 x 3 x 3
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -1340,31 +1361,24 @@ class TestColorJitter:
               [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
 =======
 
-        expected = torch.tensor([[[[0.2529, 0.3529, 0.4529],
-                                   [0.7529, 0.6529, 0.5529],
-                                   [0.8529, 0.9529, 1.0000]],
-
-                                  [[0.2529, 0.3529, 0.4529],
-                                   [0.7529, 0.6529, 0.5529],
-                                   [0.8529, 0.9529, 1.0000]],
-
-                                  [[0.2529, 0.3529, 0.4529],
-                                   [0.7529, 0.6529, 0.5529],
-                                   [0.8529, 0.9529, 1.0000]]],
-
-
-                                 [[[0.2660, 0.3660, 0.4660],
-                                   [0.7660, 0.6660, 0.5660],
-                                   [0.8660, 0.9660, 1.0000]],
-
-                                  [[0.2660, 0.3660, 0.4660],
-                                   [0.7660, 0.6660, 0.5660],
-                                   [0.8660, 0.9660, 1.0000]],
-
-                                  [[0.2660, 0.3660, 0.4660],
-                                   [0.7660, 0.6660, 0.5660],
-                                   [0.8660, 0.9660, 1.0000]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
-        expected = expected.to(device)
+        expected = torch.tensor([[[[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]],
+                                  [[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]],
+                                  [[0.0000, 0.0233, 0.1233],
+                                   [0.4233, 0.3233, 0.2233],
+                                   [0.5233, 0.6233, 0.8233]]],
+                                 [[[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]],
+                                  [[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]],
+                                  [[0.0000, 0.0252, 0.1252],
+                                   [0.4252, 0.3252, 0.2252],
+                                   [0.5252, 0.6252, 0.8252]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
@@ -1382,6 +1396,7 @@ class TestColorJitter:
         expected = self._get_expected_contrast(device, dtype)
 =======
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.0953, 0.1906, 0.2859],
                                    [0.5719, 0.4766, 0.3813],
                                    [0.6672, 0.7625, 0.9531]],
@@ -1408,6 +1423,26 @@ class TestColorJitter:
                                    [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
         expected = expected.to(device)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        expected = torch.tensor([[[[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]],
+                                  [[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]],
+                                  [[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]]],
+                                 [[[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]],
+                                  [[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]],
+                                  [[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
@@ -1448,31 +1483,24 @@ class TestColorJitter:
 
 =======
 
-        expected = torch.tensor([[[[0.0953, 0.1906, 0.2859],
-                                   [0.5719, 0.4766, 0.3813],
-                                   [0.6672, 0.7625, 0.9531]],
-
-                                  [[0.0953, 0.1906, 0.2859],
-                                   [0.5719, 0.4766, 0.3813],
-                                   [0.6672, 0.7625, 0.9531]],
-
-                                  [[0.0953, 0.1906, 0.2859],
-                                   [0.5719, 0.4766, 0.3813],
-                                   [0.6672, 0.7625, 0.9531]]],
-
-
-                                 [[[0.1184, 0.2367, 0.3551],
-                                   [0.7102, 0.5919, 0.4735],
-                                   [0.8286, 0.9470, 1.0000]],
-
-                                  [[0.1184, 0.2367, 0.3551],
-                                   [0.7102, 0.5919, 0.4735],
-                                   [0.8286, 0.9470, 1.0000]],
-
-                                  [[0.1184, 0.2367, 0.3551],
-                                   [0.7102, 0.5919, 0.4735],
-                                   [0.8286, 0.9470, 1.0000]]]], device=device, dtype=dtype)
-        expected = expected.to(device)
+        expected = torch.tensor([[[[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]],
+                                  [[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]],
+                                  [[0.0849, 0.1699, 0.2548],
+                                   [0.5097, 0.4247, 0.3398],
+                                   [0.5946, 0.6795, 0.8494]]],
+                                 [[[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]],
+                                  [[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]],
+                                  [[0.0821, 0.1642, 0.2463],
+                                   [0.4926, 0.4105, 0.3284],
+                                   [0.5747, 0.6568, 0.8210]]]], device=device, dtype=dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
@@ -1496,6 +1524,7 @@ class TestColorJitter:
 <<<<<<< refs/remotes/kornia/master
 =======
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
                                    [6.2921e-01, 5.0000e-01, 4.0000e-01],
                                    [7.0974e-01, 8.0000e-01, 1.0000e+00]],
@@ -1523,6 +1552,26 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+=======
+        expected = torch.tensor([[[[0.0000, 0.0907, 0.2272],
+                                   [0.5454, 0.5000, 0.4000],
+                                   [0.6818, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4454, 0.5818],
+                                   [0.5454, 0.2636, 0.1636],
+                                   [0.8000, 0.0000, 0.0543]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2636, 0.1636],
+                                   [0.8000, 0.3429, 0.4090]]],
+                                 [[[0.0000, 0.0971, 0.2314],
+                                   [0.5485, 0.5000, 0.4000],
+                                   [0.6828, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4485, 0.5828],
+                                   [0.5485, 0.2657, 0.1657],
+                                   [0.8000, 0.0000, 0.0628]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2657, 0.1657],
+                                   [0.8000, 0.3429, 0.4142]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
@@ -1545,6 +1594,7 @@ class TestColorJitter:
 <<<<<<< refs/remotes/kornia/master
 =======
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[1.8763e-01, 2.5842e-01, 3.3895e-01],
                                    [6.2921e-01, 5.0000e-01, 4.0000e-01],
                                    [7.0974e-01, 8.0000e-01, 1.0000e+00]],
@@ -1572,6 +1622,26 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+=======
+        expected = torch.tensor([[[[0.0000, 0.0907, 0.2272],
+                                   [0.5454, 0.5000, 0.4000],
+                                   [0.6818, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4454, 0.5818],
+                                   [0.5454, 0.2636, 0.1636],
+                                   [0.8000, 0.0000, 0.0543]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2636, 0.1636],
+                                   [0.8000, 0.3429, 0.4090]]],
+                                 [[[0.0000, 0.0971, 0.2314],
+                                   [0.5485, 0.5000, 0.4000],
+                                   [0.6828, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4485, 0.5828],
+                                   [0.5485, 0.2657, 0.1657],
+                                   [0.8000, 0.0000, 0.0628]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2657, 0.1657],
+                                   [0.8000, 0.3429, 0.4142]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -1593,6 +1663,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
         expected = self._get_expected_saturation(device, dtype)
 
@@ -1644,6 +1715,26 @@ class TestColorJitter:
                                    [9.0000e-01, 2.7651e-01, 1.7651e-01],
                                    [8.0000e-01, 3.5302e-01, 4.4127e-01]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+=======
+        expected = torch.tensor([[[[0.0000, 0.0907, 0.2272],
+                                   [0.5454, 0.5000, 0.4000],
+                                   [0.6818, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4454, 0.5818],
+                                   [0.5454, 0.2636, 0.1636],
+                                   [0.8000, 0.0000, 0.0543]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2636, 0.1636],
+                                   [0.8000, 0.3429, 0.4090]]],
+                                 [[[0.0000, 0.0971, 0.2314],
+                                   [0.5485, 0.5000, 0.4000],
+                                   [0.6828, 0.8000, 1.0000]],
+                                  [[1.0000, 0.4485, 0.5828],
+                                   [0.5485, 0.2657, 0.1657],
+                                   [0.8000, 0.0000, 0.0628]],
+                                  [[0.5556, 0.8000, 0.7000],
+                                   [0.9000, 0.2657, 0.1657],
+                                   [0.8000, 0.3429, 0.4142]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
@@ -1668,8 +1759,9 @@ class TestColorJitter:
 =======
 
         expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
-                                   [0.6000, 0.5000, 0.4000],
+                                   [0.6030, 0.5000, 0.4000],
                                    [0.7000, 0.8000, 1.0000]],
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 
         expected = self._get_expected_hue(device, dtype)
@@ -1678,17 +1770,23 @@ class TestColorJitter:
 
 <<<<<<< refs/remotes/kornia/master
 =======
-                                 [[[0.1000, 0.2000, 0.3000],
-                                   [0.6116, 0.5000, 0.4000],
-                                   [0.7000, 0.8000, 1.0000]],
-
-                                  [[1.0000, 0.4769, 0.5846],
-                                   [0.6000, 0.3077, 0.2077],
-                                   [0.7961, 0.1000, 0.2000]],
-
-                                  [[0.6347, 0.8000, 0.7000],
+=======
+                                  [[1.0000, 0.4940, 0.5960],
+                                   [0.6000, 0.3020, 0.2020],
+                                   [0.7990, 0.1000, 0.2000]],
+                                  [[0.6090, 0.8000, 0.7000],
                                    [0.9000, 0.3000, 0.2000],
-                                   [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
+                                   [0.8000, 0.3930, 0.4920]]],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+                                 [[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+                                  [[1.0000, 0.5053, 0.6035],
+                                   [0.6027, 0.3000, 0.2000],
+                                   [0.8000, 0.1000, 0.2000]],
+                                  [[0.5920, 0.8000, 0.7000],
+                                   [0.9000, 0.3018, 0.2018],
+                                   [0.7991, 0.4062, 0.5071]]]], device=device, dtype=dtype)
         expected = expected.to(device)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
@@ -1714,8 +1812,9 @@ class TestColorJitter:
 =======
 
         expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
-                                   [0.6000, 0.5000, 0.4000],
+                                   [0.6030, 0.5000, 0.4000],
                                    [0.7000, 0.8000, 1.0000]],
+<<<<<<< refs/remotes/kornia/master
 
                                   [[1.0000, 0.5251, 0.6167],
                                    [0.6126, 0.3000, 0.2000],
@@ -1740,6 +1839,23 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+=======
+                                  [[1.0000, 0.4940, 0.5960],
+                                   [0.6000, 0.3020, 0.2020],
+                                   [0.7990, 0.1000, 0.2000]],
+                                  [[0.6090, 0.8000, 0.7000],
+                                   [0.9000, 0.3000, 0.2000],
+                                   [0.8000, 0.3930, 0.4920]]],
+                                 [[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+                                  [[1.0000, 0.5053, 0.6035],
+                                   [0.6027, 0.3000, 0.2000],
+                                   [0.8000, 0.1000, 0.2000]],
+                                  [[0.5920, 0.8000, 0.7000],
+                                   [0.9000, 0.3018, 0.2018],
+                                   [0.7991, 0.4062, 0.5071]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -1764,8 +1880,9 @@ class TestColorJitter:
 =======
 
         expected = torch.tensor([[[[0.1000, 0.2000, 0.3000],
-                                   [0.6000, 0.5000, 0.4000],
+                                   [0.6030, 0.5000, 0.4000],
                                    [0.7000, 0.8000, 1.0000]],
+<<<<<<< refs/remotes/kornia/master
 
                                   [[1.0000, 0.5251, 0.6167],
                                    [0.6126, 0.3000, 0.2000],
@@ -1787,6 +1904,23 @@ class TestColorJitter:
                                    [0.9000, 0.3000, 0.2000],
                                    [0.8000, 0.3730, 0.4692]]]], device=device, dtype=dtype)
         expected = expected.to(device)
+=======
+                                  [[1.0000, 0.4940, 0.5960],
+                                   [0.6000, 0.3020, 0.2020],
+                                   [0.7990, 0.1000, 0.2000]],
+                                  [[0.6090, 0.8000, 0.7000],
+                                   [0.9000, 0.3000, 0.2000],
+                                   [0.8000, 0.3930, 0.4920]]],
+                                 [[[0.1000, 0.2000, 0.3000],
+                                   [0.6000, 0.5000, 0.4000],
+                                   [0.7000, 0.8000, 1.0000]],
+                                  [[1.0000, 0.5053, 0.6035],
+                                   [0.6027, 0.3000, 0.2000],
+                                   [0.8000, 0.1000, 0.2000]],
+                                  [[0.5920, 0.8000, 0.7000],
+                                   [0.9000, 0.3018, 0.2018],
+                                   [0.7991, 0.4062, 0.5071]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -2138,6 +2272,7 @@ class TestRandomRotation:
                               [0., 1., 2., 0.],
                               [0., 0., 1., 2.]], device=device, dtype=dtype)  # 4 x 4
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
                                    [0.0000, 0.0029, 0.0000, 0.0176],
                                    [0.0029, 1.0000, 1.9883, 0.0000],
@@ -2151,6 +2286,21 @@ class TestRandomRotation:
                                      [0.3785, 0.0000, 0.4166, 0.0000],
                                      [0.0000, 0.6309, 1.5910, 1.2371],
                                      [0.0000, 0.1444, 0.3177, 0.6499]]]], device=device, dtype=dtype)  # 1 x 4 x 4
+=======
+        expected = torch.tensor([[[[0.0000, 0.2645, 0.4798, 0.0000],
+                                   [0.2399, 0.0000, 0.7409, 0.3652],
+                                   [0.1323, 0.4232, 1.3269, 1.2947],
+                                   [0.0000, 0.0877, 0.0465, 0.2285]]]], device=device, dtype=dtype)  # 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[0.7396, 0.6731, -0.6190],
+                                            [-0.6731, 0.7396, 1.4002],
+                                            [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_2 = torch.tensor([[[[0.2631, 0.0000, 0.6914, 0.5261],
+                                     [0.3457, 0.0000, 0.3235, 0.0000],
+                                     [0.0000, 0.7043, 1.6793, 1.0616],
+                                     [0.0000, 0.1307, 0.4526, 0.8613]]]], device=device, dtype=dtype)  # 1 x 4 x 4
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
         out, mat = f(input)
         assert_allclose(out, expected, rtol=1e-6, atol=1e-4)
@@ -2168,6 +2318,7 @@ class TestRandomRotation:
                                 [0., 1., 2., 0.],
                                 [0., 0., 1., 2.]]]], device=device, dtype=dtype)  # 1 x 1 x 4 x 4
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
                                    [0.0000, 0.0029, 0.0000, 0.0176],
                                    [0.0029, 1.0000, 1.9883, 0.0000],
@@ -2182,6 +2333,22 @@ class TestRandomRotation:
                                             [0.0000, 0.0000, 1.0000]],
                                            [[0.9125, 0.4090, -0.4823],
                                             [-0.4090, 0.9125, 0.7446],
+=======
+        expected = torch.tensor([[[[0.0000, 0.2645, 0.4798, 0.0000],
+                                   [0.2399, 0.0000, 0.7409, 0.3652],
+                                   [0.1323, 0.4232, 1.3269, 1.2947],
+                                   [0.0000, 0.0877, 0.0465, 0.2285]]],
+                                 [[[0.2631, 0.0000, 0.6914, 0.5261],
+                                   [0.3457, 0.0000, 0.3235, 0.0000],
+                                   [0.0000, 0.7043, 1.6793, 1.0616],
+                                   [0.0000, 0.1307, 0.4526, 0.8613]]]], device=device, dtype=dtype)  # 2 x 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[0.7396, 0.6731, -0.6190],
+                                            [-0.6731, 0.7396, 1.4002],
+                                            [0.0000, 0.0000, 1.0000]],
+                                           [[0.9472, 0.3207, -0.4018],
+                                            [-0.3207, 0.9472, 0.5602],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
                                             [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 2 x 3 x 3
 
         input = input.repeat(2, 1, 1, 1)  # 5 x 3 x 3 x 3
@@ -2214,6 +2381,7 @@ class TestRandomRotation:
                               [0., 1., 2., 0.],
                               [0., 0., 1., 2.]], device=device, dtype=dtype)  # 4 x 4
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([[[[0.1314, 0.1050, 0.6649, 0.2628],
                                    [0.3234, 0.0202, 0.4256, 0.1671],
                                    [0.0525, 0.5976, 1.5199, 1.1306],
@@ -2225,6 +2393,19 @@ class TestRandomRotation:
 
         expected_transform_2 = torch.tensor([[[0.8381, -0.5455, 1.0610],
                                               [0.5455, 0.8381, -0.5754],
+=======
+        expected = torch.tensor([[[[1.2791, 0.1719, 0.2457, 1.3764],
+                                   [0.1720, 0.0772, 1.8012, 0.9797],
+                                   [0.0860, 0.0361, 0.9309, 0.1257],
+                                   [0.6396, 0.0873, 0.0299, 0.0037]]]], device=device, dtype=dtype)  # 1 x 4 x 4
+
+        expected_transform = torch.tensor([[[-0.0049, 1.0000, 0.0073],
+                                            [-1.0000, -0.0049, 3.0073],
+                                            [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
+
+        expected_transform_2 = torch.tensor([[[0.9562, 0.2927, -0.3733],
+                                              [-0.2927, 0.9562, 0.5046],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
                                               [0.0000, 0.0000, 1.0000]]], device=device, dtype=dtype)  # 1 x 3 x 3
 
         out, mat = f(input)
@@ -2320,17 +2501,23 @@ class TestRandomCrop:
             [6., 7., 8.]
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         expected = torch.tensor([
             [[[0., 1., 2.],
               [3., 4., 5.]]],
             [[[3., 4., 5.],
               [6., 7., 8.]]]], device=device, dtype=dtype)
+<<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[
             [0., 1., 2.],
             [3., 4., 5.],
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
@@ -2359,12 +2546,17 @@ class TestRandomCrop:
             [4., 5., 0.]
         ]], [[
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             [7., 8., 0.],
             [0., 0., 0.]
 =======
             [0., 0., 0.],
             [1., 2., 0.]
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+            [7., 8., 0.],
+            [0., 0., 0.]
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         ]]], device=device, dtype=dtype)
         rc = RandomCrop(size=(2, 3), padding=1, align_corners=True, p=1.)
         out = rc(inp)
@@ -2387,11 +2579,17 @@ class TestRandomCrop:
             [1., 2., 10.],
             [4., 5., 10.]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         ]], [[
             [4., 5., 10.],
             [7., 8., 10.],
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        ]], [[
+            [4., 5., 10.],
+            [7., 8., 10.],
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         ]]], device=device, dtype=dtype)
         rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True, p=1.)
         out = rc(inp)
@@ -2407,11 +2605,11 @@ class TestRandomCrop:
             [6., 7., 8.]
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
         expected = torch.tensor([[[
-            [8., 8., 8.],
-            [8., 0., 1.]
+            [2., 8., 8.],
+            [5., 8., 8.]
         ]], [[
-            [8., 8., 8.],
-            [1., 2., 8.]
+            [4., 5., 8.],
+            [7., 8., 8.]
         ]]], device=device, dtype=dtype)
         rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True, p=1.)
         out = rc(inp)
@@ -2425,6 +2623,7 @@ class TestRandomCrop:
             [0., 1., 2.],
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         expected = torch.tensor([
             [[[9., 9., 9.],
               [0., 1., 2.]]],
@@ -2436,6 +2635,13 @@ class TestRandomCrop:
             [0., 1., 2.]
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        expected = torch.tensor([
+            [[[9., 9., 9.],
+              [0., 1., 2.]]],
+            [[[0., 1., 2.],
+              [9., 9., 9.]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         rc = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True, p=1.)
         out = rc(inp)
 
@@ -2505,8 +2711,8 @@ class TestRandomResizedCrop:
         ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[5.3750, 5.8750, 4.5938],
-               [6.3437, 6.7812, 5.2500]]]], device=device, dtype=dtype)
+            [[[[3.0937, 4.3750, 4.8750],
+               [3.9375, 5.4688, 5.9062]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
@@ -2534,9 +2740,9 @@ class TestRandomResizedCrop:
         ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[1.2500, 1.7500, 1.5000],
-               [4.2500, 4.7500, 3.7500],
-               [7.2500, 7.7500, 6.0000]]]], device=device, dtype=dtype)
+            [[[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]]], device=device, dtype=dtype)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
@@ -2551,6 +2757,7 @@ class TestRandomResizedCrop:
             [6., 7., 8.]
         ]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
 
+<<<<<<< refs/remotes/kornia/master
         expected = torch. tensor([
             [[[1.2500, 1.7500, 1.5000],
               [4.2500, 4.7500, 3.7500],
@@ -2558,6 +2765,15 @@ class TestRandomResizedCrop:
             [[[0.0000, 0.2500, 0.7500],
               [2.2500, 3.2500, 3.7500],
               [4.5000, 6.2500, 6.7500]]]], device=device, dtype=dtype)
+=======
+        expected = torch. tensor(
+            [[[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]],
+             [[[0.0000, 0.2500, 0.7500],
+               [2.2500, 3.2500, 3.7500],
+               [4.5000, 6.2500, 6.7500]]]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         rrc = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.))
         # It will crop a size of (2, 2) from the aspect ratio implementation of torch
         out = rrc(inp)
