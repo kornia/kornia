@@ -717,14 +717,14 @@ def random_mixup_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     if lambda_val is None:
-        lambda_val = torch.tensor([0., 1.])
+        lambda_val = torch.tensor([0., 1.], dtype=torch.float64)
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
     batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
-    mixup_lambdas = mixup_lambdas * batch_probs.float()
+    mixup_lambdas = mixup_lambdas * batch_probs.to(device=lambda_val.device, dtype=lambda_val.dtype)
 
     return dict(
         mixup_pairs=mixup_pairs,
@@ -803,8 +803,10 @@ def random_cutmix_generator(
         f"`num_mix` must be an integer greater than 1. Got {num_mix}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
     _common_param_check(batch_size, same_on_batch)
+    device, dtype = _extract_device_dtype([beta, cut_size])
 
-    batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)
+    batch_probs: torch.Tensor = random_prob_generator(
+        batch_size * num_mix, p, same_on_batch).to(device=device, dtype=dtype)
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
@@ -823,9 +825,11 @@ def random_cutmix_generator(
 
     # Reserve at least 1 pixel for cropping.
     x_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width - 1, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_width, device=device, dtype=torch.long),
+        (width - cut_width - 1).to(device=device, dtype=torch.long), same_on_batch)
     y_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height - 1, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_height, device=device, dtype=torch.long),
+        (height - cut_height - 1).to(device=device, dtype=torch.long), same_on_batch)
 
     crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 

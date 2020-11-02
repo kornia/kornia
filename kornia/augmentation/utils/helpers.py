@@ -178,18 +178,18 @@ def _adapted_beta(
     By default, same_on_batch is set to False.
     """
     device, dtype = _extract_device_dtype([
-        low if isinstance(low, torch.Tensor) else None,
-        high if isinstance(high, torch.Tensor) else None,
+        a if isinstance(a, torch.Tensor) else None,
+        b if isinstance(b, torch.Tensor) else None,
     ])
     dtype = torch.float32 if dtype is None else dtype
-    if not isinstance(low, torch.Tensor):
-        low = torch.tensor(low, dtype=torch.float64)
+    if not isinstance(a, torch.Tensor):
+        a = torch.tensor(a, dtype=torch.float64)
     else:
-        low = low.to(torch.float64)
-    if not isinstance(high, torch.Tensor):
-        high = torch.tensor(high, dtype=torch.float64)
+        a = a.to(torch.float64)
+    if not isinstance(b, torch.Tensor):
+        b = torch.tensor(b, dtype=torch.float64)
     else:
-        low = low.to(torch.float64)
+        b = b.to(torch.float64)
     dist = Beta(a, b)
     return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
 
@@ -251,6 +251,6 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
                 device = _device
                 dtype = _dtype
             elif device != _device or dtype != _dtype:
-                raise ValueError(f"Passed values are not in the same device and dtype."
-                                 "Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+                raise ValueError("Passed values are not in the same device and dtype."
+                                 f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
     return (device, dtype)
