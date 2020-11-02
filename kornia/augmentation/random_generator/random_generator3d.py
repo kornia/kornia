@@ -151,12 +151,14 @@ def random_motion_blur_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    device, dtype = _extract_device_dtype([angle, direction])
     if isinstance(kernel_size, int):
-        ksize_factor = torch.tensor([kernel_size] * batch_size)
+        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
+        ksize_factor = ksize_factor.to(device=device, dtype=dtype)
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
@@ -193,6 +195,8 @@ def center_crop_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    # TODO: This function does not accept tensors at all.
+    # Can't infer the device and dtype
     if not isinstance(size, (tuple, list,)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}"
                          .format(size))
@@ -243,8 +247,8 @@ def center_crop_generator3d(
         [dst_w - 1, dst_h - 1, dst_d - 1],
         [0, dst_h - 1, dst_d - 1],
     ]]).expand(points_src.shape[0], -1, -1)
-    return dict(src=points_src,
-                dst=points_dst)
+    return dict(src=points_src.long(),
+                dst=points_dst.long())
 
 
 def random_crop_generator3d(
@@ -269,8 +273,12 @@ def random_crop_generator3d(
     """
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size).repeat(batch_size, 1)
+    device, dtype = size.device, size.dtype
     assert size.shape == torch.Size([batch_size, 3]), \
         f"If `size` is a tensor, it must be shaped as (B, 3). Got {size.shape}."
+    assert len(input_size) == 3 and isinstance(input_size[0], (int,)) and isinstance(input_size[1], (int,)) \
+        and isinstance(input_size[2], (int,)) and input_size[0] > 0 and input_size[1] > 0 and input_size[2] > 0, \
+        f"`input_size` must be a tuple of 3 positive integers. Got {input_size}."
 
     x_diff = input_size[2] - size[:, 2] + 1
     y_diff = input_size[1] - size[:, 1] + 1
@@ -290,14 +298,26 @@ def random_crop_generator3d(
         y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).long()
         z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch).long()
 
-    crop_src = bbox_generator3d(x_start.view(-1), y_start.view(-1), z_start.view(-1),
-                                size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1)
+    crop_src = bbox_generator3d(
+        x_start.view(-1).to(device=device, dtype=dtype),
+        y_start.view(-1).to(device=device, dtype=dtype),
+        z_start.view(-1).to(device=device, dtype=dtype),
+        size[:, 2] - 1,
+        size[:, 1] - 1,
+        size[:, 0] - 1)
 
     if resize_to is None:
         crop_dst = bbox_generator3d(
-            torch.tensor([0] * batch_size), torch.tensor([0] * batch_size), torch.tensor([0] * batch_size),
-            size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1)
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            size[:, 2] - 1,
+            size[:, 1] - 1,
+            size[:, 0] - 1)
     else:
+        assert len(resize_to) == 3 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
+            and isinstance(resize_to[2], (int,)) and resize_to[0] > 0 and resize_to[1] > 0 and resize_to[2] > 0, \
+            f"`resize_to` must be a tuple of 3 positive integers. Got {resize_to}."
         crop_dst = torch.tensor([[
             [0, 0, 0],
             [resize_to[-1] - 1, 0, 0],
@@ -307,7 +327,7 @@ def random_crop_generator3d(
             [resize_to[-1] - 1, 0, resize_to[-3] - 1],
             [resize_to[-1] - 1, resize_to[-2] - 1, resize_to[-3] - 1],
             [0, resize_to[-2] - 1, resize_to[-3] - 1],
-        ]]).repeat(batch_size, 1, 1)
+        ]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
                 dst=crop_dst)
