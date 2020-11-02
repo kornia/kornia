@@ -10,6 +10,7 @@ from ..utils import (
     _adapted_uniform,
     _joint_range_check,
     _tuple_range_reader,
+    _extract_device_dtype
 )
 from kornia.utils import _extract_device_dtype
 
@@ -108,19 +109,29 @@ def random_affine_generator3d(
     """
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     assert type(depth) == int and depth > 0 and \
         type(height) == int and height > 0 and type(width) == int and width > 0, \
         f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
 
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shears])
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
     device, dtype = _extract_device_dtype([degrees, translate, scale, shears])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+    device, dtype = _extract_device_dtype([degrees, translate, scale, shears])
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     degrees = degrees.to(device=device, dtype=dtype)
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
@@ -175,7 +186,11 @@ def random_affine_generator3d(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=device, dtype=dtype)
 
     return dict(translations=translations.to(device=_device, dtype=_dtype),
@@ -254,6 +269,9 @@ def random_motion_blur_generator3d(
 =======
         sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
         sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
@@ -375,12 +393,14 @@ def random_motion_blur_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    device, dtype = _extract_device_dtype([angle, direction])
     if isinstance(kernel_size, int):
-        ksize_factor = torch.tensor([kernel_size] * batch_size)
+        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
+        ksize_factor = ksize_factor.to(device=device, dtype=dtype)
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
@@ -393,7 +413,7 @@ def random_motion_blur_generator3d(
     direction_factor = _adapted_uniform(
         (batch_size,), direction[0], direction[1], same_on_batch)
 
-    return dict(ksize_factor=ksize_factor,
+    return dict(ksize_factor=ksize_factor.int(),
                 angle_factor=angle_factor,
                 direction_factor=direction_factor)
 
@@ -462,6 +482,8 @@ def center_crop_generator3d(
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
     """
+    # TODO: This function does not accept tensors at all.
+    # Can't infer the device and dtype
     if not isinstance(size, (tuple, list,)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}"
                          .format(size))
@@ -568,6 +590,7 @@ def center_crop_generator3d(
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
 =======
     ]]).expand(points_src.shape[0], -1, -1)
+<<<<<<< master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
     return dict(src=points_src,
@@ -576,11 +599,14 @@ def center_crop_generator3d(
     return dict(src=points_src.long(),
                 dst=points_dst.long())
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 =======
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
     return dict(src=points_src,
                 dst=points_dst)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
 
 def random_crop_generator3d(
@@ -694,10 +720,20 @@ def random_crop_generator3d(
     """
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size).repeat(batch_size, 1)
+    device, dtype = size.device, size.dtype
     assert size.shape == torch.Size([batch_size, 3]), \
         f"If `size` is a tensor, it must be shaped as (B, 3). Got {size.shape}."
+<<<<<<< master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    assert len(input_size) == 3 and isinstance(input_size[0], (int,)) and isinstance(input_size[1], (int,)) \
+        and isinstance(input_size[2], (int,)) and input_size[0] > 0 and input_size[1] > 0 and input_size[2] > 0, \
+        f"`input_size` must be a tuple of 3 positive integers. Got {input_size}."
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     x_diff = input_size[2] - size[:, 2] + 1
     y_diff = input_size[1] - size[:, 1] + 1
@@ -802,16 +838,34 @@ def random_crop_generator3d(
         y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).long()
         z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch).long()
 
-    crop_src = bbox_generator3d(x_start.view(-1), y_start.view(-1), z_start.view(-1),
-                                size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1)
+    crop_src = bbox_generator3d(
+        x_start.view(-1).to(device=device, dtype=dtype),
+        y_start.view(-1).to(device=device, dtype=dtype),
+        z_start.view(-1).to(device=device, dtype=dtype),
+        size[:, 2] - 1,
+        size[:, 1] - 1,
+        size[:, 0] - 1)
 
     if resize_to is None:
         crop_dst = bbox_generator3d(
-            torch.tensor([0] * batch_size), torch.tensor([0] * batch_size), torch.tensor([0] * batch_size),
-            size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1)
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            torch.tensor([0] * batch_size, device=device, dtype=dtype),
+            size[:, 2] - 1,
+            size[:, 1] - 1,
+            size[:, 0] - 1)
     else:
+<<<<<<< master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+        assert len(resize_to) == 3 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
+            and isinstance(resize_to[2], (int,)) and resize_to[0] > 0 and resize_to[1] > 0 and resize_to[2] > 0, \
+            f"`resize_to` must be a tuple of 3 positive integers. Got {resize_to}."
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         crop_dst = torch.tensor([[
             [0, 0, 0],
             [resize_to[-1] - 1, 0, 0],
@@ -841,7 +895,11 @@ def random_crop_generator3d(
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         ]], device=device, dtype=torch.long).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src.to(device=_device),
@@ -851,6 +909,9 @@ def random_crop_generator3d(
 =======
 =======
         ]]).repeat(batch_size, 1, 1)
+=======
+        ]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -951,8 +1012,15 @@ def random_perspective_generator3d(
     """
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
         f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
+<<<<<<< master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    device, dtype = distortion_scale.device, distortion_scale.dtype
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     start_points: torch.Tensor = torch.tensor([[
         [0., 0, 0],
@@ -975,11 +1043,18 @@ def random_perspective_generator3d(
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 <<<<<<< master
+<<<<<<< master
     ]], device=device, dtype=dtype).expand(batch_size, -1, -1)
 =======
     ]]).expand(batch_size, -1, -1)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    ]], device=device, dtype=dtype).expand(batch_size, -1, -1)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     # generate random offset not larger than half of the image
     fx = distortion_scale * width / 2
@@ -1012,9 +1087,17 @@ def random_perspective_generator3d(
                                               torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 =======
     # TODO: This line somehow breaks the gradcheck
+<<<<<<< master
     rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch).to(
+        device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
     pts_norm = torch.tensor([[
         [1, 1, 1],
@@ -1038,7 +1121,11 @@ def random_perspective_generator3d(
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     ]], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     end_points = start_points + factor * rand_val * pts_norm
@@ -1055,6 +1142,9 @@ def random_perspective_generator3d(
 =======
 =======
     ]])
+=======
+    ]], device=device, dtype=dtype)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(start_points=start_points,

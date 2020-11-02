@@ -21,12 +21,17 @@ from kornia.augmentation.utils.helpers import (
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     _validate_input,
     _validate_input3D,
     _transform_output_shape
 =======
     _extract_device_dtype,
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 =======
@@ -34,6 +39,8 @@ from kornia.augmentation.utils.helpers import (
     _validate_input3D,
     _transform_output_shape
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 )
 
 __all__ = [
@@ -51,11 +58,18 @@ __all__ = [
     "_shape_validation",
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
     "_extract_device_dtype",
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+=======
+<<<<<<< master
+=======
+    "_extract_device_dtype",
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+>>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
     "_common_param_check",
     "_range_bound",
     "_joint_range_check",
