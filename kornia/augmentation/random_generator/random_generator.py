@@ -191,7 +191,7 @@ def random_affine_generator(
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
-        _scale = torch.ones((batch_size, 2))
+        _scale = torch.ones((batch_size, 2), device=device, dtype=dtype)
 
     if translate is not None:
         _joint_range_check(cast(torch.Tensor, translate), "translate")
@@ -202,10 +202,10 @@ def random_affine_generator(
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch)
         ], dim=-1)
     else:
-        translations = torch.zeros(batch_size, 2)
+        translations = torch.zeros((batch_size, 2), device=device, dtype=dtype)
 
     center: torch.Tensor = torch.tensor(
-        [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
+        [width, height], device=device, dtype=dtype).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     if shear is not None:
@@ -453,9 +453,13 @@ def random_rectangles_params_generator(
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0], 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1], same_on_batch)
         if same_on_batch:
-            rand_idxs = torch.round(torch.rand((1,), device=device, dtype=dtype)).repeat(batch_size).bool()
+            rand_idxs = torch.round(_adapted_uniform(
+                (1,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).repeat(batch_size).bool()
         else:
-            rand_idxs = torch.round(torch.rand((batch_size,), device=device, dtype=dtype)).bool()
+            rand_idxs = torch.round(_adapted_uniform(
+                (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
         aspect_ratios = _adapted_uniform((batch_size,), ratio[0], ratio[1], same_on_batch)
@@ -465,23 +469,28 @@ def random_rectangles_params_generator(
         torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)),
                   torch.tensor(1., device=device, dtype=dtype)),
         torch.tensor(height, device=device, dtype=dtype)
-    ).int()
+    )
 
     widths = torch.min(
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)),
                   torch.tensor(1., device=device, dtype=dtype)),
         torch.tensor(width, device=device, dtype=dtype)
-    ).int()
+    )
 
-    xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (
-        torch.tensor(width, device=device, dtype=dtype) - widths + 1)).int()
-    ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (
-        torch.tensor(height, device=device, dtype=dtype) - heights + 1)).int()
+    xs_ratio = _adapted_uniform(
+        (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+    ys_ratio = _adapted_uniform(
+        (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 
-    return dict(widths=widths,
-                heights=heights,
-                xs=xs,
-                ys=ys,
+    xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
+    ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
+
+    return dict(widths=widths.int(),
+                heights=heights.int(),
+                xs=xs.int(),
+                ys=ys.int(),
                 values=torch.tensor([value] * batch_size, device=device, dtype=dtype))
 
 
