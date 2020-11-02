@@ -9,10 +9,6 @@ try:
 except ImportError:
     pass
 
-# set default output print options
-import torch
-torch.set_printoptions(precision=1e-4)
-
 from kornia import augmentation
 from kornia import color
 from kornia import contrib
