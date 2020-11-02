@@ -154,12 +154,16 @@ def _adapted_uniform(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
     """
+    device, dtype = _extract_device_dtype([
+        low if isinstance(low, torch.Tensor) else None,
+        high if isinstance(high, torch.Tensor) else None,
+    ])
     if not isinstance(low, torch.Tensor):
-        low = torch.tensor(low, dtype=torch.float32)
+        low = torch.tensor(low, device=device, dtype=torch.float64)
     if not isinstance(high, torch.Tensor):
-        high = torch.tensor(high, dtype=torch.float32)
-    dist = Uniform(low, high)
-    return _adapted_rsampling(shape, dist, same_on_batch)
+        high = torch.tensor(high, device=device, dtype=torch.float64)
+    dist = Uniform(low.to(torch.float64), high.to(torch.float64))
+    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
 
 
 def _adapted_beta(
@@ -169,15 +173,25 @@ def _adapted_beta(
     same_on_batch=False
 ) -> torch.Tensor:
     r""" The beta sampling function that accepts 'same_on_batch'.
+
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
     """
+    device, dtype = _extract_device_dtype([
+        a if isinstance(a, torch.Tensor) else None,
+        b if isinstance(b, torch.Tensor) else None,
+    ])
+    dtype = torch.float32 if dtype is None else dtype
     if not isinstance(a, torch.Tensor):
-        a = torch.tensor(a, dtype=torch.float32)
+        a = torch.tensor(a, dtype=torch.float64)
+    else:
+        a = a.to(torch.float64)
     if not isinstance(b, torch.Tensor):
-        b = torch.tensor(b, dtype=torch.float32)
+        b = torch.tensor(b, dtype=torch.float64)
+    else:
+        b = b.to(torch.float64)
     dist = Beta(a, b)
-    return _adapted_rsampling(shape, dist, same_on_batch)
+    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
@@ -219,3 +233,24 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
 
 def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
     assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"
+
+
+def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
+    """This function will check if all the input tensors are in the same device.
+
+    If so, it would return a tuple of (device, dtype)
+    """
+    device, dtype = None, None
+    for tensor in tensor_list:
+        if tensor is not None:
+            if not isinstance(tensor, (torch.Tensor,)):
+                raise ValueError(f"Expected None or Tensor. Got {tensor}.")
+            _device = tensor.device
+            _dtype = tensor.dtype
+            if device is None and dtype is None:
+                device = _device
+                dtype = _dtype
+            elif device != _device or dtype != _dtype:
+                raise ValueError("Passed values are not in the same device and dtype."
+                                 f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+    return (device, dtype)
