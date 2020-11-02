@@ -47,7 +47,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     gs: torch.Tensor = torch.where(g > 0.04045, torch.pow(((g + 0.055) / 1.055), 2.4), g / 12.92)
     bs: torch.Tensor = torch.where(b > 0.04045, torch.pow(((b + 0.055) / 1.055), 2.4), b / 12.92)
 
-    image_s = torch.stack((rs, gs, bs), dim=-3)
+    image_s = torch.stack([rs, gs, bs], dim=-3)
 
     xyz_im: torch.Tensor = rgb_to_xyz(image_s)
 
@@ -70,7 +70,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     u: torch.Tensor = 13 * L * (u_p - u_w)
     v: torch.Tensor = 13 * L * (v_p - v_w)
 
-    out = torch.stack((L, u, v), dim=-3)
+    out = torch.stack([L, u, v], dim=-3)
 
     return out
 
@@ -118,7 +118,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     z: torch.Tensor = ((a - 4) * c - 15 * a * d * y) / (12 * d + eps)
     x: torch.Tensor = -(c / (d + eps) + 3. * z)
 
-    xyz_im: torch.Tensor = torch.stack((x, y, z), -3)
+    xyz_im: torch.Tensor = torch.stack([x, y, z], -3)
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
 
@@ -131,7 +131,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     g: torch.Tensor = torch.where(gs > 0.0031308, 1.055 * torch.pow(gs, 1 / 2.4) - 0.055, 12.92 * gs)
     b: torch.Tensor = torch.where(bs > 0.0031308, 1.055 * torch.pow(bs, 1 / 2.4) - 0.055, 12.92 * bs)
 
-    rgb_im: torch.Tensor = torch.stack((r, g, b), dim=-3)
+    rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
 
     return rgb_im
 
