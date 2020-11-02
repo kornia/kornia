@@ -273,46 +273,55 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
         assert_allclose(res['szy'], expected['szy'], rtol=1e-4, atol=1e-4)
 
 
-# class TestRandomRotationGen(RandomGeneratorBaseTests):
+class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
-#     @pytest.mark.parametrize('batch_size', [1, 8])
-#     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
-#     @pytest.mark.parametrize('same_on_batch', [True, False])
-#     def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
-#         random_rotation_generator(
-#             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('degrees', [torch.tensor([[0, 30], [0, 30], [0, 30]])])
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
+        random_rotation_generator3d(
+            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
-#     @pytest.mark.parametrize('degrees', [
-#         pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
-#         pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
-#         pytest.param(torch.tensor([10, 20, 30]), marks=pytest.mark.xfail)
-#     ])
-#     def test_invalid_param_combinations(self, degrees, device, dtype):
-#         batch_size = 8
-#         random_rotation_generator(
-#             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+    @pytest.mark.parametrize('degrees', [
+        pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([[0, 30]]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([[0, 30], [0, 30]]), marks=pytest.mark.xfail),
+    ])
+    def test_invalid_param_combinations(self, degrees, device, dtype):
+        batch_size = 8
+        random_rotation_generator3d(
+            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
 
-#     def test_random_gen(self, device, dtype):
-#         torch.manual_seed(42)
-#         degrees = torch.tensor([10, 20])
-#         res = random_rotation_generator(
-#             batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=False)
-#         expected = dict(
-#             degrees=torch.tensor([10.5815, 10.6291], device=device, dtype=dtype)
-#         )
-#         assert res.keys() == expected.keys()
-#         assert_allclose(res['degrees'], expected['degrees'])
+    def test_random_gen(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([[0, 30], [0, 30], [0, 30]])
+        res = random_rotation_generator3d(
+            batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=False)
+        expected = dict(
+            yaw=torch.tensor([1.7446, 1.8873], device=device, dtype=dtype),
+            pitch=torch.tensor([3.7076, 1.5774], device=device, dtype=dtype),
+            roll=torch.tensor([15.7852, 14.3035], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['yaw'], expected['yaw'], atol=1e-4, rtol=1e-4)
+        assert_allclose(res['pitch'], expected['pitch'], atol=1e-4, rtol=1e-4)
+        assert_allclose(res['roll'], expected['roll'], atol=1e-4, rtol=1e-4)
 
-#     def test_same_on_batch(self, device, dtype):
-#         torch.manual_seed(42)
-#         degrees = torch.tensor([10, 20])
-#         res = random_rotation_generator(
-#             batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=True)
-#         expected = dict(
-#             degrees=torch.tensor([10.5815, 10.5815], device=device, dtype=dtype)
-#         )
-#         assert res.keys() == expected.keys()
-#         assert_allclose(res['degrees'], expected['degrees'])
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(42)
+        degrees = torch.tensor([[0, 30], [0, 30], [0, 30]])
+        res = random_rotation_generator3d(
+            batch_size=2, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=True)
+        expected = dict(
+            yaw=torch.tensor([1.7446, 1.7446], device=device, dtype=dtype),
+            pitch=torch.tensor([1.8873, 1.8873], device=device, dtype=dtype),
+            roll=torch.tensor([3.7076, 3.7076], device=device, dtype=dtype)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['yaw'], expected['yaw'], atol=1e-4, rtol=1e-4)
+        assert_allclose(res['pitch'], expected['pitch'], atol=1e-4, rtol=1e-4)
+        assert_allclose(res['roll'], expected['roll'], atol=1e-4, rtol=1e-4)
 
 
 # class TestRandomCropGen(RandomGeneratorBaseTests):
