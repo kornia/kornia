@@ -387,31 +387,31 @@ def random_crop_size_generator(
     w = torch.sqrt(area * aspect_ratio).int()
     h = torch.sqrt(area / aspect_ratio).int()
     # Element-wise w, h condition
-    cond = ((0 < h) * (h < size[1]) * (0 < w) * (w < size[0])).int()
+    cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
     cond_bool = torch.sum(cond, dim=1) > 0
 
-    w_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
-    h_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+    h_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+    w_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
 
     if not cond_bool.all():
         # Fallback to center crop
         in_ratio = float(size[0]) / float(size[1])
         if (in_ratio < min(ratio)):
-            w_ct = torch.tensor(size[0])
-            h_ct = torch.round(w_ct / min(ratio))
+            h_ct = torch.tensor(size[0])
+            w_ct = torch.round(h_ct / min(ratio))
         elif (in_ratio > max(ratio)):
-            h_ct = torch.tensor(size[1])
-            w_ct = torch.round(h_ct * max(ratio))
+            w_ct = torch.tensor(size[1])
+            h_ct = torch.round(w_ct * max(ratio))
         else:  # whole image
-            w_ct = torch.tensor(size[0])
-            h_ct = torch.tensor(size[1])
-        w_ct = w_ct.int()
+            h_ct = torch.tensor(size[0])
+            w_ct = torch.tensor(size[1])
         h_ct = h_ct.int()
+        w_ct = w_ct.int()
 
-        w_out = w_out.where(cond_bool, w_ct)
         h_out = h_out.where(cond_bool, h_ct)
+        w_out = w_out.where(cond_bool, w_ct)
 
-    return dict(size=torch.stack([w_out, h_out], dim=1))
+    return dict(size=torch.stack([h_out, w_out], dim=1))
 
 
 def random_rectangles_params_generator(

@@ -377,7 +377,8 @@ def random_perspective_generator3d(
     factor = torch.stack([fx, fy, fz], dim=0).view(-1, 1, 3)
 
     # TODO: This line somehow breaks the gradcheck
-    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch)
+    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch).to(
+        device=device, dtype=dtype)
 
     pts_norm = torch.tensor([[
         [1, 1, 1],
