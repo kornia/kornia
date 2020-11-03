@@ -42,16 +42,17 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('depth,height,width,distortion_scale', [
         # Should be failed if distortion_scale > 1. or distortion_scale < 0.
-        pytest.param(-100, 100, 100, torch.tensor(0.5), marks=pytest.mark.xfail),
-        pytest.param(100, -100, 100, torch.tensor(0.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, -100, torch.tensor(-0.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, 100, torch.tensor(1.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, 100, torch.tensor([0., 0.5]), marks=pytest.mark.xfail),
+        pytest.param(-100, 100, 100, torch.tensor(0.5)),
+        pytest.param(100, -100, 100, torch.tensor(0.5)),
+        pytest.param(100, 100, -100, torch.tensor(-0.5)),
+        pytest.param(100, 100, 100, torch.tensor(1.5)),
+        pytest.param(100, 100, 100, torch.tensor([0., 0.5])),
     ])
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
-        random_perspective_generator3d(
-            batch_size=8, height=height, width=width,
-            distortion_scale=distortion_scale.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_perspective_generator3d(
+                batch_size=8, height=height, width=width,
+                distortion_scale=distortion_scale.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -161,35 +162,35 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('depth,height,width,degrees,translate,scale,shear', [
-        pytest.param(-100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, -100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, 100, torch.tensor([0, 9]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(-100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        pytest.param(100, -100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        pytest.param(100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        pytest.param(100, 100, 100, torch.tensor([0, 9]), None, None, None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1, 0.2]), None, None, marks=pytest.mark.xfail),
+                     torch.tensor([0.1, 0.2]), None, None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1, 0.2]), None, None, marks=pytest.mark.xfail),
+                     torch.tensor([0.1, 0.2]), None, None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1]), None, None, marks=pytest.mark.xfail),
+                     torch.tensor([0.1]), None, None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, torch.tensor([[0.2, 0.2, 0.2]]), None, marks=pytest.mark.xfail),
+                     None, torch.tensor([[0.2, 0.2, 0.2]]), None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, torch.tensor([0.2]), None, marks=pytest.mark.xfail),
+                     None, torch.tensor([0.2]), None),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, None, torch.tensor([[20, 20, 30]]), marks=pytest.mark.xfail),
+                     None, None, torch.tensor([[20, 20, 30]])),
         pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, None, torch.tensor([20]), marks=pytest.mark.xfail),
+                     None, None, torch.tensor([20])),
     ])
     def test_invalid_param_combinations(
         self, depth, height, width, degrees, translate, scale, shear, device, dtype
     ):
-        batch_size = 8
-        random_affine_generator3d(
-            batch_size=batch_size, depth=depth, height=height, width=width,
-            degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shears=shear.to(device=device, dtype=dtype) if shear is not None else None)
+        with pytest.raises(Exception):
+            random_affine_generator3d(
+                batch_size=8, depth=depth, height=height, width=width,
+                degrees=degrees.to(device=device, dtype=dtype),
+                translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+                scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+                shears=shear.to(device=device, dtype=dtype) if shear is not None else None)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -283,15 +284,15 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('degrees', [
-        pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([[0, 30]]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([[0, 30], [0, 30]]), marks=pytest.mark.xfail),
+        pytest.param(torch.tensor(10)),
+        pytest.param(torch.tensor([10])),
+        pytest.param(torch.tensor([[0, 30]])),
+        pytest.param(torch.tensor([[0, 30], [0, 30]])),
     ])
     def test_invalid_param_combinations(self, degrees, device, dtype):
-        batch_size = 8
-        random_rotation_generator3d(
-            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_rotation_generator3d(
+                batch_size=8, degrees=degrees.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -343,18 +344,18 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
-        pytest.param((-300, 300, 300), (200, 200, 200), (100, 100, 100), marks=pytest.mark.xfail),
-        pytest.param((100, 100, 100), (200, 200, 200), (100, 100, 100), marks=pytest.mark.xfail),
-        pytest.param((200, 200, 200), torch.tensor([50, 50, 50]), (100, 100, 100), marks=pytest.mark.xfail),
+        pytest.param((-300, 300, 300), (200, 200, 200), (100, 100, 100)),
+        pytest.param((100, 100, 100), (200, 200, 200), (100, 100, 100)),
+        pytest.param((200, 200, 200), torch.tensor([50, 50, 50]), (100, 100, 100)),
         pytest.param((100, 100, 100), torch.tensor([[50, 60, 70], [50, 60, 70]]),
-                     (100, 100), marks=pytest.mark.xfail),
+                     (100, 100)),
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
-        batch_size = 2
-        random_crop_generator3d(
-            batch_size=batch_size, input_size=input_size,
-            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
-            resize_to=resize_to)
+        with pytest.raises(Exception):
+            random_crop_generator3d(
+                batch_size=2, input_size=input_size,
+                size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+                resize_to=resize_to)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -445,7 +446,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
         assert_allclose(res['dst'], expected['dst'], atol=1e-4, rtol=1e-4)
 
 
-class TestCenterCropGen(RandomGeneratorBaseTests):
+class TestCenterCropGen3D(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('depth,height,width', [(200, 200, 200)])
@@ -456,15 +457,16 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         center_crop_generator3d(batch_size=batch_size, depth=depth, height=height, width=width, size=size)
 
     @pytest.mark.parametrize('depth,height,width,size', [
-        pytest.param(200, 200, -200, (100, 100, 100), marks=pytest.mark.xfail),
-        pytest.param(200, -200, 200, (100, 100), marks=pytest.mark.xfail),
-        pytest.param(200, 100, 100, (300, 120, 100), marks=pytest.mark.xfail),
-        pytest.param(200, 150, 100, (120, 180, 100), marks=pytest.mark.xfail),
-        pytest.param(200, 100, 150, (120, 80, 200), marks=pytest.mark.xfail),
+        pytest.param(200, 200, -200, (100, 100, 100)),
+        pytest.param(200, -200, 200, (100, 100)),
+        pytest.param(200, 100, 100, (300, 120, 100)),
+        pytest.param(200, 150, 100, (120, 180, 100)),
+        pytest.param(200, 100, 150, (120, 80, 200)),
     ])
     def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
-        batch_size = 2
-        center_crop_generator3d(batch_size=batch_size, depth=depth, height=height, width=width, size=size)
+        with pytest.raises(Exception):
+            center_crop_generator3d(
+                batch_size=2, depth=depth, height=height, width=width, size=size)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -500,7 +502,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
+    @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
     @pytest.mark.parametrize('angle', [torch.tensor([(10, 30), (30, 60), (60, 90)])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([-1, 1]), torch.tensor([1, 1])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -512,17 +514,18 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('kernel_size,angle,direction', [
-        pytest.param(4, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(1, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param((1, 2, 3), torch.tensor([(10, 30), (30, 60), (60, 90)]),
-                     torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-2, 1]), marks=pytest.mark.xfail),
-        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 2]), marks=pytest.mark.xfail),
+        pytest.param(4, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
+        pytest.param(1, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
+        pytest.param((3, 4, 5), torch.tensor([(10, 30), (30, 60), (60, 90)]),
+                     torch.tensor([-1, 1])),
+        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-2, 1])),
+        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 2])),
     ])
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
-        random_motion_blur_generator3d(
-            batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
-            direction=direction.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_motion_blur_generator3d(
+                batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
+                direction=direction.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)

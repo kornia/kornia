@@ -201,6 +201,7 @@ def random_affine_generator(
 
     # compute tensor ranges
     if scale is not None:
+        assert len(scale) == 2 or len(scale) == 4, f"`scale` shall have 2 or 4 elements. Got {scale}."
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
         if len(scale) == 4:
@@ -630,6 +631,8 @@ def random_motion_blur_generator(
     device, dtype = _extract_device_dtype([angle, direction])
 
     if isinstance(kernel_size, int):
+        assert kernel_size >= 3 and kernel_size % 2 == 1, \
+            f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch

@@ -47,11 +47,12 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('p', [
         # Should be failed if p > 1. or p < 0.
-        pytest.param(-1., marks=pytest.mark.xfail),
-        pytest.param(2., marks=pytest.mark.xfail)
+        pytest.param(-1.),
+        pytest.param(2.)
     ])
     def test_invalid_param_combinations(self, p, device, dtype):
-        random_prob_generator(batch_size=8, p=p)
+        with pytest.raises(Exception):
+            random_prob_generator(batch_size=8, p=p)
 
     @pytest.mark.parametrize('p,expected', [
         (0., [False] * 8),
@@ -97,38 +98,39 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('brightness,contrast,saturation,hue', [
         # Should be failed if value out of bounds or tensor.shape != [1, 2]
-        pytest.param(torch.tensor([-1., 2.]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0., 3.]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(torch.tensor(0.), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0.]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0., 1., 2.]), None, None, None, marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([-1., 2.]), None, None, None),
+        pytest.param(torch.tensor([0., 3.]), None, None, None),
+        pytest.param(torch.tensor(0.), None, None, None),
+        pytest.param(torch.tensor([0.]), None, None, None),
+        pytest.param(torch.tensor([0., 1., 2.]), None, None, None),
 
-        pytest.param(None, torch.tensor([-1., 2.]), None, None, marks=pytest.mark.xfail),
-        pytest.param(None, torch.tensor(0.), None, None, marks=pytest.mark.xfail),
-        pytest.param(None, torch.tensor([0.]), None, None, marks=pytest.mark.xfail),
-        pytest.param(None, torch.tensor([0., 1., 2.]), None, None, marks=pytest.mark.xfail),
+        pytest.param(None, torch.tensor([-1., 2.]), None, None),
+        pytest.param(None, torch.tensor(0.), None, None),
+        pytest.param(None, torch.tensor([0.]), None, None),
+        pytest.param(None, torch.tensor([0., 1., 2.]), None, None),
 
-        pytest.param(None, None, torch.tensor([-1., 2.]), None, marks=pytest.mark.xfail),
-        pytest.param(None, None, torch.tensor(0.), None, marks=pytest.mark.xfail),
-        pytest.param(None, None, torch.tensor([0.]), None, marks=pytest.mark.xfail),
-        pytest.param(None, None, torch.tensor([0., 1., 2.]), None, marks=pytest.mark.xfail),
+        pytest.param(None, None, torch.tensor([-1., 2.]), None),
+        pytest.param(None, None, torch.tensor(0.), None),
+        pytest.param(None, None, torch.tensor([0.]), None),
+        pytest.param(None, None, torch.tensor([0., 1., 2.]), None),
 
-        pytest.param(None, None, None, torch.tensor([-1., 0.]), marks=pytest.mark.xfail),
-        pytest.param(None, None, None, torch.tensor([0, 1.]), marks=pytest.mark.xfail),
-        pytest.param(None, None, None, torch.tensor(0.), marks=pytest.mark.xfail),
-        pytest.param(None, None, None, torch.tensor([0.]), marks=pytest.mark.xfail),
-        pytest.param(None, None, None, torch.tensor([0., 1., 2.]), marks=pytest.mark.xfail),
+        pytest.param(None, None, None, torch.tensor([-1., 0.])),
+        pytest.param(None, None, None, torch.tensor([0, 1.])),
+        pytest.param(None, None, None, torch.tensor(0.)),
+        pytest.param(None, None, None, torch.tensor([0.])),
+        pytest.param(None, None, None, torch.tensor([0., 1., 2.])),
     ])
     def test_invalid_param_combinations(
         self, brightness, contrast, saturation, hue, device, dtype
     ):
-        random_color_jitter_generator(
-            8,
-            brightness.to(device=device, dtype=dtype) if brightness is not None else None,
-            contrast.to(device=device, dtype=dtype) if contrast is not None else None,
-            saturation.to(device=device, dtype=dtype) if saturation is not None else None,
-            hue.to(device=device, dtype=dtype) if hue is not None else None
-        )
+        with pytest.raises(Exception):
+            random_color_jitter_generator(
+                8,
+                brightness.to(device=device, dtype=dtype) if brightness is not None else None,
+                contrast.to(device=device, dtype=dtype) if contrast is not None else None,
+                saturation.to(device=device, dtype=dtype) if saturation is not None else None,
+                hue.to(device=device, dtype=dtype) if hue is not None else None
+            )
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -211,16 +213,17 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('height,width,distortion_scale', [
         # Should be failed if distortion_scale > 1. or distortion_scale < 0.
-        pytest.param(-100, 100, torch.tensor(0.5), marks=pytest.mark.xfail),
-        pytest.param(100, -100, torch.tensor(0.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor(-0.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor(1.5), marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0., 0.5]), marks=pytest.mark.xfail),
+        pytest.param(-100, 100, torch.tensor(0.5)),
+        pytest.param(100, -100, torch.tensor(0.5)),
+        pytest.param(100, 100, torch.tensor(-0.5)),
+        pytest.param(100, 100, torch.tensor(1.5)),
+        pytest.param(100, 100, torch.tensor([0., 0.5])),
     ])
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
-        random_perspective_generator(
-            batch_size=8, height=height, width=width,
-            distortion_scale=distortion_scale.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_perspective_generator(
+                batch_size=8, height=height, width=width,
+                distortion_scale=distortion_scale.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -293,29 +296,29 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('height,width,degrees,translate,scale,shear', [
-        pytest.param(-100, 100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, -100, torch.tensor([10, 20]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, 0.5, None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20, 30]), None, None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None, marks=pytest.mark.xfail),
-        pytest.param(10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1]), None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1, 2, 3]), None, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1]), marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1, 2]), marks=pytest.mark.xfail),
-        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3]), marks=pytest.mark.xfail),
-        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4]), marks=pytest.mark.xfail),
-        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5]), marks=pytest.mark.xfail),
+        pytest.param(-100, 100, torch.tensor([10, 20]), None, None, None),
+        pytest.param(100, -100, torch.tensor([10, 20]), None, None, None),
+        pytest.param(100, 100, 0.5, None, None, None),
+        pytest.param(100, 100, torch.tensor([10, 20, 30]), None, None, None),
+        pytest.param(100, 100, torch.tensor([10, 20]), torch.tensor([0.1]), None, None),
+        pytest.param(10, 10, torch.tensor([1, 2]), torch.tensor([0.1, 0.2, 0.3]), None, None),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1]), None),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, torch.tensor([1, 2, 3]), None),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1])),
+        pytest.param(100, 100, torch.tensor([10, 20]), None, None, torch.tensor([1, 2])),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3])),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4])),
+        pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5])),
     ])
     def test_invalid_param_combinations(
-        self, batch_size, height, width, degrees, translate, scale, shear, device, dtype
+        self, height, width, degrees, translate, scale, shear, device, dtype
     ):
-        batch_size = 8
-        random_affine_generator(
-            batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
+        with pytest.raises(Exception):
+            random_affine_generator(
+                batch_size=8, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
+                translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+                scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+                shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -384,14 +387,15 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('degrees', [
-        pytest.param(torch.tensor(10), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([10]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([10, 20, 30]), marks=pytest.mark.xfail)
+        pytest.param(torch.tensor(10)),
+        pytest.param(torch.tensor([10])),
+        pytest.param(torch.tensor([10, 20, 30]))
     ])
     def test_invalid_param_combinations(self, degrees, device, dtype):
         batch_size = 8
-        random_rotation_generator(
-            batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_rotation_generator(
+                batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -435,17 +439,18 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
-        pytest.param((-300, 300), (200, 200), (100, 100), marks=pytest.mark.xfail),
-        pytest.param((100, 100), (200, 200), (100, 100), marks=pytest.mark.xfail),
-        pytest.param((200, 200), torch.tensor([50, 50]), (100, 100), marks=pytest.mark.xfail),
-        pytest.param((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100), marks=pytest.mark.xfail),
+        pytest.param((-300, 300), (200, 200), (100, 100)),
+        pytest.param((100, 100), (200, 200), (100, 100)),
+        pytest.param((200, 200), torch.tensor([50, 50]), (100, 100)),
+        pytest.param((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100)),
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
-        random_crop_generator(
-            batch_size=batch_size, input_size=input_size,
-            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
-            resize_to=resize_to)
+        with pytest.raises(Exception):
+            random_crop_generator(
+                batch_size=batch_size, input_size=input_size,
+                size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+                resize_to=resize_to)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -527,20 +532,21 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('size,scale,ratio', [
-        pytest.param((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
-        pytest.param((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
-        pytest.param((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
-        pytest.param((100, 100), torch.tensor([.7, 1.3, 1.5]), torch.tensor([.9, 1.1]), marks=pytest.mark.xfail),
-        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9]), marks=pytest.mark.xfail),
-        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3]), marks=pytest.mark.xfail),
+        pytest.param((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
+        pytest.param((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
+        pytest.param((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1])),
+        pytest.param((100, 100), torch.tensor([.7, 1.3, 1.5]), torch.tensor([.9, 1.1])),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9])),
+        pytest.param((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3])),
     ])
     def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
         batch_size = 2
-        random_crop_size_generator(
-            batch_size=batch_size, size=size,
-            scale=scale.to(device=device, dtype=dtype),
-            ratio=ratio.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch)
+        with pytest.raises(Exception):
+            random_crop_size_generator(
+                batch_size=batch_size, size=size,
+                scale=scale.to(device=device, dtype=dtype),
+                ratio=ratio.to(device=device, dtype=dtype),
+                same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -604,24 +610,25 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('height,width,scale,ratio,value', [
-        pytest.param(-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0.7, 1.3, 1.5]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1, marks=pytest.mark.xfail),
-        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2, marks=pytest.mark.xfail),
+        pytest.param(-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
+        pytest.param(100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
+        pytest.param(100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3, 1.5]), torch.tensor([0.7, 1.3]), 0),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7]), 0),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1),
+        pytest.param(100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2),
         pytest.param(
-            100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5), marks=pytest.mark.xfail),
+            100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5)),
     ])
     def test_invalid_param_combinations(
         self, height, width, scale, ratio, value, device, dtype
     ):
         batch_size = 8
-        random_rectangles_params_generator(
-            batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
-            ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
+        with pytest.raises(Exception):
+            random_rectangles_params_generator(
+                batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
+                ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -682,15 +689,16 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     @pytest.mark.parametrize('height,width,size', [
-        pytest.param(200, -200, (100, 100), marks=pytest.mark.xfail),
-        pytest.param(-200, 200, (100, 100), marks=pytest.mark.xfail),
-        pytest.param(100, 100, (120, 120), marks=pytest.mark.xfail),
-        pytest.param(150, 100, (120, 120), marks=pytest.mark.xfail),
-        pytest.param(100, 150, (120, 120), marks=pytest.mark.xfail),
+        pytest.param(200, -200, (100, 100)),
+        pytest.param(-200, 200, (100, 100)),
+        pytest.param(100, 100, (120, 120)),
+        pytest.param(150, 100, (120, 120)),
+        pytest.param(100, 150, (120, 120)),
     ])
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
         batch_size = 2
-        center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+        with pytest.raises(Exception):
+            center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -726,7 +734,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
+    @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
     @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([1, 1])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -738,16 +746,17 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('kernel_size,angle,direction', [
-        pytest.param(4, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(1, torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-2, 1]), marks=pytest.mark.xfail),
-        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-1, 2]), marks=pytest.mark.xfail),
+        pytest.param(4, torch.tensor([30, 100]), torch.tensor([-1, 1])),
+        pytest.param(1, torch.tensor([30, 100]), torch.tensor([-1, 1])),
+        pytest.param((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1])),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-2, 1])),
+        pytest.param(3, torch.tensor([30, 100]), torch.tensor([-1, 2])),
     ])
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
-        random_motion_blur_generator(
-            batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
-            direction=direction.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_motion_blur_generator(
+                batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
+                direction=direction.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -796,17 +805,18 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions=additions.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('thresholds,additions', [
-        pytest.param(torch.tensor([0, 2]), torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
-        pytest.param([0, 1], torch.tensor([-0.5, 0.5]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 1]), torch.tensor([-0.5, 1]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 1]), torch.tensor([-1, 0.5]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 1]), [-0.5, 0.5], marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([0, 2]), torch.tensor([-0.5, 0.5])),
+        pytest.param(torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5])),
+        pytest.param([0, 1], torch.tensor([-0.5, 0.5])),
+        pytest.param(torch.tensor([0, 1]), torch.tensor([-0.5, 1])),
+        pytest.param(torch.tensor([0, 1]), torch.tensor([-1, 0.5])),
+        pytest.param(torch.tensor([0, 1]), [-0.5, 0.5]),
     ])
     def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
-        random_solarize_generator(
-            batch_size=batch_size, thresholds=thresholds.to(device=device, dtype=dtype),
-            additions=additions.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_solarize_generator(
+                batch_size=batch_size, thresholds=thresholds.to(device=device, dtype=dtype),
+                additions=additions.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -851,14 +861,15 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('bits', [
-        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 9]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
-        pytest.param([0, 8], marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([-1, 1])),
+        pytest.param(torch.tensor([0, 9])),
+        pytest.param(torch.tensor([3])),
+        pytest.param([0, 8]),
     ])
     def test_invalid_param_combinations(self, bits, device, dtype):
-        random_posterize_generator(
-            batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+        with pytest.raises(Exception):
+            random_posterize_generator(
+                batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)
@@ -895,13 +906,14 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('sharpness', [
-        pytest.param(torch.tensor([-1, 5]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([3]), marks=pytest.mark.xfail),
-        pytest.param([0, 1.], marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([-1, 5])),
+        pytest.param(torch.tensor([3])),
+        pytest.param([0, 1.]),
     ])
     def test_invalid_param_combinations(self, sharpness, device, dtype):
-        random_sharpness_generator(
-            batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
+        with pytest.raises(Exception):
+            random_sharpness_generator(
+                batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -942,14 +954,15 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('lambda_val', [
-        pytest.param(torch.tensor([-1, 1]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 2]), marks=pytest.mark.xfail),
-        pytest.param(torch.tensor([0, 0.5, 1]), marks=pytest.mark.xfail),
-        pytest.param([0., 1.], marks=pytest.mark.xfail),
+        pytest.param(torch.tensor([-1, 1])),
+        pytest.param(torch.tensor([0, 2])),
+        pytest.param(torch.tensor([0, 0.5, 1])),
+        pytest.param([0., 1.]),
     ])
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
-        random_mixup_generator(
-            batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
+        with pytest.raises(Exception):
+            random_mixup_generator(
+                batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1001,20 +1014,21 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('width,height,num_mix,beta,cut_size', [
-        pytest.param(200, -200, 1, None, None, marks=pytest.mark.xfail),
-        pytest.param(-200, 200, 1, None, None, marks=pytest.mark.xfail),
-        pytest.param(200, 200, 0, None, None, marks=pytest.mark.xfail),
-        pytest.param(200, 200, 1.5, None, None, marks=pytest.mark.xfail),
-        pytest.param(200, 200, 1, torch.tensor([0., 1.]), None, marks=pytest.mark.xfail),
-        pytest.param(200, 200, 1, None, torch.tensor([-1., 1.]), marks=pytest.mark.xfail),
-        pytest.param(200, 200, 1, None, torch.tensor([0., 2.]), marks=pytest.mark.xfail),
+        pytest.param(200, -200, 1, None, None),
+        pytest.param(-200, 200, 1, None, None),
+        pytest.param(200, 200, 0, None, None),
+        pytest.param(200, 200, 1.5, None, None),
+        pytest.param(200, 200, 1, torch.tensor([0., 1.]), None),
+        pytest.param(200, 200, 1, None, torch.tensor([-1., 1.])),
+        pytest.param(200, 200, 1, None, torch.tensor([0., 2.])),
     ])
     def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
-        random_cutmix_generator(
-            batch_size=8, p=p, width=width, height=height,
-            beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
-            cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
-            same_on_batch=same_on_batch)
+        with pytest.raises(Exception):
+            random_cutmix_generator(
+                batch_size=8, p=p, width=width, height=height,
+                beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
+                cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
+                same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)

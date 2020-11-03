@@ -8,6 +8,7 @@ from kornia.constants import Resample, BorderType
 from kornia.geometry import bbox_generator3d
 from ..utils import (
     _adapted_uniform,
+    _joint_range_check,
     _tuple_range_reader,
 )
 from kornia.utils import _extract_device_dtype
@@ -82,6 +83,10 @@ def random_affine_generator3d(
             - szx (tensor): element-wise z-x-facet shears with a shape of (B,).
             - szy (tensor): element-wise z-y-facet shears with a shape of (B,).
     """
+    assert type(depth) == int and depth > 0 and \
+        type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
+
     device, dtype = _extract_device_dtype([degrees, translate, scale, shears])
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
@@ -168,9 +173,14 @@ def random_motion_blur_generator3d(
             - direction_factor (tensor): element-wise scales with a shape of (B,).
     """
     device, dtype = _extract_device_dtype([angle, direction])
+    _joint_range_check(direction, 'direction', (-1, 1))
     if isinstance(kernel_size, int):
+        assert kernel_size >= 3 and kernel_size % 2 == 1, \
+            f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
+        assert len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1], \
+            f"`kernel_size` must be greater than 3. Got range {kernel_size}."
         # kernel_size is fixed across the batch
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
@@ -218,6 +228,11 @@ def center_crop_generator3d(
     if not isinstance(size, (tuple, list,)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}"
                          .format(size))
+    assert type(depth) == int and depth > 0 and \
+        type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
+    assert depth >= size[0] and height >= size[1] and width >= size[2], \
+        f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}."
 
     if batch_size == 0:
         return dict(
