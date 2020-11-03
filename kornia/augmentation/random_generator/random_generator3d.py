@@ -27,6 +27,9 @@ def random_rotation_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - yaw (tensor): element-wise roataion yaws with a shape of (B,).
+            - pitch (tensor): element-wise roataion pitchs with a shape of (B,).
+            - roll (tensor): element-wise roataion rolls with a shape of (B,).
     """
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
@@ -68,6 +71,16 @@ def random_affine_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - translations (tensor): element-wise translations with a shape of (B, 3).
+            - center (tensor): element-wise center with a shape of (B, 3).
+            - scale (tensor): element-wise scales with a shape of (B, 3).
+            - angle (tensor): element-wise rotation angles with a shape of (B, 3).
+            - sxy (tensor): element-wise x-y-facet shears with a shape of (B,).
+            - sxz (tensor): element-wise x-z-facet shears with a shape of (B,).
+            - syx (tensor): element-wise y-x-facet shears with a shape of (B,).
+            - syz (tensor): element-wise y-z-facet shears with a shape of (B,).
+            - szx (tensor): element-wise z-x-facet shears with a shape of (B,).
+            - szy (tensor): element-wise z-y-facet shears with a shape of (B,).
     """
     device, dtype = _extract_device_dtype([degrees, translate, scale, shears])
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
@@ -150,6 +163,9 @@ def random_motion_blur_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (tensor): element-wise center with a shape of (B,).
+            - direction_factor (tensor): element-wise scales with a shape of (B,).
     """
     device, dtype = _extract_device_dtype([angle, direction])
     if isinstance(kernel_size, int):
@@ -368,7 +384,9 @@ def random_perspective_generator3d(
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
-        params (Dict[str, torch.Tensor])
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - src (tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
+            - dst (tensor): perspecive target bounding boxes with a shape (B, 8, 3).
     """
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
         f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"

@@ -27,6 +27,7 @@ def random_prob_generator(
 
     Returns:
         torch.Tensor: parameters to be passed for transformation.
+            - probs (tensor): element-wise probabilities with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     if not isinstance(p, (int, float)) or p > 1 or p < 0:
@@ -61,6 +62,13 @@ def random_color_jitter_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - brightness_factor (tensor): element-wise brightness factors with a shape of (B,).
+            - contrast_factor (tensor): element-wise contrast factors with a shape of (B,).
+            - hue_factor (tensor): element-wise hue factors with a shape of (B,).
+            - saturation_factor (tensor): element-wise saturation factors with a shape of (B,).
+            - order (tensor): applying orders of the color adjustments with a shape of (4). In which,
+                0 is brightness adjustment; 1 is contrast adjustment;
+                2 is saturation adjustment; 3 is hue adjustment.
     """
     _common_param_check(batch_size, same_on_batch)
     device, dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
@@ -107,7 +115,9 @@ def random_perspective_generator(
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
-        params (Dict[str, torch.Tensor])
+        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - start_points (tensor): element-wise perspective source areas with a shape of (B, 4, 2).
+            - end_points (tensor): element-wise perspective target areas with a shape of (B, 4, 2).
     """
     _common_param_check(batch_size, same_on_batch)
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
@@ -174,6 +184,12 @@ def random_affine_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - translations (tensor): element-wise translations with a shape of (B, 2).
+            - center (tensor): element-wise center with a shape of (B, 2).
+            - scale (tensor): element-wise scales with a shape of (B, 2).
+            - angle (tensor): element-wise rotation angles with a shape of (B,).
+            - sx (tensor): element-wise x-axis shears with a shape of (B,).
+            - sy (tensor): element-wise y-axis shears with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
@@ -238,6 +254,7 @@ def random_rotation_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - degrees (tensor): element-wise rotation degrees with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
@@ -376,6 +393,7 @@ def random_crop_size_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - size (tensor): element-wise cropping sizes with a shape of (B, 2).
 
     Examples:
         >>> _ = torch.manual_seed(0)
@@ -452,6 +470,11 @@ def random_rectangles_params_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - widths (tensor): element-wise erasing widths with a shape of (B,).
+            - heights (tensor): element-wise erasing heights with a shape of (B,).
+            - xs (tensor): element-wise erasing x coordinates with a shape of (B,).
+            - ys (tensor): element-wise erasing y coordinates with a shape of (B,).
+            - values (tensor): element-wise filling values with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     device, dtype = _extract_device_dtype([ratio, scale])
@@ -596,6 +619,9 @@ def random_motion_blur_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (tensor): element-wise direction factors with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(angle, 'angle')
@@ -644,6 +670,8 @@ def random_solarize_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - thresholds_factor (tensor): element-wise thresholds factors with a shape of (B,).
+            - additions_factor (tensor): element-wise additions factors with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(thresholds, 'thresholds', (0, 1))
@@ -675,6 +703,7 @@ def random_posterize_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - bits_factor (tensor): element-wise bit factors with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(bits, 'bits', (0, 8))
@@ -699,6 +728,7 @@ def random_sharpness_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - sharpness_factor (tensor): element-wise sharpness factors with a shape of (B,).
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(sharpness, 'sharpness', bounds=(0, float('inf')))
@@ -727,6 +757,8 @@ def random_mixup_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - mix_pairs (tensor): element-wise probabilities with a shape of (B,).
+            - mixup_lambdas (tensor): element-wise probabilities with a shape of (B,).
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -776,6 +808,8 @@ def random_cutmix_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - mix_pairs (tensor): element-wise probabilities with a shape of (num_mix, B).
+            - crop_src (tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
 
     Examples:
         >>> rng = torch.manual_seed(0)
