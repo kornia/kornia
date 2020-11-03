@@ -29,7 +29,7 @@ class RandomGeneratorBaseTests():
 
 class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('depth,height,width', [(200, 200, 200)])
     @pytest.mark.parametrize('distortion_scale', [torch.tensor(0.), torch.tensor(0.5), torch.tensor(1.)])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -142,7 +142,7 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
 
 class TestRandomAffineGen3D(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('depth,height,width', [(200, 300, 400)])
     @pytest.mark.parametrize('degrees', [torch.tensor([(0, 30), (0, 30), (0, 30)])])
     @pytest.mark.parametrize('translate', [None, torch.tensor([0.1, 0.1, 0.1])])
@@ -275,7 +275,7 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
 
 class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('degrees', [torch.tensor([[0, 30], [0, 30], [0, 30]])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
@@ -326,14 +326,16 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
 
 class TestRandomCropGen3D(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200, 200)])
-    @pytest.mark.parametrize('size', [(100, 100, 100), torch.tensor([[50, 60, 70], [50, 60, 70]])])
+    @pytest.mark.parametrize('size', [(100, 100, 100), torch.tensor([50, 60, 70])])
     @pytest.mark.parametrize('resize_to', [None, (100, 100, 100)])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, batch_size, input_size, size, resize_to, same_on_batch, device, dtype
     ):
+        if isinstance(size, torch.Tensor):
+            size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
         random_crop_generator3d(
             batch_size=batch_size, input_size=input_size,
             size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
@@ -376,7 +378,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                                [8., 7., 120.],
                                [77., 7., 120.],
                                [77., 66., 120.],
-                               [8., 66., 120.]]], device=device, dtype=dtype),
+                               [8., 66., 120.]]], device=device, dtype=torch.long),
             dst=torch.tensor([[[0., 0., 0.],
                                [99., 0., 0.],
                                [99., 99., 0.],
@@ -392,7 +394,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                                [0., 0., 99.],
                                [99., 0., 99.],
                                [99., 99., 99.],
-                               [0., 99., 99.]]], device=device, dtype=dtype),
+                               [0., 99., 99.]]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'], atol=1e-4, rtol=1e-4)
@@ -420,7 +422,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                                [7., 8., 67.],
                                [76., 8., 67.],
                                [76., 67., 67.],
-                               [7., 67., 67.]]], device=device, dtype=dtype),
+                               [7., 67., 67.]]], device=device, dtype=torch.long),
             dst=torch.tensor([[[0., 0., 0.],
                                [99., 0., 0.],
                                [99., 99., 0.],
@@ -436,7 +438,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
                                [0., 0., 99.],
                                [99., 0., 99.],
                                [99., 99., 99.],
-                               [0., 99., 99.]]], device=device, dtype=dtype),
+                               [0., 99., 99.]]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'], atol=1e-4, rtol=1e-4)
@@ -445,7 +447,7 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('depth,height,width', [(200, 200, 200)])
     @pytest.mark.parametrize('size', [(100, 100, 100)])
     def test_valid_param_combinations(
@@ -497,7 +499,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
     @pytest.mark.parametrize('angle', [torch.tensor([(10, 30), (30, 60), (60, 90)])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([-1, 1]), torch.tensor([1, 1])])

@@ -40,7 +40,7 @@ class RandomGeneratorBaseTests():
 class TestRandomProbGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('p', [0., 0.5, 1.])
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, p, batch_size, same_on_batch, device, dtype):
         random_prob_generator(batch_size=batch_size, p=p, same_on_batch=same_on_batch)
@@ -81,7 +81,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('contrast', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('saturation', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('hue', [None, torch.tensor([-0.1, 0.1])])
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
@@ -200,7 +200,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('height,width', [(200, 200)])
     @pytest.mark.parametrize('distortion_scale', [torch.tensor(0.), torch.tensor(0.5), torch.tensor(1.)])
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, height, width, distortion_scale, batch_size, same_on_batch, device, dtype
@@ -274,7 +274,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 4])
+    @pytest.mark.parametrize('batch_size', [0, 1, 4])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
@@ -376,7 +376,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
 class TestRandomRotationGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
@@ -418,17 +418,19 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200)])
-    @pytest.mark.parametrize('size', [(100, 100), torch.tensor([[50, 50], [60, 60]])])
+    @pytest.mark.parametrize('size', [(100, 100), torch.tensor([50, 50])])
     @pytest.mark.parametrize('resize_to', [None, (100, 100)])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, batch_size, input_size, size, resize_to, same_on_batch, device, dtype
     ):
+        if isinstance(size, torch.Tensor):
+            size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
         random_crop_generator(
             batch_size=batch_size, input_size=input_size,
-            size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
+            size=size,
             resize_to=resize_to,
             same_on_batch=same_on_batch)
 
@@ -510,7 +512,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('size', [(200, 200)])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.3])])
     @pytest.mark.parametrize('ratio', [torch.tensor([.9, 1.1])])
@@ -587,7 +589,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
 class TestRandomRectangleGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.1])])
@@ -670,7 +672,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [2])
+    @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [200])
     @pytest.mark.parametrize('size', [(100, 100)])
@@ -723,7 +725,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
     @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([1, 1])])
@@ -784,7 +786,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
 class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('thresholds', [torch.tensor([0, 1]), torch.tensor([0.4, 0.6])])
     @pytest.mark.parametrize('additions', [torch.tensor([-0.5, 0.5])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -841,7 +843,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('bits', [torch.tensor([0, 8])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
@@ -885,7 +887,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 
 class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, sharpness, same_on_batch, device, dtype):
@@ -928,7 +930,7 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('p', [0., 0.5, 1.])
     @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -982,7 +984,7 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('p', [0, 0.5, 1.])
     @pytest.mark.parametrize('width,height', [(200, 200)])
     @pytest.mark.parametrize('num_mix', [1, 3])

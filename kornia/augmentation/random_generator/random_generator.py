@@ -266,6 +266,8 @@ def random_crop_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (tensor): output bounding boxes with a shape (B, 4, 2).
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -307,8 +309,10 @@ def random_crop_generator(
     _common_param_check(batch_size, same_on_batch)
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size).repeat(batch_size, 1)
-    assert size.shape == torch.Size([batch_size, 2]), \
-        f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
+    device, dtype = size.device, size.dtype
+    assert size.shape == torch.Size([batch_size, 2]), (
+        "If `size` is a tensor, it must be shaped as (B, 2). "
+        f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
     size = size.long()
 
     x_diff = input_size[1] - size[:, 1] + 1
@@ -317,6 +321,12 @@ def random_crop_generator(
     if (x_diff < 0).any() or (y_diff < 0).any():
         raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
                          % (str(input_size), str(size)))
+
+    if batch_size == 0:
+        return dict(
+            src=torch.zeros([0, 4, 2], device=device, dtype=dtype),
+            dst=torch.zeros([0, 4, 2], device=device, dtype=dtype),
+        )
 
     if same_on_batch:
         # If same_on_batch, select the first then repeat.
@@ -330,16 +340,19 @@ def random_crop_generator(
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
-            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
-            size[:, 1] - 1, size[:, 0] - 1)
+            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
+            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
+            size[:, 1] - 1, size[:, 0] - 1).long()
     else:
+        assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
+            and resize_to[0] > 0 and resize_to[1] > 0, \
+            f"`resize_to` must be a tuple of 2 positive integers. Got {resize_to}."
         crop_dst = torch.tensor([[
             [0, 0],
             [resize_to[1] - 1, 0],
             [resize_to[1] - 1, resize_to[0] - 1],
             [0, resize_to[0] - 1],
-        ]], device=x_start.device, dtype=x_start.dtype).repeat(batch_size, 1, 1)
+        ]], device=device, dtype=dtype).repeat(batch_size, 1, 1).long()
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -513,6 +526,8 @@ def center_crop_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+            - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (tensor): output bounding boxes with a shape (B, 4, 2).
     """
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
@@ -809,6 +824,12 @@ def random_cutmix_generator(
         f"'height' and 'width' must be integers. Got {height}, {width}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
     _common_param_check(batch_size, same_on_batch)
+
+    if batch_size == 0:
+        return dict(
+            mix_pairs=torch.zeros([0, 3], device=device, dtype=dtype),
+            crop_src=torch.zeros([0, 4, 2], device=device, dtype=dtype)
+        )
 
     batch_probs: torch.Tensor = random_prob_generator(
         batch_size * num_mix, p, same_on_batch).to(device=device, dtype=dtype)
