@@ -221,7 +221,7 @@ class CommonTests(BaseTester):
 
         # Output should match
         assert output.shape == expected_output.shape
-        assert_allclose(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4), output
+        assert_allclose(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4)
 
     def _test_random_p_1_return_transform_implementation(
             self,  input_tensor, expected_output, expected_transformation, params):
@@ -229,8 +229,7 @@ class CommonTests(BaseTester):
         output, transformation = augmentation(input_tensor.to(self.device).to(self.dtype))
         # Output should match
         assert output.shape == expected_output.shape
-        assert_allclose(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4), output
-
+        assert_allclose(output, expected_output.to(self.device).to(self.dtype), atol=1e-4, rtol=1e-4)
         # Transformation should match
         assert transformation.shape == expected_transformation.shape
         assert_allclose(transformation, expected_transformation.to(
@@ -802,6 +801,65 @@ class TestColorJitterAlternative(CommonTests):
             self._create_augmentation_from_params(p=0.)(torch.rand((1,1,4,5), device=self.device, dtype=self.dtype))
         with pytest.raises(ValueError):
             self._create_augmentation_from_params(p=1.)(torch.rand((1,4,4,5), device=self.device, dtype=self.dtype))
+
+class TestRandomEqualizeAlternative(CommonTests):
+
+    possible_params = {}
+
+    _augmentation_cls = RandomEqualize
+    _default_param_set = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+
+
+    def test_random_p_1(self):
+        input_tensor = torch.arange(20., device=self.device, dtype=self.dtype) / 20
+        input_tensor = input_tensor.repeat(1,2,20,1)
+
+        expected_output = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ],device=self.device, dtype=self.dtype)
+        expected_output = expected_output.repeat(1,2,20,1)
+        
+        parameters = {}
+        self._test_random_p_1_implementation(input_tensor=input_tensor, expected_output=expected_output,params=parameters)
+
+    def test_random_p_1_return_transform(self):
+        torch.manual_seed(42)
+        
+        input_tensor = torch.rand(1, 1, 3, 4, device=self.device, dtype=self.dtype)
+
+        # Note: For small inputs it should return the input image
+        expected_output = input_tensor
+
+        expected_transformation = kornia.eye_like(3,input_tensor)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    def test_batch(self):
+        input_tensor = torch.arange(20., device=self.device, dtype=self.dtype) / 20
+        input_tensor = input_tensor.repeat(2,3,20,1)
+
+        expected_output = torch.tensor([
+            0.0000, 0.07843, 0.15686, 0.2353, 0.3137, 0.3922, 0.4706, 0.5490, 0.6275,
+            0.7059, 0.7843, 0.8627, 0.9412, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+            1.0000, 1.0000
+        ],device=self.device, dtype=self.dtype)
+        expected_output = expected_output.repeat(2,3,20,1)
+
+        expected_transformation = kornia.eye_like(3,input_tensor)
+        parameters = {}
+        self._test_random_p_1_return_transform_implementation(input_tensor=input_tensor, expected_output=expected_output, expected_transformation=expected_transformation,params=parameters)
+
+    def test_exception(self):
+
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(p=1.)(torch.ones((1,3,4,5)*200, device=self.device, dtype=self.dtype))
+
 
 class TestRandomGrayscaleAlternative(CommonTests):
 
@@ -2375,7 +2433,6 @@ class TestRandomEqualize:
         ])
         expected = self.build_input(channels, height, width, bs=1, row=row_expected,
                                     device=device, dtype=dtype)
-
         identity = kornia.eye_like(3, expected)  # 3 x 3
 
         assert_allclose(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
