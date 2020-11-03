@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from typing import Union, Tuple
+from typing import Union, Tuple, Dict, Any, Optional, Type
 
 import pytest
 import torch
@@ -36,12 +36,12 @@ class CommonTests(BaseTester):
     ############################################################################################################
     # Attributes variables to set
     ############################################################################################################
-    _augmentation_cls = None
-    _default_param_set = {}
-
+    _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
+    _default_param_set: Dict["str", Any] = {}
     ############################################################################################################
     # Fixtures
     ############################################################################################################
+
     @pytest.fixture(scope="class")
     def param_set(self, request):
         raise NotImplementedError("param_set must be overriden in subclasses")
@@ -296,10 +296,10 @@ class CommonTests(BaseTester):
 
 class TestRandomEqualizeAlternative(CommonTests):
 
-    possible_params = {}
+    possible_params: Dict["str", Tuple] = {}
 
     _augmentation_cls = RandomEqualize
-    _default_param_set = {}
+    _default_param_set: Dict["str", Any] = {}
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
@@ -365,13 +365,13 @@ class TestRandomEqualizeAlternative(CommonTests):
 
 
 class TestCenterCropAlternative(CommonTests):
-    possible_params = {
+    possible_params: Dict["str", Tuple] = {
         "size": (2, (2, 2)),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }
     _augmentation_cls = CenterCrop
-    _default_param_set = {"size": (2, 2), "align_corners": True}
+    _default_param_set: Dict["str", Any] = {"size": (2, 2), "align_corners": True}
 
     @pytest.fixture(params=default_with_one_parameter_changed(default=_default_param_set,
                                                               **possible_params), scope="class")
@@ -457,9 +457,9 @@ class TestCenterCropAlternative(CommonTests):
 
 
 class TestRandomHorizontalFlipAlternative(CommonTests):
-    possible_params = {}
+    possible_params: Dict["str", Tuple] = {}
     _augmentation_cls = RandomHorizontalFlip
-    _default_param_set = {}
+    _default_param_set: Dict["str", Any] = {}
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
@@ -525,9 +525,9 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
 
 
 class TestRandomVerticalFlipAlternative(CommonTests):
-    possible_params = {}
+    possible_params: Dict["str", Tuple] = {}
     _augmentation_cls = RandomVerticalFlip
-    _default_param_set = {}
+    _default_param_set: Dict["str", Any] = {}
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
@@ -593,14 +593,14 @@ class TestRandomVerticalFlipAlternative(CommonTests):
 
 
 class TestRandomRotationAlternative(CommonTests):
-    possible_params = {
+    possible_params: Dict["str", Tuple] = {
         "degrees": (0., (-360., 360.), [0., 0.], torch.Tensor((-180., 180))),
         "interpolation": (0, Resample.BILINEAR.name, Resample.BILINEAR, None),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }
     _augmentation_cls = RandomRotation
-    _default_param_set = {"degrees": (30., 30.), "align_corners": True}
+    _default_param_set: Dict["str", Any] = {"degrees": (30., 30.), "align_corners": True}
 
     @pytest.fixture(params=default_with_one_parameter_changed(default=_default_param_set,
                                                               **possible_params), scope="class")
@@ -680,10 +680,10 @@ class TestRandomRotationAlternative(CommonTests):
 
 class TestRandomGrayscaleAlternative(CommonTests):
 
-    possible_params = {}
+    possible_params: Dict["str", Tuple] = {}
 
     _augmentation_cls = RandomGrayscale
-    _default_param_set = {}
+    _default_param_set: Dict["str", Any] = {}
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
