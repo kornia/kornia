@@ -110,6 +110,8 @@ class BaseTester(ABC):
     @abstractmethod
     def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")
+
+
 def cartesian_product_of_parameters(**possible_parameters):
     """Creates cartesian product of given parameters
     """
@@ -117,10 +119,11 @@ def cartesian_product_of_parameters(**possible_parameters):
     possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
 
     for param_combination in product(*possible_values):
-        yield dict(zip(parameter_names,param_combination))
+        yield dict(zip(parameter_names, param_combination))
 
-def default_with_one_parameter_changed(*,default={},**possible_parameters):
-    assert isinstance(default,dict), f"default should be a dict not a {type(default)}"
+
+def default_with_one_parameter_changed(*, default={}, **possible_parameters):
+    assert isinstance(default, dict), f"default should be a dict not a {type(default)}"
 
     for parameter_name, possible_values in possible_parameters.items():
         for v in possible_values:
