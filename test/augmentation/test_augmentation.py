@@ -269,7 +269,7 @@ class CommonTests(BaseTester):
             torch.tensor(range(output.shape[-1]), device=self.device))
         indices = torch.stack([grid_x, grid_y], axis=0).to(device=self.device, dtype=self.dtype)
         output_indices = indices.permute((1, 2, 0)).reshape((1, -1, 2))
-        input_indices = kornia.geometry.transform_points(transform.float().inverse(), output_indices)
+        input_indices = kornia.geometry.transform_points(transform.to(self.dtype).inverse(), output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
         input_indices = input_indices.round().long().squeeze(0)
@@ -381,8 +381,9 @@ class TestCenterCropAlternative(CommonTests):
     @pytest.mark.parametrize("input_shape,expected_output_shape",
                              [((4, 5), (1, 1, 2, 3)), ((3, 4, 5), (1, 3, 2, 3)), ((2, 3, 4, 5), (2, 3, 2, 3))])
     def test_cardinality(self, input_shape, expected_output_shape):
-        self._test_cardinality_implementation(
-            input_shape=input_shape, expected_output_shape=expected_output_shape, params={"size": (2, 3), "align_corners": True})
+        self._test_cardinality_implementation(input_shape=input_shape,
+                                              expected_output_shape=expected_output_shape,
+                                              params={"size": (2, 3), "align_corners": True})
 
     @pytest.mark.xfail(reason="size=(1,2) results in RuntimeError: solve_cpu: For batch 0: U(3,3) is zero, singular U.")
     def test_random_p_1(self):
@@ -508,10 +509,10 @@ class TestRandomHorizontalFlipAlternative(CommonTests):
                                        [0.7, 0.8, 0.9, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))
         expected_output = torch.tensor([[[[0.3, 0.2, 0.1, ],
                                           [0.6, 0.5, 0.4, ],
-                                          [0.9, 0.8, 0.7, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))
+                                          [0.9, 0.8, 0.7, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))  # noqa: E501
         expected_transformation = torch.tensor([[[-1.0, 0.0, 2.0],
                                                  [0.0, 1.0, 0.0],
-                                                 [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1))
+                                                 [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1))  # noqa: E501
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
@@ -576,10 +577,10 @@ class TestRandomVerticalFlipAlternative(CommonTests):
                                        [0.7, 0.8, 0.9, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))
         expected_output = torch.tensor([[[[0.7, 0.8, 0.9, ],
                                           [0.4, 0.5, 0.6, ],
-                                          [0.1, 0.2, 0.3, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))
+                                          [0.1, 0.2, 0.3, ]]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1, 1))  # noqa: E501
         expected_transformation = torch.tensor([[[1.0, 0.0, 0.0],
                                                  [0.0, -1.0, 2.0],
-                                                 [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1))
+                                                 [0.0, 0.0, 1.0]]], device=self.device, dtype=self.dtype).repeat((2, 1, 1))  # noqa: E501
         parameters = {}
         self._test_random_p_1_return_transform_implementation(
             input_tensor=input_tensor,
