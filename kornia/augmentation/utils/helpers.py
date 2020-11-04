@@ -244,9 +244,13 @@ def _adapted_uniform(
         dtype = _dtype if dtype is None else dtype
     if not isinstance(low, torch.Tensor):
         low = torch.tensor(low, device=device, dtype=torch.float64)
+    else:
+        low = low.to(device=device, dtype=torch.float64)
     if not isinstance(high, torch.Tensor):
         high = torch.tensor(high, device=device, dtype=torch.float64)
-    dist = Uniform(low.to(torch.float64), high.to(torch.float64))
+    else:
+        high = high.to(device=device, dtype=torch.float64)
+    dist = Uniform(low, high)
     return _adapted_rsampling(shape, dist, same_on_batch).to(dtype=dtype)
 
 
