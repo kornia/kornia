@@ -42,11 +42,11 @@ class TestRandomPerspectiveGen3D(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('depth,height,width,distortion_scale', [
         # Should be failed if distortion_scale > 1. or distortion_scale < 0.
-        pytest.param(-100, 100, 100, torch.tensor(0.5)),
-        pytest.param(100, -100, 100, torch.tensor(0.5)),
-        pytest.param(100, 100, -100, torch.tensor(-0.5)),
-        pytest.param(100, 100, 100, torch.tensor(1.5)),
-        pytest.param(100, 100, 100, torch.tensor([0., 0.5])),
+        (-100, 100, 100, torch.tensor(0.5)),
+        (100, -100, 100, torch.tensor(0.5)),
+        (100, 100, -100, torch.tensor(-0.5)),
+        (100, 100, 100, torch.tensor(1.5)),
+        (100, 100, 100, torch.tensor([0., 0.5])),
     ])
     def test_invalid_param_combinations(self, depth, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
@@ -162,24 +162,17 @@ class TestRandomAffineGen3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('depth,height,width,degrees,translate,scale,shear', [
-        pytest.param(-100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
-        pytest.param(100, -100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
-        pytest.param(100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
-        pytest.param(100, 100, 100, torch.tensor([0, 9]), None, None, None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1, 0.2]), None, None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1, 0.2]), None, None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     torch.tensor([0.1]), None, None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, torch.tensor([[0.2, 0.2, 0.2]]), None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, torch.tensor([0.2]), None),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, None, torch.tensor([[20, 20, 30]])),
-        pytest.param(100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]),
-                     None, None, torch.tensor([20])),
+        (-100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        (100, -100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        (100, 100, -100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, None),
+        (100, 100, 100, torch.tensor([0, 9]), None, None, None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1, 0.2]), None, None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), torch.tensor([0.1]), None, None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([[0.2, 0.2, 0.2]]), None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, torch.tensor([0.2]), None),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, torch.tensor([[20, 20, 30]])),
+        (100, 100, 100, torch.tensor([[0, 9], [0, 9], [0, 9]]), None, None, torch.tensor([20])),
     ])
     def test_invalid_param_combinations(
         self, depth, height, width, degrees, translate, scale, shear, device, dtype
@@ -284,10 +277,10 @@ class TestRandomRotationGen3D(RandomGeneratorBaseTests):
             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('degrees', [
-        pytest.param(torch.tensor(10)),
-        pytest.param(torch.tensor([10])),
-        pytest.param(torch.tensor([[0, 30]])),
-        pytest.param(torch.tensor([[0, 30], [0, 30]])),
+        (torch.tensor(10)),
+        (torch.tensor([10])),
+        (torch.tensor([[0, 30]])),
+        (torch.tensor([[0, 30], [0, 30]])),
     ])
     def test_invalid_param_combinations(self, degrees, device, dtype):
         with pytest.raises(Exception):
@@ -344,11 +337,10 @@ class TestRandomCropGen3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
-        pytest.param((-300, 300, 300), (200, 200, 200), (100, 100, 100)),
-        pytest.param((100, 100, 100), (200, 200, 200), (100, 100, 100)),
-        pytest.param((200, 200, 200), torch.tensor([50, 50, 50]), (100, 100, 100)),
-        pytest.param((100, 100, 100), torch.tensor([[50, 60, 70], [50, 60, 70]]),
-                     (100, 100)),
+        ((-300, 300, 300), (200, 200, 200), (100, 100, 100)),
+        ((100, 100, 100), (200, 200, 200), (100, 100, 100)),
+        ((200, 200, 200), torch.tensor([50, 50, 50]), (100, 100, 100)),
+        ((100, 100, 100), torch.tensor([[50, 60, 70], [50, 60, 70]]), (100, 100)),
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         with pytest.raises(Exception):
@@ -457,11 +449,11 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
         center_crop_generator3d(batch_size=batch_size, depth=depth, height=height, width=width, size=size)
 
     @pytest.mark.parametrize('depth,height,width,size', [
-        pytest.param(200, 200, -200, (100, 100, 100)),
-        pytest.param(200, -200, 200, (100, 100)),
-        pytest.param(200, 100, 100, (300, 120, 100)),
-        pytest.param(200, 150, 100, (120, 180, 100)),
-        pytest.param(200, 100, 150, (120, 80, 200)),
+        (200, 200, -200, (100, 100, 100)),
+        (200, -200, 200, (100, 100)),
+        (200, 100, 100, (300, 120, 100)),
+        (200, 150, 100, (120, 180, 100)),
+        (200, 100, 150, (120, 80, 200)),
     ])
     def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
         with pytest.raises(Exception):
@@ -514,12 +506,11 @@ class TestRandomMotionBlur3D(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize('kernel_size,angle,direction', [
-        pytest.param(4, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
-        pytest.param(1, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
-        pytest.param((3, 4, 5), torch.tensor([(10, 30), (30, 60), (60, 90)]),
-                     torch.tensor([-1, 1])),
-        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-2, 1])),
-        pytest.param(3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 2])),
+        (4, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
+        (1, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
+        ((3, 4, 5), torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 1])),
+        (3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-2, 1])),
+        (3, torch.tensor([(10, 30), (30, 60), (60, 90)]), torch.tensor([-1, 2])),
     ])
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
         with pytest.raises(Exception):
