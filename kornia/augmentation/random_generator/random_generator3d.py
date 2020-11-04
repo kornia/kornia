@@ -177,14 +177,13 @@ def random_motion_blur_generator3d(
     if isinstance(kernel_size, int):
         assert kernel_size >= 3 and kernel_size % 2 == 1, \
             f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
-        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
+        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype).int()
     elif isinstance(kernel_size, tuple):
         assert len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1], \
             f"`kernel_size` must be greater than 3. Got range {kernel_size}."
         # kernel_size is fixed across the batch
-        ksize_factor = _adapted_uniform(
-            (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
-        ksize_factor = ksize_factor.to(device=device, dtype=dtype)
+        ksize_factor = _adapted_uniform((batch_size,), kernel_size[0] // 2, kernel_size[1] // 2,
+                                        same_on_batch=True, device=device, dtype=dtype).int() * 2 + 1
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
@@ -197,7 +196,7 @@ def random_motion_blur_generator3d(
     direction_factor = _adapted_uniform(
         (batch_size,), direction[0], direction[1], same_on_batch)
 
-    return dict(ksize_factor=ksize_factor.int(),
+    return dict(ksize_factor=ksize_factor,
                 angle_factor=angle_factor,
                 direction_factor=direction_factor)
 
@@ -426,8 +425,8 @@ def random_perspective_generator3d(
     factor = torch.stack([fx, fy, fz], dim=0).view(-1, 1, 3)
 
     # TODO: This line somehow breaks the gradcheck
-    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch).to(
-        device=device, dtype=dtype)
+    rand_val: torch.Tensor = _adapted_uniform(
+        start_points.shape, 0, 1, same_on_batch, device=device, dtype=dtype)
 
     pts_norm = torch.tensor([[
         [1, 1, 1],
