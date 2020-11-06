@@ -641,11 +641,19 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
                     [0.1920, 0.3194, 0.0804],
                     [0.2195, 0.0743, 0.0000]])
     """
+
+    if isinstance(angle, torch.Tensor):
+        device = angle.device
+    elif isinstance(direction, torch.Tensor):
+        device = direction.device
+    else:
+        device = "cpu"
+
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
 
     if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor([angle])
+        angle = torch.tensor([angle], device=device)
 
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
@@ -653,7 +661,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor([direction])
+        direction = torch.tensor([direction], device=device)
 
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
@@ -666,7 +674,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
-    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float, device=device)
 
     # Element-wise linspace
     kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
