@@ -6,7 +6,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestOpen(utils.BaseTester):
+class TestErode(utils.BaseTester):
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
@@ -15,43 +15,43 @@ class TestOpen(utils.BaseTester):
     def test_batch(self, device, dtype):
         input = torch.rand(3, 2, 6, 10, device=device, dtype=dtype)
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        test = m.open(input, kernel)
+        test = m.erosion(input, kernel)
         assert input.shape == test.shape == (3, 2, 6, 10)
 
     def test_value(self, device, dtype):
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
                              device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.5, 0.5, 0.3], [0.5, 0.3, 0.3], [0.4, 0.4, 0.2]],
+        expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]],
                                 device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
-        assert_allclose(m.open(input, kernel), expected)
+        assert_allclose(m.erosion(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype).double()
         kernel = torch.ones(3, 3, device=device, dtype=dtype).double()
 
         with pytest.raises(TypeError):
-            assert m.open([0.], kernel)
+            assert m.erosion([0.], kernel)
 
         with pytest.raises(TypeError):
-            assert m.open(input, [0.])
+            assert m.erosion(input, [0.])
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4)
-            assert m.open(test, kernel)
+            assert m.erosion(test, kernel)
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4)
-            assert m.open(input, test)
+            assert m.erosion(input, test)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=dtype).double()
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype).double()
-        assert gradcheck(m.open, (input, kernel), raise_exception=True)
+        assert gradcheck(m.erosion, (input, kernel), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = m.open
+        op = m.erosion
         op_script = torch.jit.script(op)
 
         input = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)
