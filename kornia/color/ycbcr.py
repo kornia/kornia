@@ -1,5 +1,6 @@
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
@@ -71,7 +72,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return torch.stack([r, g, b], -3)
 
 
-class RgbToYcbcr(nn.Module):
+class RgbToYcbcr(kornia.nn.color.RgbToYcbcr):
     r"""Convert an image from RGB to YCbCr.
 
     The image data is assumed to be in the range of (0, 1).
@@ -91,12 +92,10 @@ class RgbToYcbcr(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToYcbcr, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_ycbcr(image)
+        kornia.deprecation_warning("kornia.color.RgbToYcbcr", "kornia.nn.color.RgbToYcbcr")
 
 
-class YcbcrToRgb(nn.Module):
+class YcbcrToRgb(kornia.nn.color.YcbcrToRgb):
     r"""Convert an image from YCbCr to Rgb.
 
     The image data is assumed to be in the range of (0, 1).
@@ -116,6 +115,4 @@ class YcbcrToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(YcbcrToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return ycbcr_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.YcbcrToRgb", "kornia.nn.color.YcbcrToRgb")

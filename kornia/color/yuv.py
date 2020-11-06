@@ -97,9 +97,7 @@ class RgbToYuv(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToYuv, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return rgb_to_yuv(input)
+        kornia.deprecation_warning("kornia.color.RgbToYuv", "kornia.nn.color.RgbToYuv")
 
 
 class YuvToRgb(nn.Module):
@@ -122,6 +120,4 @@ class YuvToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(YuvToRgb, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return yuv_to_rgb(input)
+        kornia.deprecation_warning("kornia.color.YuvToRgb", "kornia.nn.color.YuvToRgb")

@@ -1,7 +1,8 @@
 from typing import Union, cast
 
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
@@ -169,7 +170,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     return rgb_to_bgr(x_rgb)
 
 
-class BgrToRgb(nn.Module):
+class BgrToRgb(kornia.nn.color.BgrToRgb):
     r"""Convert image from BGR to RGB.
 
     The image data is assumed to be in the range of (0, 1).
@@ -189,12 +190,10 @@ class BgrToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(BgrToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return bgr_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.BgrToRgb", "kornia.nn.color.BgrToRgb")
 
 
-class RgbToBgr(nn.Module):
+class RgbToBgr(kornia.nn.color.RgbToBgr):
     r"""Convert an image from RGB to BGR.
 
     The image data is assumed to be in the range of (0, 1).
@@ -214,12 +213,10 @@ class RgbToBgr(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToBgr, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_bgr(image)
+        kornia.deprecation_warning("kornia.color.RgbToBgr", "kornia.nn.color.RgbToBgr")
 
 
-class RgbToRgba(nn.Module):
+class RgbToRgba(kornia.nn.color.RgbToRgba):
     r"""Convert an image from RGB to RGBA.
 
     Add an alpha channel to existing RGB image.
@@ -244,14 +241,11 @@ class RgbToRgba(nn.Module):
     """
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
-        super(RgbToRgba, self).__init__()
-        self.alpha_val = alpha_val
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_rgba(image, self.alpha_val)
+        super(RgbToRgba, self).__init__(alpha_val)
+        kornia.deprecation_warning("kornia.color.RgbToRgba", "kornia.nn.color.RgbToRgba")
 
 
-class BgrToRgba(nn.Module):
+class BgrToRgba(kornia.nn.color.BgrToRgba):
     r"""Convert an image from BGR to RGBA.
 
     Add an alpha channel to existing RGB image.
@@ -276,14 +270,11 @@ class BgrToRgba(nn.Module):
     """
 
     def __init__(self, alpha_val: Union[float, torch.Tensor]) -> None:
-        super(BgrToRgba, self).__init__()
-        self.alpha_val = alpha_val
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_rgba(image, self.alpha_val)
+        super(BgrToRgba, self).__init__(alpha_val)
+        kornia.deprecation_warning("kornia.color.BgrToRgba", "kornia.nn.color.BgrToRgba")
 
 
-class RgbaToRgb(nn.Module):
+class RgbaToRgb(kornia.nn.color.RgbaToRgb):
     r"""Convert an image from RGBA to RGB.
 
     Remove an alpha channel from RGB image.
@@ -303,12 +294,10 @@ class RgbaToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(RgbaToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgba_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.RgbaToRgb", "kornia.nn.color.RgbaToRgb")
 
 
-class RgbaToBgr(nn.Module):
+class RgbaToBgr(kornia.nn.color.RgbaToBgr):
     r"""Convert an image from RGBA to BGR.
 
     Remove an alpha channel from BGR image.
@@ -328,6 +317,4 @@ class RgbaToBgr(nn.Module):
 
     def __init__(self) -> None:
         super(RgbaToBgr, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgba_to_bgr(image)
+        kornia.deprecation_warning("kornia.color.RgbaToBgr", "kornia.nn.color.RgbaToBgr")

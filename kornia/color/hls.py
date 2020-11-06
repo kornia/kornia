@@ -1,7 +1,6 @@
 import math
 
 import torch
-import torch.nn as nn
 
 import kornia
 from kornia.constants import pi
@@ -107,7 +106,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class RgbToHls(nn.Module):
+class RgbToHls(kornia.nn.color.hls.RgbToHls):
     r"""Convert an image from RGB to HLS.
 
     The image data is assumed to be in the range of (0, 1).
@@ -127,12 +126,10 @@ class RgbToHls(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToHls, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_hls(image)
+        kornia.deprecation_warning("kornia.color.RgbToHls", "kornia.nn.color.RgbToHls")
 
 
-class HlsToRgb(nn.Module):
+class HlsToRgb(kornia.nn.color.hls.HlsToRgb):
     r"""Convert an image from HLS to RGB.
 
     The image data is assumed to be in the range of (0, 1).
@@ -155,6 +152,4 @@ class HlsToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(HlsToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return hls_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.HlsToRgb", "kornia.nn.color.HlsToRgb")

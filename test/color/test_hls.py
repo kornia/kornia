@@ -103,7 +103,7 @@ class TestRgbToHls(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.RgbToHls().to(device, dtype)
+        ops = kornia.nn.color.RgbToHls().to(device, dtype)
         fcn = kornia.color.rgb_to_hls
         assert_allclose(ops(img), fcn(img))
 
@@ -199,6 +199,6 @@ class TestHlsToRgb(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.HlsToRgb().to(device, dtype)
+        ops = kornia.nn.color.HlsToRgb().to(device, dtype)
         fcn = kornia.color.hls_to_rgb
         assert_allclose(ops(img), fcn(img))

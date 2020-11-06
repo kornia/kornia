@@ -1,7 +1,8 @@
 import math
 
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
@@ -116,7 +117,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class RgbToHsv(nn.Module):
+class RgbToHsv(kornia.nn.color.RgbToHsv):
     r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
@@ -136,12 +137,10 @@ class RgbToHsv(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToHsv, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_hsv(image)
+        kornia.deprecation_warning("kornia.color.RgbToHsv", "kornia.nn.color.RgbToHsv")
 
 
-class HsvToRgb(nn.Module):
+class HsvToRgb(kornia.nn.color.HsvToRgb):
     r"""Convert an image from HSV to RGB.
 
     The image data is assumed to be in the range of (0, 1).
@@ -161,6 +160,4 @@ class HsvToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(HsvToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return hsv_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.HsvToRgb", "kornia.nn.color.HsvToRgb")

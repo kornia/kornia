@@ -92,7 +92,7 @@ class TestRgbToLuv(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.RgbToLuv().to(device, dtype)
+        ops = kornia.nn.color.RgbToLuv().to(device, dtype)
         fcn = kornia.color.rgb_to_luv
         assert_allclose(ops(img), fcn(img))
 
@@ -183,6 +183,6 @@ class TestLuvToRgb(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.LuvToRgb().to(device, dtype)
+        ops = kornia.nn.color.LuvToRgb().to(device, dtype)
         fcn = kornia.color.luv_to_rgb
         assert_allclose(ops(img), fcn(img))

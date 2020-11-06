@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import kornia
+
 
 class RgbToGrayscale(nn.Module):
     r"""Module to convert a RGB image to grayscale version of image.
@@ -24,8 +26,7 @@ class RgbToGrayscale(nn.Module):
         super(RgbToGrayscale, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
-        from kornia.color.gray import rgb_to_grayscale
-        return rgb_to_grayscale(image)
+        return kornia.color.gray.rgb_to_grayscale(image)
 
 
 class BgrToGrayscale(nn.Module):
@@ -50,5 +51,4 @@ class BgrToGrayscale(nn.Module):
         super(BgrToGrayscale, self).__init__()
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
-        from kornia.color.gray import bgr_to_grayscale
-        return bgr_to_grayscale(image)
+        return kornia.color.gray.bgr_to_grayscale(image)

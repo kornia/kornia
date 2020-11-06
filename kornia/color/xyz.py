@@ -1,5 +1,6 @@
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
@@ -70,7 +71,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class RgbToXyz(nn.Module):
+class RgbToXyz(kornia.nn.color.RgbToXyz):
     r"""Converts an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
@@ -93,12 +94,10 @@ class RgbToXyz(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToXyz, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_xyz(image)
+        kornia.deprecation_warning("kornia.color.RgbToXyz", "kornia.nn.color.RgbToXyz")
 
 
-class XyzToRgb(nn.Module):
+class XyzToRgb(kornia.nn.color.XyzToRgb):
     r"""Converts an image from XYZ to RGB.
 
     Returns:
@@ -119,6 +118,4 @@ class XyzToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(XyzToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return xyz_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.XyzToRgb", "kornia.nn.color.XyzToRgb")

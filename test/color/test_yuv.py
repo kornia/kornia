@@ -64,7 +64,7 @@ class TestRgbToYuv(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.RgbToYuv().to(device, dtype)
+        ops = kornia.nn.color.RgbToYuv().to(device, dtype)
         fcn = kornia.color.rgb_to_yuv
         assert_allclose(ops(img), fcn(img))
 
@@ -124,6 +124,6 @@ class TestYuvToRgb(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.YuvToRgb().to(device, dtype)
+        ops = kornia.nn.color.YuvToRgb().to(device, dtype)
         fcn = kornia.color.yuv_to_rgb
         assert_allclose(ops(img), fcn(img))

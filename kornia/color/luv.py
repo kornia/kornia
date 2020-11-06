@@ -1,8 +1,8 @@
 from typing import Tuple
 
 import torch
-import torch.nn as nn
 
+import kornia
 from .xyz import rgb_to_xyz, xyz_to_rgb
 
 """
@@ -136,7 +136,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     return rgb_im
 
 
-class RgbToLuv(nn.Module):
+class RgbToLuv(kornia.nn.color.RgbToLuv):
     r"""Converts an image from RGB to Luv.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
@@ -164,12 +164,10 @@ class RgbToLuv(nn.Module):
 
     def __init__(self) -> None:
         super(RgbToLuv, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_luv(image)
+        kornia.deprecation_warning("kornia.color.RgbToLuv", "kornia.nn.color.RgbToLuv")
 
 
-class LuvToRgb(nn.Module):
+class LuvToRgb(kornia.nn.color.LuvToRgb):
     r"""Converts an image from Luv to RGB.
 
     Returns:
@@ -194,6 +192,4 @@ class LuvToRgb(nn.Module):
 
     def __init__(self) -> None:
         super(LuvToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return luv_to_rgb(image)
+        kornia.deprecation_warning("kornia.color.LuvToRgb", "kornia.nn.color.LuvToRgb")
