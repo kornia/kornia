@@ -40,7 +40,7 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return m.Dilate(kernel)((m.Erode(kernel)(tensor)))
+    return m.dilation(m.erosion(tensor, kernel), kernel)
 
 
 # close
@@ -78,4 +78,4 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return m.Erode(kernel)((m.Dilate(kernel)(tensor)))
+    return m.erosion(m.dilation(tensor, kernel), kernel)
