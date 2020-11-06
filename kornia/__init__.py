@@ -1,6 +1,7 @@
 # Make sure that kornia is running on Python 3.6.0 or later
 # (to avoid running into this bug: https://bugs.python.org/issue29246)
 import sys
+import warnings
 if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
@@ -19,6 +20,7 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
+from kornia import nn
 
 # Exposes package functional to top level
 
@@ -108,3 +110,8 @@ from kornia.utils import (
 
 from kornia.geometry import *
 from kornia.constants import *
+
+
+def deprecation_warning(name: str, replacement: str) -> None:
+    warnings.warn(f"`{name}` is no longer maintained and will be removed from the future versions. "
+                  f"Please use {replacement} instead.", category=DeprecationWarning)

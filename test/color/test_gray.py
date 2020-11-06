@@ -83,7 +83,7 @@ class TestRgbToGrayscale(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        gray_ops = kornia.color.RgbToGrayscale().to(device, dtype)
+        gray_ops = kornia.nn.color.RgbToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.rgb_to_grayscale
         assert_allclose(gray_ops(img), gray_fcn(img))
 
@@ -163,6 +163,6 @@ class TestBgrToGrayscale(BaseTester):
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        gray_ops = kornia.color.BgrToGrayscale().to(device, dtype)
+        gray_ops = kornia.nn.color.BgrToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.bgr_to_grayscale
         assert_allclose(gray_ops(img), gray_fcn(img))

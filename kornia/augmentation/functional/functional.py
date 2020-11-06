@@ -2,7 +2,6 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 
 import kornia as K
 import torch
-import torch.nn as nn
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (

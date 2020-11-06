@@ -9,6 +9,17 @@ from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 
+__all__ = [
+    "ConvSoftArgmax2d",
+    "ConvSoftArgmax3d",
+    "conv_soft_argmax2d",
+    "conv_soft_argmax3d",
+    "spatial_soft_argmax2d",
+    "SpatialSoftArgmax2d",
+    "conv_quad_interp3d",
+    "ConvQuadInterp3d",
+]
+
 
 def _get_window_grid_kernel2d(h: int, w: int,
                               device: torch.device = torch.device('cpu')) -> torch.Tensor:
