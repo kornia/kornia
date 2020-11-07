@@ -4,7 +4,7 @@ import torch
 from math import sqrt
 
 from kornia.geometry.transform.affwarp import rotate, rotate3d
-
+from ..augmentation.utils import _extract_device_dtype
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.
@@ -642,18 +642,16 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
                     [0.2195, 0.0743, 0.0000]])
     """
 
-    if isinstance(angle, torch.Tensor):
-        device = angle.device
-    elif isinstance(direction, torch.Tensor):
-        device = direction.device
-    else:
-        device = "cpu"
+    device, dtype = _extract_device_dtype([
+        angle if isinstance(angle, torch.Tensor) else None,
+        direction if isinstance(direction, torch.Tensor) else None,
+    ])
 
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
 
     if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor([angle], device=device)
+        angle = torch.tensor([angle], device=device, dtype=torch.float)
 
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
@@ -661,7 +659,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor([direction], device=device)
+        direction = torch.tensor([direction], device=device, dtype=torch.float)
 
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
@@ -674,7 +672,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
-    kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float, device=device)
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=torch.float)
 
     # Element-wise linspace
     kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
