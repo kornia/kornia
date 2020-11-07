@@ -6,6 +6,7 @@ from math import sqrt
 from kornia.geometry.transform.affwarp import rotate, rotate3d
 from ..augmentation.utils import _extract_device_dtype
 
+
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.
     """
