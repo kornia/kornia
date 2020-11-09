@@ -264,11 +264,8 @@ class CommonTests(BaseTester):
         if (transform == kornia.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
-        grid_y, grid_x = torch.meshgrid(
-            torch.tensor(range(output.shape[-2]), device=self.device),
-            torch.tensor(range(output.shape[-1]), device=self.device))
-        indices = torch.stack([grid_x, grid_y], axis=0).to(device=self.device, dtype=self.dtype)
-        output_indices = indices.permute((1, 2, 0)).reshape((1, -1, 2))
+        indices = kornia.create_meshgrid(height=output.shape[-2],width=output.shape[-1],normalized_coordinates=False,device=self.device)
+        output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
         input_indices = kornia.geometry.transform_points(transform.to(self.dtype).inverse(), output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
