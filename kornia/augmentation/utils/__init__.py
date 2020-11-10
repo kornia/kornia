@@ -18,7 +18,6 @@ from kornia.augmentation.utils.helpers import (
     _adapted_uniform,
     _adapted_beta,
     _shape_validation,
-    _extract_device_dtype,
 )
 
 __all__ = [
@@ -34,7 +33,6 @@ __all__ = [
     "_adapted_uniform",
     "_adapted_beta",
     "_shape_validation",
-    "_extract_device_dtype",
     "_common_param_check",
     "_range_bound",
     "_joint_range_check",
