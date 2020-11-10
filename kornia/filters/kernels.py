@@ -4,7 +4,7 @@ import torch
 from math import sqrt
 
 from kornia.geometry.transform.affwarp import rotate, rotate3d
-from ..augmentation.utils import _extract_device_dtype
+from kornia.utils import _extract_device_dtype
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -652,7 +652,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
         raise TypeError("ksize must be an odd integer >= than 3")
 
     if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor([angle], device=device, dtype=torch.float)
+        angle = torch.tensor([angle], device=device, dtype=dtype)
 
     angle = cast(torch.Tensor, angle)
     if angle.dim() == 0:
@@ -660,7 +660,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     assert angle.dim() == 1, f"angle must be a 1-dim tensor. Got {angle}."
 
     if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor([direction], device=device, dtype=torch.float)
+        direction = torch.tensor([direction], device=device, dtype=dtype)
 
     direction = cast(torch.Tensor, direction)
     if direction.dim() == 0:
@@ -673,7 +673,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
-    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=torch.float)
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
     kernel[:, kernel_tuple[0] // 2, :] = torch.stack(

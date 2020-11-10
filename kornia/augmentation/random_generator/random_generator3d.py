@@ -9,8 +9,8 @@ from kornia.geometry import bbox_generator3d
 from ..utils import (
     _adapted_uniform,
     _tuple_range_reader,
-    _extract_device_dtype
 )
+from kornia.utils import _extract_device_dtype
 
 
 def random_rotation_generator3d(
