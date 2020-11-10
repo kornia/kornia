@@ -13,9 +13,12 @@ from ..utils import (
     _joint_range_check,
     _common_param_check,
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
     _extract_device_dtype,
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 )
 from kornia.utils import _extract_device_dtype
 

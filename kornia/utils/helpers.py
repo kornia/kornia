@@ -3,6 +3,7 @@ from typing import Tuple, Union, List, cast, Optional
 import torch
 
 
+<<<<<<< refs/remotes/kornia/master
 def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input tensors are in the same device.
 
@@ -10,6 +11,12 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
 
     Returns:
         [torch.device, torch.dtype]
+=======
+def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
+    """This function will check if all the input tensors are in the same device.
+
+    If so, it would return a tuple of (device, dtype)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
     """
     device, dtype = None, None
     for tensor in tensor_list:
@@ -24,9 +31,12 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
             elif device != _device or dtype != _dtype:
                 raise ValueError("Passed values are not in the same device and dtype."
                                  f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+<<<<<<< refs/remotes/kornia/master
     if device is None:
         # TODO: update this when having torch.get_default_device()
         device = torch.device('cpu')
     if dtype is None:
         dtype = torch.get_default_dtype()
+=======
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
     return (device, dtype)

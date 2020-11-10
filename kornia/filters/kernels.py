@@ -5,9 +5,13 @@ from math import sqrt
 
 from kornia.geometry.transform.affwarp import rotate, rotate3d
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 from kornia.utils import _extract_device_dtype
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+from kornia.utils import _extract_device_dtype
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -694,6 +698,10 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
                  [0.0000, 0.3333, 0.0000],
                  [0.5000, 0.0000, 0.0000]]])
     """
+<<<<<<< refs/remotes/kornia/master
+=======
+
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
     device, dtype = _extract_device_dtype([
         angle if isinstance(angle, torch.Tensor) else None,
         direction if isinstance(direction, torch.Tensor) else None,
@@ -724,6 +732,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
@@ -824,6 +833,9 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
     # rotate (counterclockwise) kernel by given angle
 =======
     kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+=======
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
     # Element-wise linspace
     kernel[:, kernel_tuple[0] // 2, :] = torch.stack(
