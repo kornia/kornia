@@ -12,8 +12,8 @@ from ..utils import (
     _adapted_beta,
     _joint_range_check,
     _common_param_check,
-    _extract_device_dtype,
 )
+from kornia.utils import _extract_device_dtype
 
 
 def random_prob_generator(
