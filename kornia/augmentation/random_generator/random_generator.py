@@ -22,10 +22,16 @@ from ..utils import (
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 =======
 <<<<<<< master
+<<<<<<< master
 =======
     _extract_device_dtype,
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 )
 from kornia.utils import _extract_device_dtype
 

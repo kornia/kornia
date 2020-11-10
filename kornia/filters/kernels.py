@@ -15,10 +15,17 @@ from kornia.utils import _extract_device_dtype
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 =======
 <<<<<<< master
+<<<<<<< master
 from kornia.utils import _extract_device_dtype
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+from kornia.utils import _extract_device_dtype
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
@@ -848,7 +855,14 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 >>>>>>> [Feat] Enabled doctest for CI (#641)
 =======
     """
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+=======
+<<<<<<< master
+=======
+
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
     device, dtype = _extract_device_dtype([
         angle if isinstance(angle, torch.Tensor) else None,
         direction if isinstance(direction, torch.Tensor) else None,
@@ -984,7 +998,11 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
@@ -1087,6 +1105,9 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
 =======
 =======
     kernel = torch.zeros((direction.size(0), *kernel_tuple), dtype=torch.float)
+=======
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
+>>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
 
     # Element-wise linspace
     kernel[:, kernel_tuple[0] // 2, :] = torch.stack(

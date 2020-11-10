@@ -10,7 +10,6 @@ from ..utils import (
     _adapted_uniform,
     _joint_range_check,
     _tuple_range_reader,
-    _extract_device_dtype
 )
 from kornia.utils import _extract_device_dtype
 
