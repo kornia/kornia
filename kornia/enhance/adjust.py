@@ -406,20 +406,30 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
 
     Returns:
         torch.Tensor: Sharpened image or images.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> sharpness(torch.randn(1, 1, 5, 5), 0.5)
+        tensor([[[[-1.1258, -1.1524, -0.2506, -0.4339,  0.8487],
+                  [ 0.6920, -0.1580, -1.0576,  0.3612, -0.1577],
+                  [ 1.4437,  0.6330,  0.5832,  0.9372, -0.1435],
+                  [-0.1116, -0.3068,  1.1295,  1.5025,  0.0537],
+                  [ 0.6181, -0.4128, -0.8411, -2.3160, -0.1023]]]])
     """
     input = _to_bchw(input)
-    if isinstance(factor, torch.Tensor):
-        factor = factor.squeeze()
-        if len(factor.size()) != 0:
-            assert input.size(0) == factor.size(0), \
-                f"Input batch size shall match with factor size if 1d array. Got {input.size(0)} and {factor.size(0)}"
-    else:
-        factor = float(factor)
+    if not isinstance(factor, torch.Tensor):
+        factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
+
+    factor = factor.squeeze()
+    if len(factor.size()) != 0:
+        assert input.size(0) == factor.size(0), \
+            f"Input batch size shall match with factor size if 1d array. Got {input.size(0)} and {factor.size(0)}"
+
     kernel = torch.tensor([
         [1, 1, 1],
         [1, 5, 1],
         [1, 1, 1]
-    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(3, 1, 1, 1)
+    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1)
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
