@@ -742,3 +742,57 @@ class TestEqualize3D:
         batch = torch.stack([image3d] * bs)
 
         return batch
+
+
+class TestSharpness(object):
+
+    f = kornia.enhance.sharpness
+
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_shape(self, channels, device, dtype):
+        bs, height, width = 1, 4, 5
+
+        inputs = torch.ones(channels, height, width, device=device, dtype=dtype)
+
+        assert TestSharpness.f(inputs, 0.8).shape == torch.Size([bs, channels, height, width])
+
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_shape_batch(self, channels, device, dtype):
+        bs, height, width = 2, 4, 5
+
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+
+        assert TestSharpness.f(inputs, 0.8).shape == torch.Size([bs, channels, height, width])
+
+    def test_equalize(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(1, 3, 3, device=device, dtype=dtype)
+
+        expected = torch.tensor([
+            [[[0.4963, 0.7682, 0.0885],
+             [0.1320, 0.8615, 0.6341],
+             [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
+
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
+
+    def test_equalize_batch(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(2, 1, 3, 3, device=device, dtype=dtype)
+
+        expected = torch.tensor([
+            [[[0.4963, 0.7682, 0.0885],
+             [0.1320, 0.8615, 0.6341],
+             [0.4901, 0.8964, 0.4556]]],
+            [[[0.6323, 0.3489, 0.4017],
+             [0.0223, 0.8338, 0.2939],
+             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 2, 3, 4, 5
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = utils.tensor_to_gradcheck_var(inputs)
+        assert gradcheck(TestSharpness.f, (inputs, 0.8), raise_exception=True)
