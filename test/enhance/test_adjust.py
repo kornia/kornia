@@ -767,7 +767,7 @@ class TestSharpness(object):
     def test_equalize(self, device, dtype):
         torch.manual_seed(0)
 
-        inputs = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        inputs = torch.rand(1, 3, 3).to(device=device, dtype=dtype)
 
         expected = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
@@ -779,7 +779,7 @@ class TestSharpness(object):
     def test_equalize_batch(self, device, dtype):
         torch.manual_seed(0)
 
-        inputs = torch.rand(2, 1, 3, 3, device=device, dtype=dtype)
+        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
 
         expected = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
