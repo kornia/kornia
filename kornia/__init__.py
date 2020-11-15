@@ -102,6 +102,7 @@ from kornia.losses import (
 from kornia.utils import (
     one_hot,
     create_meshgrid,
+    create_meshgrid3d,
     tensor_to_image,
     image_to_tensor,
     save_pointcloud_ply,
