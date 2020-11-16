@@ -396,7 +396,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
 
 
 def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Implements Sharpness function from PIL using torch ops.
+    r"""Apply sharpness to the input tensor.
+
+    Implemented Sharpness function from PIL using torch ops. This implementation refers to:
+    https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L326
 
     Args:
         input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to sharpen.
@@ -429,34 +432,49 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         [1, 1, 1],
         [1, 5, 1],
         [1, 1, 1]
-    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1)
+    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
     degenerate = torch.nn.functional.conv2d(input, kernel, bias=None, stride=1, groups=input.size(1))
     degenerate = torch.clamp(degenerate, 0., 1.)
 
+    # For the borders of the resulting image, fill in the values of the original image.
     mask = torch.ones_like(degenerate)
     padded_mask = torch.nn.functional.pad(mask, [1, 1, 1, 1])
     padded_degenerate = torch.nn.functional.pad(degenerate, [1, 1, 1, 1])
     result = torch.where(padded_mask == 1, padded_degenerate, input)
 
-    def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
-        if isinstance(factor, torch.Tensor):
-            factor = factor.squeeze()
-            assert len(factor.size()) == 0, f"Factor shall be a float or single element tensor. Got {factor}"
-        if factor == 0.:
-            return input1
-        if factor == 1.:
-            return input2
-        diff = (input2 - input1) * factor
-        res = input1 + diff
-        if factor > 0. and factor < 1.:
-            return res
-        return torch.clamp(res, 0, 1)
-    if isinstance(factor, (float)) or len(factor.size()) == 0:
-        return _blend_one(input, result, factor)
-    return torch.stack([_blend_one(input[i], result[i], factor[i]) for i in range(len(factor))])
+    if len(factor.size()) == 0:
+        return _blend_one(result, input, factor)
+    return torch.stack([_blend_one(result[i], input[i], factor[i]) for i in range(len(factor))])
+
+
+def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    r"""Blend two images into one.
+
+    Args:
+        input1 (torch.Tensor): image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
+        input2 (torch.Tensor): image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
+        factor (torch.Tensor): factor 0-dim tensor.
+
+    Returns:
+        torch.Tensor: image tensor with the batch in the zero position.
+    """
+    assert isinstance(input1, torch.Tensor), f"`input1` must be a tensor. Got {input1}."
+    assert isinstance(input2, torch.Tensor), f"`input1` must be a tensor. Got {input2}."
+
+    if isinstance(factor, torch.Tensor):
+        assert len(factor.size()) == 0, f"Factor shall be a float or single element tensor. Got {factor}."
+    if factor == 0.:
+        return input1
+    if factor == 1.:
+        return input2
+    diff = (input2 - input1) * factor
+    res = input1 + diff
+    if factor > 0. and factor < 1.:
+        return res
+    return torch.clamp(res, 0, 1)
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
