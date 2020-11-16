@@ -414,9 +414,9 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         >>> _ = torch.manual_seed(0)
         >>> sharpness(torch.randn(1, 1, 5, 5), 0.5)
         tensor([[[[-1.1258, -1.1524, -0.2506, -0.4339,  0.8487],
-                  [ 0.6920, -0.1580, -1.0576,  0.3612, -0.1577],
-                  [ 1.4437,  0.6330,  0.5832,  0.9372, -0.1435],
-                  [-0.1116, -0.3068,  1.1295,  1.5025,  0.0537],
+                  [ 0.6920, -0.1580, -1.0576,  0.1765, -0.1577],
+                  [ 1.4437,  0.1998,  0.1799,  0.6588, -0.1435],
+                  [-0.1116, -0.3068,  0.8381,  1.3477,  0.0537],
                   [ 0.6181, -0.4128, -0.8411, -2.3160, -0.1023]]]])
     """
     input = _to_bchw(input)
@@ -533,11 +533,13 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
+
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
     https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
         input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
+
     Returns:
         torch.Tensor: Sharpened image or images.
     """
