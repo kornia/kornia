@@ -52,8 +52,9 @@ def rgb_to_lab(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     xyz_im: torch.Tensor = rgb_to_xyz(image_s)
 
     # normalize for D65 white point
-    xyz_ref_white: torch.Tensor = torch.Tensor((0.950456, 1., 1.088754))[..., None, None]
-    xyz_normalized = torch.divide(xyz_im, xyz_ref_white)
+    xyz_ref_white: torch.Tensor = torch.tensor([0.95047, 1., 1.08883])[..., :, None, None]
+    xyz_ref_white = xyz_ref_white.to(xyz_im.device)
+    xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
     xyz_int = torch.where(
         xyz_normalized > 0.008856,
@@ -109,14 +110,16 @@ def lab_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     fx = (a / 500.) + fy
     fz = fy - (b / 200.)
 
-    # fz<0 =0?
-    fxyz = torch.stack((fx, fy, fz), dim=-3)
+    fz = torch.where(fz < 0, torch.zeros_like(fz), fz)
+
+    fxyz = torch.stack([fx, fy, fz], dim=-3)
 
     # Convert from Lab to XYZ
     xyz: torch.Tensor = torch.where(fxyz > .2068966, torch.pow(fxyz, 3.0), (fxyz - 4. / 29.) / 7.787)
 
     # For D65 white point
-    xyz_ref_white: torch.Tensor = torch.Tensor((0.95047, 1., 1.08883))[..., None, None]
+    xyz_ref_white: torch.Tensor = torch.tensor([0.95047, 1., 1.08883])[..., :, None, None]
+    xyz_ref_white = xyz_ref_white.to(xyz.device)
     xyz_im = xyz * xyz_ref_white
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
@@ -131,6 +134,10 @@ def lab_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     b: torch.Tensor = torch.where(bs > 0.0031308, 1.055 * torch.pow(bs, 1 / 2.4) - 0.055, 12.92 * bs)
 
     rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
+
+    # Clip to 0,1 https://www.w3.org/Graphics/Color/srgb
+    # results in forth_and_back fail -> should omit?
+#     rgb_im = torch.clamp(rgb_im, min=0, max=1)
 
     return rgb_im
 

@@ -8,11 +8,11 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestRgbToLuv(BaseTester):
+class TestRgbToLab(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_luv(img), torch.Tensor)
+        assert isinstance(kornia.color.rgb_to_lab(img), torch.Tensor)
 
     @pytest.mark.parametrize(
         "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
@@ -48,7 +48,7 @@ class TestRgbToLuv(BaseTester):
              [0.58402964, 0.89597990, 0.98276161, 0.25019163, 0.69285921]]
         ], device=device, dtype=dtype)
 
-        # Reference output generated using skimage: rgb2luv(data)
+        # Reference output generated using skimage: rgb2lab(data)
         expected = torch.tensor([[[58.02612517, 72.48876064, 79.75208576, 86.38913217,
                                    55.25164186],
                                   [51.66668553, 43.81214392, 48.93865503, 39.03804484,
@@ -76,14 +76,14 @@ class TestRgbToLuv(BaseTester):
                                   [-25.45166461, -22.94347485, -31.32259433, 47.2621717,
                                      -60.05694598]]], device=device, dtype=dtype)
 
-        assert_allclose(kornia.color.rgb_to_luv(data), expected)
+        assert_allclose(kornia.color.rgb_to_lab(data), expected)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        luv = kornia.color.rgb_to_luv
-        rgb = kornia.color.luv_to_rgb
+        lab = kornia.color.rgb_to_lab
+        rgb = kornia.color.lab_to_rgb
 
-        data_out = luv(rgb(data))
+        data_out = lab(rgb(data))
         assert_allclose(data_out, data, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.grad
