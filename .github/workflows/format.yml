@@ -15,7 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v1
+      uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -37,7 +37,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v1
+      uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -59,7 +59,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v1
+      uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
         python-version: 3.6
