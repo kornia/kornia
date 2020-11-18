@@ -52,11 +52,18 @@ jobs:
 >>>>>>> update setup-miniconda to v2 (#789)
 =======
 <<<<<<< master
+<<<<<<< master
       uses: conda-incubator/setup-miniconda@v2
 =======
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+      uses: conda-incubator/setup-miniconda@v2
+>>>>>>> update setup-miniconda to v2 (#789)
+>>>>>>> update setup-miniconda to v2 (#789)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -83,17 +90,27 @@ jobs:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+<<<<<<< master
+>>>>>>> update setup-miniconda to v2 (#789)
       uses: conda-incubator/setup-miniconda@v2
 =======
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+      uses: conda-incubator/setup-miniconda@v2
+>>>>>>> update setup-miniconda to v2 (#789)
+>>>>>>> update setup-miniconda to v2 (#789)
       with:
         auto-update-conda: true
         python-version: 3.6
@@ -134,17 +151,27 @@ jobs:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] enable doctest in the CI (#764)
+=======
+<<<<<<< master
+>>>>>>> update setup-miniconda to v2 (#789)
       uses: conda-incubator/setup-miniconda@v2
 =======
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] enable doctest in the CI (#764)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
       uses: conda-incubator/setup-miniconda@v2
 >>>>>>> update setup-miniconda to v2 (#789)
 =======
 >>>>>>> [Feat] enable doctest in the CI (#764)
+=======
+=======
+      uses: conda-incubator/setup-miniconda@v2
+>>>>>>> update setup-miniconda to v2 (#789)
+>>>>>>> update setup-miniconda to v2 (#789)
       with:
         auto-update-conda: true
         python-version: 3.6

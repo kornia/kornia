@@ -87,9 +87,16 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
+<<<<<<< master
       uses: conda-incubator/setup-miniconda@v1
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+      uses: conda-incubator/setup-miniconda@v2
+>>>>>>> update setup-miniconda to v2 (#789)
+>>>>>>> update setup-miniconda to v2 (#789)
       with:
         auto-update-conda: true
         python-version: ${{ matrix.python-version }}
