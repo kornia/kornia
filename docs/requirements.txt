@@ -11,7 +11,11 @@ sphinxcontrib-bibtex==0.4.2
 nbsphinx==0.4.2
 nbconvert==5.5.0
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 notebook==6.1.5
 =======
 notebook==6.0.1
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+notebook==6.1.5
+>>>>>>> Bump notebook from 6.0.1 to 6.1.5 in /docs (#788)
