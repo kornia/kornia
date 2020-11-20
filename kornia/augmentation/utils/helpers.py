@@ -130,6 +130,14 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
 
 def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                             shape: Tuple) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
+    Args:
+        input: torch.Tensor
+        shape: List/tuple of int
+
+    Returns:
+        torch.Tensor
+    """
     is_tuple = isinstance(output, tuple)
     if is_tuple:
         out_tensor, trans_matrix = output
@@ -137,13 +145,16 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
         out_tensor = output
         trans_matrix = None
 
-    for _ in range(len(out_tensor.shape) - len(shape)):
-        assert out_tensor.shape[0] == 1, f'Broadcasted dim has been changed to non-broadcasted dim.'
-        out_tensor = out_tensor.squeeze(0)
-
     if trans_matrix is not None:
-        # TODO: convert shape of transformation matrix as well
-        ...
+        if len(out_tensor.shape) > len(shape):  # if output is broadcasted
+            assert trans_matrix.shape[0] == 1, f'Dimension 0 of transformation matrix is ' \
+                                               f'expected to be 1, got {trans_matrix.shape[0]}'
+        trans_matrix = trans_matrix.squeeze(0)
+
+    for dim in range(len(out_tensor.shape) - len(shape)):
+        assert out_tensor.shape[0] == 1, f'Dimension {dim} of input is ' \
+                                         f'expected to be 1, got {out_tensor.shape[0]}'
+        out_tensor = out_tensor.squeeze(0)
 
     return (out_tensor, trans_matrix) if is_tuple else out_tensor
 
