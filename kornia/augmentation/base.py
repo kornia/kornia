@@ -52,6 +52,12 @@ class _BasicAugmentationBase(nn.Module):
     ) -> torch.Tensor:
         return input
 
+    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
+                                                            Tuple[torch.Tensor, torch.Tensor]]):
+        """Make sure if a transformation matrix is returned,
+        it has to be in the same batching mode as output"""
+        raise NotImplementedError
+
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
@@ -111,6 +117,7 @@ class _BasicAugmentationBase(nn.Module):
         self._params = params
 
         output = self.apply_func(input, self._params)
+        self.__ensure_same_batching_output__(output)
         return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
@@ -212,6 +219,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self._params = params
         output = self.apply_func(in_tensor, in_transform, self._params, return_transform)
+        self.__ensure_same_batching_output__(output)
         return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
@@ -233,6 +241,19 @@ class AugmentationBase2D(_AugmentationBase):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False
     """
+
+    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
+                                                            Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(output, tuple):
+            out, mat = output
+            if len(out.shape) == 4:
+                assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
+                                            'but transformation matrix is not'
+            elif len(out.shape) == 3 or len(out.shape) == 2:
+                assert len(mat.shape) == 2, 'Output tensor is in non-batch mode ' \
+                                            'but transformation matrix is not'
+            else:
+                raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(out.shape)}')
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
@@ -260,6 +281,19 @@ class AugmentationBase3D(_AugmentationBase):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
     """
+
+    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
+                                                            Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(output, tuple):
+            out, mat = output
+            if len(out.shape) == 5:
+                assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
+                                            'but transformation matrix is not'
+            elif len(out.shape) == 3 or len(out.shape) == 4:
+                assert len(mat.shape) == 2, 'Output tensor is in non-batch mode ' \
+                                            'but transformation matrix is not'
+            else:
+                raise ValueError(f'Unrecognized output shape. Expected 3, 4 or 5, got {len(out.shape)}')
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
@@ -289,6 +323,19 @@ class MixAugmentationBase(_BasicAugmentationBase):
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+
+    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
+                                                            Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(output, tuple):
+            out, mat = output
+            if len(out.shape) == 4:
+                assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
+                                            'but transformation matrix is not'
+            elif len(out.shape) == 3 or len(out.shape) == 2:
+                assert len(mat.shape) == 2, 'Output tensor is in non-batch mode ' \
+                                            'but transformation matrix is not'
+            else:
+                raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(out.shape)}')
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
