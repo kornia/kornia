@@ -64,7 +64,7 @@ class TestRgbToLuv(BaseTester):
                 [-38.39783859, -31.71204376, -46.63606644, 50.16629410, -84.74416351]]
         ], device=device, dtype=dtype)
 
-        assert_allclose(kornia.color.rgb_to_luv(data), expected)
+        assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=1e-4, atol=1e-4)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -154,7 +154,7 @@ class TestLuvToRgb(BaseTester):
              [0.06325728, 0.78878325, 0.74280596, 0.99514300, 0.47176042]]
         ]], device=device, dtype=dtype)
 
-        assert_allclose(kornia.color.luv_to_rgb(data), expected)
+        assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
