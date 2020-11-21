@@ -47,7 +47,7 @@ class _BasicAugmentationBase(nn.Module):
     def __repr__(self) -> str:
         return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
 
-    def __infer_input__(
+    def __unpack_input__(
         self, input: torch.Tensor
     ) -> torch.Tensor:
         return input
@@ -107,7 +107,7 @@ class _BasicAugmentationBase(nn.Module):
 
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
-        in_tensor = self.__infer_input__(input)
+        in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
@@ -154,7 +154,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def __infer_input__(  # type: ignore
+    def __unpack_input__(  # type: ignore
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if isinstance(input, tuple):
@@ -203,7 +203,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 return_transform: Optional[bool] = None,
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
-        in_tensor, in_transform = self.__infer_input__(input)
+        in_tensor, in_transform = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
@@ -370,7 +370,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
     def forward(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                 params: Optional[Dict[str, torch.Tensor]] = None,
                 ) -> Tuple[torch.Tensor, torch.Tensor]:
-        in_tensor = self.__infer_input__(input)
+        in_tensor = self.__unpack_input__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         if params is None:
