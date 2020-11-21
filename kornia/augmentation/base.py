@@ -373,4 +373,4 @@ class MixAugmentationBase(_BasicAugmentationBase):
         self._params = params
 
         output = self.apply_func(in_tensor, label, self._params)
-        return _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return _transform_output_shape(output, ori_shape) if self.keepdim else output  # type: ignore

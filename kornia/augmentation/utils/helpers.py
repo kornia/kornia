@@ -156,7 +156,7 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
                                          f'expected to be 1, got {out_tensor.shape[0]}'
         out_tensor = out_tensor.squeeze(0)
 
-    return (out_tensor, trans_matrix) if is_tuple else out_tensor
+    return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
 
 
 def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
