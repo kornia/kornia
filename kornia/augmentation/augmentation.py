@@ -42,7 +42,7 @@ class RandomHorizontalFlip(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -91,7 +91,7 @@ class RandomVerticalFlip(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -144,7 +144,7 @@ class ColorJitter(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -213,7 +213,7 @@ class RandomGrayscale(AugmentationBase2D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -276,7 +276,7 @@ class RandomErasing(AugmentationBase2D):
         ratio (Tuple[float, float]): range of aspect ratio of erased area.
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -338,7 +338,7 @@ class RandomPerspective(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -432,7 +432,7 @@ class RandomAffine(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -528,7 +528,7 @@ class CenterCrop(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -599,7 +599,7 @@ class RandomRotation(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -690,7 +690,7 @@ class RandomCrop(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -797,7 +797,7 @@ class RandomResizedCrop(AugmentationBase2D):
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -882,7 +882,7 @@ class RandomMotionBlur(AugmentationBase2D):
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -958,7 +958,7 @@ class RandomSolarize(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1023,7 +1023,7 @@ class RandomPosterize(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1084,7 +1084,7 @@ class RandomSharpness(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
             input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1151,13 +1151,13 @@ class RandomEqualize(AugmentationBase2D):
     r"""Equalize given tensor image or a batch of tensor images randomly.
 
     Args:
-        p (float): Probability to equalize an image. Default value is 0.5
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        p (float): Probability to equalize an image. Default value is 0.5.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
-                                      wont be concatenated
+                                      wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`

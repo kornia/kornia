@@ -28,7 +28,7 @@ class _BasicAugmentationBase(nn.Module):
                          probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
     """
 
     def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False,
@@ -52,10 +52,9 @@ class _BasicAugmentationBase(nn.Module):
     ) -> torch.Tensor:
         return input
 
-    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
-                                                            Tuple[torch.Tensor, torch.Tensor]]):
-        """Make sure if a transformation matrix is returned,
-        it has to be in the same batching mode as output"""
+    def __check_batching__(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]):
+        """Check if a transformation matrix is returned,
+        it has to be in the same batching mode as output."""
         raise NotImplementedError
 
     def transform_tensor(self, input: torch.Tensor) -> torch.Tensor:
@@ -109,6 +108,7 @@ class _BasicAugmentationBase(nn.Module):
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         in_tensor = self.__infer_input__(input)
+        self.__check_batching__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
@@ -117,7 +117,6 @@ class _BasicAugmentationBase(nn.Module):
         self._params = params
 
         output = self.apply_func(input, self._params)
-        self.__ensure_same_batching_output__(output)
         return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
@@ -136,7 +135,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
     """
 
     def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
@@ -205,6 +204,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 return_transform: Optional[bool] = None,
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
         in_tensor, in_transform = self.__infer_input__(input)
+        self.__check_batching__(input)
         ori_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
@@ -219,7 +219,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self._params = params
         output = self.apply_func(in_tensor, in_transform, self._params, return_transform)
-        self.__ensure_same_batching_output__(output)
         return _transform_output_shape(output, ori_shape) if self.keepdim else output
 
 
@@ -239,13 +238,13 @@ class AugmentationBase2D(_AugmentationBase):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
     """
 
-    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
-                                                            Tuple[torch.Tensor, torch.Tensor]]):
-        if isinstance(output, tuple):
-            out, mat = output
+    def __check_batching__(self, input: Union[torch.Tensor,
+                                              Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(input, tuple):
+            out, mat = input
             if len(out.shape) == 4:
                 assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
                                             'but transformation matrix is not'
@@ -279,13 +278,13 @@ class AugmentationBase3D(_AugmentationBase):
         return_transform (bool): if ``True`` return the matrix describing the geometric transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
     """
 
-    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
-                                                            Tuple[torch.Tensor, torch.Tensor]]):
-        if isinstance(output, tuple):
-            out, mat = output
+    def __check_batching__(self, input: Union[torch.Tensor,
+                                              Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(input, tuple):
+            out, mat = input
             if len(out.shape) == 5:
                 assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
                                             'but transformation matrix is not'
@@ -318,16 +317,16 @@ class MixAugmentationBase(_BasicAugmentationBase):
                          probabilities batch-wisely.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
-                        to the batch form (False). Default: False
+                        to the batch form (False). Default: False.
     """
 
     def __init__(self, p: float, p_batch: float, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super(MixAugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def __ensure_same_batching_output__(self, output: Union[torch.Tensor,
-                                                            Tuple[torch.Tensor, torch.Tensor]]):
-        if isinstance(output, tuple):
-            out, mat = output
+    def __check_batching__(self, input: Union[torch.Tensor,
+                                              Tuple[torch.Tensor, torch.Tensor]]):
+        if isinstance(input, tuple):
+            out, mat = input
             if len(out.shape) == 4:
                 assert len(mat.shape) == 3, 'Output tensor is in batch mode ' \
                                             'but transformation matrix is not'
