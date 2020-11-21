@@ -1,13 +1,13 @@
--i https://pypi.python.org/simple
--f https://download.pytorch.org/whl/torch_stable.html
+# docs requirements
+torch>=1.6.0
+torchvision>=0.7.0
+opencv-python==4.2.0.34
+matplotlib==3.1.1
+# sphinx
 sphinx==2.1.2
 sphinx-gallery==0.4.0
 sphinx_rtd_theme==0.4.3
 sphinxcontrib-bibtex==0.4.2
 nbsphinx==0.4.2
 nbconvert==5.5.0
-notebook==6.0.1
-matplotlib==3.1.1
-opencv-python==4.2.0.34
-torch==1.5.0+cpu
-torchvision==0.6+cpu
+notebook==6.1.5

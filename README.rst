@@ -9,9 +9,12 @@
 .. image:: https://img.shields.io/badge/License-Apache%202.0-blue.svg
     :target: https://opensource.org/licenses/Apache-2.0
 
-.. image:: https://circleci.com/gh/kornia/kornia/tree/master.svg?style=svg
-    :target: https://circleci.com/gh/kornia/kornia/tree/master
+.. image:: https://github.com/kornia/kornia/workflows/tests-cpu/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cpu
 
+.. image:: https://github.com/kornia/kornia/workflows/tests-cuda/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda
+    
 .. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
     :target: https://codecov.io/github/kornia/kornia
 
