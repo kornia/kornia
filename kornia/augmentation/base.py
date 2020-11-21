@@ -38,7 +38,7 @@ class _BasicAugmentationBase(nn.Module):
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
-        self._params = None
+        self._params = None  # type: Union[None,Dict[str, torch.Tensor]]
         if p != 0. or p != 1.:
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0. or p_batch != 1.:
