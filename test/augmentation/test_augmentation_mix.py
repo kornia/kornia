@@ -28,7 +28,7 @@ class TestRandomMixUp:
             torch.zeros(1, 3, 4, device=device, dtype=dtype)
         ])
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.1320, 0.3074], device=device, dtype=dtype)
+        lam = torch.tensor([0.0562, 0.0726], device=device, dtype=dtype)
 
         expected = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype) * (1 - lam[0]),
@@ -89,7 +89,7 @@ class TestRandomMixUp:
             torch.zeros(1, 3, 4, device=device, dtype=dtype)
         ])
         label = torch.tensor([1, 0], device=device)
-        lam = torch.tensor([0.0885, 0.0885], device=device, dtype=dtype)
+        lam = torch.tensor([0.7078, 0.7078], device=device, dtype=dtype)
 
         expected = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype) * (1 - lam[0]),
@@ -166,8 +166,8 @@ class TestRandomCutMix:
         expected = torch.tensor([[[[1., 0., 0., 1.],
                                    [1., 0., 0., 1.],
                                    [1., 1., 1., 1.]]],
-                                 [[[1., 1., 0., 0.],
-                                   [1., 1., 0., 0.],
+                                 [[[0., 1., 1., 0.],
+                                   [0., 1., 1., 0.],
                                    [0., 0., 0., 0.]]]], device=device, dtype=dtype)
 
         out_image, out_label = f(input, label)

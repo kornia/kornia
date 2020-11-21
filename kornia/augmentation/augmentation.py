@@ -830,7 +830,7 @@ class RandomResizedCrop(AugmentationBase2D):
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)

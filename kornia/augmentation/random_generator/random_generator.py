@@ -11,7 +11,9 @@ from ..utils import (
     _adapted_uniform,
     _adapted_beta,
     _joint_range_check,
+    _common_param_check,
 )
+from kornia.utils import _extract_device_dtype
 
 
 def random_prob_generator(
@@ -26,8 +28,9 @@ def random_prob_generator(
     Returns:
         torch.Tensor: parameters to be passed for transformation.
     """
-    if not isinstance(p, float):
-        raise TypeError(f"The probability should be a float number. Got {type(p)}")
+    _common_param_check(batch_size, same_on_batch)
+    if not isinstance(p, (int, float)) or p > 1 or p < 0:
+        raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
     probs: torch.Tensor = _adapted_sampling((batch_size,), Bernoulli(p), same_on_batch).bool()
 
@@ -46,19 +49,29 @@ def random_color_jitter_generator(
 
     Args:
         batch_size (int): the number of images.
-        brightness (torch.Tensor, optional): Default value is 0.
-        contrast (torch.Tensor, optional): Default value is 0.
-        saturation (torch.Tensor, optional): Default value is 0.
-        hue (torch.Tensor, optional): Default value is 0.
+        brightness (torch.Tensor, optional): Brightness factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b <= 2. Default value is [0., 0.].
+        contrast (torch.Tensor, optional): Contrast factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b. Default value is [0., 0.].
+        saturation (torch.Tensor, optional): Saturation factor tensor of range (a, b).
+            The provided range must follow 0 <= a <= b. Default value is [0., 0.].
+        hue (torch.Tensor, optional): Saturation factor tensor of range (a, b).
+            The provided range must follow -0.5 <= a <= b < 0.5. Default value is [0., 0.].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    brightness = torch.tensor(0.) if brightness is None else cast(torch.Tensor, brightness)
-    contrast = torch.tensor(0.) if contrast is None else cast(torch.Tensor, contrast)
-    hue = torch.tensor(0.) if hue is None else cast(torch.Tensor, hue)
-    saturation = torch.tensor(0.) if saturation is None else cast(torch.Tensor, saturation)
+    _common_param_check(batch_size, same_on_batch)
+    device, dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
+    brightness = torch.tensor([0., 0.], device=device, dtype=dtype) \
+        if brightness is None else cast(torch.Tensor, brightness)
+    contrast = torch.tensor([0., 0.], device=device, dtype=dtype) \
+        if contrast is None else cast(torch.Tensor, contrast)
+    hue = torch.tensor([0., 0.], device=device, dtype=dtype) \
+        if hue is None else cast(torch.Tensor, hue)
+    saturation = torch.tensor([0., 0.], device=device, dtype=dtype) \
+        if saturation is None else cast(torch.Tensor, saturation)
 
     _joint_range_check(brightness, "brightness", (0, 2))
     _joint_range_check(contrast, "contrast", (0, float('inf')))
@@ -96,15 +109,18 @@ def random_perspective_generator(
     Returns:
         params (Dict[str, torch.Tensor])
     """
+    _common_param_check(batch_size, same_on_batch)
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
-        f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
+        f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}."
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
 
     start_points: torch.Tensor = torch.tensor([[
         [0., 0],
         [width - 1, 0],
         [width - 1, height - 1],
         [0, height - 1],
-    ]]).expand(batch_size, -1, -1)
+    ]], device=distortion_scale.device, dtype=distortion_scale.dtype).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
     fx = distortion_scale * width / 2
@@ -113,14 +129,15 @@ def random_perspective_generator(
     factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
 
     # TODO: This line somehow breaks the gradcheck
-    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch)
+    rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch).to(
+        device=distortion_scale.device, dtype=distortion_scale.dtype)
 
     pts_norm = torch.tensor([[
         [1, 1],
         [-1, 1],
         [-1, -1],
         [1, -1]
-    ]])
+    ]], device=distortion_scale.device, dtype=distortion_scale.dtype)
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(start_points=start_points,
@@ -143,28 +160,27 @@ def random_affine_generator(
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        degrees (float or tuple): Range of degrees to select from.
-            If degrees is a number instead of sequence like (min, max), the range of degrees
-            will be (-degrees, +degrees). Set to 0 to deactivate rotations.
-        translate (tuple, optional): tuple of maximum absolute fraction for horizontal
+        degrees (tensor): Range of degrees to select from like (min, max).
+        translate (tensor, optional): tuple of maximum absolute fraction for horizontal
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-        scale (tuple, optional): scaling factor interval, e.g (a, b), then scale is
+        scale (tensor, optional): scaling factor interval, e.g (a, b), then scale is
             randomly sampled from the range a <= scale <= b. Will keep original scale by default.
-        shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear parallel to the x axis in the range (-shear, +shear)
-            will be apllied. Else if shear is a tuple or list of 2 values a shear parallel to the x axis in the
-            range (shear[0], shear[1]) will be applied. Else if shear is a tuple or list of 4 values,
-            a x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3]) will be applied.
-            Will not apply shear by default
+        shear (tensor, optional): Range of degrees to select from.
+            Shear is a 2x2 tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
+            (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
+    assert isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0, \
+        f"`width` and `height` must be positive integers. Got {width}, {height}."
 
+    device, dtype = _extract_device_dtype([degrees, translate, scale, shear])
     angle = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
 
     # compute tensor ranges
@@ -175,7 +191,7 @@ def random_affine_generator(
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
-        _scale = torch.ones((batch_size, 2))
+        _scale = torch.ones((batch_size, 2), device=device, dtype=dtype)
 
     if translate is not None:
         _joint_range_check(cast(torch.Tensor, translate), "translate")
@@ -186,10 +202,10 @@ def random_affine_generator(
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch)
         ], dim=-1)
     else:
-        translations = torch.zeros(batch_size, 2)
+        translations = torch.zeros((batch_size, 2), device=device, dtype=dtype)
 
     center: torch.Tensor = torch.tensor(
-        [width, height], dtype=torch.float32).view(1, 2) / 2. - 0.5
+        [width, height], device=device, dtype=dtype).view(1, 2) / 2. - 0.5
     center = center.expand(batch_size, -1)
 
     if shear is not None:
@@ -223,6 +239,7 @@ def random_rotation_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
 
     degrees = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
@@ -287,6 +304,7 @@ def random_crop_generator(
                  [27, 24],
                  [ 0, 24]]])}
     """
+    _common_param_check(batch_size, same_on_batch)
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size).repeat(batch_size, 1)
     assert size.shape == torch.Size([batch_size, 2]), \
@@ -312,14 +330,16 @@ def random_crop_generator(
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size), torch.tensor([0] * batch_size), size[:, 1] - 1, size[:, 0] - 1)
+            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
+            torch.tensor([0] * batch_size, device=x_start.device, dtype=x_start.dtype),
+            size[:, 1] - 1, size[:, 0] - 1)
     else:
         crop_dst = torch.tensor([[
             [0, 0],
             [resize_to[1] - 1, 0],
             [resize_to[1] - 1, resize_to[0] - 1],
             [0, resize_to[0] - 1],
-        ]]).repeat(batch_size, 1, 1)
+        ]], device=x_start.device, dtype=x_start.dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -351,8 +371,14 @@ def random_crop_size_generator(
                 [27, 28],
                 [25, 28]], dtype=torch.int32)}
     """
+    _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
+    assert len(size) == 2 and type(size[0]) == int and size[1] > 0 and type(size[1]) == int and size[1] > 0, \
+        f"'height' and 'width' must be integers. Got {size}."
+
+    if batch_size == 0:
+        return dict(size=torch.zeros([0, 2]))
 
     # 10 trails for each element
     area = _adapted_uniform(
@@ -364,31 +390,31 @@ def random_crop_size_generator(
     w = torch.sqrt(area * aspect_ratio).int()
     h = torch.sqrt(area / aspect_ratio).int()
     # Element-wise w, h condition
-    cond = ((0 < h) * (h < size[1]) * (0 < w) * (w < size[0])).int()
+    cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
     cond_bool = torch.sum(cond, dim=1) > 0
 
-    w_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
-    h_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+    h_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
+    w_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
 
     if not cond_bool.all():
         # Fallback to center crop
         in_ratio = float(size[0]) / float(size[1])
         if (in_ratio < min(ratio)):
-            w_ct = torch.tensor(size[0])
-            h_ct = torch.round(w_ct / min(ratio))
+            h_ct = torch.tensor(size[0])
+            w_ct = torch.round(h_ct / min(ratio))
         elif (in_ratio > max(ratio)):
-            h_ct = torch.tensor(size[1])
-            w_ct = torch.round(h_ct * max(ratio))
+            w_ct = torch.tensor(size[1])
+            h_ct = torch.round(w_ct * max(ratio))
         else:  # whole image
-            w_ct = torch.tensor(size[0])
-            h_ct = torch.tensor(size[1])
-        w_ct = w_ct.int()
+            h_ct = torch.tensor(size[0])
+            w_ct = torch.tensor(size[1])
         h_ct = h_ct.int()
+        w_ct = w_ct.int()
 
-        w_out = w_out.where(cond_bool, w_ct)
         h_out = h_out.where(cond_bool, h_ct)
+        w_out = w_out.where(cond_bool, w_ct)
 
-    return dict(size=torch.stack([w_out, h_out], dim=1))
+    return dict(size=torch.stack([h_out, w_out], dim=1))
 
 
 def random_rectangles_params_generator(
@@ -414,17 +440,29 @@ def random_rectangles_params_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
+    device, dtype = _extract_device_dtype([ratio, scale])
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
+    assert isinstance(value, (int, float)) and value >= 0 and value <= 1, \
+        f"'value' must be a number between 0 - 1. Got {value}."
     _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
     _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
-    zeros = torch.zeros((batch_size,))
     images_area = height * width
     target_areas = _adapted_uniform(
         (batch_size,), scale[0], scale[1], same_on_batch) * images_area
     if ratio[0] < 1. and ratio[1] > 1.:
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0], 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1], same_on_batch)
-        rand_idxs = torch.round(torch.rand((batch_size,))).bool()
+        if same_on_batch:
+            rand_idxs = torch.round(_adapted_uniform(
+                (1,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).repeat(batch_size).bool()
+        else:
+            rand_idxs = torch.round(_adapted_uniform(
+                (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
         aspect_ratios = _adapted_uniform((batch_size,), ratio[0], ratio[1], same_on_batch)
@@ -432,24 +470,31 @@ def random_rectangles_params_generator(
     # based on target areas and aspect ratios, rectangle params are computed
     heights = torch.min(
         torch.max(torch.round((target_areas * aspect_ratios) ** (1 / 2)),
-                  torch.tensor(1.)),
-        torch.tensor(float(height))
-    ).int()
+                  torch.tensor(1., device=device, dtype=dtype)),
+        torch.tensor(height, device=device, dtype=dtype)
+    )
 
     widths = torch.min(
         torch.max(torch.round((target_areas / aspect_ratios) ** (1 / 2)),
-                  torch.tensor(1.)),
-        torch.tensor(float(width))
-    ).int()
+                  torch.tensor(1., device=device, dtype=dtype)),
+        torch.tensor(width, device=device, dtype=dtype)
+    )
 
-    xs = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(width) - widths + 1).float()).int()
-    ys = (_adapted_uniform((batch_size,), 0, 1, same_on_batch) * (torch.tensor(height) - heights + 1).float()).int()
+    xs_ratio = _adapted_uniform(
+        (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+    ys_ratio = _adapted_uniform(
+        (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 
-    return dict(widths=widths,
-                heights=heights,
-                xs=xs,
-                ys=ys,
-                values=torch.tensor([value] * batch_size))
+    xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
+    ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
+
+    return dict(widths=widths.int(),
+                heights=heights.int(),
+                xs=xs.int(),
+                ys=ys.int(),
+                values=torch.tensor([value] * batch_size, device=device, dtype=dtype))
 
 
 def center_crop_generator(
@@ -469,9 +514,14 @@ def center_crop_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size)
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
+    assert height >= size[0] and width >= size[1], \
+        f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}."
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -496,7 +546,7 @@ def center_crop_generator(
         [end_x, start_y],
         [end_x, end_y],
         [start_x, end_y],
-    ]])
+    ]]).expand(batch_size, -1, -1).long()
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -505,7 +555,7 @@ def center_crop_generator(
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]]).expand(points_src.shape[0], -1, -1)
+    ]]).expand(batch_size, -1, -1).long()
     return dict(src=points_src,
                 dst=points_dst)
 
@@ -532,13 +582,17 @@ def random_motion_blur_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
     _joint_range_check(angle, 'angle')
-    _joint_range_check(direction, 'direction')
+    _joint_range_check(direction, 'direction', (-1, 1))
+
+    device, dtype = _extract_device_dtype([angle, direction])
 
     if isinstance(kernel_size, int):
-        ksize_factor = torch.tensor([kernel_size] * batch_size)
+        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
+        assert len(kernel_size) == 2, f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}."
         ksize_factor = _adapted_uniform(
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
     else:
@@ -550,7 +604,7 @@ def random_motion_blur_generator(
     direction_factor = _adapted_uniform(
         (batch_size,), direction[0], direction[1], same_on_batch)
 
-    return dict(ksize_factor=ksize_factor,
+    return dict(ksize_factor=ksize_factor.int(),
                 angle_factor=angle_factor,
                 direction_factor=direction_factor)
 
@@ -569,15 +623,16 @@ def random_solarize_generator(
     Args:
         batch_size (int): the number of images.
         thresholds (torch.Tensor): Pixels less than threshold will selected. Otherwise, subtract 1.0 from the pixel.
-            Default value will be sampled from [0.4, 0.6].
+            Takes in a range tensor of (0, 1). Default value will be sampled from [0.4, 0.6].
         additions (torch.Tensor): The value is between -0.5 and 0.5. Default value will be sampled from [-0.1, 0.1]
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
-    _joint_range_check(thresholds, 'thresholds')
-    _joint_range_check(additions, 'additions')
+    _common_param_check(batch_size, same_on_batch)
+    _joint_range_check(thresholds, 'thresholds', (0, 1))
+    _joint_range_check(additions, 'additions', (-0.5, 0.5))
 
     thresholds_factor = _adapted_uniform(
         (batch_size,), thresholds[0], thresholds[1], same_on_batch)
@@ -593,19 +648,21 @@ def random_solarize_generator(
 
 def random_posterize_generator(
     batch_size: int,
-    bits: torch.Tensor = torch.tensor(3),
+    bits: torch.Tensor = torch.tensor([3, 5]),
     same_on_batch: bool = False
 ) -> Dict[str, torch.Tensor]:
     r"""Generate random posterize parameters for a batch of images.
 
     Args:
         batch_size (int): the number of images.
-        bits (int or tuple): Default value is 3. Integer that ranged from 0 ~ 8.
+        bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
+    _joint_range_check(bits, 'bits', (0, 8))
     bits_factor = _adapted_uniform((batch_size,), bits[0], bits[1], same_on_batch).int()
 
     return dict(
@@ -628,6 +685,7 @@ def random_sharpness_generator(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
     """
+    _common_param_check(batch_size, same_on_batch)
     _joint_range_check(sharpness, 'sharpness', bounds=(0, float('inf')))
 
     sharpness_factor = _adapted_uniform((batch_size,), sharpness[0], sharpness[1], same_on_batch)
@@ -660,15 +718,16 @@ def random_mixup_generator(
         >>> random_mixup_generator(5, 0.7)
         {'mixup_pairs': tensor([4, 0, 3, 1, 2]), 'mixup_lambdas': tensor([0.6323, 0.0000, 0.4017, 0.0223, 0.1689])}
     """
+    _common_param_check(batch_size, same_on_batch)
     if lambda_val is None:
-        lambda_val = torch.tensor([0., 1.])
+        lambda_val = torch.tensor([0., 1.], dtype=torch.float64)
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
     batch_probs: torch.Tensor = random_prob_generator(batch_size, p, same_on_batch=same_on_batch)
     mixup_pairs: torch.Tensor = torch.randperm(batch_size)
     mixup_lambdas: torch.Tensor = _adapted_uniform(
         (batch_size,), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch)
-    mixup_lambdas = mixup_lambdas * batch_probs.float()
+    mixup_lambdas = mixup_lambdas * batch_probs.to(device=lambda_val.device, dtype=lambda_val.dtype)
 
     return dict(
         mixup_pairs=mixup_pairs,
@@ -694,9 +753,9 @@ def random_cutmix_generator(
         height (int): image height.
         p (float): probability of applying cutmix.
         num_mix (int): number of images to mix with. Default is 1.
-        beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
+        beta (torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
             If None, it will be set to 1.
-        cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
+        cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
 
@@ -739,15 +798,20 @@ def random_cutmix_generator(
                   [ 97,  69]]]])}
 
     """
+    device, dtype = _extract_device_dtype([beta, cut_size])
     if beta is None:
-        beta = torch.tensor(1.)
+        beta = torch.tensor(1., device=device, dtype=dtype)
     if cut_size is None:
-        cut_size = torch.tensor([0., 1.])
+        cut_size = torch.tensor([0., 1.], device=device, dtype=dtype)
     assert num_mix >= 1 and isinstance(num_mix, (int,)), \
         f"`num_mix` must be an integer greater than 1. Got {num_mix}."
+    assert type(height) == int and height > 0 and type(width) == int and width > 0, \
+        f"'height' and 'width' must be integers. Got {height}, {width}."
     _joint_range_check(cut_size, 'cut_size', bounds=(0, 1))
+    _common_param_check(batch_size, same_on_batch)
 
-    batch_probs: torch.Tensor = random_prob_generator(batch_size * num_mix, p, same_on_batch)
+    batch_probs: torch.Tensor = random_prob_generator(
+        batch_size * num_mix, p, same_on_batch).to(device=device, dtype=dtype)
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
@@ -766,9 +830,11 @@ def random_cutmix_generator(
 
     # Reserve at least 1 pixel for cropping.
     x_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_width, dtype=torch.float32), width - cut_width - 1, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_width, device=device, dtype=torch.long),
+        (width - cut_width - 1).to(device=device, dtype=torch.long), same_on_batch)
     y_start = _adapted_uniform(
-        _gen_shape, torch.zeros_like(cut_height, dtype=torch.float32), height - cut_height - 1, same_on_batch).long()
+        _gen_shape, torch.zeros_like(cut_height, device=device, dtype=torch.long),
+        (height - cut_height - 1).to(device=device, dtype=torch.long), same_on_batch)
 
     crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 

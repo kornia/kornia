@@ -1,4 +1,5 @@
 from kornia.augmentation.utils.param_validation import (
+    _common_param_check,
     _range_bound,
     _joint_range_check,
     _singular_range_check,
@@ -35,6 +36,7 @@ __all__ = [
     "_adapted_uniform",
     "_adapted_beta",
     "_shape_validation",
+    "_common_param_check",
     "_range_bound",
     "_joint_range_check",
     "_singular_range_check",
