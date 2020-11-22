@@ -4,9 +4,9 @@ import torch
 
 
 def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
-    """This function will check if all the input tensors are in the same device.
+    """Check if all the input tensors are in the same device.
 
-    If so, it would return a tuple of (device, dtype)
+    If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
     """
     device, dtype = None, None
     for tensor in tensor_list:
@@ -21,4 +21,9 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
             elif device != _device or dtype != _dtype:
                 raise ValueError("Passed values are not in the same device and dtype."
                                  f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+    if device is None:
+        # TODO: update this when having torch.get_default_device()
+        device = torch.device('cpu')
+    if dtype is None:
+        dtype = torch.get_default_dtype()
     return (device, dtype)

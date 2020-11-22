@@ -226,64 +226,60 @@ def _adapted_uniform(
     shape: Union[Tuple, torch.Size],
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
-    same_on_batch=False,
-    device: torch.device = None,
-    dtype: torch.dtype = None
+    same_on_batch: bool = False
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
+
+    By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen
+    in the same device/dtype as low/high tensor.
     """
-    if device is None or dtype is None:
-        _device, _dtype = _extract_device_dtype([
-            low if isinstance(low, torch.Tensor) else None,
-            high if isinstance(high, torch.Tensor) else None,
-        ])
-        device = _device if device is None else device
-        dtype = _dtype if dtype is None else dtype
+    device, dtype = _extract_device_dtype([
+        low if isinstance(low, torch.Tensor) else None,
+        high if isinstance(high, torch.Tensor) else None,
+    ])
     if not isinstance(low, torch.Tensor):
-        low = torch.tensor(low, device=device, dtype=torch.float64)
+        low = torch.tensor(float(low), device=device, dtype=dtype)
     else:
-        low = low.to(device=device, dtype=torch.float64)
+        low = low.to(device=device, dtype=dtype)
     if not isinstance(high, torch.Tensor):
-        high = torch.tensor(high, device=device, dtype=torch.float64)
+        high = torch.tensor(float(high), device=device, dtype=dtype)
     else:
-        high = high.to(device=device, dtype=torch.float64)
+        high = high.to(device=device, dtype=dtype)
     dist = Uniform(low, high)
-    return _adapted_rsampling(shape, dist, same_on_batch).to(dtype=dtype)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _adapted_beta(
     shape: Union[Tuple, torch.Size],
     a: Union[float, int, torch.Tensor],
     b: Union[float, int, torch.Tensor],
-    same_on_batch=False,
-    device: torch.device = None,
-    dtype: torch.dtype = None
+    same_on_batch: bool = False
 ) -> torch.Tensor:
     r""" The beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
+
+    By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
+    in the same device/dtype as a/b tensor.
     """
-    if device is None or dtype is None:
-        _device, _dtype = _extract_device_dtype([
-            a if isinstance(a, torch.Tensor) else None,
-            b if isinstance(b, torch.Tensor) else None,
-        ])
-        device = _device if device is None else device
-        dtype = _dtype if dtype is None else dtype
+    device, dtype = _extract_device_dtype([
+        a if isinstance(a, torch.Tensor) else None,
+        b if isinstance(b, torch.Tensor) else None,
+    ])
     if not isinstance(a, torch.Tensor):
-        a = torch.tensor(a, device=device, dtype=torch.float64)
+        a = torch.tensor(float(a), device=device, dtype=dtype)
     else:
-        a = a.to(device=device, dtype=torch.float64)
+        a = a.to(device=device, dtype=dtype)
     if not isinstance(b, torch.Tensor):
-        b = torch.tensor(b, device=device, dtype=torch.float64)
+        b = torch.tensor(float(b), device=device, dtype=dtype)
     else:
-        b = b.to(device=device, dtype=torch.float64)
+        b = b.to(device=device, dtype=dtype)
     dist = Beta(a, b)
-    return _adapted_rsampling(shape, dist, same_on_batch).to(dtype=dtype)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
