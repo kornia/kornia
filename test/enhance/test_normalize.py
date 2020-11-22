@@ -14,7 +14,7 @@ class TestNormalize:
         mean = [0.5]
         std = [0.1]
         repr = "Normalize(mean=[0.5], std=[0.1])"
-        assert str(kornia.enhance.Normalize(mean, std)) == repr
+        assert str(kornia.nn.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device):
 
@@ -26,7 +26,7 @@ class TestNormalize:
         # expected output
         expected = torch.tensor([0.25]).repeat(1, 2, 2).view_as(data).to(device)
 
-        f = kornia.enhance.Normalize(mean, std)
+        f = kornia.nn.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_broadcast_normalize(self, device):
@@ -41,7 +41,7 @@ class TestNormalize:
         # expected output
         expected = torch.ones_like(data) + 1
 
-        f = kornia.enhance.Normalize(mean, std)
+        f = kornia.nn.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_float_input(self, device):
@@ -55,7 +55,7 @@ class TestNormalize:
         # expected output
         expected = torch.ones_like(data) + 1
 
-        f = kornia.enhance.Normalize(mean, std)
+        f = kornia.nn.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_batch_normalize(self, device):
@@ -70,7 +70,7 @@ class TestNormalize:
         # expected output
         expected = torch.tensor([1.25, 1, 0.5]).to(device).repeat(2, 1, 1).view_as(data)
 
-        f = kornia.enhance.Normalize(mean, std)
+        f = kornia.nn.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -101,7 +101,7 @@ class TestNormalize:
         mean = utils.tensor_to_gradcheck_var(mean)  # to var
         std = utils.tensor_to_gradcheck_var(std)  # to var
 
-        assert gradcheck(kornia.enhance.Normalize(mean, std), (data,), raise_exception=True)
+        assert gradcheck(kornia.nn.enhance.Normalize(mean, std), (data,), raise_exception=True)
 
     def test_single_value(self, device):
         # prepare input data
@@ -120,7 +120,7 @@ class TestDenormalize:
         mean = [0.5]
         std = [0.1]
         repr = "Denormalize(mean=[0.5], std=[0.1])"
-        assert str(kornia.enhance.Denormalize(mean, std)) == repr
+        assert str(kornia.nn.enhance.Denormalize(mean, std)) == repr
 
     def test_denormalize(self):
 
@@ -132,7 +132,7 @@ class TestDenormalize:
         # expected output
         expected = torch.tensor([2.5]).repeat(1, 2, 2).view_as(data)
 
-        f = kornia.enhance.Denormalize(mean, std)
+        f = kornia.nn.enhance.Denormalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_broadcast_denormalize(self):
@@ -147,7 +147,7 @@ class TestDenormalize:
         # expected output
         expected = torch.ones_like(data) + 2.5
 
-        f = kornia.enhance.Denormalize(mean, std)
+        f = kornia.nn.enhance.Denormalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_float_input(self):
@@ -161,7 +161,7 @@ class TestDenormalize:
         # expected output
         expected = torch.ones_like(data) + 2.5
 
-        f = kornia.enhance.Denormalize(mean, std)
+        f = kornia.nn.enhance.Denormalize(mean, std)
         assert_allclose(f(data), expected)
 
     def test_batch_denormalize(self):
@@ -176,7 +176,7 @@ class TestDenormalize:
         # expected output
         expected = torch.tensor([6.5, 7, 8]).repeat(2, 1, 1).view_as(data)
 
-        f = kornia.enhance.Denormalize(mean, std)
+        f = kornia.nn.enhance.Denormalize(mean, std)
         assert_allclose(f(data), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -205,7 +205,7 @@ class TestDenormalize:
 
         data = utils.tensor_to_gradcheck_var(data)  # to var
 
-        assert gradcheck(kornia.enhance.Denormalize(mean, std), (data,), raise_exception=True)
+        assert gradcheck(kornia.nn.enhance.Denormalize(mean, std), (data,), raise_exception=True)
 
     def test_single_value(self):
 
