@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from itertools import product
 from copy import deepcopy
 
-import pytest
 import torch
 import numpy as np
 
