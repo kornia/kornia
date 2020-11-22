@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
 from kornia.utils.one_hot import one_hot
 
 
@@ -70,7 +71,7 @@ def focal_loss(
     return loss
 
 
-class FocalLoss(nn.Module):
+class FocalLoss(kornia.nn.FocalLoss):
     r"""Criterion that computes Focal loss.
 
     According to [1], the Focal loss is computed as follows:
@@ -111,14 +112,5 @@ class FocalLoss(nn.Module):
 
     def __init__(self, alpha: float, gamma: float = 2.0,
                  reduction: str = 'none') -> None:
-        super(FocalLoss, self).__init__()
-        self.alpha: float = alpha
-        self.gamma: float = gamma
-        self.reduction: str = reduction
-        self.eps: float = 1e-6
-
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
-        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
+        super(FocalLoss, self).__init__(alpha, gamma, reduction)
+        kornia.deprecation_warning("kornia.losses.FocalLoss", "kornia.nn.losses.FocalLoss")

@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from kornia.geometry import angle_to_rotation_matrix
 from kornia.feature.responses import BlobHessian
-from kornia.geometry import ConvSoftArgmax3d
+from kornia.nn import ConvSoftArgmax3d
 from kornia.feature.orientation import PassLAF
 from kornia.feature.laf import (
     denormalize_laf, scale_laf,

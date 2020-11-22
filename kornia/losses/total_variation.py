@@ -21,10 +21,7 @@ class TotalVariation(nn.Module):
 
     def __init__(self) -> None:
         super(TotalVariation, self).__init__()
-
-    def forward(  # type: ignore
-            self, img) -> torch.Tensor:
-        return total_variation(img)
+        kornia.deprecation_warning("kornia.losses.TotalVariation", "kornia.nn.losses.TotalVariation")
 
 
 def total_variation(img: torch.Tensor) -> torch.Tensor:

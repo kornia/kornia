@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -53,7 +54,7 @@ def tversky_loss(input: torch.Tensor, target: torch.Tensor,
     return torch.mean(-tversky_loss + 1.)
 
 
-class TverskyLoss(nn.Module):
+class TverskyLoss(kornia.nn.TverskyLoss):
     r"""Criterion that computes Tversky Coeficient loss.
 
     According to [1], we compute the Tversky Coefficient as follows:
@@ -92,13 +93,5 @@ class TverskyLoss(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
-        super(TverskyLoss, self).__init__()
-        self.alpha: float = alpha
-        self.beta: float = beta
-        self.eps: float = eps
-
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
-        return tversky_loss(input, target, self.alpha, self.beta, self.eps)
+        super(TverskyLoss, self).__init__(alpha, beta, eps)
+        kornia.deprecation_warning("kornia.losses.TverskyLoss", "kornia.nn.losses.TverskyLoss")

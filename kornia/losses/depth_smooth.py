@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
+
 # Based on
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641
 
@@ -71,7 +73,7 @@ def inverse_depth_smoothness_loss(
     return torch.mean(smoothness_x) + torch.mean(smoothness_y)
 
 
-class InverseDepthSmoothnessLoss(nn.Module):
+class InverseDepthSmoothnessLoss(kornia.nn.InverseDepthSmoothnessLoss):
     r"""Criterion that computes image-aware inverse depth smoothness loss.
 
     .. math::
@@ -96,6 +98,5 @@ class InverseDepthSmoothnessLoss(nn.Module):
 
     def __init__(self) -> None:
         super(InverseDepthSmoothnessLoss, self).__init__()
-
-    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:  # type:ignore
-        return inverse_depth_smoothness_loss(idepth, image)
+        kornia.deprecation_warning(
+            "kornia.losses.InverseDepthSmoothnessLoss", "kornia.nn.losses.InverseDepthSmoothnessLoss")

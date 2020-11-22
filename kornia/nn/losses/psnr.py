@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import mse_loss
 
-import kornia
 
-
-class PSNRLoss(kornia.nn.PSNRLoss):
+class PSNRLoss(nn.Module):
     r"""Creates a criterion that calculates the PSNR between 2 images. Given an m x n image, the PSNR is:
 
     .. math::
@@ -39,8 +37,11 @@ class PSNRLoss(kornia.nn.PSNRLoss):
     """
 
     def __init__(self, max_val: float) -> None:
-        super(PSNRLoss, self).__init__(max_val)
-        kornia.deprecation_warning("kornia.losses.PSNRLoss", "kornia.nn.losses.PSNRLoss")
+        super(PSNRLoss, self).__init__()
+        self.max_val: float = max_val
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return psnr_loss(input, target, self.max_val)
 
 
 def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:

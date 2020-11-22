@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import kornia
 from kornia.utils.one_hot import one_hot
 
 
@@ -49,7 +50,7 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
     return torch.mean(-dice_score + 1.)
 
 
-class DiceLoss(nn.Module):
+class DiceLoss(kornia.nn.DiceLoss):
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
@@ -86,10 +87,4 @@ class DiceLoss(nn.Module):
 
     def __init__(self) -> None:
         super(DiceLoss, self).__init__()
-        self.eps: float = 1e-6
-
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
-        return dice_loss(input, target, self.eps)
+        kornia.deprecation_warning("kornia.losses.DiceLoss", "kornia.nn.losses.DiceLoss")

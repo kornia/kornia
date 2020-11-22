@@ -81,7 +81,7 @@ class TestTverskyLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
-        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        criterion = kornia.nn.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
 
     def test_all_zeros(self, device):
@@ -92,7 +92,7 @@ class TestTverskyLoss:
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
 
-        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        criterion = kornia.nn.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 
@@ -122,7 +122,7 @@ class TestDiceLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
-        criterion = kornia.losses.DiceLoss()
+        criterion = kornia.nn.DiceLoss()
         loss = criterion(logits, labels)
 
     def test_all_zeros(self, device):
@@ -133,7 +133,7 @@ class TestDiceLoss:
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
 
-        criterion = kornia.losses.DiceLoss()
+        criterion = kornia.nn.DiceLoss()
         loss = criterion(logits, labels)
         assert pytest.approx(loss.item(), 0.0)
 
@@ -159,7 +159,7 @@ class TestDepthSmoothnessLoss:
         image = torch.rand(data_shape).to(device)
         depth = torch.rand(data_shape).to(device)
 
-        criterion = kornia.losses.InverseDepthSmoothnessLoss()
+        criterion = kornia.nn.InverseDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
     # TODO: implement me
@@ -202,7 +202,7 @@ class TestSSIMLoss:
         # input data
         img = torch.rand(batch_shape).to(device)
 
-        ssim = kornia.losses.SSIM(window_size, reduction_type)
+        ssim = kornia.nn.SSIM(window_size, reduction_type)
         assert_allclose(ssim(img, img).item(), 0.0)
 
     def test_gradcheck(self, device):
@@ -397,7 +397,7 @@ class TestPSNRLoss:
         input = torch.rand(2, 3, 3, 2).to(device)
         target = torch.rand(2, 3, 3, 2).to(device)
 
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.nn.PSNRLoss(1.0)
         loss = criterion(input, target)
 
         assert loss.shape == tuple()
@@ -406,7 +406,7 @@ class TestPSNRLoss:
         input = torch.rand(2, 3, 3, 2).to(device)
         target = input.clone()
 
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.nn.PSNRLoss(1.0)
         loss = criterion(input, target)
 
         assert_allclose(loss, torch.tensor(float('inf')).to(device))
@@ -414,14 +414,14 @@ class TestPSNRLoss:
     def test_type(self):
         # Expecting an exception
         # since we pass integers instead of torch tensors
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.nn.PSNRLoss(1.0)
         with pytest.raises(Exception) as e:
             criterion(1, 2)
 
     def test_shape(self):
         # Expecting an exception
         # since we pass tensors of different shapes
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.nn.PSNRLoss(1.0)
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
 
