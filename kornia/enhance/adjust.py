@@ -423,10 +423,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if not isinstance(factor, torch.Tensor):
         factor = torch.tensor(factor, device=input.device, dtype=input.dtype)
 
-    factor = factor.squeeze()
     if len(factor.size()) != 0:
-        assert input.size(0) == factor.size(0), \
-            f"Input batch size shall match with factor size if 1d array. Got {input.size(0)} and {factor.size(0)}"
+        assert factor.shape == torch.Size([input.size(0)]), (
+            "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
+            f"Got {input.size(0)} and {factor.shape}")
 
     kernel = torch.tensor([
         [1, 1, 1],
