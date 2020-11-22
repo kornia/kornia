@@ -10,13 +10,13 @@ from torch.autograd import gradcheck
 
 class TestVflip:
     def smoke_test(self, device):
-        f = kornia.Vflip()
+        f = kornia.nn.Vflip()
         repr = "Vflip()"
         assert str(f) == repr
 
     def test_vflip(self, device):
 
-        f = kornia.Vflip()
+        f = kornia.nn.Vflip()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
                               [0., 1., 1.]]).to(device)  # 3 x 3
@@ -35,7 +35,7 @@ class TestVflip:
 
         input = input.repeat(2, 1, 1).to(device)  # 2 x 3 x 3
 
-        f = kornia.Vflip()
+        f = kornia.nn.Vflip()
         expected = torch.tensor([[[0., 1., 1.],
                                   [0., 0., 0.],
                                   [0., 0., 0.]]]).to(device)  # 1 x 3 x 3
@@ -83,19 +83,19 @@ class TestVflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Vflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.nn.Vflip(), (input,), raise_exception=True)
 
 
 class TestHflip:
 
     def smoke_test(self, device):
-        f = kornia.Hflip()
+        f = kornia.nn.Hflip()
         repr = "Hflip()"
         assert str(f) == repr
 
     def test_hflip(self, device):
 
-        f = kornia.Hflip()
+        f = kornia.nn.Hflip()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
                               [0., 1., 1.]]).to(device)  # 3 x 3
@@ -114,7 +114,7 @@ class TestHflip:
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        f = kornia.Hflip()
+        f = kornia.nn.Hflip()
         expected = torch.tensor([[[0., 0., 0.],
                                   [0., 0., 0.],
                                   [1., 1., 0.]]]).to(device)  # 3 x 3
@@ -162,19 +162,19 @@ class TestHflip:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Hflip(), (input,), raise_exception=True)
+        assert gradcheck(kornia.nn.Hflip(), (input,), raise_exception=True)
 
 
 class TestRot180:
 
     def smoke_test(self, device):
-        f = kornia.Rot180()
+        f = kornia.nn.Rot180()
         repr = "Rot180()"
         assert str(f) == repr
 
     def test_rot180(self, device):
 
-        f = kornia.Rot180()
+        f = kornia.nn.Rot180()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
                               [0., 1., 1.]]).to(device)  # 3 x 3
@@ -193,7 +193,7 @@ class TestRot180:
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        f = kornia.Rot180()
+        f = kornia.nn.Rot180()
         expected = torch.tensor([[1., 1., 0.],
                                  [0., 0., 0.],
                                  [0., 0., 0.]]).to(device)  # 1 x 3 x 3
@@ -241,4 +241,4 @@ class TestRot180:
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
-        assert gradcheck(kornia.Rot180(), (input,), raise_exception=True)
+        assert gradcheck(kornia.nn.Rot180(), (input,), raise_exception=True)

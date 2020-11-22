@@ -135,7 +135,7 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int,
     return conv_kernel
 
 
-class ConvSoftArgmax2d(nn.Module):
+class ConvSoftArgmax2d(kornia.nn.geometry.ConvSoftArgmax2d):
     r"""Module that calculates soft argmax 2d per window.
 
     See :func:`~kornia.geometry.subpix.conv_soft_argmax2d` for details.
@@ -149,37 +149,13 @@ class ConvSoftArgmax2d(nn.Module):
                  normalized_coordinates: bool = True,
                  eps: float = 1e-8,
                  output_value: bool = False) -> None:
-        super(ConvSoftArgmax2d, self).__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.temperature = temperature
-        self.normalized_coordinates = normalized_coordinates
-        self.eps = eps
-        self.output_value = output_value
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_size=' + str(self.kernel_size) +\
-            ', ' + 'stride=' + str(self.stride) +\
-            ', ' + 'padding=' + str(self.padding) +\
-            ', ' + 'temperature=' + str(self.temperature) +\
-            ', ' + 'normalized_coordinates=' + str(self.normalized_coordinates) +\
-            ', ' + 'eps=' + str(self.eps) +\
-            ', ' + 'output_value=' + str(self.output_value) + ')'
-
-    def forward(self, x: torch.Tensor):  # type: ignore
-        return conv_soft_argmax2d(x,
-                                  self.kernel_size,
-                                  self.stride,
-                                  self.padding,
-                                  self.temperature,
-                                  self.normalized_coordinates,
-                                  self.eps,
-                                  self.output_value)
+        super(ConvSoftArgmax2d, self).__init__(
+            kernel_size, stride, padding, temperature, normalized_coordinates, eps, output_value
+        )
+        kornia.deprecation_warning("kornia.geometry.ConvSoftArgmax2d", "kornia.nn.geometry.ConvSoftArgmax2d")
 
 
-class ConvSoftArgmax3d(nn.Module):
+class ConvSoftArgmax3d(kornia.nn.geometry.ConvSoftArgmax3d):
     r"""Module that calculates soft argmax 3d per window.
 
     See :func:`~kornia.geometry.subpix.conv_soft_argmax3d` for details.
@@ -194,38 +170,10 @@ class ConvSoftArgmax3d(nn.Module):
                  eps: float = 1e-8,
                  output_value: bool = True,
                  strict_maxima_bonus: float = 0.0) -> None:
-        super(ConvSoftArgmax3d, self).__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.temperature = temperature
-        self.normalized_coordinates = normalized_coordinates
-        self.eps = eps
-        self.output_value = output_value
-        self.strict_maxima_bonus = strict_maxima_bonus
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_size=' + str(self.kernel_size) +\
-            ', ' + 'stride=' + str(self.stride) +\
-            ', ' + 'padding=' + str(self.padding) +\
-            ', ' + 'temperature=' + str(self.temperature) +\
-            ', ' + 'normalized_coordinates=' + str(self.normalized_coordinates) +\
-            ', ' + 'eps=' + str(self.eps) +\
-            ', ' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) +\
-            ', ' + 'output_value=' + str(self.output_value) + ')'
-
-    def forward(self, x: torch.Tensor):  # type: ignore
-        return conv_soft_argmax3d(x,
-                                  self.kernel_size,
-                                  self.stride,
-                                  self.padding,
-                                  self.temperature,
-                                  self.normalized_coordinates,
-                                  self.eps,
-                                  self.output_value,
-                                  self.strict_maxima_bonus)
+        super(ConvSoftArgmax3d, self).__init__(
+            kernel_size, stride, padding, temperature, normalized_coordinates, eps, output_value, strict_maxima_bonus
+        )
+        kornia.deprecation_warning("kornia.geometry.ConvSoftArgmax3d", "kornia.nn.geometry.ConvSoftArgmax3d")
 
 
 def conv_soft_argmax2d(input: torch.Tensor,
@@ -528,7 +476,7 @@ def spatial_soft_argmax2d(
     return output
 
 
-class SpatialSoftArgmax2d(nn.Module):
+class SpatialSoftArgmax2d(kornia.nn.geometry.SpatialSoftArgmax2d):
     r"""Module that computes the Spatial Soft-Argmax 2D of a given heatmap.
 
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
@@ -538,20 +486,10 @@ class SpatialSoftArgmax2d(nn.Module):
                  temperature: torch.Tensor = torch.tensor(1.0),
                  normalized_coordinates: bool = True,
                  eps: float = 1e-8) -> None:
-        super(SpatialSoftArgmax2d, self).__init__()
-        self.temperature: torch.Tensor = temperature
-        self.normalized_coordinates: bool = normalized_coordinates
-        self.eps: float = eps
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(temperature=' + str(self.temperature) + ', ' +\
-            'normalized_coordinates=' + str(self.normalized_coordinates) + ', ' + \
-            'eps=' + str(self.eps) + ')'
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return spatial_soft_argmax2d(input, self.temperature,
-                                     self.normalized_coordinates, self.eps)
+        super(SpatialSoftArgmax2d, self).__init__(
+            temperature, normalized_coordinates, eps
+        )
+        kornia.deprecation_warning("kornia.geometry.SpatialSoftArgmax2d", "kornia.nn.geometry.SpatialSoftArgmax2d")
 
 
 def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7):
@@ -635,20 +573,12 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     return coords_max, y_max
 
 
-class ConvQuadInterp3d(nn.Module):
+class ConvQuadInterp3d(kornia.nn.geometry.ConvQuadInterp3d):
     r"""Module that calculates soft argmax 3d per window
     See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
 
     def __init__(self,
                  strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:
-        super(ConvQuadInterp3d, self).__init__()
-        self.strict_maxima_bonus = strict_maxima_bonus
-        self.eps = eps
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
-
-    def forward(self, x: torch.Tensor):  # type: ignore
-        return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)
+        super(ConvQuadInterp3d, self).__init__(strict_maxima_bonus, eps)
+        kornia.deprecation_warning("kornia.geometry.ConvQuadInterp3d", "kornia.nn.geometry.ConvQuadInterp3d")

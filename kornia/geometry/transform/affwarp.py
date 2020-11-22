@@ -3,6 +3,7 @@ from typing import Union, Tuple, Optional
 import torch
 import torch.nn as nn
 
+import kornia
 from kornia.geometry.transform.imgwarp import (
     warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
@@ -385,7 +386,7 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
     return torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
 
-class Resize(nn.Module):
+class Resize(kornia.nn.geometry.Resize):
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
@@ -406,17 +407,11 @@ class Resize(nn.Module):
 
     def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear',
                  align_corners: bool = False, side: str = "short") -> None:
-        super(Resize, self).__init__()
-        self.size: Union[int, Tuple[int, int]] = size
-        self.interpolation: str = interpolation
-        self.align_corners: bool = align_corners
-        self.side = side
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return resize(input, self.size, self.interpolation, align_corners=self.align_corners, side=self.side)
+        super(Resize, self).__init__(size, interpolation, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Resize", "kornia.nn.geometry.Resize")
 
 
-class Affine(nn.Module):
+class Affine(kornia.nn.geometry.Affine):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Args:
@@ -450,51 +445,8 @@ class Affine(nn.Module):
             center: Optional[torch.Tensor] = None,
             align_corners: bool = False,
     ) -> None:
-        batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
-        if not batch_sizes:
-            msg = (
-                "Affine was created without any affine parameter. At least one of angle, translation, scale_factor, or "
-                "shear has to be set."
-            )
-            raise RuntimeError(msg)
-
-        batch_size = batch_sizes[0]
-        if not all(other == batch_size for other in batch_sizes[1:]):
-            raise RuntimeError(f"The batch sizes of the affine parameters mismatch: {batch_sizes}")
-
-        self._batch_size = batch_size
-
-        super().__init__()
-
-        if angle is None:
-            angle = torch.zeros(batch_size)
-        self.angle = angle
-
-        if translation is None:
-            translation = torch.zeros(batch_size, 2)
-        self.translation = translation
-
-        if scale_factor is None:
-            scale_factor = torch.ones(batch_size, 2)
-        self.scale_factor = scale_factor
-
-        self.shear = shear
-        self.center = center
-        self.align_corners = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        if self.shear is None:
-            sx = sy = None
-        else:
-            sx, sy = self.shear[..., 0], self.shear[..., 1]
-
-        if self.center is None:
-            center = _compute_tensor_center(input).expand(input.size()[0], -1)
-        else:
-            center = self.center
-
-        matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
-        return affine(input, matrix[..., :2, :3], align_corners=self.align_corners)
+        super(Affine, self).__init__(angle, translation, scale_factor, shear, center, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Affine", "kornia.nn.geometry.Affine")
 
 
 def rescale(
@@ -517,7 +469,7 @@ def rescale(
     return resize(input, size, interpolation=interpolation, align_corners=align_corners)
 
 
-class Rescale(nn.Module):
+class Rescale(kornia.nn.geometry.Rescale):
     r"""Rescale the input torch.Tensor with the given factor.
 
     Args:
@@ -535,16 +487,11 @@ class Rescale(nn.Module):
     def __init__(
         self, factor: Union[float, Tuple[float, float]], interpolation: str = "bilinear", align_corners: bool = False
     ) -> None:
-        super().__init__()
-        self.factor: Union[float, Tuple[float, float]] = factor
-        self.interpolation: str = interpolation
-        self.align_corners: bool = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
+        super(Rescale, self).__init__(factor, interpolation, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Rescale", "kornia.nn.geometry.Rescale")
 
 
-class Rotate(nn.Module):
+class Rotate(kornia.nn.geometry.Rotate):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Args:
@@ -562,16 +509,11 @@ class Rotate(nn.Module):
     def __init__(self, angle: torch.Tensor,
                  center: Union[None, torch.Tensor] = None,
                  align_corners: bool = False) -> None:
-        super(Rotate, self).__init__()
-        self.angle: torch.Tensor = angle
-        self.center: Union[None, torch.Tensor] = center
-        self.align_corners: bool = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return rotate(input, self.angle, self.center, align_corners=self.align_corners)
+        super(Rotate, self).__init__(angle, center, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Rotate", "kornia.nn.geometry.Rotate")
 
 
-class Translate(nn.Module):
+class Translate(kornia.nn.geometry.Translate):
     r"""Translate the tensor in pixel units.
 
     Args:
@@ -585,15 +527,11 @@ class Translate(nn.Module):
     """
 
     def __init__(self, translation: torch.Tensor, align_corners: bool = False) -> None:
-        super(Translate, self).__init__()
-        self.translation: torch.Tensor = translation
-        self.align_corners: bool = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return translate(input, self.translation, self.align_corners)
+        super(Translate, self).__init__(translation, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Translate", "kornia.nn.geometry.Translate")
 
 
-class Scale(nn.Module):
+class Scale(kornia.nn.geometry.Scale):
     r"""Scale the tensor by a factor.
 
     Args:
@@ -613,16 +551,11 @@ class Scale(nn.Module):
     def __init__(self, scale_factor: torch.Tensor,
                  center: Union[None, torch.Tensor] = None,
                  align_corners: bool = False) -> None:
-        super(Scale, self).__init__()
-        self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[None, torch.Tensor] = center
-        self.align_corners: bool = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return scale(input, self.scale_factor, self.center, self.align_corners)
+        super(Scale, self).__init__(scale_factor, center, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Scale", "kornia.nn.geometry.Scale")
 
 
-class Shear(nn.Module):
+class Shear(kornia.nn.geometry.Shear):
     r"""Shear the tensor.
 
     Args:
@@ -638,9 +571,5 @@ class Shear(nn.Module):
 
     def __init__(self, shear: torch.Tensor,
                  align_corners: bool = False) -> None:
-        super(Shear, self).__init__()
-        self.shear: torch.Tensor = shear
-        self.align_corners: bool = align_corners
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return shear(input, self.shear, self.align_corners)
+        super(Shear, self).__init__(shear, align_corners)
+        kornia.deprecation_warning("kornia.geometry.Shear", "kornia.nn.geometry.Shear")

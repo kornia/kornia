@@ -20,7 +20,7 @@ class TestHomographyWarper:
         dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
 
         # instantiate warper
-        warper = kornia.HomographyWarper(height, width, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height, width, align_corners=True)
 
         # warp from source to destination
         patch_dst = warper(patch_src, dst_homo_src)
@@ -98,7 +98,7 @@ class TestHomographyWarper:
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3).to(device)
 
         # instantiate warper warp from source to destination
-        warper = kornia.HomographyWarper(height // 2, width // 2, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height // 2, width // 2, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
@@ -122,7 +122,7 @@ class TestHomographyWarper:
         dst_homo_src[..., 0, 2] = offset / (width - 1)  # apply offset in x
 
         # instantiate warper and from source to destination
-        warper = kornia.HomographyWarper(height, width, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height, width, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
         assert_allclose(patch_src[..., 1:], patch_dst[..., :-1])
 
@@ -141,7 +141,7 @@ class TestHomographyWarper:
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
         # instantiate warper and warp from source to destination
-        warper = kornia.HomographyWarper(height, width, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height, width, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
 
         # check the corners
@@ -169,7 +169,7 @@ class TestHomographyWarper:
         dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
 
         # instantiate warper
-        warper = kornia.HomographyWarper(height, width, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height, width, align_corners=True)
 
         for i in range(self.num_tests):
             # generate homography noise
@@ -216,7 +216,7 @@ class TestHomographyWarper:
             dst_homo_src, requires_grad=False)  # to var
 
         # instantiate warper
-        warper = kornia.HomographyWarper(height, width, align_corners=True)
+        warper = kornia.nn.HomographyWarper(height, width, align_corners=True)
 
         # evaluate function gradient
         assert gradcheck(warper, (patch_src, dst_homo_src,),

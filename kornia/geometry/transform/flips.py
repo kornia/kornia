@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import kornia
+
 __all__ = [
     "Vflip",
     "Hflip",
@@ -11,7 +13,7 @@ __all__ = [
 ]
 
 
-class Vflip(nn.Module):
+class Vflip(kornia.nn.geometry.Vflip):
     r"""Vertically flip a tensor image or a batch of tensor images. Input must
     be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -35,15 +37,10 @@ class Vflip(nn.Module):
     def __init__(self) -> None:
 
         super(Vflip, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return vflip(input)
-
-    def __repr__(self):
-        return self.__class__.__name__
+        kornia.deprecation_warning("kornia.geometry.Vflip", "kornia.nn.geometry.Vflip")
 
 
-class Hflip(nn.Module):
+class Hflip(kornia.nn.geometry.Hflip):
     r"""Horizontally flip a tensor image or a batch of tensor images. Input must
     be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
@@ -67,15 +64,10 @@ class Hflip(nn.Module):
     def __init__(self) -> None:
 
         super(Hflip, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return hflip(input)
-
-    def __repr__(self):
-        return self.__class__.__name__
+        kornia.deprecation_warning("kornia.geometry.Hflip", "kornia.nn.geometry.Hflip")
 
 
-class Rot180(nn.Module):
+class Rot180(kornia.nn.geometry.Rot180):
     r"""Rotate a tensor image or a batch of tensor images
         180 degrees. Input must be a tensor of shape (C, H, W)
         or a batch of tensors :math:`(*, C, H, W)`.
@@ -97,12 +89,7 @@ class Rot180(nn.Module):
     def __init__(self) -> None:
 
         super(Rot180, self).__init__()
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return rot180(input)
-
-    def __repr__(self):
-        return self.__class__.__name__
+        kornia.deprecation_warning("kornia.geometry.Rot180", "kornia.nn.geometry.Rot180")
 
 
 def rot180(input: torch.Tensor) -> torch.Tensor:

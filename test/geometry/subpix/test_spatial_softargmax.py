@@ -65,12 +65,12 @@ class TestCenterKernel3d:
 class TestSpatialSoftArgmax2d:
     def test_smoke(self, device):
         input = torch.zeros(1, 1, 2, 3).to(device)
-        m = kornia.SpatialSoftArgmax2d()
+        m = kornia.nn.SpatialSoftArgmax2d()
         assert m(input).shape == (1, 1, 2)
 
     def test_smoke_batch(self, device):
         input = torch.zeros(2, 1, 2, 3).to(device)
-        m = kornia.SpatialSoftArgmax2d()
+        m = kornia.nn.SpatialSoftArgmax2d()
         assert m(input).shape == (2, 1, 2)
 
     def test_top_left_normalized(self, device):
@@ -170,24 +170,24 @@ class TestSpatialSoftArgmax2d:
 class TestConvSoftArgmax2d:
     def test_smoke(self, device):
         input = torch.zeros(1, 1, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax2d((3, 3))
+        m = kornia.nn.ConvSoftArgmax2d((3, 3))
         assert m(input).shape == (1, 1, 2, 3, 3)
 
     def test_smoke_batch(self, device):
         input = torch.zeros(2, 5, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax2d()
+        m = kornia.nn.ConvSoftArgmax2d()
         assert m(input).shape == (2, 5, 2, 3, 3)
 
     def test_smoke_with_val(self, device):
         input = torch.zeros(1, 1, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax2d((3, 3), output_value=True)
+        m = kornia.nn.ConvSoftArgmax2d((3, 3), output_value=True)
         coords, val = m(input)
         assert coords.shape == (1, 1, 2, 3, 3)
         assert val.shape == (1, 1, 3, 3)
 
     def test_smoke_batch_with_val(self, device):
         input = torch.zeros(2, 5, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax2d((3, 3), output_value=True)
+        m = kornia.nn.ConvSoftArgmax2d((3, 3), output_value=True)
         coords, val = m(input)
         assert coords.shape == (2, 5, 2, 3, 3)
         assert val.shape == (2, 5, 3, 3)
@@ -206,10 +206,10 @@ class TestConvSoftArgmax2d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
+                                                temperature=0.05,
+                                                normalized_coordinates=False,
+                                                output_value=True)
         expected_val = torch.tensor([[[[1., 0.],
                                        [0., 1.]]]]).to(device)
         expected_coord = torch.tensor([[[[[1., 3.],
@@ -228,10 +228,10 @@ class TestConvSoftArgmax2d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
+                                                temperature=10.,
+                                                normalized_coordinates=False,
+                                                output_value=True)
         expected_val = torch.tensor([[[[0.1214, 0.],
                                        [0., 0.1214]]]]).to(device)
         expected_coord = torch.tensor([[[[[1., 3.],
@@ -250,10 +250,10 @@ class TestConvSoftArgmax2d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
+                                                temperature=0.05,
+                                                normalized_coordinates=True,
+                                                output_value=True)
         expected_val = torch.tensor([[[[1., 0.],
                                        [0., 1.]]]]).to(device)
         expected_coord = torch.tensor([[[[[-0.5, 0.5],
@@ -272,10 +272,10 @@ class TestConvSoftArgmax2d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
+                                                temperature=10.,
+                                                normalized_coordinates=True,
+                                                output_value=True)
         expected_val = torch.tensor([[[[0.1214, 0.],
                                        [0., 0.1214]]]]).to(device)
         expected_coord = torch.tensor([[[[[-0.5, 0.5],
@@ -290,12 +290,12 @@ class TestConvSoftArgmax2d:
 class TestConvSoftArgmax3d:
     def test_smoke(self, device):
         input = torch.zeros(1, 1, 3, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax3d((3, 3, 3), output_value=False)
+        m = kornia.nn.ConvSoftArgmax3d((3, 3, 3), output_value=False)
         assert m(input).shape == (1, 1, 3, 3, 3, 3)
 
     def test_smoke_with_val(self, device):
         input = torch.zeros(1, 1, 3, 3, 3).to(device)
-        m = kornia.ConvSoftArgmax3d((3, 3, 3), output_value=True)
+        m = kornia.nn.ConvSoftArgmax3d((3, 3, 3), output_value=True)
         coords, val = m(input)
         assert coords.shape == (1, 1, 3, 3, 3, 3)
         assert val.shape == (1, 1, 3, 3, 3)
@@ -314,10 +314,10 @@ class TestConvSoftArgmax3d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
+                                                temperature=0.05,
+                                                normalized_coordinates=False,
+                                                output_value=True)
         expected_val = torch.tensor([[[[[1., 0.],
                                         [0., 1.]]]]]).to(device)
         expected_coord = torch.tensor([[[
@@ -339,10 +339,10 @@ class TestConvSoftArgmax3d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
+                                                temperature=10.,
+                                                normalized_coordinates=False,
+                                                output_value=True)
         expected_val = torch.tensor([[[[[0.1214, 0.],
                                         [0., 0.1214]]]]]).to(device)
         expected_coord = torch.tensor([[[
@@ -364,10 +364,10 @@ class TestConvSoftArgmax3d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
+                                                temperature=0.05,
+                                                normalized_coordinates=True,
+                                                output_value=True)
         expected_val = torch.tensor([[[[[1., 0.],
                                         [0., 1.]]]]]).to(device)
         expected_coord = torch.tensor([[[
@@ -389,10 +389,10 @@ class TestConvSoftArgmax3d:
             [0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0.],
         ]]]]).to(device)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        softargmax = kornia.nn.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
+                                                temperature=10.,
+                                                normalized_coordinates=True,
+                                                output_value=True)
         expected_val = torch.tensor([[[[[0.1214, 0.],
                                         [0., 0.1214]]]]]).to(device)
         expected_coord = torch.tensor([[[
@@ -410,7 +410,7 @@ class TestConvSoftArgmax3d:
 class TestConvQuadInterp3d:
     def test_smoke(self, device):
         input = torch.randn(2, 3, 3, 4, 4).to(device)
-        nms = kornia.geometry.ConvQuadInterp3d(1)
+        nms = kornia.nn.ConvQuadInterp3d(1)
         coord, val = nms(input)
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
@@ -419,7 +419,7 @@ class TestConvQuadInterp3d:
         input = torch.rand(1, 1, 3, 5, 5).to(device)
         input[0, 0, 1, 2, 2] += 20.
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
+        assert gradcheck(kornia.nn.ConvQuadInterp3d(strict_maxima_bonus=0),
                          (input), raise_exception=True, atol=1e-3, rtol=1e-3)
 
     def test_diag(self, device):
@@ -443,7 +443,7 @@ class TestConvQuadInterp3d:
              [0., 0., 0., 0, 0.],
              ]]]).to(device)
         input = kornia.gaussian_blur2d(input, (5, 5), (0.5, 0.5)).unsqueeze(0)
-        softargmax = kornia.geometry.ConvQuadInterp3d(10)
+        softargmax = kornia.nn.ConvQuadInterp3d(10)
         expected_val = torch.tensor([[[
             [[0., 0., 0., 0, 0],
              [0., 0., 0.0, 0, 0.],

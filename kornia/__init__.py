@@ -10,6 +10,13 @@ try:
 except ImportError:
     pass
 
+
+def deprecation_warning(name: str, replacement: str) -> None:
+    warnings.warn(f"`{name}` is no longer maintained and will be removed from the future versions. "
+                  f"Please use {replacement} instead.", category=DeprecationWarning)
+
+
+from kornia import nn
 from kornia import augmentation
 from kornia import color
 from kornia import contrib
@@ -20,7 +27,6 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
-from kornia import nn
 
 # Exposes package functional to top level
 from kornia.augmentation.functional import *
@@ -110,8 +116,3 @@ from kornia.utils import (
 
 from kornia.geometry import *
 from kornia.constants import *
-
-
-def deprecation_warning(name: str, replacement: str) -> None:
-    warnings.warn(f"`{name}` is no longer maintained and will be removed from the future versions. "
-                  f"Please use {replacement} instead.", category=DeprecationWarning)
