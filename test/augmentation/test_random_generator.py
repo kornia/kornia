@@ -579,11 +579,16 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Fixed #785. (#786)
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [1, 4])
@@ -593,6 +598,11 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [1, 4])
+>>>>>>> Fixed #785. (#786)
+>>>>>>> Fixed #785. (#786)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])

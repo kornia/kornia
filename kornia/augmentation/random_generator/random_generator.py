@@ -350,6 +350,7 @@ def random_affine_generator(
 =======
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
 <<<<<<< master
+<<<<<<< master
         if len(scale) == 4:
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform(
@@ -370,6 +371,9 @@ def random_affine_generator(
 =======
 =======
         if len(_scale) == 4:
+=======
+        if len(scale) == 4:
+>>>>>>> Fixed #785. (#786)
             _joint_range_check(cast(torch.Tensor, scale[2:]), "scale_y")
             _scale[:, 1] = _adapted_uniform((batch_size,), scale[2], scale[3], same_on_batch)
     else:
