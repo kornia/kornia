@@ -381,10 +381,14 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 class TestRandomAffineGen(RandomGeneratorBaseTests):
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+    @pytest.mark.parametrize('batch_size', [1, 4])
+>>>>>>> Fixed #785. (#786)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
