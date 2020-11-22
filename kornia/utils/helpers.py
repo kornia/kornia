@@ -3,7 +3,7 @@ from typing import Tuple, Union, List, cast, Optional
 import torch
 
 
-def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
+def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input tensors are in the same device.
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).

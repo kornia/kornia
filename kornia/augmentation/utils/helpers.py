@@ -4,6 +4,8 @@ import torch
 from torch.distributions import Uniform, Beta
 from functools import wraps
 
+from kornia.utils import _extract_device_dtype
+
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.
@@ -48,8 +50,6 @@ def _validate_input3D(f: Callable) -> Callable:
         return f(input, *args, **kwargs)
 
     return wrapper
-
-from kornia.utils import _extract_device_dtype
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
