@@ -78,15 +78,7 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
     return H_left.permute(0, 2, 1) @ F_rect @ H_right
 
 
-@pytest.mark.usefixtures("device", "dtype")
 class BaseTester(ABC):
-    fixture_names = ("device", "dtype")
-
-    @pytest.fixture(autouse=True)
-    def auto_injector_fixture(self, request):
-        for fixture_name in self.fixture_names:
-            setattr(self, fixture_name, request.getfixturevalue(fixture_name))
-
     @abstractmethod
     def test_smoke(self):
         raise NotImplementedError("Implement a stupid routine.")

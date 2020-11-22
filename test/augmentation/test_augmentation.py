@@ -31,16 +31,23 @@ from kornia.augmentation.base import AugmentationBase2D
 # TODO same_on_batch tests?
 
 
+@pytest.mark.usefixtures("device", "dtype")
 class CommonTests(BaseTester):
+    fixture_names = ("device", "dtype")
 
     ############################################################################################################
-    # Attributes variables to set
+    # Attribute variables to set
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
     ############################################################################################################
     # Fixtures
     ############################################################################################################
+
+    @pytest.fixture(autouse=True)
+    def auto_injector_fixture(self, request):
+        for fixture_name in self.fixture_names:
+            setattr(self, fixture_name, request.getfixturevalue(fixture_name))
 
     @pytest.fixture(scope="class")
     def param_set(self, request):
@@ -264,7 +271,10 @@ class CommonTests(BaseTester):
         if (transform == kornia.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
-        indices = kornia.create_meshgrid(height=output.shape[-2],width=output.shape[-1],normalized_coordinates=False,device=self.device)
+        indices = kornia.create_meshgrid(height=output.shape[-2],
+                                         width=output.shape[-1],
+                                         normalized_coordinates=False,
+                                         device=self.device)
         output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
         input_indices = kornia.geometry.transform_points(transform.to(self.dtype).inverse(), output_indices)
 
