@@ -23,6 +23,8 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -53,9 +55,10 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
                  [ 0.,  0.,  0.,  1.]]]))
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+                 keepdim: bool = False) -> None:
         super(RandomHorizontalFlip3D, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -85,6 +88,8 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -115,9 +120,10 @@ class RandomVerticalFlip3D(AugmentationBase3D):
                  [ 0.,  0.,  0.,  1.]]]))
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+                 keepdim: bool = False) -> None:
         super(RandomVerticalFlip3D, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -147,6 +153,8 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -178,9 +186,10 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5) -> None:
+    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+                 keepdim: bool = False) -> None:
         super(RandomDepthicalFlip3D, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -231,6 +240,8 @@ class RandomAffine3D(AugmentationBase3D):
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -272,9 +283,11 @@ class RandomAffine3D(AugmentationBase3D):
                       Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float], Tuple[float, float],
                             Tuple[float, float], Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 0.5
+        return_transform: bool = False, same_on_batch: bool = False,
+        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomAffine3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomAffine3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                             keepdim=keepdim)
         self.degrees = _tuple_range_reader(degrees, 3)
         self.shear: Optional[torch.Tensor] = None
         if shears is not None:
@@ -347,6 +360,8 @@ class RandomRotation3D(AugmentationBase3D):
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -383,9 +398,11 @@ class RandomRotation3D(AugmentationBase3D):
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 0.5
+        return_transform: bool = False, same_on_batch: bool = False,
+        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomRotation3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomRotation3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                               keepdim=keepdim)
         self.degrees = _tuple_range_reader(degrees, 3)
         if interpolation is not None:
             import warnings
@@ -437,6 +454,8 @@ class RandomMotionBlur3D(AugmentationBase3D):
             If Tuple[int, int], it will randomly generate the value from the range.
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -477,10 +496,10 @@ class RandomMotionBlur3D(AugmentationBase3D):
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5
+            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         self.angle: torch.Tensor = _tuple_range_reader(angle, 3)
@@ -522,6 +541,8 @@ class CenterCrop3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         align_corners(bool): interpolation flag. Default: True.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -546,11 +567,11 @@ class CenterCrop3D(AugmentationBase3D):
 
     def __init__(self, size: Union[int, Tuple[int, int, int]], align_corners: bool = True,
                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-                 return_transform: bool = False, p: float = 1.) -> None:
+                 return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(CenterCrop3D, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
+            p=1., return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self.size = size
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -607,6 +628,8 @@ class RandomCrop3D(AugmentationBase3D):
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: True.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -634,11 +657,12 @@ class RandomCrop3D(AugmentationBase3D):
         padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 1.0
+        return_transform: bool = False, same_on_batch: bool = False,
+        align_corners: bool = True, p: float = 1.0, keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop3D, self).__init__(
-            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -722,6 +746,8 @@ class RandomPerspective3D(AugmentationBase3D):
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         align_corners(bool): interpolation flag. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -764,9 +790,10 @@ class RandomPerspective3D(AugmentationBase3D):
         self, distortion_scale: Union[torch.Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 0.5
+        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                                  keepdim=keepdim)
         self.distortion_scale = cast(torch.Tensor, distortion_scale) \
             if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample = Resample.get(resample)
@@ -803,6 +830,8 @@ class RandomEqualize3D(AugmentationBase3D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -831,8 +860,10 @@ class RandomEqualize3D(AugmentationBase3D):
                    [0.4194, 0.5529, 0.9527]]]]])
     """
 
-    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False) -> None:
-        super(RandomEqualize3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+    def __init__(self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False,
+                 keepdim: bool = False) -> None:
+        super(RandomEqualize3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                               keepdim=keepdim)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"

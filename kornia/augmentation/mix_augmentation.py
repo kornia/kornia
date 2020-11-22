@@ -48,6 +48,8 @@ class RandomMixUp(MixAugmentationBase):
         lambda_val (float or torch.Tensor, optional): min-max value of mixup strength. Default is 0-1.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -79,8 +81,8 @@ class RandomMixUp(MixAugmentationBase):
     """
 
     def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
-                 same_on_batch: bool = False, p: float = 1.0) -> None:
-        super(RandomMixUp, self).__init__(p=1., p_batch=p, same_on_batch=same_on_batch)
+                 same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False) -> None:
+        super(RandomMixUp, self).__init__(p=1., p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         if lambda_val is None:
             self.lambda_val = torch.tensor([0, 1.])
         else:
@@ -143,6 +145,8 @@ class RandomCutMix(MixAugmentationBase):
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch.
             This flag will not maintain permutation order. Default: False.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -177,8 +181,8 @@ class RandomCutMix(MixAugmentationBase):
     def __init__(self, height: int, width: int, num_mix: int = 1,
                  cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  beta: Optional[Union[torch.Tensor, float]] = None, same_on_batch: bool = False,
-                 p: float = 1.) -> None:
-        super(RandomCutMix, self).__init__(p=1., p_batch=p, same_on_batch=same_on_batch)
+                 p: float = 1., keepdim: bool = False) -> None:
+        super(RandomCutMix, self).__init__(p=1., p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.height = height
         self.width = width
         self.num_mix = num_mix
