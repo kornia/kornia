@@ -274,7 +274,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
 
-    @pytest.mark.parametrize('batch_size', [1, 8])
+    @pytest.mark.parametrize('batch_size', [1, 4])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
