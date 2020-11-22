@@ -348,7 +348,7 @@ def random_crop_generator(
         >>> crop_size
         tensor([[26, 29],
                 [27, 28],
-                [25, 28]], dtype=torch.int32)
+                [25, 28]])
         >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
         {'src': tensor([[[ 1,  3],
                  [29,  3],
@@ -464,7 +464,7 @@ def random_crop_size_generator(
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
         {'size': tensor([[26, 29],
                 [27, 28],
-                [25, 28]], dtype=torch.int32)}
+                [25, 28]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
