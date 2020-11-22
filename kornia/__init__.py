@@ -17,7 +17,6 @@ def deprecation_warning(name: str, replacement: str) -> None:
 
 
 from kornia import nn
-from kornia import augmentation
 from kornia import color
 from kornia import contrib
 from kornia import enhance
@@ -27,6 +26,7 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
+from kornia import augmentation
 
 # Exposes package functional to top level
 from kornia.augmentation.functional import *

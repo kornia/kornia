@@ -4,7 +4,7 @@ import kornia
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-from kornia.feature.affine_shape import *
+from kornia.nn.feature.affine_shape import *
 
 
 class TestPatchAffineShapeEstimator:

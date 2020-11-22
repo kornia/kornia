@@ -8,7 +8,10 @@ from .transform import (
     Translate,
     Vflip,
     Hflip,
-    Rot180
+    Rot180,
+    PyrDown,
+    PyrUp,
+    ScalePyramid,
 )
 from .warp import (
     HomographyWarper,

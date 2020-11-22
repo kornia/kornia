@@ -4,6 +4,7 @@ import kornia.testing as utils  # test utils
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 from kornia.feature.siftdesc import *
+from kornia.nn.feature.siftdesc import *
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])

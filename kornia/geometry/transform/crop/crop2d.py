@@ -2,9 +2,7 @@ from typing import Tuple, Union
 
 import torch
 
-from kornia.geometry.transform.imgwarp import (
-    warp_perspective, get_perspective_transform, warp_affine
-)
+import kornia
 
 __all__ = [
     "crop_and_resize",
@@ -208,14 +206,15 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
+    dst_trans_src: torch.Tensor = kornia.geometry.transform.get_perspective_transform(
+        src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
     # simulate broadcasting
     dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
 
     bbox = infer_box_shape(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
         f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}.")
-    patches: torch.Tensor = warp_affine(
+    patches: torch.Tensor = kornia.geometry.transform.warp_affine(
         tensor, dst_trans_src[:, :2, :], (int(bbox[0][0].item()), int(bbox[1][0].item())),
         flags=interpolation, align_corners=align_corners)
 

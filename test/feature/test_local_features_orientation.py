@@ -4,7 +4,7 @@ import kornia
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-from kornia.feature.orientation import *
+from kornia.nn.feature.orientation import *
 
 
 class TestPassLAF:

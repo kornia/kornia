@@ -4,7 +4,7 @@ import torch
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
-from kornia.feature import HardNet
+from kornia.nn.feature import HardNet
 import kornia.testing as utils  # test utils
 
 

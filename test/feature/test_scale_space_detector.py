@@ -5,7 +5,7 @@ import kornia
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-from kornia.feature.scale_space_detector import *
+from kornia.nn.feature.scale_space_detector import *
 
 
 class TestScaleSpaceDetector:
@@ -34,7 +34,7 @@ class TestScaleSpaceDetector:
         inp[:, :, 13:-13, 13:-13] = 1.0
         n_feats = 1
         det = ScaleSpaceDetector(n_feats,
-                                 resp_module=kornia.feature.BlobHessian(),
+                                 resp_module=kornia.nn.feature.BlobHessian(),
                                  mr_size=3.0).to(device)
         lafs, resps = det(inp)
         expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device)
@@ -54,7 +54,7 @@ class TestScaleSpaceDetector:
 
         n_feats = 1
         det = ScaleSpaceDetector(n_feats,
-                                 resp_module=kornia.feature.BlobHessian(),
+                                 resp_module=kornia.nn.feature.BlobHessian(),
                                  mr_size=3.0).to(device)
         lafs, resps = det(inp, mask)
         expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device)

@@ -3,7 +3,7 @@ from typing import Tuple, Union, Optional
 import torch
 import torch.nn as nn
 
-from kornia.filters import spatial_gradient, gaussian_blur2d
+import kornia
 
 
 def harris_response(input: torch.Tensor,
@@ -77,13 +77,13 @@ def harris_response(input: torch.Tensor,
                             .format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
             raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
-    gradients: torch.Tensor = spatial_gradient(input, grads_mode)
+    gradients: torch.Tensor = kornia.filters.spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
     # compute the structure tensor M elements
     def g(x):
-        return gaussian_blur2d(x, (7, 7), (1., 1.))
+        return kornia.filters.gaussian_blur2d(x, (7, 7), (1., 1.))
 
     dx2: torch.Tensor = g(dx ** 2)
     dy2: torch.Tensor = g(dy ** 2)
@@ -157,13 +157,13 @@ def gftt_response(input: torch.Tensor,
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
-    gradients: torch.Tensor = spatial_gradient(input, grads_mode)
+    gradients: torch.Tensor = kornia.filters.spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
     # compute the structure tensor M elements
     def g(x):
-        return gaussian_blur2d(x, (7, 7), (1., 1.))
+        return kornia.filters.gaussian_blur2d(x, (7, 7), (1., 1.))
 
     dx2: torch.Tensor = g(dx ** 2)
     dy2: torch.Tensor = g(dy ** 2)
@@ -248,7 +248,7 @@ def hessian_response(input: torch.Tensor,
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
             raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}"
                              .format(sigmas.shape))
-    gradients: torch.Tensor = spatial_gradient(input, grads_mode, 2)
+    gradients: torch.Tensor = kornia.filters.spatial_gradient(input, grads_mode, 2)
     dxx: torch.Tensor = gradients[:, :, 0]
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
@@ -283,81 +283,42 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
     return input[:, :, 1:] - input[:, :, :-1]
 
 
-class BlobDoG(nn.Module):
+class BlobDoG(kornia.nn.BlobDoG):
     r"""nn.Module that calculates Difference-of-Gaussians blobs
     See :func:`~kornia.feature.dog_response` for details.
     """
 
     def __init__(self) -> None:
         super(BlobDoG, self).__init__()
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__
-
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return dog_response(input)  # type: ignore
+        kornia.deprecation_warning("kornia.feature.BlobDoG", "kornia.nn.BlobDoG")
 
 
-class CornerHarris(nn.Module):
+class CornerHarris(kornia.nn.CornerHarris):
     r"""nn.Module that calculates Harris corners
     See :func:`~kornia.feature.harris_response` for details.
     """
 
     def __init__(self, k: Union[float, torch.Tensor],
                  grads_mode='sobel') -> None:
-        super(CornerHarris, self).__init__()
-        if type(k) is float:
-            self.register_buffer('k', torch.tensor(k))
-        else:
-            self.register_buffer('k', k)  # type: ignore
-        self.grads_mode: str = grads_mode
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(k=' + str(self.k) + ', ' +\
-            'grads_mode=' + self.grads_mode + ')'
-
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return harris_response(input, self.k, self.grads_mode, sigmas)  # type: ignore
+        super(CornerHarris, self).__init__(k, grads_mode)
+        kornia.deprecation_warning("kornia.feature.CornerHarris", "kornia.nn.CornerHarris")
 
 
-class CornerGFTT(nn.Module):
+class CornerGFTT(kornia.nn.CornerGFTT):
     r"""nn.Module that calculates Shi-Tomasi corners
     See :func:`~kornia.feature.gfft_response` for details.
     """
 
     def __init__(self, grads_mode='sobel') -> None:
-        super(CornerGFTT, self).__init__()
-        self.grads_mode: str = grads_mode
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            'grads_mode=' + self.grads_mode + ')'
-
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return gftt_response(input, self.grads_mode, sigmas)
+        super(CornerGFTT, self).__init__(grads_mode)
+        kornia.deprecation_warning("kornia.feature.CornerGFTT", "kornia.nn.CornerGFTT")
 
 
-class BlobHessian(nn.Module):
+class BlobHessian(kornia.nn.BlobHessian):
     r"""nn.Module that calculates Hessian blobs
     See :func:`~kornia.feature.hessian_response` for details.
     """
 
     def __init__(self, grads_mode='sobel') -> None:
-        super(BlobHessian, self).__init__()
-        self.grads_mode: str = grads_mode
-        return
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            'grads_mode=' + self.grads_mode + ')'
-
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
-        return hessian_response(input, self.grads_mode, sigmas)
+        super(BlobHessian, self).__init__(grads_mode)
+        kornia.deprecation_warning("kornia.feature.BlobHessian", "kornia.nn.BlobHessian")
