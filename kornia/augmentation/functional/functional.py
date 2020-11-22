@@ -796,17 +796,26 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
     input = _transform_input(input)
     _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
     kernel_size: int = cast(int, params['ksize_factor'].unique().item())
     angle = params['angle_factor']
     direction = params['direction_factor']

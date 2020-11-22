@@ -26,6 +26,7 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -37,6 +38,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -46,6 +50,8 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -81,14 +87,20 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         super(RandomHorizontalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -121,6 +133,7 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -132,6 +145,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -141,6 +157,8 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -176,14 +194,20 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         super(RandomVerticalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -216,6 +240,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -227,6 +252,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -236,6 +264,8 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -272,14 +302,20 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         super(RandomDepthicalFlip3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -333,6 +369,7 @@ class RandomAffine3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -344,6 +381,9 @@ class RandomAffine3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -353,6 +393,8 @@ class RandomAffine3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -474,6 +516,7 @@ class RandomRotation3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -485,6 +528,9 @@ class RandomRotation3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -494,6 +540,8 @@ class RandomRotation3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -637,7 +685,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
@@ -658,6 +710,10 @@ class RandomMotionBlur3D(AugmentationBase3D):
 >>>>>>> Augmentation documentation update (#730)
 =======
 =======
+=======
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -778,6 +834,10 @@ class RandomMotionBlur3D(AugmentationBase3D):
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
@@ -804,13 +864,19 @@ class RandomMotionBlur3D(AugmentationBase3D):
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         self.angle: torch.Tensor = _tuple_range_reader(angle, 3)
@@ -954,7 +1020,11 @@ class CenterCrop3D(AugmentationBase3D):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
@@ -997,6 +1067,10 @@ class CenterCrop3D(AugmentationBase3D):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 =======
+=======
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1028,7 +1102,11 @@ class CenterCrop3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
                  return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
@@ -1042,6 +1120,9 @@ class CenterCrop3D(AugmentationBase3D):
             p=1., return_transform=return_transform, same_on_batch=True, p_batch=p)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
                  return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
@@ -1049,8 +1130,11 @@ class CenterCrop3D(AugmentationBase3D):
         super(CenterCrop3D, self).__init__(
             p=1., return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.size = size
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -1162,7 +1246,11 @@ class RandomCrop3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -1177,10 +1265,14 @@ class RandomCrop3D(AugmentationBase3D):
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1192,6 +1284,8 @@ class RandomCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1224,7 +1318,11 @@ class RandomCrop3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = True, p: float = 1.0, keepdim: bool = False
     ) -> None:
@@ -1239,6 +1337,9 @@ class RandomCrop3D(AugmentationBase3D):
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = True, p: float = 1.0, keepdim: bool = False
@@ -1247,8 +1348,11 @@ class RandomCrop3D(AugmentationBase3D):
         super(RandomCrop3D, self).__init__(
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -1394,6 +1498,7 @@ class RandomPerspective3D(AugmentationBase3D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
@@ -1410,6 +1515,9 @@ class RandomPerspective3D(AugmentationBase3D):
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
@@ -1424,6 +1532,10 @@ class RandomPerspective3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1481,7 +1593,11 @@ class RandomPerspective3D(AugmentationBase3D):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
@@ -1494,7 +1610,16 @@ class RandomPerspective3D(AugmentationBase3D):
     ) -> None:
         super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
+    ) -> None:
+        super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                                  keepdim=keepdim)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.distortion_scale = cast(torch.Tensor, distortion_scale) \
             if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
         self.resample = Resample.get(resample)
@@ -1550,6 +1675,7 @@ class RandomEqualize3D(AugmentationBase3D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1561,6 +1687,9 @@ class RandomEqualize3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
@@ -1570,6 +1699,8 @@ class RandomEqualize3D(AugmentationBase3D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`

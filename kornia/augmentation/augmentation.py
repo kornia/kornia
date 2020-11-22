@@ -44,6 +44,7 @@ class RandomHorizontalFlip(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -55,6 +56,9 @@ class RandomHorizontalFlip(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -64,6 +68,8 @@ class RandomHorizontalFlip(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -114,6 +120,7 @@ class RandomVerticalFlip(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -125,6 +132,9 @@ class RandomVerticalFlip(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -134,6 +144,8 @@ class RandomVerticalFlip(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -188,6 +200,7 @@ class ColorJitter(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -199,6 +212,9 @@ class ColorJitter(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -208,6 +224,8 @@ class ColorJitter(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -248,21 +266,31 @@ class ColorJitter(AugmentationBase2D):
                                           keepdim=keepdim)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
         self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
         self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
         self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
         self.hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     def __repr__(self) -> str:
         repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
@@ -308,6 +336,7 @@ class RandomGrayscale(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -319,6 +348,9 @@ class RandomGrayscale(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -328,6 +360,8 @@ class RandomGrayscale(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -392,6 +426,7 @@ class RandomErasing(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -403,6 +438,9 @@ class RandomErasing(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -412,6 +450,8 @@ class RandomErasing(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -475,6 +515,7 @@ class RandomPerspective(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -486,6 +527,9 @@ class RandomPerspective(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -495,6 +539,8 @@ class RandomPerspective(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -591,6 +637,7 @@ class RandomAffine(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -602,6 +649,9 @@ class RandomAffine(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -611,6 +661,8 @@ class RandomAffine(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -708,6 +760,7 @@ class CenterCrop(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -719,6 +772,9 @@ class CenterCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -728,6 +784,8 @@ class CenterCrop(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -805,6 +863,7 @@ class RandomRotation(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -816,6 +875,9 @@ class RandomRotation(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -825,6 +887,8 @@ class RandomRotation(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -917,6 +981,7 @@ class RandomCrop(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -928,6 +993,9 @@ class RandomCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -937,6 +1005,8 @@ class RandomCrop(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -977,11 +1047,18 @@ class RandomCrop(AugmentationBase2D):
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 <<<<<<< master
+<<<<<<< master
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
 =======
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.size = size
         self.padding = padding
         self.pad_if_needed = pad_if_needed
@@ -1060,6 +1137,7 @@ class RandomResizedCrop(AugmentationBase2D):
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1071,6 +1149,9 @@ class RandomResizedCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1080,6 +1161,8 @@ class RandomResizedCrop(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1124,11 +1207,18 @@ class RandomResizedCrop(AugmentationBase2D):
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 <<<<<<< master
+<<<<<<< master
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
 =======
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
 >>>>>>> RandomREsizedCrop fixed (#748)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> RandomREsizedCrop fixed (#748)
+=======
+=======
+            p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.size = size
         self.scale = cast(torch.Tensor, scale) if isinstance(scale, torch.Tensor) else torch.tensor(scale)
         self.ratio = cast(torch.Tensor, ratio) if isinstance(ratio, torch.Tensor) else torch.tensor(ratio)
@@ -1238,7 +1328,11 @@ class RandomMotionBlur(AugmentationBase2D):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
@@ -1251,7 +1345,16 @@ class RandomMotionBlur(AugmentationBase2D):
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+            return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+    ) -> None:
+        super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
+                                               keepdim=keepdim)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
 
         angle = cast(torch.Tensor, angle) if isinstance(angle, torch.Tensor) else torch.tensor(angle)
@@ -1324,11 +1427,19 @@ class RandomSolarize(AugmentationBase2D):
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 <<<<<<< master
+<<<<<<< master
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 =======
 >>>>>>> Augmentation documentation update (#730)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Augmentation documentation update (#730)
+=======
+=======
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1459,6 +1570,7 @@ class RandomSharpness(AugmentationBase2D):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Augmentation documentation update (#730)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
@@ -1466,11 +1578,18 @@ class RandomSharpness(AugmentationBase2D):
 >>>>>>> Augmentation documentation update (#730)
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 >>>>>>> Augmentation documentation update (#730)
+=======
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -1558,13 +1677,22 @@ class RandomEqualize(AugmentationBase2D):
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
 <<<<<<< master
+<<<<<<< master
                                       wont be concatenated.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 =======
                                       wont be concatenated
 >>>>>>> Augmentation documentation update (#730)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Augmentation documentation update (#730)
+=======
+=======
+                                      wont be concatenated.
+        keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
+                        to the batch form (False). Default: False.
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`

@@ -1,16 +1,23 @@
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 from typing import Tuple, Union, List, Callable, Optional, cast
 =======
 from typing import Tuple, Union, List, Callable
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 from typing import Tuple, Union, List, Callable, Optional
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 from typing import Tuple, Union, List, Callable, Optional, cast
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
 import torch
 from torch.distributions import Uniform, Beta
@@ -18,14 +25,21 @@ from functools import wraps
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 from kornia.utils import _extract_device_dtype
 
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 =======
 from kornia.utils import _extract_device_dtype
 
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.
@@ -165,6 +179,7 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
     is_tuple = isinstance(output, tuple)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     out_tensor: torch.Tensor
     trans_matrix: Optional[torch.Tensor]
     if is_tuple:
@@ -173,6 +188,9 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
         out_tensor = cast(torch.Tensor, output)
 =======
 =======
+=======
+<<<<<<< master
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
     out_tensor: torch.Tensor
     trans_matrix: Optional[torch.Tensor]
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
@@ -184,7 +202,16 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 =======
         out_tensor = cast(torch.Tensor, output)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+=======
+    if is_tuple:
+        out_tensor, trans_matrix = output
+    else:
+        out_tensor = output
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         trans_matrix = None
 
     if trans_matrix is not None:
