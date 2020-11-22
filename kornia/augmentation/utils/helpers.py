@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List, Callable
+from typing import Tuple, Union, List, Callable, Optional
 
 import torch
 from torch.distributions import Uniform, Beta
