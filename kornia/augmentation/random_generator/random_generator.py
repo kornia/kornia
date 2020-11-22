@@ -161,7 +161,9 @@ def random_perspective_generator(
 
     # TODO: This line somehow breaks the gradcheck
     rand_val: torch.Tensor = _adapted_uniform(
-        start_points.shape, 0, 1, same_on_batch).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
+        start_points.shape, torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype), same_on_batch
+    ).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
 
     pts_norm = torch.tensor([[
         [1, 1],
@@ -566,10 +568,12 @@ def random_rectangles_params_generator(
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
         if same_on_batch:
             rand_idxs = torch.round(_adapted_uniform(
-                (1,), 0, 1, same_on_batch)).repeat(batch_size).bool()
+                (1,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).repeat(batch_size).bool()
         else:
             rand_idxs = torch.round(_adapted_uniform(
-                (batch_size,), 0, 1, same_on_batch)).bool()
+                (batch_size,), torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype), same_on_batch)).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
         aspect_ratios = _adapted_uniform(
@@ -589,8 +593,10 @@ def random_rectangles_params_generator(
         torch.tensor(width, device=device, dtype=dtype)
     )
 
-    xs_ratio = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
-    ys_ratio = _adapted_uniform((batch_size,), 0, 1, same_on_batch)
+    xs_ratio = _adapted_uniform((batch_size,), torch.tensor(0, device=device, dtype=dtype),
+                                torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+    ys_ratio = _adapted_uniform((batch_size,), torch.tensor(0, device=device, dtype=dtype),
+                                torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 
     xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
     ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
@@ -607,8 +613,7 @@ def center_crop_generator(
     height: int,
     width: int,
     size: Tuple[int, int],
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32
+    device: torch.device = torch.device('cpu')
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
@@ -617,6 +622,7 @@ def center_crop_generator(
         height (int) : height of the image.
         width (int): width of the image.
         size (tuple): Desired output size of the crop, like (h, w).
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -624,7 +630,7 @@ def center_crop_generator(
             - dst (tensor): output bounding boxes with a shape (B, 4, 2).
 
     Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
+        No random number will be generated.
     """
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
