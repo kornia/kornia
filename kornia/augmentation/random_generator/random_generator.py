@@ -346,37 +346,37 @@ def random_crop_generator(
         >>> crop_size = random_crop_size_generator(
         ...     3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))['size']
         >>> crop_size
-        tensor([[26, 29],
-                [27, 28],
-                [25, 28]])
+        tensor([[25, 28],
+                [27, 29],
+                [26, 28]])
         >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
-        {'src': tensor([[[ 1,  3],
+        {'src': tensor([[[ 2,  3],
                  [29,  3],
-                 [29, 28],
-                 [ 1, 28]],
+                 [29, 27],
+                 [ 2, 27]],
         <BLANKLINE>
-                [[ 2,  3],
+                [[ 1,  3],
                  [29,  3],
                  [29, 29],
-                 [ 2, 29]],
+                 [ 1, 29]],
         <BLANKLINE>
                 [[ 0,  2],
                  [27,  2],
-                 [27, 26],
-                 [ 0, 26]]]), 'dst': tensor([[[ 0,  0],
-                 [28,  0],
-                 [28, 25],
-                 [ 0, 25]],
+                 [27, 27],
+                 [ 0, 27]]]), 'dst': tensor([[[ 0,  0],
+                 [27,  0],
+                 [27, 24],
+                 [ 0, 24]],
         <BLANKLINE>
                 [[ 0,  0],
-                 [27,  0],
-                 [27, 26],
+                 [28,  0],
+                 [28, 26],
                  [ 0, 26]],
         <BLANKLINE>
                 [[ 0,  0],
                  [27,  0],
-                 [27, 24],
-                 [ 0, 24]]])}
+                 [27, 25],
+                 [ 0, 25]]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
@@ -462,9 +462,9 @@ def random_crop_size_generator(
     Examples:
         >>> _ = torch.manual_seed(0)
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[26, 29],
-                [27, 28],
-                [25, 28]])}
+        {'size': tensor([[25, 28],
+                [27, 29],
+                [26, 28]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
@@ -486,8 +486,8 @@ def random_crop_size_generator(
         torch.log(ratio[1].to(device=device, dtype=dtype)), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
 
-    w = torch.sqrt(area * aspect_ratio).int()
-    h = torch.sqrt(area / aspect_ratio).int()
+    w = torch.sqrt(area * aspect_ratio).round().int()
+    h = torch.sqrt(area / aspect_ratio).round().int()
     # Element-wise w, h condition
     cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
     cond_bool = torch.sum(cond, dim=1) > 0

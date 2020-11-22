@@ -559,13 +559,24 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         expected = dict(
             size=torch.tensor([
                 [89, 87],
-                [90, 94],
-                [81, 86],
+                [91, 95],
+                [81, 87],
                 [92, 98],
-                [89, 91],
-                [87, 89],
-                [86, 94],
-                [91, 87]], device=device, dtype=torch.long)
+                [89, 92],
+                [88, 90],
+                [87, 95],
+                [92, 87]], device=device, dtype=torch.long)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['size'], expected['size'])
+
+        res = random_crop_size_generator(
+            batch_size=100, size=(100, 100),
+            scale=torch.tensor([0.999, 1.], device=device, dtype=dtype),
+            ratio=torch.tensor([1., 1.], device=device, dtype=dtype),
+            same_on_batch=False)
+        expected = dict(
+            size=torch.tensor([[100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
