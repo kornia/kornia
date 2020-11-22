@@ -20,6 +20,7 @@ from kornia.augmentation.utils.helpers import (
     _shape_validation,
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     _validate_input,
     _validate_input3D,
     _transform_output_shape
@@ -28,6 +29,11 @@ from kornia.augmentation.utils.helpers import (
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 >>>>>>> [FIX] fix device issue for get_motion_kernel2d (#775)
+=======
+    _validate_input,
+    _validate_input3D,
+    _transform_output_shape
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 )
 
 __all__ = [

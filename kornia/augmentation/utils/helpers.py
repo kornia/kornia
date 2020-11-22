@@ -1,11 +1,18 @@
+<<<<<<< refs/remotes/kornia/master
 from typing import Tuple, Union, List, Callable, Optional, cast
+=======
+from typing import Tuple, Union, List, Callable
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
 import torch
 from torch.distributions import Uniform, Beta
 from functools import wraps
 
+<<<<<<< refs/remotes/kornia/master
 from kornia.utils import _extract_device_dtype
 
+=======
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.
@@ -143,12 +150,19 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
         torch.Tensor
     """
     is_tuple = isinstance(output, tuple)
+<<<<<<< refs/remotes/kornia/master
     out_tensor: torch.Tensor
     trans_matrix: Optional[torch.Tensor]
     if is_tuple:
         out_tensor, trans_matrix = cast(Tuple[torch.Tensor, torch.Tensor], output)
     else:
         out_tensor = cast(torch.Tensor, output)
+=======
+    if is_tuple:
+        out_tensor, trans_matrix = output
+    else:
+        out_tensor = output
+>>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
         trans_matrix = None
 
     if trans_matrix is not None:
