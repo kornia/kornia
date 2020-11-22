@@ -25,12 +25,15 @@ def random_prob_generator(
         batch_size (int): the number of images.
         p (float): probability to generate an 1-d binary mask. Default value is 0.5.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: None.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: None.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         torch.Tensor: parameters to be passed for transformation.
             - probs (tensor): element-wise probabilities with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     if not isinstance(p, (int, float)) or p > 1 or p < 0:
@@ -65,8 +68,8 @@ def random_color_jitter_generator(
         hue (torch.Tensor, optional): Saturation factor tensor of range (a, b).
             The provided range must follow -0.5 <= a <= b < 0.5. Default value is [0., 0.].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: None.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: None.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -77,6 +80,9 @@ def random_color_jitter_generator(
             - order (tensor): applying orders of the color adjustments with a shape of (4). In which,
                 0 is brightness adjustment; 1 is contrast adjustment;
                 2 is saturation adjustment; 3 is hue adjustment.
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
@@ -123,11 +129,16 @@ def random_perspective_generator(
         width (int): width of the image.
         distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - start_points (tensor): element-wise perspective source areas with a shape of (B, 4, 2).
             - end_points (tensor): element-wise perspective target areas with a shape of (B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
@@ -193,6 +204,8 @@ def random_affine_generator(
             Shear is a 2x2 tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
             (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -202,6 +215,9 @@ def random_affine_generator(
             - angle (tensor): element-wise rotation angles with a shape of (B,).
             - sx (tensor): element-wise x-axis shears with a shape of (B,).
             - sy (tensor): element-wise y-axis shears with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
@@ -274,10 +290,15 @@ def random_rotation_generator(
         batch_size (int): the tensor batch size.
         degrees (torch.Tensor): range of degrees with shape (2) to select from.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - degrees (tensor): element-wise rotation degrees with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
@@ -307,11 +328,16 @@ def random_crop_generator(
             If tensor, it must be (B, 2).
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (tensor): output bounding boxes with a shape (B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -421,10 +447,15 @@ def random_crop_size_generator(
         scale (tensor): range of size of the origin size cropped with (2,) shape.
         ratio (tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - size (tensor): element-wise cropping sizes with a shape of (B, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
 
     Examples:
         >>> _ = torch.manual_seed(0)
@@ -504,6 +535,8 @@ def random_rectangles_params_generator(
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
         value (float): value to be filled in the erased area.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -512,6 +545,9 @@ def random_rectangles_params_generator(
             - xs (tensor): element-wise erasing x coordinates with a shape of (B,).
             - ys (tensor): element-wise erasing y coordinates with a shape of (B,).
             - values (tensor): element-wise filling values with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([ratio, scale])
@@ -586,6 +622,9 @@ def center_crop_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (tensor): output bounding boxes with a shape (B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
@@ -653,12 +692,17 @@ def random_motion_blur_generator(
             angle provided via angle), while higher values towards 1.0 will point the motion
             blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
             - angle_factor (tensor): element-wise angle factors with a shape of (B,).
             - direction_factor (tensor): element-wise direction factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(angle, 'angle')
@@ -711,11 +755,16 @@ def random_solarize_generator(
             Takes in a range tensor of (0, 1). Default value will be sampled from [0.4, 0.6].
         additions (torch.Tensor): The value is between -0.5 and 0.5. Default value will be sampled from [-0.1, 0.1]
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - thresholds_factor (tensor): element-wise thresholds factors with a shape of (B,).
             - additions_factor (tensor): element-wise additions factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(thresholds, 'thresholds', (0, 1))
@@ -750,10 +799,15 @@ def random_posterize_generator(
         batch_size (int): the number of images.
         bits (int or tuple): Takes in an integer tuple tensor that ranged from 0 ~ 8. Default value is [3, 5].
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - bits_factor (tensor): element-wise bit factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(bits, 'bits', (0, 8))
@@ -779,10 +833,15 @@ def random_sharpness_generator(
         batch_size (int): the number of images.
         sharpness (torch.Tensor): Must be above 0. Default value is sampled from (0, 1).
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - sharpness_factor (tensor): element-wise sharpness factors with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(sharpness, 'sharpness', bounds=(0, float('inf')))
@@ -811,11 +870,16 @@ def random_mixup_generator(
         lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - mix_pairs (tensor): element-wise probabilities with a shape of (B,).
             - mixup_lambdas (tensor): element-wise probabilities with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -869,11 +933,16 @@ def random_cutmix_generator(
         cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - mix_pairs (tensor): element-wise probabilities with a shape of (num_mix, B).
             - crop_src (tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -909,7 +978,6 @@ def random_cutmix_generator(
                   [ 96,  70],
                   [ 96,  69],
                   [ 97,  69]]]])}
-
     """
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     if beta is None:
