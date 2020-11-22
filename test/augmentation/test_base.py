@@ -25,7 +25,7 @@ class TestBasicAugmentationBase:
         augmentation = _BasicAugmentationBase(p=1., p_batch=1)
         with patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
-            output = augmentation.__infer_input__(input)
+            output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
             assert_allclose(input, output[:, :, 0, :, :])
 
@@ -51,26 +51,44 @@ class TestBasicAugmentationBase:
             assert "batch_prob" in output
             assert len(output['degrees']) == output['batch_prob'].sum().item() == num
 
-    def test_forward(self, device, dtype):
+    @pytest.mark.parametrize('keepdim', (True, False))
+    def test_forward(self, device, dtype, keepdim):
         torch.manual_seed(42)
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)
-        expected_output = input.unsqueeze(dim=1)[..., :2, :2]
-        augmentation = _BasicAugmentationBase(p=.3, p_batch=1.)
+        expected_output = input[..., :2, :2] if keepdim else input.unsqueeze(dim=0)[..., :2, :2]
+        augmentation = _BasicAugmentationBase(p=.3, p_batch=1., keepdim=keepdim)
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, \
                 patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters, \
-                patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor:
+                patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor, \
+                patch.object(augmentation, "__check_batching__", autospec=True) as check_batching:
 
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
-            transform_tensor.side_effect = lambda x: x.unsqueeze(dim=1)
+            transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
             apply_transform.side_effect = lambda input, params: input[..., :2, :2]
+            check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_allclose(output, expected_output)
 
 
 class TestAugmentationBase2D:
+
+    @pytest.mark.parametrize('input_shape, in_trans_shape', [
+        ((2, 3, 4, 5), (2, 3, 3)),
+        ((3, 4, 5), (3, 3)),
+        ((4, 5), (3, 3)),
+        pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
+        pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
+        pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
+    ])
+    def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
+        input = torch.rand(input_shape, device=device, dtype=dtype)
+        in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)
+        augmentation = AugmentationBase2D(p=1., p_batch=1)
+        augmentation.__check_batching__(input)
+        augmentation.__check_batching__((input, in_trans))
 
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
