@@ -1,5 +1,6 @@
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 __all__ = [
@@ -33,7 +34,7 @@ def add_weighted(src1: torch.Tensor, alpha: float,
     return src1 * alpha + src2 * beta + gamma
 
 
-class AddWeighted(nn.Module):
+class AddWeighted(kornia.nn.enhance.AddWeighted):
     r"""Calculates the weighted sum of two Tensors.
 
     The function calculates the weighted sum of two Tensors as follows:
@@ -53,10 +54,5 @@ class AddWeighted(nn.Module):
     """
 
     def __init__(self, alpha: float, beta: float, gamma: float) -> None:
-        super(AddWeighted, self).__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
-
-    def forward(self, src1: torch.Tensor, src2: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return add_weighted(src1, self.alpha, src2, self.beta, self.gamma)
+        super(AddWeighted, self).__init__(alpha, beta, gamma)
+        kornia.deprecation_warning("kornia.enhance.AddWeighted", "kornia.nn.enhance.AddWeighted")

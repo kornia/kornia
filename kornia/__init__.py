@@ -23,7 +23,6 @@ from kornia import utils
 from kornia import nn
 
 # Exposes package functional to top level
-
 from kornia.augmentation.functional import *
 from kornia.color import (
     rgb_to_grayscale,

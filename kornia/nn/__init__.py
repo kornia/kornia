@@ -1,1 +1,2 @@
-from kornia.nn.color import RgbToGrayscale, BgrToGrayscale
+from kornia.nn.color import *
+from kornia.nn.enhance import *

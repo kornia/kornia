@@ -1,9 +1,8 @@
 from typing import Union, Optional
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
+import kornia
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.constants import pi
@@ -548,7 +547,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
-class AdjustSaturation(nn.Module):
+class AdjustSaturation(kornia.nn.enhance.AdjustSaturation):
     r"""Adjust color saturation of an image.
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -564,14 +563,11 @@ class AdjustSaturation(nn.Module):
     """
 
     def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustSaturation, self).__init__()
-        self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return adjust_saturation(input, self.saturation_factor)
+        super(AdjustSaturation, self).__init__(saturation_factor)
+        kornia.deprecation_warning("kornia.enhance.AdjustSaturation", "kornia.nn.enhance.AdjustSaturation")
 
 
-class AdjustHue(nn.Module):
+class AdjustHue(kornia.nn.enhance.AdjustHue):
     r"""Adjust hue of an image.
 
     The input image is expected to be an RGB image in the range of [0, 1].
@@ -588,14 +584,11 @@ class AdjustHue(nn.Module):
     """
 
     def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustHue, self).__init__()
-        self.hue_factor: Union[float, torch.Tensor] = hue_factor
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return adjust_hue(input, self.hue_factor)
+        super(AdjustHue, self).__init__(hue_factor)
+        kornia.deprecation_warning("kornia.enhance.AdjustHue", "kornia.nn.enhance.AdjustHue")
 
 
-class AdjustGamma(nn.Module):
+class AdjustGamma(kornia.nn.enhance.AdjustGamma):
     r"""Perform gamma correction on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -612,15 +605,11 @@ class AdjustGamma(nn.Module):
     """
 
     def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
-        super(AdjustGamma, self).__init__()
-        self.gamma: Union[float, torch.Tensor] = gamma
-        self.gain: Union[float, torch.Tensor] = gain
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return adjust_gamma(input, self.gamma, self.gain)
+        super(AdjustGamma, self).__init__(gamma, gain)
+        kornia.deprecation_warning("kornia.enhance.AdjustGamma", "kornia.nn.enhance.AdjustGamma")
 
 
-class AdjustContrast(nn.Module):
+class AdjustContrast(kornia.nn.enhance.AdjustContrast):
     r"""Adjust Contrast of an image. This implementation aligns OpenCV, not PIL. Hence,
     the output differs from TorchVision.
 
@@ -638,14 +627,11 @@ class AdjustContrast(nn.Module):
     """
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustContrast, self).__init__()
-        self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return adjust_contrast(input, self.contrast_factor)
+        super(AdjustContrast, self).__init__(contrast_factor)
+        kornia.deprecation_warning("kornia.enhance.AdjustContrast", "kornia.nn.enhance.AdjustContrast")
 
 
-class AdjustBrightness(nn.Module):
+class AdjustBrightness(kornia.nn.enhance.AdjustBrightness):
     r"""Adjust Brightness of an image. This implementation aligns OpenCV, not PIL. Hence,
     the output differs from TorchVision.
 
@@ -662,8 +648,5 @@ class AdjustBrightness(nn.Module):
     """
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
-        super(AdjustBrightness, self).__init__()
-        self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return adjust_brightness(input, self.brightness_factor)
+        super(AdjustBrightness, self).__init__(brightness_factor)
+        kornia.deprecation_warning("kornia.enhance.AdjustBrightness", "kornia.nn.enhance.AdjustBrightness")

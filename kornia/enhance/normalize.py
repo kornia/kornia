@@ -5,6 +5,7 @@ from typing import Union
 import torch
 import torch.nn as nn
 
+import kornia
 
 __all__ = [
     "normalize",
@@ -15,7 +16,7 @@ __all__ = [
 ]
 
 
-class Normalize(nn.Module):
+class Normalize(kornia.nn.enhance.Normalize):
     r"""Normalize a tensor image or a batch of tensor images with mean and standard deviation.
 
     Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -32,26 +33,8 @@ class Normalize(nn.Module):
 
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
-        super(Normalize, self).__init__()
-
-        self.mean = mean
-        self.std = std
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        """Normalises an input tensor by the mean and standard deviation.
-
-        Args:
-            input: image tensor of size (*, H, W).
-
-        Returns:
-            normalised tensor with same size as input (*, H, W).
-
-        """
-        return normalize(input, self.mean, self.std)
-
-    def __repr__(self):
-        repr = "(mean={0}, std={1})".format(self.mean, self.std)
-        return self.__class__.__name__ + repr
+        super(Normalize, self).__init__(mean, std)
+        kornia.deprecation_warning("kornia.enhance.Normalize", "kornia.nn.enhance.Normalize")
 
 
 def normalize(
@@ -105,7 +88,7 @@ def normalize(
     return out
 
 
-class Denormalize(nn.Module):
+class Denormalize(kornia.nn.enhance.Denormalize):
     r"""Denormalize a tensor image or a batch of tensor images.
 
     Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -122,26 +105,8 @@ class Denormalize(nn.Module):
 
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
 
-        super(Denormalize, self).__init__()
-
-        self.mean = mean
-        self.std = std
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        """Denormalises an input tensor by the mean and standard deviation.
-
-        Args:
-            input: image tensor of size (*, H, W).
-
-        Returns:
-            normalised tensor with same size as input (*, H, W).
-
-        """
-        return denormalize(input, self.mean, self.std)
-
-    def __repr__(self):
-        repr = "(mean={0}, std={1})".format(self.mean, self.std)
-        return self.__class__.__name__ + repr
+        super(Denormalize, self).__init__(mean, std)
+        kornia.deprecation_warning("kornia.enhance.Denormalize", "kornia.nn.enhance.Denormalize")
 
 
 def denormalize(

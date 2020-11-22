@@ -1,8 +1,8 @@
-from typing import Tuple, Optional, Union, List
-from functools import reduce
+from typing import Tuple, Optional, List
 
 import torch
-import torch.nn as nn
+
+import kornia
 
 
 __all__ = [
@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 
-class ZCAWhitening(nn.Module):
+class ZCAWhitening(kornia.nn.enhance.ZCAWhitening):
     r"""
 
     Computes the ZCA whitening matrix transform and the mean vector and applies the transform
@@ -70,99 +70,8 @@ class ZCAWhitening(nn.Module):
                  unbiased: bool = True, detach_transforms: bool = True,
                  compute_inv: bool = False) -> None:
 
-        super(ZCAWhitening, self).__init__()
-
-        self.dim = dim
-        self.eps = eps
-        self.unbiased = unbiased
-        self.detach_transforms = detach_transforms
-        self.compute_inv = compute_inv
-
-        self.fitted = False
-
-    def fit(self, x: torch.Tensor):
-        r"""
-
-        Fits ZCA whitening matrices to the data.
-
-        args:
-
-            x (torch.Tensor): Input data
-
-        returns:
-            ZCAWhiten: returns a fitted ZCAWhiten object instance.
-        """
-
-        T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
-
-        self.mean_vector: torch.Tensor = mean
-        self.transform_matrix: torch.Tensor = T
-        if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0, ])
-        else:
-            self.transform_inv = T_inv
-
-        if self.detach_transforms:
-            self.mean_vector = self.mean_vector.detach()
-            self.transform_matrix = self.transform_matrix.detach()
-            self.transform_inv = self.transform_inv.detach()
-
-        self.fitted = True
-
-        return self
-
-    def forward(self, x: torch.Tensor, include_fit: bool = False) -> torch.Tensor:
-        r"""
-
-        Applies the whitening transform to the data
-
-        args:
-
-            x (torch.Tensor): Input data
-            include_fit (bool): Indicates whether to fit the data as part of the forward pass
-
-        returns:
-
-            torch.Tensor : The transformed data
-
-        """
-
-        if include_fit:
-            self.fit(x)
-
-        if not self.fitted:
-            raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
-
-        x_whiten = linear_transform(x, self.transform_matrix, self.mean_vector, self.dim)
-
-        return x_whiten
-
-    def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
-        r"""
-
-        Applies the inverse transform to the whitened data.
-
-        args:
-            x (torch.Tensor): Whitened data
-
-        returns:
-            torch.Tensor: original data
-
-
-
-        """
-
-        if not self.fitted:
-            raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
-
-        if not self.compute_inv:
-            raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
-
-        mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)  # type: ignore
-
-        y = linear_transform(x, self.transform_inv, mean_inv)  # type: ignore
-
-        return y
+        super(ZCAWhitening, self).__init__(dim, eps, unbiased, detach_transforms, compute_inv)
+        kornia.deprecation_warning("kornia.enhance.ZCAWhitening", "kornia.nn.enhance.ZCAWhitening")
 
 
 def zca_mean(inp: torch.Tensor, dim: int = 0,
