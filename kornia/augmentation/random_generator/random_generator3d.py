@@ -26,7 +26,9 @@ def random_rotation_generator3d(
     Args:
         batch_size (int): the tensor batch size.
         degrees (torch.Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
@@ -88,6 +90,9 @@ def random_affine_generator3d(
             - syz (tensor): element-wise y-z-facet shears with a shape of (B,).
             - szx (tensor): element-wise z-x-facet shears with a shape of (B,).
             - szy (tensor): element-wise z-y-facet shears with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     assert type(depth) == int and depth > 0 and \
         type(height) == int and height > 0 and type(width) == int and width > 0, \
@@ -177,12 +182,17 @@ def random_motion_blur_generator3d(
             angle provided via angle), while higher values towards 1.0 will point the motion
             blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
             - angle_factor (tensor): element-wise center with a shape of (B,).
             - direction_factor (tensor): element-wise scales with a shape of (B,).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _device, _dtype = _extract_device_dtype([angle, direction])
     _joint_range_check(direction, 'direction', (-1, 1))
@@ -323,11 +333,16 @@ def random_crop_generator3d(
             If tensor, it must be (B, 3).
         resize_to (tuple): Desired output size of the crop, like (d, h, w). If None, no resize will be performed.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (tensor): output bounding boxes with a shape (B, 8, 3).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
     if not isinstance(size, torch.Tensor):
@@ -419,11 +434,16 @@ def random_perspective_generator3d(
         width (int): width of the image.
         distortion_scale (torch.Tensor): it controls the degree of distortion and ranges from 0 to 1.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
             - dst (tensor): perspecive target bounding boxes with a shape (B, 8, 3).
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
     """
     assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
         f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
