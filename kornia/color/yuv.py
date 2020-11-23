@@ -76,7 +76,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class RgbToYuv(nn.Module):
+class RgbToYuv(kornia.nn.RgbToYuv):
     r"""Convert an image from RGB to YUV.
 
     The image data is assumed to be in the range of (0, 1).
@@ -102,7 +102,7 @@ class RgbToYuv(nn.Module):
         kornia.deprecation_warning("kornia.color.RgbToYuv", "kornia.nn.color.RgbToYuv")
 
 
-class YuvToRgb(nn.Module):
+class YuvToRgb(kornia.nn.YuvToRgb):
     r"""Convert an image from YUV to RGB.
 
     The image data is assumed to be in the range of (0, 1).
