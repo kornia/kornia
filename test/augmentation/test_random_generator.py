@@ -1045,10 +1045,10 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         expected = dict(
             mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
-                [[71, 109],
-                 [70, 109],
+                [[71, 108],
                  [70, 108],
-                 [71, 108]],
+                 [70, 107],
+                 [71, 107]],
                 [[39, 1],
                  [38, 1],
                  [38, 0],

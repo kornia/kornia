@@ -404,13 +404,13 @@ def random_crop_generator(
         x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).long()
         y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).long()
     crop_src = bbox_generator(
-        x_start.view(-1), y_start.view(-1), size[:, 1] - 1, size[:, 0] - 1).to(device=_device, dtype=torch.long)
+        x_start.view(-1), y_start.view(-1), size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
 
     if resize_to is None:
         crop_dst = bbox_generator(
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
-            size[:, 1] - 1, size[:, 0] - 1).to(device=_device, dtype=torch.long)
+            size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -947,15 +947,15 @@ def random_cutmix_generator(
         >>> rng = torch.manual_seed(0)
         >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
-                [1, 2, 0]]), 'crop_src': tensor([[[[ 36,  25],
-                  [209,  25],
-                  [209, 198],
-                  [ 36, 198]],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 35,  25],
+                  [208,  25],
+                  [208, 198],
+                  [ 35, 198]],
         <BLANKLINE>
-                 [[157, 137],
-                  [156, 137],
-                  [156, 136],
-                  [157, 136]],
+                 [[156, 137],
+                  [155, 137],
+                  [155, 136],
+                  [156, 136]],
         <BLANKLINE>
                  [[  3,  12],
                   [210,  12],
@@ -963,15 +963,15 @@ def random_cutmix_generator(
                   [  3, 219]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 83, 126],
-                  [177, 126],
-                  [177, 220],
-                  [ 83, 220]],
+                [[[ 83, 125],
+                  [177, 125],
+                  [177, 219],
+                  [ 83, 219]],
         <BLANKLINE>
-                 [[ 55,   8],
-                  [206,   8],
-                  [206, 159],
-                  [ 55, 159]],
+                 [[ 54,   8],
+                  [205,   8],
+                  [205, 159],
+                  [ 54, 159]],
         <BLANKLINE>
                  [[ 97,  70],
                   [ 96,  70],
@@ -1003,8 +1003,8 @@ def random_cutmix_generator(
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
     cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
-    cut_height = (cutmix_rate * height).long() - 1
-    cut_width = (cutmix_rate * width).long() - 1
+    cut_height = (cutmix_rate * height).long()
+    cut_width = (cutmix_rate * width).long()
     _gen_shape = (1,)
 
     if same_on_batch:
