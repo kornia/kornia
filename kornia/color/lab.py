@@ -13,7 +13,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 """
 
 
-def rgb_to_lab(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     r"""Converts a RGB image to Lab.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
@@ -21,7 +21,6 @@ def rgb_to_lab(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     Args:
         image (torch.Tensor): RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
-        eps (float): for numerically stability when dividing. Default: 1e-12.
 
     Returns:
         torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
@@ -52,40 +51,32 @@ def rgb_to_lab(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     xyz_im: torch.Tensor = rgb_to_xyz(image_s)
 
     # normalize for D65 white point
-    xyz_ref_white: torch.Tensor = torch.tensor([0.95047, 1., 1.08883])[..., :, None, None]
-    xyz_ref_white = xyz_ref_white.to(xyz_im.device)
+    xyz_ref_white = torch.tensor(
+        [0.95047, 1., 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
-    xyz_int = torch.where(
-        xyz_normalized > 0.008856,
-        torch.pow(
-            xyz_normalized,
-            1 /
-            3),
-        7.787 *
-        xyz_normalized +
-        4. /
-        29.)
+    power = torch.pow(xyz_normalized, 1 / 3)
+    scale = 7.787 * xyz_normalized + 4. / 29.
+    xyz_int = torch.where(xyz_normalized > 0.008856, power, scale)
 
     x: torch.Tensor = xyz_int[..., 0, :, :]
     y: torch.Tensor = xyz_int[..., 1, :, :]
     z: torch.Tensor = xyz_int[..., 2, :, :]
 
-    L = (116. * y) - 16.
-    a = 500. * (x - y)
-    b = 200. * (y - z)
+    L: torch.Tensor = (116. * y) - 16.
+    a: torch.Tensor = 500. * (x - y)
+    b: torch.Tensor = 200. * (y - z)
 
-    out = torch.stack([L, a, b], dim=-3)
+    out: torch.Tensor = torch.stack([L, a, b], dim=-3)
 
     return out
 
 
-def lab_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def lab_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Converts a Lab image to RGB.
 
     Args:
         image (torch.Tensor): Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
-        eps (float): for numerically stability when dividing. Default: 1e-12.
 
     Returns:
         torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
@@ -115,11 +106,13 @@ def lab_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     fxyz = torch.stack([fx, fy, fz], dim=-3)
 
     # Convert from Lab to XYZ
-    xyz: torch.Tensor = torch.where(fxyz > .2068966, torch.pow(fxyz, 3.0), (fxyz - 4. / 29.) / 7.787)
+    power = torch.pow(fxyz, 3.0)
+    scale = (fxyz - 4. / 29.) / 7.787
+    xyz = torch.where(fxyz > .2068966, power, scale)
 
     # For D65 white point
-    xyz_ref_white: torch.Tensor = torch.tensor([0.95047, 1., 1.08883])[..., :, None, None]
-    xyz_ref_white = xyz_ref_white.to(xyz.device)
+    xyz_ref_white = torch.tensor(
+        [0.95047, 1., 1.08883], device=xyz.device, dtype=xyz.dtype)[..., :, None, None]
     xyz_im = xyz * xyz_ref_white
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
@@ -136,8 +129,7 @@ def lab_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
 
     # Clip to 0,1 https://www.w3.org/Graphics/Color/srgb
-    # results in forth_and_back fail -> should omit?
-#     rgb_im = torch.clamp(rgb_im, min=0, max=1)
+    # rgb_im = torch.clamp(rgb_im, min=0., max=1.)
 
     return rgb_im
 
@@ -179,7 +171,7 @@ class LabToRgb(nn.Module):
     r"""Converts an image from Lab to RGB.
 
     Returns:
-        torch.Tensor: RGB version of the image.
+        torch.Tensor: RGB version of the image. Range may not be in :math:`[0, 1]`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
