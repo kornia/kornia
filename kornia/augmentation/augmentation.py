@@ -194,7 +194,8 @@ class ColorJitter(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_color_jitter_generator(
-            batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch)
+            batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch,
+            self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -317,7 +318,7 @@ class RandomErasing(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_rectangles_params_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], scale=self.scale, ratio=self.ratio,
-            value=self.value, same_on_batch=self.same_on_batch)
+            value=self.value, same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -391,7 +392,8 @@ class RandomPerspective(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator(
-            batch_shape[0], batch_shape[-2], batch_shape[-1], self.distortion_scale, self.same_on_batch)
+            batch_shape[0], batch_shape[-2], batch_shape[-1], self.distortion_scale, self.same_on_batch,
+            self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation(input, params)
@@ -508,7 +510,7 @@ class RandomAffine(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], self.degrees, self.translate, self.scale, self.shear,
-            self.same_on_batch)
+            self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation(input, params)
@@ -541,11 +543,16 @@ class CenterCrop(AugmentationBase2D):
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> inputs = torch.randn(1, 1, 3, 3)
+        >>> inputs = torch.randn(1, 1, 4, 4)
+        >>> inputs
+        tensor([[[[-1.1258, -1.1524, -0.2506, -0.4339],
+                  [ 0.8487,  0.6920, -0.3160, -2.1152],
+                  [ 0.3223, -1.2633,  0.3500,  0.3081],
+                  [ 0.1198,  1.2377,  1.1168, -0.2473]]]])
         >>> aug = CenterCrop(2, p=1.)
         >>> aug(inputs)
-        tensor([[[[ 0.1829, -1.2388],
-                  [ 0.1813, -0.5911]]]])
+        tensor([[[[ 0.6920, -0.3160],
+                  [-1.2633,  0.3500]]]])
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], align_corners: bool = True,
@@ -576,7 +583,7 @@ class CenterCrop(AugmentationBase2D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
                             f"Got: {type(self.size)}.")
         return rg.center_crop_generator(
-            batch_shape[0], batch_shape[-2], batch_shape[-1], size_param)
+            batch_shape[0], batch_shape[-2], batch_shape[-1], size_param, self.device)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation(input, params, self.flags)
@@ -655,7 +662,7 @@ class RandomRotation(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.same_on_batch)
+        return rg.random_rotation_generator(batch_shape[0], self.degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation(input, params)
@@ -726,7 +733,6 @@ class RandomCrop(AugmentationBase2D):
         self.fill = fill
         self.padding_mode = padding_mode
         self.resample = Resample.get(resample)
-        self.same_on_batch = same_on_batch
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -740,7 +746,7 @@ class RandomCrop(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
-                                        same_on_batch=self.same_on_batch)
+                                        same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
@@ -852,9 +858,10 @@ class RandomResizedCrop(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         target_size: torch.Tensor = rg.random_crop_size_generator(
-            batch_shape[0], self.size, self.scale, self.ratio, same_on_batch=self.same_on_batch)['size']
+            batch_shape[0], self.size, self.scale, self.ratio, self.same_on_batch, self.device, self.dtype)['size']
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
-                                        resize_to=self.size, same_on_batch=self.same_on_batch)
+                                        resize_to=self.size, same_on_batch=self.same_on_batch,
+                                        device=self.device, dtype=self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation(input, params, self.flags)
@@ -895,14 +902,14 @@ class RandomMotionBlur(AugmentationBase2D):
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> input = torch.rand(1, 1, 5, 5)
+        >>> input = torch.ones(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
-        tensor([[[[0.2972, 0.5154, 0.4153, 0.1641, 0.1765],
-                  [0.3045, 0.6160, 0.6123, 0.6701, 0.4225],
-                  [0.1914, 0.3224, 0.2456, 0.1485, 0.1799],
-                  [0.2974, 0.6258, 0.6399, 0.4802, 0.1939],
-                  [0.3919, 0.6911, 0.6984, 0.5462, 0.5357]]]])
+        tensor([[[[-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094]]]])
     """
 
     def __init__(
@@ -934,7 +941,7 @@ class RandomMotionBlur(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_motion_blur_generator(
-            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -1001,7 +1008,8 @@ class RandomSolarize(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_solarize_generator(batch_shape[0], self.thresholds, self.additions, self.same_on_batch)
+        return rg.random_solarize_generator(batch_shape[0], self.thresholds, self.additions, self.same_on_batch,
+                                            self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -1065,7 +1073,7 @@ class RandomPosterize(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_posterize_generator(batch_shape[0], self.bits, self.same_on_batch)
+        return rg.random_posterize_generator(batch_shape[0], self.bits, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -1101,9 +1109,9 @@ class RandomSharpness(AugmentationBase2D):
         >>> sharpness = RandomSharpness(1., p=1.)
         >>> sharpness(input)
         tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
-                  [0.6341, 0.7059, 0.9403, 0.6860, 0.6323],
-                  [0.3489, 0.6549, 0.4361, 0.5206, 0.2939],
-                  [0.5185, 0.8256, 0.8847, 0.5161, 0.2823],
+                  [0.6341, 0.4810, 0.7367, 0.4177, 0.6323],
+                  [0.3489, 0.4428, 0.1562, 0.2443, 0.2939],
+                  [0.5185, 0.6462, 0.7050, 0.2288, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
     """
 
@@ -1126,7 +1134,8 @@ class RandomSharpness(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_sharpness_generator(batch_shape[0], self.sharpness, self.same_on_batch)
+        return rg.random_sharpness_generator(batch_shape[0], self.sharpness, self.same_on_batch,
+                                             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)

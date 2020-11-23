@@ -20,6 +20,8 @@ class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
+    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
+    To change this behaviour, please use ``set_rng_device_and_dtype``.
 
     Args:
         p (float): probability for applying an augmentation. This param controls the augmentation
@@ -43,6 +45,7 @@ class _BasicAugmentationBase(nn.Module):
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0. or p_batch != 1.:
             self._p_batch_gen = Bernoulli(self.p_batch)
+        self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
     def __repr__(self) -> str:
         return f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
@@ -66,6 +69,15 @@ class _BasicAugmentationBase(nn.Module):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
+
+    def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
+        """Change the random generation device and dtype.
+
+        Note:
+            The generated random numbers are not reproducible across different devices and dtypes.
+        """
+        self.device = device
+        self.dtype = dtype
 
     def __selective_param_gen__(
             self, batch_shape: torch.Size, to_apply: torch.Tensor) -> Dict[str, torch.Tensor]:
