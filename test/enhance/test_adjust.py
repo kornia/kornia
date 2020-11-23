@@ -1,7 +1,7 @@
 import pytest
 
 import kornia
-import kornia.testing as utils  # test utils
+from kornia.testing import tensor_to_gradcheck_var, BaseTester
 from kornia.constants import pi
 
 import torch
@@ -52,7 +52,7 @@ class TestAdjustSaturation:
     def test_gradcheck(self):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_saturation, (img, 2.),
                          raise_exception=True)
 
@@ -123,7 +123,7 @@ class TestAdjustHue:
     def test_gradcheck(self):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_hue, (img, 2.),
                          raise_exception=True)
 
@@ -255,7 +255,7 @@ class TestAdjustGamma:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_gamma, (img, 1., 2.),
                          raise_exception=True)
 
@@ -456,7 +456,7 @@ class TestAdjustContrast:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_contrast, (img, 2.),
                          raise_exception=True)
 
@@ -596,7 +596,7 @@ class TestAdjustBrightness:
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_brightness, (img, 2.),
                          raise_exception=True)
 
@@ -658,7 +658,7 @@ class TestEqualize:
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.ones(bs, channels, height, width)
         inputs = inputs.to(device)
-        inputs = utils.tensor_to_gradcheck_var(inputs)
+        inputs = tensor_to_gradcheck_var(inputs)
         assert gradcheck(kornia.enhance.equalize, (inputs,),
                          raise_exception=True)
 
@@ -727,7 +727,7 @@ class TestEqualize3D:
         bs, channels, depth, height, width = 2, 3, 6, 4, 5
         inputs3d = torch.ones(bs, channels, depth, height, width)
         inputs3d = inputs3d.to(device)
-        inputs3d = utils.tensor_to_gradcheck_var(inputs3d)
+        inputs3d = tensor_to_gradcheck_var(inputs3d)
         assert gradcheck(kornia.enhance.equalize3d, (inputs3d,),
                          raise_exception=True)
 
@@ -742,3 +742,102 @@ class TestEqualize3D:
         batch = torch.stack([image3d] * bs)
 
         return batch
+
+
+class TestSharpness(BaseTester):
+
+    f = kornia.enhance.sharpness
+
+    def test_smoke(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 5
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        assert isinstance(TestSharpness.f(img, 0.8), torch.Tensor)
+
+    @pytest.mark.parametrize("batch_size, height, width, factor", [
+        (1, 4, 5, 0.8), (2, 4, 5, 0.8),
+        (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
+        (2, 4, 5, torch.tensor([0.8, 0.7]))])
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_cardinality(self, batch_size, channels, height, width, factor, device, dtype):
+        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+        assert TestSharpness.f(inputs, factor).shape == torch.Size([batch_size, channels, height, width])
+
+    def test_exception(self, device, dtype):
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+        with pytest.raises(AssertionError):
+            assert TestSharpness.f(img, [0.8, 0.9, 0.6])
+        with pytest.raises(AssertionError):
+            assert TestSharpness.f(img, torch.tensor([0.8, 0.9, 0.6]))
+        with pytest.raises(AssertionError):
+            assert TestSharpness.f(img, torch.tensor([0.8]))
+
+    def test_value(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(1, 3, 3).to(device=device, dtype=dtype)
+
+        # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
+        # img = PIL.Image.fromarray(arr)
+        # en = ImageEnhance.Sharpness(img).enhance(0.8)
+        # np.array(en) / 255.
+        expected = torch.tensor([
+            [[[0.4963, 0.7682, 0.0885],
+             [0.1320, 0.3305, 0.6341],
+             [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
+
+        # If factor == 1, shall return original
+        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
+
+    def test_value_batch(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+
+        # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
+        # img = PIL.Image.fromarray(arr)
+        # en = ImageEnhance.Sharpness(img).enhance(0.8)
+        # np.array(en) / 255.
+        expected_08 = torch.tensor([
+            [[[0.4963, 0.7682, 0.0885],
+             [0.1320, 0.3305, 0.6341],
+             [0.4901, 0.8964, 0.4556]]],
+            [[[0.6323, 0.3489, 0.4017],
+             [0.0223, 0.2052, 0.2939],
+             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+        expected_08_13 = torch.tensor([
+            [[[0.4963, 0.7682, 0.0885],
+             [0.1320, 0.3305, 0.6341],
+             [0.4901, 0.8964, 0.4556]]],
+            [[[0.6323, 0.3489, 0.4017],
+             [0.0223, 0.1143, 0.2939],
+             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+
+        # If factor == 1, shall return original
+        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([1., 1.])), inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=1e-4, atol=1e-4)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 2, 3, 4, 5
+        inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(TestSharpness.f, (inputs, 0.8), raise_exception=True)
+
+    @pytest.mark.skip(reason="union type input")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        op = torch.jit.script(kornia.enhance.adjust.sharpness)
+        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(input, 0.8)
+        actual = op_script(input, 0.8)
+        assert_allclose(actual, expected)
+
+    @pytest.mark.skip(reason="Not having it yet.")
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
+        # assert_allclose(gray_ops(img), f(img))
