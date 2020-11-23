@@ -1,18 +1,27 @@
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 from typing import Tuple, Union, List, Callable, Optional, cast
 =======
 from typing import Tuple, Union, List, Callable
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+from typing import Tuple, Union, List, Callable, Optional
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 import torch
 from torch.distributions import Uniform, Beta
 from functools import wraps
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 from kornia.utils import _extract_device_dtype
 
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+from kornia.utils import _extract_device_dtype
+
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.
@@ -57,8 +66,6 @@ def _validate_input3D(f: Callable) -> Callable:
         return f(input, *args, **kwargs)
 
     return wrapper
-
-from kornia.utils import _extract_device_dtype
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
@@ -259,10 +266,14 @@ def _adapted_uniform(
         high if isinstance(high, torch.Tensor) else None,
     ])
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     low = torch.as_tensor(low, device=device, dtype=dtype)
     high = torch.as_tensor(high, device=device, dtype=dtype)
     dist = Uniform(low, high)
     return _adapted_rsampling(shape, dist, same_on_batch)
+<<<<<<< refs/remotes/kornia/master
 =======
     if not isinstance(low, torch.Tensor):
         low = torch.tensor(low, device=device, dtype=torch.float64)
@@ -271,6 +282,8 @@ def _adapted_uniform(
     dist = Uniform(low.to(torch.float64), high.to(torch.float64))
     return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 
 def _adapted_beta(
@@ -292,6 +305,7 @@ def _adapted_beta(
         b if isinstance(b, torch.Tensor) else None,
     ])
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
 =======
@@ -305,8 +319,12 @@ def _adapted_beta(
     else:
         b = b.to(torch.float64)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+    a = torch.as_tensor(a, device=device, dtype=dtype)
+    b = torch.as_tensor(b, device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     dist = Beta(a, b)
-    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,

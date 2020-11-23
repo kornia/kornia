@@ -103,6 +103,7 @@ class TestRandomPerspective:
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         expected_output = torch.tensor([[[[0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
                                           [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
                                           [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
@@ -120,17 +121,28 @@ class TestRandomPerspective:
         expected_output = torch.tensor([[[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                                           [0.0000, 0.2770, 0.6475, 0.0335, 0.0000],
                                           [0.0000, 0.4842, 0.5532, 0.0445, 0.0000],
+=======
+        expected_output = torch.tensor([[[[0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
+                                          [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
+                                          [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                                           [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                                         [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                                          [0.0000, 0.2417, 0.1325, 0.0193, 0.0000],
-                                          [0.0000, 0.0296, 0.6933, 0.1170, 0.0000],
+                                         [[0.0000, 0.0000, 0.0000, 0.1189, 0.0586],
+                                          [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
+                                          [0.0000, 0.2695, 0.5981, 0.5888, 0.0000],
                                           [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]],
                                        device=device, dtype=x_data.dtype)
 
+<<<<<<< refs/remotes/kornia/master
         expected_transform = torch.tensor([[[0.5445, -0.2336, 1.1866],
                                             [0.0364, 0.4761, 0.2652],
                                             [0.0475, -0.0936, 1.0000]]],
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+        expected_transform = torch.tensor([[[1.0523, 0.3493, 0.3046],
+                                            [-0.1066, 1.0426, 0.5846],
+                                            [0.0351, 0.1213, 1.0000]]],
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                                           device=device, dtype=x_data.dtype)
 
         out_perspective = kornia.augmentation.RandomPerspective(p=.99999999,  # step one the random state

@@ -245,7 +245,11 @@ class ColorJitter(AugmentationBase2D):
         hue: torch.Tensor = _range_bound(
             self.hue, 'hue', bounds=(-0.5, 0.5), device=self.device, dtype=self.dtype)
         return rg.random_color_jitter_generator(
+<<<<<<< refs/remotes/kornia/master
             batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch,
+=======
+            batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch,
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -1068,11 +1072,19 @@ class RandomMotionBlur(AugmentationBase2D):
         >>> input = torch.ones(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
+<<<<<<< refs/remotes/kornia/master
         tensor([[[[0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561]]]])
+=======
+        tensor([[[[-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
+                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094]]]])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     """
 
     def __init__(
@@ -1118,10 +1130,14 @@ class RandomMotionBlur(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_motion_blur_generator(
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 =======
             batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
@@ -1306,6 +1322,7 @@ class RandomSharpness(AugmentationBase2D):
         >>> sharpness(input)
         tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                   [0.6341, 0.4810, 0.7367, 0.4177, 0.6323],
                   [0.3489, 0.4428, 0.1562, 0.2443, 0.2939],
                   [0.5185, 0.6462, 0.7050, 0.2288, 0.2823],
@@ -1314,6 +1331,11 @@ class RandomSharpness(AugmentationBase2D):
                   [0.3489, 0.6549, 0.4361, 0.5206, 0.2939],
                   [0.5185, 0.8256, 0.8847, 0.5161, 0.2823],
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+                  [0.6341, 0.4810, 0.7367, 0.4177, 0.6323],
+                  [0.3489, 0.4428, 0.1562, 0.2443, 0.2939],
+                  [0.5185, 0.6462, 0.7050, 0.2288, 0.2823],
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
     """
 
