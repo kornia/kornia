@@ -343,27 +343,22 @@ def random_crop_generator(
 
     Example:
         >>> _ = torch.manual_seed(0)
-        >>> crop_size = random_crop_size_generator(
-        ...     3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))['size']
-        >>> crop_size
-        tensor([[25, 28],
-                [27, 29],
-                [26, 28]])
+        >>> crop_size = torch.tensor([[25, 28], [27, 29], [26, 28]])
         >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
-        {'src': tensor([[[ 2,  3],
-                 [29,  3],
+        {'src': tensor([[[ 1,  0],
+                 [28,  0],
+                 [28, 24],
+                 [ 1, 24]],
+        <BLANKLINE>
+                [[ 1,  1],
+                 [29,  1],
                  [29, 27],
-                 [ 2, 27]],
+                 [ 1, 27]],
         <BLANKLINE>
-                [[ 1,  3],
-                 [29,  3],
-                 [29, 29],
-                 [ 1, 29]],
-        <BLANKLINE>
-                [[ 0,  2],
-                 [27,  2],
-                 [27, 27],
-                 [ 0, 27]]]), 'dst': tensor([[[ 0,  0],
+                [[ 0,  3],
+                 [27,  3],
+                 [27, 28],
+                 [ 0, 28]]]), 'dst': tensor([[[ 0,  0],
                  [27,  0],
                  [27, 24],
                  [ 0, 24]],
