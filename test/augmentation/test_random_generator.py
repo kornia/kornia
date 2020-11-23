@@ -771,7 +771,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
-            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
+            ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
         )
@@ -788,7 +788,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             batch_size=2, kernel_size=3, angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
-            ksize_factor=torch.tensor([3., 3.], device=device, dtype=torch.int32),
+            ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
             direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
         )
@@ -1043,7 +1043,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             beta=torch.tensor(1., device=device, dtype=dtype),
             cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False)
         expected = dict(
-            mix_pairs=torch.tensor([[0., 1.]], device=device, dtype=torch.long),
+            mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[71, 109],
                  [70, 109],
@@ -1066,7 +1066,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             beta=torch.tensor(1., device=device, dtype=dtype),
             cut_size=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True)
         expected = dict(
-            mix_pairs=torch.tensor([[1., 0.]], device=device, dtype=torch.long),
+            mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[114, 53],
                  [113, 53],
