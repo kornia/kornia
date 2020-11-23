@@ -3,8 +3,8 @@ import kornia.testing as utils  # test utils
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-from kornia.feature.siftdesc import *
-from kornia.nn.feature.siftdesc import *
+from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel
+from kornia.nn.feature.siftdesc import SIFTDescriptor
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])

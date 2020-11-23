@@ -58,4 +58,4 @@ class FocalLoss(nn.Module):
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
-        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
+        return kornia.losses.focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)

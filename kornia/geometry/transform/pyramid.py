@@ -52,7 +52,7 @@ class PyrDown(kornia.nn.geometry.PyrDown):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
-        super(PyrDown, self).__init__()
+        super(PyrDown, self).__init__(border_type, align_corners)
         kornia.deprecation_warning("kornia.geometry.PyrDown", "kornia.nn.geometry.PyrDown")
 
 
@@ -79,7 +79,7 @@ class PyrUp(kornia.nn.geometry.PyrUp):
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
-        super(PyrUp, self).__init__()
+        super(PyrUp, self).__init__(border_type, align_corners)
         kornia.deprecation_warning("kornia.geometry.PyrUp", "kornia.nn.geometry.PyrUp")
 
 
@@ -114,7 +114,7 @@ class ScalePyramid(kornia.nn.geometry.ScalePyramid):
                  init_sigma: float = 1.6,
                  min_size: int = 15,
                  double_image: bool = False):
-        super(ScalePyramid, self).__init__()
+        super(ScalePyramid, self).__init__(n_levels, init_sigma, min_size, double_image)
         kornia.deprecation_warning("kornia.geometry.ScalePyramid", "kornia.nn.geometry.ScalePyramid")
 
 

@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import kornia
+
 
 class TotalVariation(nn.Module):
     r"""Computes the Total Variation according to [1].
