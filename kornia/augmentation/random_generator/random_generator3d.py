@@ -32,9 +32,9 @@ def random_rotation_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - yaw (tensor): element-wise roataion yaws with a shape of (B,).
-            - pitch (tensor): element-wise roataion pitchs with a shape of (B,).
-            - roll (tensor): element-wise roataion rolls with a shape of (B,).
+            - yaw (torch.Tensor): element-wise roataion yaws with a shape of (B,).
+            - pitch (torch.Tensor): element-wise roataion pitchs with a shape of (B,).
+            - roll (torch.Tensor): element-wise roataion rolls with a shape of (B,).
     """
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     _device, _dtype = _extract_device_dtype([degrees])
@@ -80,16 +80,16 @@ def random_affine_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - translations (tensor): element-wise translations with a shape of (B, 3).
-            - center (tensor): element-wise center with a shape of (B, 3).
-            - scale (tensor): element-wise scales with a shape of (B, 3).
-            - angle (tensor): element-wise rotation angles with a shape of (B, 3).
-            - sxy (tensor): element-wise x-y-facet shears with a shape of (B,).
-            - sxz (tensor): element-wise x-z-facet shears with a shape of (B,).
-            - syx (tensor): element-wise y-x-facet shears with a shape of (B,).
-            - syz (tensor): element-wise y-z-facet shears with a shape of (B,).
-            - szx (tensor): element-wise z-x-facet shears with a shape of (B,).
-            - szy (tensor): element-wise z-y-facet shears with a shape of (B,).
+            - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
+            - center (torch.Tensor): element-wise center with a shape of (B, 3).
+            - scale (torch.Tensor): element-wise scales with a shape of (B, 3).
+            - angle (torch.Tensor): element-wise rotation angles with a shape of (B, 3).
+            - sxy (torch.Tensor): element-wise x-y-facet shears with a shape of (B,).
+            - sxz (torch.Tensor): element-wise x-z-facet shears with a shape of (B,).
+            - syx (torch.Tensor): element-wise y-x-facet shears with a shape of (B,).
+            - syz (torch.Tensor): element-wise y-z-facet shears with a shape of (B,).
+            - szx (torch.Tensor): element-wise z-x-facet shears with a shape of (B,).
+            - szy (torch.Tensor): element-wise z-y-facet shears with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -187,9 +187,9 @@ def random_motion_blur_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (tensor): element-wise center with a shape of (B,).
-            - direction_factor (tensor): element-wise scales with a shape of (B,).
+            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise center with a shape of (B,).
+            - direction_factor (torch.Tensor): element-wise scales with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -245,8 +245,8 @@ def center_crop_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - src (tensor): cropping bounding boxes with a shape of (B, 8, 3).
-            - dst (tensor): output bounding boxes with a shape (B, 8, 3).
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
+            - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
 
     Note:
         No random number will be generated.
@@ -338,8 +338,8 @@ def random_crop_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - src (tensor): cropping bounding boxes with a shape of (B, 8, 3).
-            - dst (tensor): output bounding boxes with a shape (B, 8, 3).
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
+            - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -439,8 +439,8 @@ def random_perspective_generator3d(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - src (tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
-            - dst (tensor): perspecive target bounding boxes with a shape (B, 8, 3).
+            - src (torch.Tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
+            - dst (torch.Tensor): perspecive target bounding boxes with a shape (B, 8, 3).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.

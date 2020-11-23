@@ -448,7 +448,7 @@ class TestColorJitter:
         res = f(input)
         assert (res[0] == res[1]).all()
 
-    def expected_brightness(self, device, dtype):
+    def _get_expected_brightness(self, device, dtype):
         return torch.tensor([
             [[[0.2529, 0.3529, 0.4529],
               [0.7529, 0.6529, 0.5529],
@@ -478,7 +478,7 @@ class TestColorJitter:
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_brightness(device, dtype)
+        expected = self._get_expected_brightness(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -491,11 +491,11 @@ class TestColorJitter:
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_brightness(device, dtype)
+        expected = self._get_expected_brightness(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
-    def expected_contrast(self, device, dtype):
+    def _get_expected_contrast(self, device, dtype):
         return torch.tensor([
             [[[0.0953, 0.1906, 0.2859],
               [0.5719, 0.4766, 0.3813],
@@ -525,7 +525,7 @@ class TestColorJitter:
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_contrast(device, dtype)
+        expected = self._get_expected_contrast(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
@@ -538,11 +538,11 @@ class TestColorJitter:
                                 [0.7, 0.8, 1.]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 3, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_contrast(device, dtype)
+        expected = self._get_expected_contrast(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-5)
 
-    def expected_saturation(self, device, dtype):
+    def _get_expected_saturation(self, device, dtype):
         return torch.tensor([
             [[[0.1876, 0.2584, 0.3389],
               [0.6292, 0.5000, 0.4000],
@@ -580,7 +580,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_saturation(device, dtype)
+        expected = self._get_expected_saturation(device, dtype)
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
     def test_random_saturation_tensor(self, device, dtype):
@@ -600,7 +600,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_saturation(device, dtype)
+        expected = self._get_expected_saturation(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -621,11 +621,11 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_saturation(device, dtype)
+        expected = self._get_expected_saturation(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
-    def expected_hue(self, device, dtype):
+    def _get_expected_hue(self, device, dtype):
         return torch.tensor([
             [[[0.1000, 0.2000, 0.3000],
               [0.6000, 0.5000, 0.4000],
@@ -663,7 +663,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_hue(device, dtype)
+        expected = self._get_expected_hue(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -684,7 +684,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_hue(device, dtype)
+        expected = self._get_expected_hue(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 
@@ -705,7 +705,7 @@ class TestColorJitter:
                                 [0.8, 0.4, .5]]]], device=device, dtype=dtype)  # 1 x 1 x 3 x 3
         input = input.repeat(2, 1, 1, 1)  # 2 x 3 x 3
 
-        expected = self.expected_hue(device, dtype)
+        expected = self._get_expected_hue(device, dtype)
 
         assert_allclose(f(input), expected, atol=1e-4, rtol=1e-4)
 

@@ -30,7 +30,7 @@ def random_prob_generator(
 
     Returns:
         torch.Tensor: parameters to be passed for transformation.
-            - probs (tensor): element-wise probabilities with a shape of (B,).
+            - probs (torch.Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -40,9 +40,9 @@ def random_prob_generator(
         raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
     _bernoulli = Bernoulli(torch.tensor(float(p), device=device, dtype=dtype))
-    probs: torch.Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
+    probs_mask: torch.Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
 
-    return probs
+    return probs_mask
 
 
 def random_color_jitter_generator(
@@ -73,11 +73,11 @@ def random_color_jitter_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - brightness_factor (tensor): element-wise brightness factors with a shape of (B,).
-            - contrast_factor (tensor): element-wise contrast factors with a shape of (B,).
-            - hue_factor (tensor): element-wise hue factors with a shape of (B,).
-            - saturation_factor (tensor): element-wise saturation factors with a shape of (B,).
-            - order (tensor): applying orders of the color adjustments with a shape of (4). In which,
+            - brightness_factor (torch.Tensor): element-wise brightness factors with a shape of (B,).
+            - contrast_factor (torch.Tensor): element-wise contrast factors with a shape of (B,).
+            - hue_factor (torch.Tensor): element-wise hue factors with a shape of (B,).
+            - saturation_factor (torch.Tensor): element-wise saturation factors with a shape of (B,).
+            - order (torch.Tensor): applying orders of the color adjustments with a shape of (4). In which,
                 0 is brightness adjustment; 1 is contrast adjustment;
                 2 is saturation adjustment; 3 is hue adjustment.
 
@@ -86,14 +86,10 @@ def random_color_jitter_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
-    brightness = torch.tensor([0., 0.], device=device, dtype=dtype) \
-        if brightness is None else cast(torch.Tensor, brightness.to(device=device, dtype=dtype))
-    contrast = torch.tensor([0., 0.], device=device, dtype=dtype) \
-        if contrast is None else cast(torch.Tensor, contrast.to(device=device, dtype=dtype))
-    hue = torch.tensor([0., 0.], device=device, dtype=dtype) \
-        if hue is None else cast(torch.Tensor, hue.to(device=device, dtype=dtype))
-    saturation = torch.tensor([0., 0.], device=device, dtype=dtype) \
-        if saturation is None else cast(torch.Tensor, saturation.to(device=device, dtype=dtype))
+    brightness = torch.as_tensor([0., 0.] if brightness is None else brightness, device=device, dtype=dtype)
+    contrast = torch.as_tensor([0., 0.] if contrast is None else contrast, device=device, dtype=dtype)
+    hue = torch.as_tensor([0., 0.] if hue is None else hue, device=device, dtype=dtype)
+    saturation = torch.as_tensor([0., 0.] if saturation is None else saturation, device=device, dtype=dtype)
 
     _joint_range_check(brightness, "brightness", (0, 2))
     _joint_range_check(contrast, "contrast", (0, float('inf')))
@@ -134,8 +130,8 @@ def random_perspective_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - start_points (tensor): element-wise perspective source areas with a shape of (B, 4, 2).
-            - end_points (tensor): element-wise perspective target areas with a shape of (B, 4, 2).
+            - start_points (torch.Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
+            - end_points (torch.Tensor): element-wise perspective target areas with a shape of (B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -195,7 +191,7 @@ def random_affine_generator(
         batch_size (int): the tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
-        degrees (tensor): Range of degrees to select from like (min, max).
+        degrees (torch.Tensor): Range of degrees to select from like (min, max).
         translate (tensor, optional): tuple of maximum absolute fraction for horizontal
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
@@ -211,12 +207,12 @@ def random_affine_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - translations (tensor): element-wise translations with a shape of (B, 2).
-            - center (tensor): element-wise center with a shape of (B, 2).
-            - scale (tensor): element-wise scales with a shape of (B, 2).
-            - angle (tensor): element-wise rotation angles with a shape of (B,).
-            - sx (tensor): element-wise x-axis shears with a shape of (B,).
-            - sy (tensor): element-wise y-axis shears with a shape of (B,).
+            - translations (torch.Tensor): element-wise translations with a shape of (B, 2).
+            - center (torch.Tensor): element-wise center with a shape of (B, 2).
+            - scale (torch.Tensor): element-wise scales with a shape of (B, 2).
+            - angle (torch.Tensor): element-wise rotation angles with a shape of (B,).
+            - sx (torch.Tensor): element-wise x-axis shears with a shape of (B,).
+            - sy (torch.Tensor): element-wise y-axis shears with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -300,7 +296,7 @@ def random_rotation_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - degrees (tensor): element-wise rotation degrees with a shape of (B,).
+            - degrees (torch.Tensor): element-wise rotation degrees with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -338,8 +334,8 @@ def random_crop_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
-            - dst (tensor): output bounding boxes with a shape (B, 4, 2).
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -444,15 +440,15 @@ def random_crop_size_generator(
     Args:
         batch_size (int): the tensor batch size.
         size (Tuple[int, int]): expected output size of each edge.
-        scale (tensor): range of size of the origin size cropped with (2,) shape.
-        ratio (tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
+        scale (torch.Tensor): range of size of the origin size cropped with (2,) shape.
+        ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
         device (torch.device): the device on which the random numbers will be generated. Default: cpu.
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - size (tensor): element-wise cropping sizes with a shape of (B, 2).
+            - size (torch.Tensor): element-wise cropping sizes with a shape of (B, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -542,11 +538,11 @@ def random_rectangles_params_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - widths (tensor): element-wise erasing widths with a shape of (B,).
-            - heights (tensor): element-wise erasing heights with a shape of (B,).
-            - xs (tensor): element-wise erasing x coordinates with a shape of (B,).
-            - ys (tensor): element-wise erasing y coordinates with a shape of (B,).
-            - values (tensor): element-wise filling values with a shape of (B,).
+            - widths (torch.Tensor): element-wise erasing widths with a shape of (B,).
+            - heights (torch.Tensor): element-wise erasing heights with a shape of (B,).
+            - xs (torch.Tensor): element-wise erasing x coordinates with a shape of (B,).
+            - ys (torch.Tensor): element-wise erasing y coordinates with a shape of (B,).
+            - values (torch.Tensor): element-wise filling values with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -626,8 +622,8 @@ def center_crop_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - src (tensor): cropping bounding boxes with a shape of (B, 4, 2).
-            - dst (tensor): output bounding boxes with a shape (B, 4, 2).
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
 
     Note:
         No random number will be generated.
@@ -703,9 +699,9 @@ def random_motion_blur_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - ksize_factor (tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (tensor): element-wise direction factors with a shape of (B,).
+            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -766,8 +762,8 @@ def random_solarize_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - thresholds_factor (tensor): element-wise thresholds factors with a shape of (B,).
-            - additions_factor (tensor): element-wise additions factors with a shape of (B,).
+            - thresholds_factor (torch.Tensor): element-wise thresholds factors with a shape of (B,).
+            - additions_factor (torch.Tensor): element-wise additions factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -810,7 +806,7 @@ def random_posterize_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - bits_factor (tensor): element-wise bit factors with a shape of (B,).
+            - bits_factor (torch.Tensor): element-wise bit factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -844,7 +840,7 @@ def random_sharpness_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - sharpness_factor (tensor): element-wise sharpness factors with a shape of (B,).
+            - sharpness_factor (torch.Tensor): element-wise sharpness factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -881,8 +877,8 @@ def random_mixup_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (tensor): element-wise probabilities with a shape of (B,).
-            - mixup_lambdas (tensor): element-wise probabilities with a shape of (B,).
+            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
+            - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -944,8 +940,8 @@ def random_cutmix_generator(
 
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - mix_pairs (tensor): element-wise probabilities with a shape of (num_mix, B).
-            - crop_src (tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
+            - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
+            - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -986,14 +982,8 @@ def random_cutmix_generator(
                   [ 97,  69]]]])}
     """
     _device, _dtype = _extract_device_dtype([beta, cut_size])
-    if beta is None:
-        beta = torch.tensor(1., device=device, dtype=dtype)
-    else:
-        beta = beta.to(device=device, dtype=dtype)
-    if cut_size is None:
-        cut_size = torch.tensor([0., 1.], device=device, dtype=dtype)
-    else:
-        cut_size = cut_size.to(device=device, dtype=dtype)
+    beta = torch.as_tensor(1. if beta is None else beta, device=device, dtype=dtype)
+    cut_size = torch.as_tensor([0., 1.] if cut_size is None else cut_size, device=device, dtype=dtype)
     assert num_mix >= 1 and isinstance(num_mix, (int,)), \
         f"`num_mix` must be an integer greater than 1. Got {num_mix}."
     assert type(height) == int and height > 0 and type(width) == int and width > 0, \

@@ -240,14 +240,8 @@ def _adapted_uniform(
         low if isinstance(low, torch.Tensor) else None,
         high if isinstance(high, torch.Tensor) else None,
     ])
-    if not isinstance(low, torch.Tensor):
-        low = torch.tensor(float(low), device=device, dtype=dtype)
-    else:
-        low = low.to(device=device, dtype=dtype)
-    if not isinstance(high, torch.Tensor):
-        high = torch.tensor(float(high), device=device, dtype=dtype)
-    else:
-        high = high.to(device=device, dtype=dtype)
+    low = torch.as_tensor(low, device=device, dtype=dtype)
+    high = torch.as_tensor(high, device=device, dtype=dtype)
     dist = Uniform(low, high)
     return _adapted_rsampling(shape, dist, same_on_batch)
 
@@ -270,14 +264,8 @@ def _adapted_beta(
         a if isinstance(a, torch.Tensor) else None,
         b if isinstance(b, torch.Tensor) else None,
     ])
-    if not isinstance(a, torch.Tensor):
-        a = torch.tensor(float(a), device=device, dtype=dtype)
-    else:
-        a = a.to(device=device, dtype=dtype)
-    if not isinstance(b, torch.Tensor):
-        b = torch.tensor(float(b), device=device, dtype=dtype)
-    else:
-        b = b.to(device=device, dtype=dtype)
+    a = torch.as_tensor(a, device=device, dtype=dtype)
+    b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b)
     return _adapted_rsampling(shape, dist, same_on_batch)
 
