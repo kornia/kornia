@@ -1,9 +1,11 @@
 import pytest
+
+import torch
 import kornia.testing as utils  # test utils
 
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
-from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel
+from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad, get_sift_pooling_kernel, sift_describe
 from kornia.nn.feature.siftdesc import SIFTDescriptor
 
 
