@@ -4,11 +4,16 @@
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 from typing import Tuple, Union, List, Callable, Optional, cast
 =======
 from typing import Tuple, Union, List, Callable
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
 from typing import Tuple, Union, List, Callable, Optional
@@ -18,6 +23,11 @@ from typing import Tuple, Union, List, Callable, Optional, cast
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+=======
+from typing import Tuple, Union, List, Callable, Optional
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 import torch
 from torch.distributions import Uniform, Beta
@@ -28,6 +38,7 @@ from functools import wraps
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 from kornia.utils import _extract_device_dtype
 
@@ -35,11 +46,18 @@ from kornia.utils import _extract_device_dtype
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 from kornia.utils import _extract_device_dtype
 
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+from kornia.utils import _extract_device_dtype
+
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.
@@ -84,8 +102,6 @@ def _validate_input3D(f: Callable) -> Callable:
         return f(input, *args, **kwargs)
 
     return wrapper
-
-from kornia.utils import _extract_device_dtype
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
@@ -314,15 +330,25 @@ def _adapted_uniform(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     low = torch.as_tensor(low, device=device, dtype=dtype)
     high = torch.as_tensor(high, device=device, dtype=dtype)
     dist = Uniform(low, high)
     return _adapted_rsampling(shape, dist, same_on_batch)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     if not isinstance(low, torch.Tensor):
         low = torch.tensor(low, device=device, dtype=torch.float64)
@@ -332,10 +358,15 @@ def _adapted_uniform(
     return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 
 def _adapted_beta(
@@ -378,6 +409,7 @@ def _adapted_beta(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
 =======
@@ -391,9 +423,16 @@ def _adapted_beta(
     else:
         b = b.to(torch.float64)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    a = torch.as_tensor(a, device=device, dtype=dtype)
+    b = torch.as_tensor(b, device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     dist = Beta(a, b)
-    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,

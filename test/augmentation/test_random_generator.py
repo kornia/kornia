@@ -45,17 +45,27 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, p, batch_size, same_on_batch, device, dtype):
         random_prob_generator(batch_size=batch_size, p=p, same_on_batch=same_on_batch)
@@ -81,7 +91,11 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (-1.),
         (2.)
     ])
@@ -98,7 +112,18 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
     def test_invalid_param_combinations(self, p, device, dtype):
         random_prob_generator(batch_size=8, p=p)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        (-1.),
+        (2.)
+    ])
+    def test_invalid_param_combinations(self, p, device, dtype):
+        with pytest.raises(Exception):
+            random_prob_generator(batch_size=8, p=p)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     @pytest.mark.parametrize('p,expected', [
         (0., [False] * 8),
@@ -133,17 +158,27 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
@@ -166,7 +201,13 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor([-1., 2.]), None, None, None),
         (torch.tensor([0., 3.]), None, None, None),
         (torch.tensor(0.), None, None, None),
@@ -190,8 +231,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         (None, None, None, torch.tensor([0., 1., 2.])),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         pytest.param(torch.tensor([-1., 2.]), None, None, None, marks=pytest.mark.xfail),
         pytest.param(torch.tensor([0., 3.]), None, None, None, marks=pytest.mark.xfail),
@@ -216,10 +261,15 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         pytest.param(None, None, None, torch.tensor([0., 1., 2.]), marks=pytest.mark.xfail),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(
         self, brightness, contrast, saturation, hue, device, dtype
@@ -231,7 +281,13 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         with pytest.raises(Exception):
             random_color_jitter_generator(
                 8,
@@ -242,8 +298,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             )
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         random_color_jitter_generator(
             8,
@@ -254,10 +314,15 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -286,7 +351,11 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype),
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             'contrast_factor': torch.tensor(
@@ -306,15 +375,26 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 =======
 =======
                 [0.8233, 0.8252, 0.8494, 0.8210, 1.0105, 0.9907, 1.1821, 1.1715], device=device, dtype=dtype),
+=======
+                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype),
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             'contrast_factor': torch.tensor(
-                [0.7501, 0.7796, 0.7942, 0.9252, 1.2055, 1.2223, 0.9265, 1.0675], device=device, dtype=dtype),
+                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576], device=device, dtype=dtype),
             'hue_factor': torch.tensor(
-                [-0.0824, 0.0402, 0.0247, -0.0125, -0.0851, 0.0367, -0.0376, -0.0382], device=device, dtype=dtype),
+                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663], device=device, dtype=dtype),
             'saturation_factor': torch.tensor(
+<<<<<<< master
                 [0.6251, 0.6323, 1.3455, 0.7217, 0.8120, 0.7043, 0.8015, 0.7867], device=device, dtype=dtype),
             'order': torch.tensor([2, 3, 1, 0], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype),
+            'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         }
 
         assert set(list(jitter_params.keys())) == set([
@@ -350,15 +430,25 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             'brightness_factor': torch.tensor([1.1529] * batch_size, device=device, dtype=dtype),
             'contrast_factor': torch.tensor([1.2490] * batch_size, device=device, dtype=dtype),
             'hue_factor': torch.tensor([-0.0234] * batch_size, device=device, dtype=dtype),
             'saturation_factor': torch.tensor([1.3674] * batch_size, device=device, dtype=dtype),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             'brightness_factor': torch.tensor([0.8233] * batch_size, device=device, dtype=dtype),
             'contrast_factor': torch.tensor([0.7377] * batch_size, device=device, dtype=dtype),
@@ -366,10 +456,15 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'saturation_factor': torch.tensor([0.6421] * batch_size, device=device, dtype=dtype),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype)
         }
 
@@ -394,17 +489,27 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, height, width, distortion_scale, batch_size, same_on_batch, device, dtype
@@ -422,12 +527,19 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (-100, 100, torch.tensor(0.5)),
         (100, -100, torch.tensor(0.5)),
         (100, 100, torch.tensor(-0.5)),
         (100, 100, torch.tensor(1.5)),
         (100, 100, torch.tensor([0., 0.5])),
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
     ])
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
@@ -448,6 +560,9 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             distortion_scale=distortion_scale.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
@@ -469,7 +584,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             batch_size=8, height=height, width=width,
             distortion_scale=distortion_scale.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    ])
+    def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
+        with pytest.raises(Exception):
+            random_perspective_generator(
+                batch_size=8, height=height, width=width,
+                distortion_scale=distortion_scale.to(device=device, dtype=dtype))
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -493,7 +619,13 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [[44.1135, 45.7502],
                  [179.8568, 47.9653],
                  [179.4776, 168.9552],
@@ -504,8 +636,12 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [37.0547, 177.5298]]], device=device, dtype=dtype),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [[2.9077, 3.1455],
                  [192.8207, 2.6290],
@@ -517,10 +653,15 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [18.8766, 168.3782]]], device=device, dtype=dtype),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['start_points'], expected['start_points'])
@@ -545,15 +686,25 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [[44.1135, 45.7502],
                  [179.8568, 47.9653],
                  [179.4776, 168.9552],
                  [12.8286, 159.3179]]], device=device, dtype=dtype).repeat(2, 1, 1),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [[2.9077, 3.1455],
                  [192.8207, 2.6290],
@@ -561,10 +712,15 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                  [47.7618, 152.5624]]], device=device, dtype=dtype).repeat(2, 1, 1),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['start_points'], expected['start_points'])
@@ -583,7 +739,11 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Fixed #785. (#786)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
@@ -602,7 +762,13 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 =======
     @pytest.mark.parametrize('batch_size', [1, 4])
 >>>>>>> Fixed #785. (#786)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Fixed #785. (#786)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 4])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
@@ -628,7 +794,13 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (-100, 100, torch.tensor([10, 20]), None, None, None),
         (100, -100, torch.tensor([10, 20]), None, None, None),
         (100, 100, 0.5, None, None, None),
@@ -643,6 +815,10 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4])),
         (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5])),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(
         self, height, width, degrees, translate, scale, shear, device, dtype
@@ -685,6 +861,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4]), marks=pytest.mark.xfail),
         pytest.param(10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5]), marks=pytest.mark.xfail),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
@@ -712,47 +889,58 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(
-        self, batch_size, height, width, degrees, translate, scale, shear, device, dtype
+        self, height, width, degrees, translate, scale, shear, device, dtype
     ):
-        batch_size = 8
-        random_affine_generator(
-            batch_size=batch_size, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
+        with pytest.raises(Exception):
+            random_affine_generator(
+                batch_size=8, height=height, width=width, degrees=degrees.to(device=device, dtype=dtype),
+                translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+                scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
+                shear=shear.to(device=device, dtype=dtype) if shear is not None else None)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
-        translate = torch.tensor([0.1, 0.1])
-        scale = torch.tensor([0.7, 1.2])
-        shear = torch.tensor([[10, 20], [10, 20]])
+        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
+        translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
+        scale = torch.tensor([0.7, 1.2], device=device, dtype=dtype)
+        shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
         res = random_affine_generator(
-            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=False)
+            batch_size=2, height=200, width=200, degrees=degrees,
+            translate=translate, scale=scale, shear=shear, same_on_batch=False)
         expected = dict(
-            translations=torch.tensor([[1.0469, 18.2094], [-0.9286, 17.1501]], device=device, dtype=dtype),
+            translations=torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             scale=torch.tensor([[0.7618, 0.7618], [0.7263, 0.7263]], device=device, dtype=dtype),
             angle=torch.tensor([10.5815, 10.6291], device=device, dtype=dtype),
             sx=torch.tensor([10.8354, 11.3264], device=device, dtype=dtype),
             sy=torch.tensor([11.5705, 13.7537], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             scale=torch.tensor([[0.8914, 0.8914], [1.1797, 1.1797]], device=device, dtype=dtype),
             angle=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
             sx=torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
             sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -771,12 +959,22 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
         scale = torch.tensor([0.7, 1.2], device=device, dtype=dtype)
         shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         res = random_affine_generator(
             batch_size=2, height=200, width=200, degrees=degrees,
             translate=translate, scale=scale, shear=shear, same_on_batch=True)
@@ -793,6 +991,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         scale = torch.tensor([0.7, 1.2])
         shear = torch.tensor([[10, 20], [10, 20]])
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         res = random_affine_generator(
@@ -803,30 +1002,41 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         res = random_affine_generator(
-            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=True)
+            batch_size=2, height=200, width=200, degrees=degrees,
+            translate=translate, scale=scale, shear=shear, same_on_batch=True)
         expected = dict(
-            translations=torch.tensor([[-15.0566, -17.8968], [-15.0566, -17.8968]], device=device, dtype=dtype),
+            translations=torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             scale=torch.tensor([[0.7315, 0.7315], [0.7315, 0.7315]], device=device, dtype=dtype),
             angle=torch.tensor([10.5815, 10.5815], device=device, dtype=dtype),
             sx=torch.tensor([15.2617, 15.2617], device=device, dtype=dtype),
             sy=torch.tensor([14.7678, 14.7678], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             scale=torch.tensor([[1.1575, 1.1575], [1.1575, 1.1575]], device=device, dtype=dtype),
             angle=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
             sx=torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
             sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -851,11 +1061,18 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, degrees, same_on_batch, device, dtype):
@@ -888,7 +1105,11 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor(10)),
         (torch.tensor([10])),
         (torch.tensor([10, 20, 30]))
@@ -911,7 +1132,21 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
         random_rotation_generator(
             batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        (torch.tensor(10)),
+        (torch.tensor([10])),
+        (torch.tensor([10, 20, 30]))
+    ])
+    def test_invalid_param_combinations(self, degrees, device, dtype):
+        batch_size = 8
+        with pytest.raises(Exception):
+            random_rotation_generator(
+                batch_size=batch_size, degrees=degrees.to(device=device, dtype=dtype))
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -924,17 +1159,27 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype)
 =======
             degrees=torch.tensor([10.5815, 10.6291], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
             degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            degrees=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['degrees'], expected['degrees'])
@@ -957,11 +1202,18 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
             degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype)
 =======
             degrees=torch.tensor([10.5815, 10.5815], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            degrees=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['degrees'], expected['degrees'])
@@ -974,7 +1226,11 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200)])
     @pytest.mark.parametrize('size', [(100, 100), torch.tensor([50, 50])])
@@ -984,13 +1240,19 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('size', [(100, 100), torch.tensor([[50, 50], [60, 60]])])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200)])
     @pytest.mark.parametrize('size', [(100, 100), torch.tensor([50, 50])])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('resize_to', [None, (100, 100)])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
@@ -1001,7 +1263,11 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         if isinstance(size, torch.Tensor):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
         random_crop_generator(
@@ -1013,6 +1279,9 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         if isinstance(size, torch.Tensor):
             size = size.repeat(batch_size, 1).to(device=device, dtype=dtype)
@@ -1020,8 +1289,11 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             batch_size=batch_size, input_size=input_size,
             size=size,
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             resize_to=resize_to,
             same_on_batch=same_on_batch)
 
@@ -1033,12 +1305,22 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         ((-300, 300), (200, 200), (100, 100)),
         ((100, 100), (200, 200), (100, 100)),
         ((200, 200), torch.tensor([50, 50]), (100, 100)),
         ((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100)),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
@@ -1069,6 +1351,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 batch_size=batch_size, input_size=input_size,
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
                 resize_to=resize_to)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
@@ -1086,6 +1369,9 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             resize_to=resize_to)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1103,7 +1389,13 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [[36, 19],
                  [95, 19],
                  [95, 68],
@@ -1114,8 +1406,12 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [19, 98]]], device=device, dtype=torch.long),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [[2, 6],
                  [61, 6],
@@ -1127,10 +1423,15 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [1, 70]]], device=device, dtype=torch.long),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -1161,7 +1462,13 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [[36, 46],
                  [95, 46],
                  [95, 95],
@@ -1172,8 +1479,12 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [36, 115]]], device=device, dtype=torch.long),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [[2, 3],
                  [61, 3],
@@ -1185,10 +1496,15 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [2, 72]]], device=device, dtype=torch.long),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -1211,17 +1527,27 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('size', [(200, 200)])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.3])])
     @pytest.mark.parametrize('ratio', [torch.tensor([.9, 1.1])])
@@ -1243,7 +1569,13 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         ((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
         ((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
         ((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1])),
@@ -1251,6 +1583,10 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         ((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9])),
         ((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3])),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
         batch_size = 2
@@ -1277,6 +1613,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
@@ -1288,8 +1627,11 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 ratio=ratio.to(device=device, dtype=dtype),
                 same_on_batch=same_on_batch)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1339,7 +1681,11 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [99, 94],
 >>>>>>> Fixed random_crop_size_generator across different devices (#793)
                 [91, 95],
@@ -1373,7 +1719,31 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [89, 87],
                 [92, 95]], device=device, dtype=torch.long)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [89, 87],
+                [91, 95],
+                [81, 87],
+                [92, 98],
+                [89, 92],
+                [88, 90],
+                [87, 95],
+                [92, 87]], device=device, dtype=torch.long)
+        )
+        assert res.keys() == expected.keys()
+        assert_allclose(res['size'], expected['size'])
+
+        res = random_crop_size_generator(
+            batch_size=100, size=(100, 100),
+            scale=torch.tensor([0.999, 1.], device=device, dtype=dtype),
+            ratio=torch.tensor([1., 1.], device=device, dtype=dtype),
+            same_on_batch=False)
+        expected = dict(
+            size=torch.tensor([[100, 100]], device=device, dtype=torch.long)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -1396,7 +1766,11 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 >>>>>>> Fixed random_crop_size_generator across different devices (#793)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [99, 95],
                 [99, 95],
                 [99, 95],
@@ -1420,6 +1794,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [87, 89]], device=device, dtype=torch.long),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [89, 87],
                 [89, 87],
@@ -1430,10 +1807,13 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [89, 87],
                 [89, 87]], device=device, dtype=torch.long),
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Fixed random_crop_size_generator across different devices (#793)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -1453,11 +1833,18 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
     @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.1])])
@@ -1479,7 +1866,13 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
         (100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
         (100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0),
@@ -1492,8 +1885,12 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5)),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         pytest.param(-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
         pytest.param(100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0, marks=pytest.mark.xfail),
@@ -1507,10 +1904,15 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5), marks=pytest.mark.xfail),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(
         self, height, width, scale, ratio, value, device, dtype
@@ -1523,25 +1925,40 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         with pytest.raises(Exception):
             random_rectangles_params_generator(
                 batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         random_rectangles_params_generator(
             batch_size=batch_size, height=height, width=width, scale=scale.to(device=device, dtype=dtype),
             ratio=ratio.to(device=device, dtype=dtype), value=value, same_on_batch=same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1568,11 +1985,18 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
             ys=torch.tensor([6, 8], device=device, dtype=torch.int32),
 =======
             ys=torch.tensor([9, 23], device=device, dtype=torch.int32),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            ys=torch.tensor([6, 8], device=device, dtype=torch.int32),
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -1600,17 +2024,27 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
 =======
             ys=torch.tensor([20, 20], device=device, dtype=torch.int32),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
             ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -1635,11 +2069,18 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.parametrize('batch_size', [0, 2])
 =======
     @pytest.mark.parametrize('batch_size', [2])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 2])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [200])
     @pytest.mark.parametrize('size', [(100, 100)])
@@ -1656,13 +2097,23 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (200, -200, (100, 100)),
         (-200, 200, (100, 100)),
         (100, 100, (120, 120)),
         (150, 100, (120, 120)),
         (100, 150, (120, 120)),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
         batch_size = 2
@@ -1680,6 +2131,9 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
@@ -1687,8 +2141,11 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1719,7 +2176,11 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         assert_allclose(res['src'].to(device=device), expected['src'])
         assert_allclose(res['dst'].to(device=device), expected['dst'])
 =======
@@ -1727,12 +2188,18 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         assert_allclose(res['dst'], expected['dst'])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         assert_allclose(res['src'].to(device=device), expected['src'])
         assert_allclose(res['dst'].to(device=device), expected['dst'])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_same_on_batch(self, device, dtype):
         pass
@@ -1745,7 +2212,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
 =======
@@ -1753,12 +2224,18 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('kernel_size', [1, (3, 5)])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
     @pytest.mark.parametrize('direction', [torch.tensor([-1, -1]), torch.tensor([1, 1])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -1777,13 +2254,23 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (4, torch.tensor([30, 100]), torch.tensor([-1, 1])),
         (1, torch.tensor([30, 100]), torch.tensor([-1, 1])),
         ((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1])),
         (3, torch.tensor([30, 100]), torch.tensor([-2, 1])),
         (3, torch.tensor([30, 100]), torch.tensor([-1, 2])),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
         with pytest.raises(Exception):
@@ -1803,6 +2290,9 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             direction=direction.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
@@ -1811,8 +2301,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
                 batch_size=8, kernel_size=kernel_size, angle=angle.to(device=device, dtype=dtype),
                 direction=direction.to(device=device, dtype=dtype))
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1840,6 +2333,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
@@ -1848,7 +2342,15 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             angle_factor=torch.tensor([33.4893, 33.7746], device=device, dtype=dtype),
             direction_factor=torch.tensor([-0.7528, -0.8948], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
+            angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
+            direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -1868,7 +2370,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
             direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
@@ -1878,13 +2384,19 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             direction_factor=torch.tensor([-0.8742, -0.8742], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
             direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -1899,17 +2411,27 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('thresholds', [torch.tensor([0, 1]), torch.tensor([0.4, 0.6])])
     @pytest.mark.parametrize('additions', [torch.tensor([-0.5, 0.5])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -1926,7 +2448,13 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor([0, 2]), torch.tensor([-0.5, 0.5])),
         (torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5])),
         ([0, 1], torch.tensor([-0.5, 0.5])),
@@ -1934,6 +2462,10 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
         (torch.tensor([0, 1]), torch.tensor([-1, 0.5])),
         (torch.tensor([0, 1]), [-0.5, 0.5]),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
         with pytest.raises(Exception):
@@ -1954,6 +2486,9 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions=additions.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
@@ -1962,8 +2497,11 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
                 batch_size=batch_size, thresholds=thresholds.to(device=device, dtype=dtype),
                 additions=additions.to(device=device, dtype=dtype))
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -1991,6 +2529,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype),
             additions_factor=torch.tensor(
                 [0.4408, -0.3668, 0.4346, 0.0936, 0.3694, 0.0677, 0.2411, -0.0706], device=device, dtype=dtype),
@@ -1999,7 +2538,15 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             additions_factor=torch.tensor(
                 [-0.4165, -0.3674, -0.3429, -0.1246, 0.3425, 0.3705, -0.1225, 0.1124], device=device, dtype=dtype),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype),
+            additions_factor=torch.tensor(
+                [0.4408, -0.3668, 0.4346, 0.0936, 0.3694, 0.0677, 0.2411, -0.0706], device=device, dtype=dtype),
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
@@ -2018,7 +2565,11 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype),
             additions_factor=torch.tensor(
                 [0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150], device=device, dtype=dtype),
@@ -2028,13 +2579,19 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
                 [-0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371, -0.4371], device=device, dtype=dtype),
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype),
             additions_factor=torch.tensor(
                 [0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150, 0.4150], device=device, dtype=dtype),
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['thresholds_factor'], expected['thresholds_factor'], rtol=1e-4, atol=1e-4)
@@ -2048,17 +2605,27 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('bits', [torch.tensor([0, 8])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
@@ -2073,12 +2640,22 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor([-1, 1])),
         (torch.tensor([0, 9])),
         (torch.tensor([3])),
         ([0, 8]),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
@@ -2095,6 +2672,9 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, bits, device, dtype):
@@ -2102,8 +2682,11 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             random_posterize_generator(
                 batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(9)
@@ -2124,11 +2707,18 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
                 [5, 2, 3, 6, 7, 7, 2, 7], device=device, dtype=torch.int32)
 =======
                 [1, 6, 2, 0, 0, 4, 0, 0], device=device, dtype=torch.int32)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [5, 2, 3, 6, 7, 7, 2, 7], device=device, dtype=torch.int32)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
@@ -2145,17 +2735,27 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32)
 =======
                 [1, 1, 1, 1, 1, 1, 1, 1], device=device, dtype=torch.int32)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
                 [5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
@@ -2175,11 +2775,18 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, sharpness, same_on_batch, device, dtype):
@@ -2192,7 +2799,11 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor([-1, 5])),
         (torch.tensor([3])),
         ([0, 1.]),
@@ -2211,6 +2822,9 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         (torch.tensor([-1, 5])),
         (torch.tensor([3])),
@@ -2221,8 +2835,11 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
             random_sharpness_generator(
                 batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -2236,17 +2853,27 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
 =======
                 [0.0582, 0.0629, 0.1236, 0.0526, 0.5262, 0.4768, 0.9552, 0.9288], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
@@ -2270,11 +2897,18 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype)
 =======
                 [0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582, 0.0582], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
@@ -2287,17 +2921,27 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('p', [0., 0.5, 1.])
     @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0., 1.])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -2316,12 +2960,22 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (torch.tensor([-1, 1])),
         (torch.tensor([0, 2])),
         (torch.tensor([0, 0.5, 1])),
         ([0., 1.]),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
         with pytest.raises(Exception):
@@ -2338,6 +2992,9 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
@@ -2345,8 +3002,11 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             random_mixup_generator(
                 batch_size=8, lambda_val=lambda_val.to(device=device, dtype=dtype))
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -2369,11 +3029,18 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
                 [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype)
 =======
                 [0.0000, 0.0000, 0.0196, 0.0000, 0.6535, 0.0000, 0.5949, 0.0000], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -2393,17 +3060,27 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
                 [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype)
 =======
                 [0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435, 0.0435], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
                 [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+                [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -2424,11 +3101,18 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
 =======
     @pytest.mark.parametrize('batch_size', [1, 8])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    @pytest.mark.parametrize('batch_size', [0, 1, 8])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     @pytest.mark.parametrize('p', [0, 0.5, 1.])
     @pytest.mark.parametrize('width,height', [(200, 200)])
     @pytest.mark.parametrize('num_mix', [1, 3])
@@ -2452,7 +3136,13 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         (200, -200, 1, None, None),
         (-200, 200, 1, None, None),
         (200, 200, 0, None, None),
@@ -2461,6 +3151,10 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         (200, 200, 1, None, torch.tensor([-1., 1.])),
         (200, 200, 1, None, torch.tensor([0., 2.])),
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ])
     def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
         with pytest.raises(Exception):
@@ -2486,6 +3180,9 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             same_on_batch=same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     ])
     def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
@@ -2496,8 +3193,11 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
                 same_on_batch=same_on_batch)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -2512,7 +3212,11 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[71, 108],
@@ -2536,6 +3240,9 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                  [75, 16]]]], device=device, dtype=torch.long)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
@@ -2548,8 +3255,11 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                  [38, 0],
                  [39, 0]]]], device=device, dtype=torch.long)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
@@ -2591,7 +3301,11 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
             crop_src=torch.tensor([[
                 [[114, 53],
@@ -2617,7 +3331,22 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                  [117, 2],
                  [118, 2]]]], device=device, dtype=torch.long)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
+            crop_src=torch.tensor([[
+                [[114, 53],
+                 [113, 53],
+                 [113, 52],
+                 [114, 52]],
+                [[114, 53],
+                 [113, 53],
+                 [113, 52],
+                 [114, 52]]]], device=device, dtype=torch.long)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)

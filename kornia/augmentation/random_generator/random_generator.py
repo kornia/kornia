@@ -112,7 +112,13 @@ def random_color_jitter_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
     brightness = torch.as_tensor([0., 0.] if brightness is None else brightness, device=device, dtype=dtype)
     contrast = torch.as_tensor([0., 0.] if contrast is None else contrast, device=device, dtype=dtype)
@@ -120,8 +126,12 @@ def random_color_jitter_generator(
     saturation = torch.as_tensor([0., 0.] if saturation is None else saturation, device=device, dtype=dtype)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     device, dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
     brightness = torch.tensor([0., 0.], device=device, dtype=dtype) \
@@ -134,10 +144,15 @@ def random_color_jitter_generator(
         if saturation is None else cast(torch.Tensor, saturation)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     _joint_range_check(brightness, "brightness", (0, 2))
     _joint_range_check(contrast, "contrast", (0, float('inf')))
@@ -211,24 +226,39 @@ def random_perspective_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     rand_val: torch.Tensor = _adapted_uniform(
         start_points.shape, torch.tensor(0, device=device, dtype=dtype),
         torch.tensor(1, device=device, dtype=dtype), same_on_batch
     ).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     rand_val: torch.Tensor = _adapted_uniform(start_points.shape, 0, 1, same_on_batch).to(
         device=distortion_scale.device, dtype=distortion_scale.dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     pts_norm = torch.tensor([[
         [1, 1],
@@ -272,11 +302,18 @@ def random_affine_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
         degrees (torch.Tensor): Range of degrees to select from like (min, max).
 =======
         degrees (tensor): Range of degrees to select from like (min, max).
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        degrees (torch.Tensor): Range of degrees to select from like (min, max).
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         translate (tensor, optional): tuple of maximum absolute fraction for horizontal
             and vertical translations. For example translate=(a, b), then horizontal shift
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
@@ -312,19 +349,29 @@ def random_affine_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shear])
     degrees = degrees.to(device=device, dtype=dtype)
 =======
     device, dtype = _extract_device_dtype([degrees, translate, scale, shear])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shear])
     degrees = degrees.to(device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     angle = _adapted_uniform((batch_size,), degrees[0], degrees[1], same_on_batch)
     angle = angle.to(device=_device, dtype=_dtype)
 
@@ -356,6 +403,7 @@ def random_affine_generator(
             _scale[:, 1] = _adapted_uniform(
                 (batch_size,), scale[2], scale[3], same_on_batch)
         _scale = _scale.to(device=_device, dtype=_dtype)
+<<<<<<< master
     else:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
@@ -386,7 +434,14 @@ def random_affine_generator(
 =======
         _scale = torch.ones((batch_size, 2), device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    else:
+        _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     if translate is not None:
         translate = translate.to(device=device, dtype=dtype)
@@ -404,7 +459,11 @@ def random_affine_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
     center: torch.Tensor = torch.tensor(
@@ -416,14 +475,20 @@ def random_affine_generator(
         [width, height], device=device, dtype=dtype).view(1, 2) / 2. - 0.5
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
 
     center: torch.Tensor = torch.tensor(
         [width, height], device=_device, dtype=_dtype).view(1, 2) / 2. - 0.5
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     center = center.expand(batch_size, -1)
 
     if shear is not None:
@@ -552,7 +617,11 @@ def random_crop_generator(
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
@@ -560,7 +629,14 @@ def random_crop_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+    _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
+    if not isinstance(size, torch.Tensor):
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         size = torch.tensor(size, device=device, dtype=dtype).repeat(batch_size, 1)
     else:
         size = size.to(device=device, dtype=dtype)
@@ -569,18 +645,27 @@ def random_crop_generator(
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         size = torch.tensor(size).repeat(batch_size, 1)
     assert size.shape == torch.Size([batch_size, 2]), \
         f"If `size` is a tensor, it must be shaped as (B, 2). Got {size.shape}."
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     size = size.long()
 
     x_diff = input_size[1] - size[:, 1] + 1
@@ -613,7 +698,11 @@ def random_crop_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
             size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
@@ -623,13 +712,19 @@ def random_crop_generator(
             size[:, 1] - 1, size[:, 0] - 1)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
             torch.tensor([0] * batch_size, device=device, dtype=torch.long),
             size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -644,17 +739,27 @@ def random_crop_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         ]], device=_device, dtype=torch.long).repeat(batch_size, 1, 1)
 =======
         ]], device=x_start.device, dtype=x_start.dtype).repeat(batch_size, 1, 1)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         ]], device=_device, dtype=torch.long).repeat(batch_size, 1, 1)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        ]], device=_device, dtype=torch.long).repeat(batch_size, 1, 1)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -684,6 +789,10 @@ def random_crop_size_generator(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - size (torch.Tensor): element-wise cropping sizes with a shape of (B, 2).
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -718,7 +827,21 @@ def random_crop_size_generator(
         {'size': tensor([[29, 29],
                 [27, 28],
                 [26, 29]])}
+=======
+
+    Note:
+        The generated random numbers are not reproducible across different devices and dtypes.
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     """
+
+    # TODO: Add a doctest to this function. The following code failed on the cloud environment.
+    # Examples:
+    #     >>> _ = torch.manual_seed(42)
+    #     >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
+    #     {'size': tensor([[26, 27],
+    #             [27, 28],
+    #             [24, 26]])}
+
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
@@ -730,7 +853,11 @@ def random_crop_size_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Fixed (#762)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([scale, ratio])
 
     if batch_size == 0:
@@ -740,10 +867,14 @@ def random_crop_size_generator(
     ratio = ratio.to(device=device, dtype=dtype)
 =======
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     _device, _dtype = _extract_device_dtype([scale, ratio])
 
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
     if batch_size == 0:
         return dict(size=torch.zeros([0, 2], device=_device, dtype=_dtype))
 
@@ -754,11 +885,21 @@ def random_crop_size_generator(
     ratio = ratio.to(device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     if batch_size == 0:
-        return dict(size=torch.zeros([0, 2]))
+        return dict(size=torch.zeros([0, 2], device=_device, dtype=_dtype))
 
+<<<<<<< master
 >>>>>>> Fixed (#762)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Fixed (#762)
+=======
+=======
+    scale = scale.to(device=device, dtype=dtype)
+    ratio = ratio.to(device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     # 10 trails for each element
     area = _adapted_uniform(
         (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
@@ -806,10 +947,18 @@ def random_crop_size_generator(
 =======
     cond_bool = torch.sum(cond, dim=1) > 0
 
+<<<<<<< master
     h_out = w[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
     w_out = h[torch.arange(0, batch_size), torch.argmax(cond, dim=1)]
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    h_out = w[torch.arange(0, batch_size, device=device, dtype=torch.long), torch.argmax(cond, dim=1)]
+    w_out = h[torch.arange(0, batch_size, device=device, dtype=torch.long), torch.argmax(cond, dim=1)]
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     if not cond_bool.all():
         # Fallback to center crop
@@ -832,6 +981,7 @@ def random_crop_size_generator(
 =======
         if (in_ratio < min(ratio)):
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
         if (in_ratio < ratio.min()):
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
@@ -851,15 +1001,26 @@ def random_crop_size_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
             h_ct = torch.tensor(size[0])
+=======
+            h_ct = torch.tensor(size[0], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             w_ct = torch.round(h_ct / min(ratio))
         elif (in_ratio > max(ratio)):
-            w_ct = torch.tensor(size[1])
+            w_ct = torch.tensor(size[1], device=device, dtype=dtype)
             h_ct = torch.round(w_ct * max(ratio))
         else:  # whole image
+<<<<<<< master
             h_ct = torch.tensor(size[0])
             w_ct = torch.tensor(size[1])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+            h_ct = torch.tensor(size[0], device=device, dtype=dtype)
+            w_ct = torch.tensor(size[1], device=device, dtype=dtype)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         h_ct = h_ct.int()
         w_ct = w_ct.int()
 
@@ -871,17 +1032,27 @@ def random_crop_size_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=torch.long))
 =======
     return dict(size=torch.stack([h_out, w_out], dim=1))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=torch.long))
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=torch.long))
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 
 def random_rectangles_params_generator(
@@ -925,17 +1096,27 @@ def random_rectangles_params_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([ratio, scale])
 =======
     device, dtype = _extract_device_dtype([ratio, scale])
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     _device, _dtype = _extract_device_dtype([ratio, scale])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    _device, _dtype = _extract_device_dtype([ratio, scale])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     assert type(height) == int and height > 0 and type(width) == int and width > 0, \
         f"'height' and 'width' must be integers. Got {height}, {width}."
     assert isinstance(value, (int, float)) and value >= 0 and value <= 1, \
@@ -952,7 +1133,11 @@ def random_rectangles_params_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0].to(device=device, dtype=dtype), 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
 =======
@@ -960,12 +1145,18 @@ def random_rectangles_params_generator(
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1], same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0].to(device=device, dtype=dtype), 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         if same_on_batch:
             rand_idxs = torch.round(_adapted_uniform(
                 (1,), torch.tensor(0, device=device, dtype=dtype),
@@ -1000,15 +1191,25 @@ def random_rectangles_params_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     xs_ratio = _adapted_uniform((batch_size,), torch.tensor(0, device=device, dtype=dtype),
                                 torch.tensor(1, device=device, dtype=dtype), same_on_batch)
     ys_ratio = _adapted_uniform((batch_size,), torch.tensor(0, device=device, dtype=dtype),
                                 torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     xs_ratio = _adapted_uniform(
         (batch_size,), torch.tensor(0, device=device, dtype=dtype),
@@ -1018,10 +1219,15 @@ def random_rectangles_params_generator(
         torch.tensor(1, device=device, dtype=dtype), same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
     ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
@@ -1033,7 +1239,13 @@ def random_rectangles_params_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     return dict(widths=widths.to(device=_device, dtype=torch.int32),
                 heights=heights.to(device=_device, dtype=torch.int32),
                 xs=xs.to(device=_device, dtype=torch.int32),
@@ -1041,8 +1253,12 @@ def random_rectangles_params_generator(
                 values=torch.tensor([value] * batch_size, device=_device, dtype=_dtype))
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     return dict(widths=widths.int(),
                 heights=heights.int(),
@@ -1051,10 +1267,15 @@ def random_rectangles_params_generator(
                 values=torch.tensor([value] * batch_size, device=device, dtype=dtype))
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 
 def center_crop_generator(
@@ -1118,17 +1339,27 @@ def center_crop_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
 =======
     ]]).expand(batch_size, -1, -1).long()
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -1142,17 +1373,27 @@ def center_crop_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
 =======
     ]]).expand(batch_size, -1, -1).long()
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     return dict(src=points_src,
                 dst=points_dst)
 
@@ -1178,13 +1419,22 @@ def random_motion_blur_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32
 =======
     same_on_batch: bool = False
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+    same_on_batch: bool = False,
+    device: torch.device = torch.device('cpu'),
+    dtype: torch.dtype = torch.float32
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for motion blur.
 
@@ -1235,7 +1485,11 @@ def random_motion_blur_generator(
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([angle, direction])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
@@ -1261,17 +1515,30 @@ def random_motion_blur_generator(
 =======
 =======
     device, dtype = _extract_device_dtype([angle, direction])
+=======
+    _device, _dtype = _extract_device_dtype([angle, direction])
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     if isinstance(kernel_size, int):
+        assert kernel_size >= 3 and kernel_size % 2 == 1, \
+            f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
     elif isinstance(kernel_size, tuple):
         # kernel_size is fixed across the batch
         assert len(kernel_size) == 2, f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}."
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
         ksize_factor = _adapted_uniform(
+<<<<<<< master
             (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+            (batch_size,), kernel_size[0] // 2, kernel_size[1] // 2,
+            same_on_batch=True).int() * 2 + 1
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
@@ -1288,7 +1555,11 @@ def random_motion_blur_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     return dict(ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
                 angle_factor=angle_factor.to(device=_device, dtype=_dtype),
                 direction_factor=direction_factor.to(device=_device, dtype=_dtype))
@@ -1298,13 +1569,19 @@ def random_motion_blur_generator(
                 direction_factor=direction_factor)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     return dict(ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
                 angle_factor=angle_factor.to(device=_device, dtype=_dtype),
                 direction_factor=direction_factor.to(device=_device, dtype=_dtype))
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 
 def random_solarize_generator(
@@ -1354,6 +1631,8 @@ def random_solarize_generator(
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 
+    _device, _dtype = _extract_device_dtype([thresholds, additions])
+
     thresholds_factor = _adapted_uniform(
         (batch_size,), thresholds[0].to(device=device, dtype=dtype),
         thresholds[1].to(device=device, dtype=dtype), same_on_batch)
@@ -1387,13 +1666,22 @@ def random_posterize_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.float32
 =======
     same_on_batch: bool = False
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    same_on_batch: bool = False,
+    device: torch.device = torch.device('cpu'),
+    dtype: torch.dtype = torch.float32
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 ) -> Dict[str, torch.Tensor]:
     r"""Generate random posterize parameters for a batch of images.
 
@@ -1429,13 +1717,22 @@ def random_posterize_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     bits_factor = _adapted_uniform(
         (batch_size,), bits[0].to(device=device, dtype=dtype), bits[1].to(device=device, dtype=dtype),
         same_on_batch).int()
 =======
     bits_factor = _adapted_uniform((batch_size,), bits[0], bits[1], same_on_batch).int()
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    bits_factor = _adapted_uniform(
+        (batch_size,), bits[0].to(device=device, dtype=dtype), bits[1].to(device=device, dtype=dtype),
+        same_on_batch).int()
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     return dict(
         bits_factor=bits_factor.to(device=bits.device, dtype=torch.int32)
@@ -1514,7 +1811,11 @@ def random_mixup_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([lambda_val])
     lambda_val = torch.as_tensor([0., 1.] if lambda_val is None else lambda_val, device=device, dtype=dtype)
 =======
@@ -1522,12 +1823,18 @@ def random_mixup_generator(
         lambda_val = torch.tensor([0., 1.], dtype=torch.float64)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     _device, _dtype = _extract_device_dtype([lambda_val])
     lambda_val = torch.as_tensor([0., 1.] if lambda_val is None else lambda_val, device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
 
     batch_probs: torch.Tensor = random_prob_generator(
@@ -1548,11 +1855,18 @@ def random_mixup_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
 <<<<<<< master
+<<<<<<< master
     mixup_lambdas = mixup_lambdas * batch_probs
 =======
     mixup_lambdas = mixup_lambdas * batch_probs.to(device=lambda_val.device, dtype=lambda_val.dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+    mixup_lambdas = mixup_lambdas * batch_probs
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     return dict(
         mixup_pairs=mixup_pairs.to(device=_device, dtype=torch.long),
@@ -1636,7 +1950,11 @@ def random_cutmix_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     beta = torch.as_tensor(1. if beta is None else beta, device=device, dtype=dtype)
     cut_size = torch.as_tensor([0., 1.] if cut_size is None else cut_size, device=device, dtype=dtype)
@@ -1648,13 +1966,19 @@ def random_cutmix_generator(
         cut_size = torch.tensor([0., 1.], device=device, dtype=dtype)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 =======
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     beta = torch.as_tensor(1. if beta is None else beta, device=device, dtype=dtype)
     cut_size = torch.as_tensor([0., 1.] if cut_size is None else cut_size, device=device, dtype=dtype)
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     assert num_mix >= 1 and isinstance(num_mix, (int,)), \
         f"`num_mix` must be an integer greater than 1. Got {num_mix}."
     assert type(height) == int and height > 0 and type(width) == int and width > 0, \
@@ -1697,11 +2021,25 @@ def random_cutmix_generator(
 =======
 =======
 
+    if batch_size == 0:
+        return dict(
+            mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
+            crop_src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long)
+        )
+
     batch_probs: torch.Tensor = random_prob_generator(
+<<<<<<< master
         batch_size * num_mix, p, same_on_batch).to(device=device, dtype=dtype)
     mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size).argsort(dim=1)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        batch_size * num_mix, p, same_on_batch, device=device, dtype=dtype)
+    mix_pairs: torch.Tensor = torch.rand(num_mix, batch_size, device=device, dtype=dtype).argsort(dim=1)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
     cutmix_betas: torch.Tensor = _adapted_beta((batch_size * num_mix,), beta, beta, same_on_batch=same_on_batch)
     # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
     # Argument 1 to "clamp" of "_TensorBase" has incompatible type "Tensor"; expected "float"
@@ -1737,7 +2075,11 @@ def random_cutmix_generator(
 =======
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
         _gen_shape, torch.zeros_like(cut_width, device=device, dtype=dtype),
         (width - cut_width - 1).to(device=device, dtype=dtype), same_on_batch).to(device=device, dtype=torch.long)
     y_start = _adapted_uniform(
@@ -1753,7 +2095,17 @@ def random_cutmix_generator(
         _gen_shape, torch.zeros_like(cut_height, device=device, dtype=torch.long),
         (height - cut_height - 1).to(device=device, dtype=torch.long), same_on_batch)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        _gen_shape, torch.zeros_like(cut_width, device=device, dtype=dtype),
+        (width - cut_width - 1).to(device=device, dtype=dtype), same_on_batch).to(device=device, dtype=torch.long)
+    y_start = _adapted_uniform(
+        _gen_shape, torch.zeros_like(cut_height, device=device, dtype=dtype),
+        (height - cut_height - 1).to(device=device, dtype=dtype), same_on_batch).to(device=device, dtype=torch.long)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
     crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 

@@ -88,11 +88,18 @@ doctest:
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< master
 	pytest -v --doctest-modules kornia
 =======
 	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+	pytest -v --doctest-modules kornia/color kornia/augmentation #... etc
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+>>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 
 docstyle: FORCE
 	pydocstyle kornia/
