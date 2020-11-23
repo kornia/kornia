@@ -233,6 +233,7 @@ def random_affine_generator(
 
     # compute tensor ranges
     if scale is not None:
+        scale = scale.to(device=device, dtype=dtype)
         assert len(scale) == 2 or len(scale) == 4, f"`scale` shall have 2 or 4 elements. Got {scale}."
         _joint_range_check(cast(torch.Tensor, scale[:2]), "scale")
         _scale = _adapted_uniform((batch_size,), scale[0], scale[1], same_on_batch).unsqueeze(1).repeat(1, 2)
@@ -245,9 +246,10 @@ def random_affine_generator(
         _scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
 
     if translate is not None:
+        translate = translate.to(device=device, dtype=dtype)
         _joint_range_check(cast(torch.Tensor, translate), "translate")
-        max_dx: torch.Tensor = translate[0].to(device=device, dtype=dtype) * width
-        max_dy: torch.Tensor = translate[1].to(device=device, dtype=dtype) * height
+        max_dx: torch.Tensor = translate[0] * width
+        max_dy: torch.Tensor = translate[1] * height
         translations = torch.stack([
             _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
             _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch)
@@ -455,11 +457,11 @@ def random_crop_size_generator(
         The generated random numbers are not reproducible across different devices and dtypes.
 
     Examples:
-        >>> _ = torch.manual_seed(0)
+        >>> _ = torch.manual_seed(42)
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[25, 28],
-                [27, 29],
-                [26, 28]])}
+        {'size': tensor([[26, 27],
+                [27, 28],
+                [24, 26]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
@@ -472,13 +474,13 @@ def random_crop_size_generator(
     if batch_size == 0:
         return dict(size=torch.zeros([0, 2], device=_device, dtype=_dtype))
 
+    scale = scale.to(device=device, dtype=dtype)
+    ratio = ratio.to(device=device, dtype=dtype)
     # 10 trails for each element
     area = _adapted_uniform(
-        (batch_size, 10), scale[0].to(device=device, dtype=dtype) * size[0] * size[1],
-        scale[1].to(device=device, dtype=dtype) * size[0] * size[1], same_on_batch)
+        (batch_size, 10), scale[0] * size[0] * size[1], scale[1] * size[0] * size[1], same_on_batch)
     log_ratio = _adapted_uniform(
-        (batch_size, 10), torch.log(ratio[0].to(device=device, dtype=dtype)),
-        torch.log(ratio[1].to(device=device, dtype=dtype)), same_on_batch)
+        (batch_size, 10), torch.log(ratio[0]), torch.log(ratio[1]), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
 
     w = torch.sqrt(area * aspect_ratio).round().int()

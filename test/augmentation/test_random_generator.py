@@ -322,16 +322,13 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
-        translate = torch.tensor([0.1, 0.1])
-        scale = torch.tensor([0.7, 1.2])
-        shear = torch.tensor([[10, 20], [10, 20]])
+        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
+        translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
+        scale = torch.tensor([0.7, 1.2], device=device, dtype=dtype)
+        shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
         res = random_affine_generator(
-            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=False)
+            batch_size=2, height=200, width=200, degrees=degrees,
+            translate=translate, scale=scale, shear=shear, same_on_batch=False)
         expected = dict(
             translations=torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
@@ -350,16 +347,13 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
-        translate = torch.tensor([0.1, 0.1])
-        scale = torch.tensor([0.7, 1.2])
-        shear = torch.tensor([[10, 20], [10, 20]])
+        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
+        translate = torch.tensor([0.1, 0.1], device=device, dtype=dtype)
+        scale = torch.tensor([0.7, 1.2], device=device, dtype=dtype)
+        shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
         res = random_affine_generator(
-            batch_size=2, height=200, width=200, degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-            scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-            shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=True)
+            batch_size=2, height=200, width=200, degrees=degrees,
+            translate=translate, scale=scale, shear=shear, same_on_batch=True)
         expected = dict(
             translations=torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
             center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
