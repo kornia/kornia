@@ -4,7 +4,7 @@ import torch.nn as nn
 import kornia
 
 
-class TotalVariation(nn.Module):
+class TotalVariation(kornia.nn.TotalVariation):
     r"""Computes the Total Variation according to [1].
 
     Shape:
