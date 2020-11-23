@@ -729,8 +729,8 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
                  [0, 119]]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
-        assert_allclose(res['src'], expected['src'])
-        assert_allclose(res['dst'], expected['dst'])
+        assert_allclose(res['src'].to(device=device), expected['src'])
+        assert_allclose(res['dst'].to(device=device), expected['dst'])
 
     def test_same_on_batch(self, device, dtype):
         pass
