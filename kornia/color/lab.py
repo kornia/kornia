@@ -72,11 +72,12 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def lab_to_rgb(image: torch.Tensor) -> torch.Tensor:
+def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     r"""Converts a Lab image to RGB.
 
     Args:
         image (torch.Tensor): Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        clip (bool): Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`. Default is True
 
     Returns:
         torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
@@ -95,12 +96,13 @@ def lab_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     L: torch.Tensor = image[..., 0, :, :]
     a: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    _b: torch.Tensor = image[..., 2, :, :]
 
     fy = (L + 16.) / 116.
     fx = (a / 500.) + fy
-    fz = fy - (b / 200.)
+    fz = fy - (_b / 200.)
 
+    # if color data out of range: Z < 0
     fz = torch.where(fz < 0, torch.zeros_like(fz), fz)
 
     fxyz = torch.stack([fx, fy, fz], dim=-3)
@@ -117,6 +119,9 @@ def lab_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
 
+    # https://github.com/richzhang/colorization-pytorch/blob/66a1cb2e5258f7c8f374f582acc8b1ef99c13c27/util/util.py#L107
+#     rgbs_im = torch.where(rgbs_im < 0, torch.zeros_like(rgbs_im), rgbs_im)
+
     # Convert from sRGB to RGB Linear
     rs: torch.Tensor = rgbs_im[..., 0, :, :]
     gs: torch.Tensor = rgbs_im[..., 1, :, :]
@@ -129,7 +134,8 @@ def lab_to_rgb(image: torch.Tensor) -> torch.Tensor:
     rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
 
     # Clip to 0,1 https://www.w3.org/Graphics/Color/srgb
-    # rgb_im = torch.clamp(rgb_im, min=0., max=1.)
+    if clip:
+        rgb_im = torch.clamp(rgb_im, min=0., max=1.)
 
     return rgb_im
 
@@ -193,5 +199,5 @@ class LabToRgb(nn.Module):
     def __init__(self) -> None:
         super(LabToRgb, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return lab_to_rgb(image)
+    def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
+        return lab_to_rgb(image, clip)
