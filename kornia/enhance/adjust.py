@@ -589,10 +589,14 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
         [1, 5, 1],
         [1, 1, 1]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
 =======
     ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(3, 1, 1, 1)
 >>>>>>> added device call to kernel creation (#760)
+=======
+    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
+>>>>>>> Make sharpness output channel nums as input (#783)
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
@@ -635,6 +639,7 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
     if factor > 0. and factor < 1.:
         return res
     return torch.clamp(res, 0, 1)
+<<<<<<< refs/remotes/kornia/master
 
 
 def _build_lut(histo, step):
@@ -646,6 +651,8 @@ def _build_lut(histo, step):
     # Clip the counts to be in range.  This is done
     # in the C code for image.point.
     return torch.clamp(lut, 0, 255)
+=======
+>>>>>>> Make sharpness output channel nums as input (#783)
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
@@ -699,7 +706,11 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
+<<<<<<< refs/remotes/kornia/master
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+=======
+        input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
+>>>>>>> Make sharpness output channel nums as input (#783)
 
     Returns:
         torch.Tensor: Sharpened image or images with shape as the input.
