@@ -456,14 +456,16 @@ def random_crop_size_generator(
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
-
-    Examples:
-        >>> _ = torch.manual_seed(42)
-        >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[26, 27],
-                [27, 28],
-                [24, 26]])}
     """
+
+    # TODO: Add a doctest to this function. The following code failed on the cloud environment.
+    # Examples:
+    #     >>> _ = torch.manual_seed(42)
+    #     >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
+    #     {'size': tensor([[26, 27],
+    #             [27, 28],
+    #             [24, 26]])}
+
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
