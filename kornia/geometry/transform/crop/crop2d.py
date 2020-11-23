@@ -384,9 +384,9 @@ def bbox_generator(
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width
-    bbox[:, 2, 0] += width
-    bbox[:, 2, 1] += height
-    bbox[:, 3, 1] += height
+    bbox[:, 1, 0] += width - 1
+    bbox[:, 2, 0] += width - 1
+    bbox[:, 2, 1] += height - 1
+    bbox[:, 3, 1] += height - 1
 
     return bbox

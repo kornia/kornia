@@ -24,7 +24,7 @@ class TestHorizontalFlipFn:
                                            [0., 1., 0.],
                                            [0., 0., 1.]])  # 3 x 3
 
-        assert (F.compute_hflip_transformation(input) == expected_transform).all()
+        assert (F.compute_hflip_transformation(input[None, None]) == expected_transform).all()
 
     def test_batch_random_hflip(self, device):
         batch_size = 5
@@ -57,7 +57,7 @@ class TestVerticalFlipFn:
                                            [0., -1., 2.],
                                            [0., 0., 1.]])  # 3 x 3
 
-        assert (F.compute_vflip_transformation(input) == expected_transform).all()
+        assert (F.compute_vflip_transformation(input[None, None]) == expected_transform).all()
 
     def test_batch_random_vflip(self, device):
         batch_size = 5
@@ -85,7 +85,7 @@ class TestIntensityTransformation:
 
         expected_transform = torch.eye(3).unsqueeze(0)  # 3 x 3
 
-        assert_allclose(F.compute_intensity_transformation(input), expected_transform, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.compute_intensity_transformation(input[None]), expected_transform, atol=1e-4, rtol=1e-5)
 
     def test_intensity_transformation_batch(self):
         batch_size = 2

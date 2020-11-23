@@ -86,7 +86,7 @@ class TestRgbToLuv(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_luv
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_allclose(op(img), op_jit(img), rtol=1e-3, atol=1e-3)
 
     @pytest.mark.nn
     def test_module(self, device, dtype):

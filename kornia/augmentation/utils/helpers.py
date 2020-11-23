@@ -1,7 +1,55 @@
-from typing import Tuple, Union, List, cast, Optional
+from typing import Tuple, Union, List, Callable, Optional
 
 import torch
 from torch.distributions import Uniform, Beta
+from functools import wraps
+
+from kornia.utils import _extract_device_dtype
+
+
+def _validate_input(f: Callable) -> Callable:
+    r"""Validates the 2D input of the wrapped function.
+
+    Args:
+        f: a function that takes the first argument as tensor.
+
+    Returns:
+        the wrapped function after input is validated.
+    """
+    @wraps(f)
+    def wrapper(input: torch.Tensor, *args, **kwargs):
+        if not torch.is_tensor(input):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+        _validate_shape(input.shape, required_shapes=('BCHW',))
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+        return f(input, *args, **kwargs)
+
+    return wrapper
+
+
+def _validate_input3D(f: Callable) -> Callable:
+    r"""Validates the 3D input of the wrapped function.
+
+    Args:
+        f: a function that takes the first argument as tensor.
+
+    Returns:
+        the wrapped function after input is validated.
+    """
+    @wraps(f)
+    def wrapper(input: torch.Tensor, *args, **kwargs):
+        if not torch.is_tensor(input):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+
+        input_shape = len(input.shape)
+        assert input_shape == 5, f'Expect input of 5 dimensions, got {input_shape} instead'
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
+        return f(input, *args, **kwargs)
+
+    return wrapper
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
@@ -82,10 +130,41 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: List[str] = ["BCHW"]) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+                            shape: Tuple) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: torch.Tensor
+        shape: List/tuple of int
+
+    Returns:
+        torch.Tensor
+    """
+    is_tuple = isinstance(output, tuple)
+    if is_tuple:
+        out_tensor, trans_matrix = output
+    else:
+        out_tensor = output
+        trans_matrix = None
+
+    if trans_matrix is not None:
+        if len(out_tensor.shape) > len(shape):  # if output is broadcasted
+            assert trans_matrix.shape[0] == 1, f'Dimension 0 of transformation matrix is ' \
+                                               f'expected to be 1, got {trans_matrix.shape[0]}'
+        trans_matrix = trans_matrix.squeeze(0)
+
+    for dim in range(len(out_tensor.shape) - len(shape)):
+        assert out_tensor.shape[0] == 1, f'Dimension {dim} of input is ' \
+                                         f'expected to be 1, got {out_tensor.shape[0]}'
+        out_tensor = out_tensor.squeeze(0)
+
+    return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
+
+
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    Args:
+        shape: tensor shape
         required_shapes: List. e.g. ["BCHW", "BCDHW"]
     """
     passed = False
@@ -147,51 +226,48 @@ def _adapted_uniform(
     shape: Union[Tuple, torch.Size],
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
-    same_on_batch=False
+    same_on_batch: bool = False
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
+
+    By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen
+    in the same device/dtype as low/high tensor.
     """
     device, dtype = _extract_device_dtype([
         low if isinstance(low, torch.Tensor) else None,
         high if isinstance(high, torch.Tensor) else None,
     ])
-    if not isinstance(low, torch.Tensor):
-        low = torch.tensor(low, device=device, dtype=torch.float64)
-    if not isinstance(high, torch.Tensor):
-        high = torch.tensor(high, device=device, dtype=torch.float64)
-    dist = Uniform(low.to(torch.float64), high.to(torch.float64))
-    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
+    low = torch.as_tensor(low, device=device, dtype=dtype)
+    high = torch.as_tensor(high, device=device, dtype=dtype)
+    dist = Uniform(low, high)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _adapted_beta(
     shape: Union[Tuple, torch.Size],
     a: Union[float, int, torch.Tensor],
     b: Union[float, int, torch.Tensor],
-    same_on_batch=False
+    same_on_batch: bool = False
 ) -> torch.Tensor:
     r""" The beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
+
+    By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
+    in the same device/dtype as a/b tensor.
     """
     device, dtype = _extract_device_dtype([
         a if isinstance(a, torch.Tensor) else None,
         b if isinstance(b, torch.Tensor) else None,
     ])
-    dtype = torch.float32 if dtype is None else dtype
-    if not isinstance(a, torch.Tensor):
-        a = torch.tensor(a, dtype=torch.float64)
-    else:
-        a = a.to(torch.float64)
-    if not isinstance(b, torch.Tensor):
-        b = torch.tensor(b, dtype=torch.float64)
-    else:
-        b = b.to(torch.float64)
+    a = torch.as_tensor(a, device=device, dtype=dtype)
+    b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b)
-    return _adapted_rsampling(shape, dist, same_on_batch).to(device=device, dtype=dtype)
+    return _adapted_rsampling(shape, dist, same_on_batch)
 
 
 def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
@@ -233,24 +309,3 @@ def _check_and_bound(factor: Union[torch.Tensor, float, Tuple[float, float], Lis
 
 def _shape_validation(param: torch.Tensor, shape: Union[tuple, list], name: str) -> None:
     assert param.shape == torch.Size(shape), f"Invalid shape for {name}. Expected {shape}. Got {param.shape}"
-
-
-def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
-    """This function will check if all the input tensors are in the same device.
-
-    If so, it would return a tuple of (device, dtype)
-    """
-    device, dtype = None, None
-    for tensor in tensor_list:
-        if tensor is not None:
-            if not isinstance(tensor, (torch.Tensor,)):
-                raise ValueError(f"Expected None or Tensor. Got {tensor}.")
-            _device = tensor.device
-            _dtype = tensor.dtype
-            if device is None and dtype is None:
-                device = _device
-                dtype = _dtype
-            elif device != _device or dtype != _dtype:
-                raise ValueError("Passed values are not in the same device and dtype."
-                                 f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
-    return (device, dtype)

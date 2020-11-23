@@ -10,4 +10,4 @@ sphinx_rtd_theme==0.4.3
 sphinxcontrib-bibtex==0.4.2
 nbsphinx==0.4.2
 nbconvert==5.5.0
-notebook==6.0.1
+notebook==6.1.5
