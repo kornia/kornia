@@ -62,7 +62,7 @@ class SOSNet(nn.Module):
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 urls['lib'], map_location=lambda storage, loc: storage
             )
-            self.load_state_dict(pretrained_dict['state_dict'], strict=True)
+            self.load_state_dict(pretrained_dict, strict=True)
 
         return
 

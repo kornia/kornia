@@ -29,7 +29,7 @@ center[..., 0] = data.shape[3] / 2  # x
 center[..., 1] = data.shape[2] / 2  # y
 
 # define the scale factor
-scale: torch.tensor = torch.ones(1)
+scale: torch.tensor = torch.ones(1, 2)
 
 # compute the transformation matrix
 M: torch.tensor = kornia.get_rotation_matrix2d(center, angle, scale)

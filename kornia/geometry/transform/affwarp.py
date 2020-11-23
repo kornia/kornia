@@ -1,13 +1,13 @@
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import torch
 import torch.nn as nn
 
 from kornia.geometry.transform.imgwarp import (
-    warp_affine, get_rotation_matrix2d
+    warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
 from kornia.geometry.transform.projwarp import (
-    warp_projective, get_projective_transform
+    warp_affine3d, get_projective_transform
 )
 
 __all__ = [
@@ -18,11 +18,14 @@ __all__ = [
     "translate",
     "shear",
     "resize",
+    "rescale",
     "Scale",
     "Rotate",
     "Translate",
     "Shear",
     "Resize",
+    "Rescale",
+    "Affine",
 ]
 
 # utilities to compute affine matrices
@@ -44,9 +47,9 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
     """Computes the center of tensor plane for (D, H, W), (C, D, H, W) and (B, C, D, H, W)."""
     assert 3 <= len(tensor.shape) <= 5, f"Must be a 3D tensor as DHW, CDHW and BCDHW. Got {tensor.shape}."
     depth, height, width = tensor.shape[-3:]
-    center_x: float = float(depth - 1) / 2
+    center_x: float = float(width - 1) / 2
     center_y: float = float(height - 1) / 2
-    center_z: float = float(width - 1) / 2
+    center_z: float = float(depth - 1) / 2
     center: torch.Tensor = torch.tensor(
         [center_x, center_y, center_z],
         device=tensor.device, dtype=tensor.dtype)
@@ -56,7 +59,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 def _compute_rotation_matrix(angle: torch.Tensor,
                              center: torch.Tensor) -> torch.Tensor:
     """Computes a pure affine rotation matrix."""
-    scale: torch.Tensor = torch.ones_like(angle)
+    scale: torch.Tensor = torch.ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -98,7 +101,7 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 def _compute_scaling_matrix(scale: torch.Tensor,
                             center: torch.Tensor) -> torch.Tensor:
     """Computes affine matrix for scaling."""
-    angle: torch.Tensor = torch.zeros_like(scale)
+    angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -182,8 +185,8 @@ def affine3d(tensor: torch.Tensor, matrix: torch.Tensor, mode: str = 'bilinear',
     depth: int = tensor.shape[-3]
     height: int = tensor.shape[-2]
     width: int = tensor.shape[-1]
-    warped: torch.Tensor = warp_projective(tensor, matrix, (depth, height, width), mode,
-                                           align_corners=align_corners)
+    warped: torch.Tensor = warp_affine3d(tensor, matrix, (depth, height, width), mode,
+                                         align_corners=align_corners)
 
     # return in the original shape
     if is_unbatched:
@@ -240,8 +243,11 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
     if not torch.is_tensor(yaw):
-        raise TypeError("Input angle type is not a torch.Tensor. Got {}"
-                        .format(type(yaw)))
+        raise TypeError("yaw is not a torch.Tensor. Got {}".format(type(yaw)))
+    if not torch.is_tensor(pitch):
+        raise TypeError("pitch is not a torch.Tensor. Got {}".format(type(pitch)))
+    if not torch.is_tensor(roll):
+        raise TypeError("roll is not a torch.Tensor. Got {}".format(type(roll)))
     if center is not None and not torch.is_tensor(center):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))
@@ -256,8 +262,8 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor, pitch: torch.Tensor, roll:
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     yaw = yaw.expand(tensor.shape[0])
-    pitch = yaw.expand(tensor.shape[0])
-    roll = yaw.expand(tensor.shape[0])
+    pitch = pitch.expand(tensor.shape[0])
+    roll = roll.expand(tensor.shape[0])
     center = center.expand(tensor.shape[0], -1)
     rotation_matrix: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center)
 
@@ -302,6 +308,10 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
         raise TypeError("Input scale_factor type is not a torch.Tensor. Got {}"
                         .format(type(scale_factor)))
 
+    if len(scale_factor.shape) == 1:
+        # convert isotropic scaling to x-y direction
+        scale_factor = scale_factor.repeat(1, 2)
+
     # compute the tensor center
     if center is None:
         center = _compute_tensor_center(tensor)
@@ -309,7 +319,7 @@ def scale(tensor: torch.Tensor, scale_factor: torch.Tensor,
     # compute the rotation matrix
     # TODO: add broadcasting to get_rotation_matrix2d for center
     center = center.expand(tensor.shape[0], -1)
-    scale_factor = scale_factor.expand(tensor.shape[0])
+    scale_factor = scale_factor.expand(tensor.shape[0], 2)
     scaling_matrix: torch.Tensor = _compute_scaling_matrix(scale_factor, center)
 
     # warp using the affine transform
@@ -338,8 +348,24 @@ def shear(tensor: torch.Tensor, shear: torch.Tensor, align_corners: bool = False
     return affine(tensor, shear_matrix[..., :2, :3], align_corners=align_corners)
 
 
+def _side_to_image_size(
+    side_size: int, aspect_ratio: float, side: str = "short"
+) -> Tuple[int, int]:
+    if side not in ("short", "long", "vert", "horz"):
+        raise ValueError(f"side can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
+    if side == "vert":
+        return side_size, int(side_size * aspect_ratio)
+    elif side == "horz":
+        return int(side_size / aspect_ratio), side_size
+    elif (side == "short") ^ (aspect_ratio < 1.0):
+        return side_size, int(side_size * aspect_ratio)
+    else:
+        return int(side_size / aspect_ratio), side_size
+
+
 def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
-           interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
+           interpolation: str = 'bilinear', align_corners: bool = False,
+           side: str = "short") -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
     See :class:`~kornia.Resize` for details.
@@ -348,22 +374,15 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
-    new_size: Tuple[int, int]
-
+    input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
-        w, h = input.shape[-2:]
-        if (w <= h and w == size) or (h <= w and h == size):
-            return input
-        if w < h:
-            ow = size
-            oh = int(size * h / w)
-        else:
-            oh = size
-            ow = int(size * w / h)
-        new_size = (ow, oh)
-    else:
-        new_size = size
-    return torch.nn.functional.interpolate(input, size=new_size, mode=interpolation, align_corners=align_corners)
+        aspect_ratio = w / h
+        size = _side_to_image_size(size, aspect_ratio, side)
+
+    if size == input_size:
+        return input
+
+    return torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
 
 
 class Resize(nn.Module):
@@ -371,26 +390,158 @@ class Resize(nn.Module):
 
     Args:
         size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
-        output size will be matched to this. If size is an int, smaller edge of the image will
-        be matched to this number. i.e, if height > width, then image will be rescaled
-        to (size * height / width, size)
+            output size will be matched to this. If size is an int, smaller edge of the image will
+            be matched to this number. i.e, if height > width, then image will be rescaled
+            to (size * height / width, size)
         interpolation (str):  algorithm used for upsampling: 'nearest' | 'linear' | 'bilinear' |
-        'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
+            'bicubic' | 'trilinear' | 'area'. Default: 'bilinear'.
         align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+        side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
+            or ``"horz"``. Defaults to ``"short"``.
+
     Returns:
         torch.Tensor: The resized tensor.
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear',
-                 align_corners: bool = False) -> None:
+                 align_corners: bool = False, side: str = "short") -> None:
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
         self.align_corners: bool = align_corners
+        self.side = side
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return resize(input, self.size, self.interpolation, align_corners=self.align_corners)
+        return resize(input, self.size, self.interpolation, align_corners=self.align_corners, side=self.side)
+
+
+class Affine(nn.Module):
+    r"""Apply multiple elementary affine transforms simultaneously.
+
+    Args:
+        angle (torch.Tensor, optional): Angle in degrees for counter-clockwise rotation around the center. The tensor
+            must have a shape of (B), where B is the batch size.
+        translation (torch.Tensor, optional): Amount of pixels for translation in x- and y-direction. The tensor must
+            have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
+        scale_factor (torch.Tensor, optional): Factor for scaling. The tensor must have a shape of (B), where B is the
+            batch size.
+        shear (torch.Tensor, optional): Angles in degrees for shearing in x- and y-direction around the center. The
+            tensor must have a shape of (B, 2), where B is the batch size and the last dimension contains sx and sy.
+        center (torch.Tensor, optional): Transformation center in pixels. The tensor must have a shape of (B, 2), where
+            B is the batch size and the last dimension contains cx and cy. Defaults to the center of image to be
+            transformed.
+        align_corners (bool): interpolation flag. Default: False. See :func:`~torch.nn.functional.interpolate` for
+            details.
+
+    Raises:
+        RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
+
+    Returns:
+        torch.Tensor: The transformed tensor.
+    """
+
+    def __init__(
+            self,
+            angle: Optional[torch.Tensor] = None,
+            translation: Optional[torch.Tensor] = None,
+            scale_factor: Optional[torch.Tensor] = None,
+            shear: Optional[torch.Tensor] = None,
+            center: Optional[torch.Tensor] = None,
+            align_corners: bool = False,
+    ) -> None:
+        batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
+        if not batch_sizes:
+            msg = (
+                "Affine was created without any affine parameter. At least one of angle, translation, scale_factor, or "
+                "shear has to be set."
+            )
+            raise RuntimeError(msg)
+
+        batch_size = batch_sizes[0]
+        if not all(other == batch_size for other in batch_sizes[1:]):
+            raise RuntimeError(f"The batch sizes of the affine parameters mismatch: {batch_sizes}")
+
+        self._batch_size = batch_size
+
+        super().__init__()
+
+        if angle is None:
+            angle = torch.zeros(batch_size)
+        self.angle = angle
+
+        if translation is None:
+            translation = torch.zeros(batch_size, 2)
+        self.translation = translation
+
+        if scale_factor is None:
+            scale_factor = torch.ones(batch_size, 2)
+        self.scale_factor = scale_factor
+
+        self.shear = shear
+        self.center = center
+        self.align_corners = align_corners
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        if self.shear is None:
+            sx = sy = None
+        else:
+            sx, sy = self.shear[..., 0], self.shear[..., 1]
+
+        if self.center is None:
+            center = _compute_tensor_center(input).expand(input.size()[0], -1)
+        else:
+            center = self.center
+
+        matrix = get_affine_matrix2d(self.translation, center, self.scale_factor, -self.angle, sx=sx, sy=sy)
+        return affine(input, matrix[..., :2, :3], align_corners=self.align_corners)
+
+
+def rescale(
+    input: torch.Tensor,
+    factor: Union[float, Tuple[float, float]],
+    interpolation: str = "bilinear",
+    align_corners: bool = False,
+) -> torch.Tensor:
+    r"""Rescale the input torch.Tensor with the given factor.
+
+    See :class:`~kornia.Rescale` for details.
+    """
+    if isinstance(factor, float):
+        factor_vert = factor_horz = factor
+    else:
+        factor_vert, factor_horz = factor
+
+    height, width = input.size()[-2:]
+    size = (int(height * factor_vert), int(width * factor_horz))
+    return resize(input, size, interpolation=interpolation, align_corners=align_corners)
+
+
+class Rescale(nn.Module):
+    r"""Rescale the input torch.Tensor with the given factor.
+
+    Args:
+        factor (float, tuple(float, float)): Desired scaling factor in each direction. If scalar, the value is used
+            for both the x- and y-direction.
+        interpolation (str):  Algorithm used for upsampling. Can be one of ``"nearest"``, ``"linear"``, ``"bilinear"``,
+            ``"bicubic"``, ``"trilinear"``, or ``"area"``. Default: ``"bilinear"``.
+        align_corners(bool): Interpolation flag. Default: False. See :func:`~torch.nn.functional.interpolate` for
+            details.
+
+    Returns:
+        torch.Tensor: The rescaled tensor.
+    """
+
+    def __init__(
+        self, factor: Union[float, Tuple[float, float]], interpolation: str = "bilinear", align_corners: bool = False
+    ) -> None:
+        super().__init__()
+        self.factor: Union[float, Tuple[float, float]] = factor
+        self.interpolation: str = interpolation
+        self.align_corners: bool = align_corners
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
 
 
 class Rotate(nn.Module):
@@ -447,7 +598,9 @@ class Scale(nn.Module):
 
     Args:
         scale_factor (torch.Tensor): The scale factor apply. The tensor
-          must have a shape of (B), where B is batch size.
+          must have a shape of (B) or (B, 2), where B is batch size.
+          If (B), isotropic scaling will perform.
+          If (B, 2), x-y-direction specific scaling will perform.
         center (torch.Tensor): The center through which to scale. The tensor
           must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.

@@ -289,12 +289,13 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
         - Output:  :math:`(B, N, n_pts, 2)`
 
     Examples:
-        >>> x, y = get_laf_pts_to_draw(LAF, img_idx)
-        >>> plt.figure()
-        >>> plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
-        >>> plt.plot(x, y, 'r')
-        >>> plt.show()
+        x, y = get_laf_pts_to_draw(LAF, img_idx)
+        plt.figure()
+        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.plot(x, y, 'r')
+        plt.show()
     """
+    # TODO: Refactor doctest
     raise_error_if_laf_is_not_valid(LAF)
     pts = laf_to_boundary_points(LAF[img_idx:img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()

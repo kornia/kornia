@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.utils import one_hot
+from kornia.utils.one_hot import one_hot
 
 
 # based on:

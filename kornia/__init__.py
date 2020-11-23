@@ -47,6 +47,7 @@ from kornia.color import (
 )
 from kornia.enhance import (
     normalize,
+    normalize_min_max,
     denormalize,
     zca_mean,
     zca_whiten,
@@ -70,6 +71,8 @@ from kornia.feature import (
 )
 from kornia.filters import (
     get_gaussian_kernel1d,
+    get_gaussian_erf_kernel1d,
+    get_gaussian_discrete_kernel1d,
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
@@ -104,4 +107,4 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.constants import pi
+from kornia.constants import *

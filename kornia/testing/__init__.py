@@ -1,10 +1,11 @@
 """
 The testing package contains testing-specific utilities.
 """
-
+from abc import ABC, abstractmethod
 
 import torch
 import numpy as np
+
 
 __all__ = [
     'tensor_to_gradcheck_var', 'create_eye_batch',
@@ -18,6 +19,7 @@ def create_checkerboard(h, w, nw):
                    np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
 
 
+# TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size):
     """Creates a batch of identity matrices of shape Bx3x3
     """
@@ -71,3 +73,29 @@ def create_random_fundamental_matrix(batch_size, std_val=1e-3):
     H_left = create_random_homography(batch_size, 3, std_val)
     H_right = create_random_homography(batch_size, 3, std_val)
     return H_left.permute(0, 2, 1) @ F_rect @ H_right
+
+
+class BaseTester(ABC):
+    @abstractmethod
+    def test_smoke(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_exception(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_cardinality(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_jit(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_gradcheck(self):
+        raise NotImplementedError("Implement a stupid routine.")
+
+    @abstractmethod
+    def test_module(self):
+        raise NotImplementedError("Implement a stupid routine.")

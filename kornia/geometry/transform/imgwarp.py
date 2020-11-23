@@ -4,13 +4,13 @@ import torch
 import torch.nn.functional as F
 
 from kornia.geometry.warp import (
-    normalize_homography, homography_warp, normalize_homography3d
+    normalize_homography, homography_warp
 )
 from kornia.geometry.conversions import (
     deg2rad, normalize_pixel_coordinates, convert_affinematrix_to_homography, convert_affinematrix_to_homography3d
 )
 from kornia.geometry.transform.projwarp import (
-    warp_projective, get_projective_transform
+    get_projective_transform
 )
 from kornia.testing import check_is_tensor
 
@@ -23,7 +23,9 @@ __all__ = [
     "invert_affine_transform",
     "angle_to_rotation_matrix",
     "get_affine_matrix2d",
-    "get_affine_matrix3d"
+    "get_affine_matrix3d",
+    "get_shear_matrix2d",
+    "get_shear_matrix3d"
 ]
 
 
@@ -79,7 +81,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
                          .format(src.shape))
 
-    if not (len(M.shape) == 3 or M.shape[-2:] == (3, 3)):
+    if not (len(M.shape) == 3 and M.shape[-2:] == (3, 3)):
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(M.shape))
 
@@ -118,11 +120,11 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
        See a working example `here <https://kornia.readthedocs.io/en/latest/
        tutorials/warp_affine.html>`__.
     """
-    if not torch.is_tensor(src):
+    if not isinstance(src, torch.Tensor):
         raise TypeError("Input src type is not a torch.Tensor. Got {}"
                         .format(type(src)))
 
-    if not torch.is_tensor(M):
+    if not isinstance(M, torch.Tensor):
         raise TypeError("Input M type is not a torch.Tensor. Got {}"
                         .format(type(M)))
 
@@ -141,10 +143,10 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, dsize_src, out_size)
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],  # type: ignore
+    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
                          [B, C, out_size[0], out_size[1]],
                          align_corners=align_corners)
-    return F.grid_sample(src, grid,  # type: ignore
+    return F.grid_sample(src, grid,
                          align_corners=align_corners,
                          mode=flags,
                          padding_mode=padding_mode)
@@ -188,10 +190,10 @@ def get_perspective_transform(src, dst):
         - Input: :math:`(B, 4, 2)` and :math:`(B, 4, 2)`
         - Output: :math:`(B, 3, 3)`
     """
-    if not torch.is_tensor(src):
+    if not isinstance(src, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(src)))
-    if not torch.is_tensor(dst):
+    if not isinstance(dst, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(dst)))
     if not src.shape[-2:] == (4, 2):
@@ -204,35 +206,13 @@ def get_perspective_transform(src, dst):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
 
-    def ax(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat(
-            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros,
-             -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]
-             ], dim=1)
-
-    def ay(p, q):
-        ones = torch.ones_like(p)[..., 0:1]
-        zeros = torch.zeros_like(p)[..., 0:1]
-        return torch.cat(
-            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones,
-             -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1)
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here
     # we could even pass more correspondence
     p = []
-    p.append(ax(src[:, 0], dst[:, 0]))
-    p.append(ay(src[:, 0], dst[:, 0]))
-
-    p.append(ax(src[:, 1], dst[:, 1]))
-    p.append(ay(src[:, 1], dst[:, 1]))
-
-    p.append(ax(src[:, 2], dst[:, 2]))
-    p.append(ay(src[:, 2], dst[:, 2]))
-
-    p.append(ax(src[:, 3], dst[:, 3]))
-    p.append(ay(src[:, 3], dst[:, 3]))
+    for i in [0, 1, 2, 3]:
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'x'))
+        p.append(_build_perspective_param(src[:, i], dst[:, i], 'y'))
 
     # A is Bx8x8
     A = torch.stack(p, dim=1)
@@ -253,6 +233,23 @@ def get_perspective_transform(src, dst):
     M = torch.ones(batch_size, 9, device=src.device, dtype=src.dtype)
     M[..., :8] = torch.squeeze(X, dim=-1)
     return M.view(-1, 3, 3)  # Bx3x3
+
+
+def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> torch.Tensor:
+    ones = torch.ones_like(p)[..., 0:1]
+    zeros = torch.zeros_like(p)[..., 0:1]
+    if axis == 'x':
+        return torch.cat(
+            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros,
+             -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]
+             ], dim=1)
+
+    if axis == 'y':
+        return torch.cat(
+            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones,
+             -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1)
+
+    raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 
 
 def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
@@ -307,30 +304,30 @@ def get_rotation_matrix2d(
         angle (Tensor): rotation angle in degrees. Positive values mean
             counter-clockwise rotation (the coordinate origin is assumed to
             be the top-left corner).
-        scale (Tensor): isotropic scale factor.
+        scale (Tensor): scale factor for x, y scaling with shape :math:`(B, 2)`
 
     Returns:
         Tensor: the affine matrix of 2D rotation.
 
     Shape:
-        - Input: :math:`(B, 2)`, :math:`(B)` and :math:`(B)`
+        - Input: :math:`(B, 2)`, :math:`(B)` and :math:`(B, 2)`
         - Output: :math:`(B, 2, 3)`
 
     Example:
         >>> center = torch.zeros(1, 2)
-        >>> scale = torch.ones(1)
+        >>> scale = torch.ones((1, 2))
         >>> angle = 45. * torch.ones(1)
         >>> get_rotation_matrix2d(center, angle, scale)
         tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])
     """
-    if not torch.is_tensor(center):
+    if not isinstance(center, torch.Tensor):
         raise TypeError("Input center type is not a torch.Tensor. Got {}"
                         .format(type(center)))
-    if not torch.is_tensor(angle):
+    if not isinstance(angle, torch.Tensor):
         raise TypeError("Input angle type is not a torch.Tensor. Got {}"
                         .format(type(angle)))
-    if not torch.is_tensor(scale):
+    if not isinstance(scale, torch.Tensor):
         raise TypeError("Input scale type is not a torch.Tensor. Got {}"
                         .format(type(scale)))
     if not (len(center.shape) == 2 and center.shape[1] == 2):
@@ -339,14 +336,19 @@ def get_rotation_matrix2d(
     if not len(angle.shape) == 1:
         raise ValueError("Input angle must be a B tensor. Got {}"
                          .format(angle.shape))
-    if not len(scale.shape) == 1:
-        raise ValueError("Input scale must be a B tensor. Got {}"
+    if not (len(scale.shape) == 2 and scale.shape[1] == 2):
+        raise ValueError("Input scale must be a Bx2 tensor. Got {}"
                          .format(scale.shape))
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Got center {}, angle {} and scale {}"
                          .format(center.shape, angle.shape, scale.shape))
     # convert angle and apply scale
-    scaled_rotation: torch.Tensor = angle_to_rotation_matrix(angle) * scale.view(-1, 1, 1)
+    rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
+    scaling_matrix: torch.Tensor = torch.zeros(
+        (2, 2), device=rotation_matrix.device, dtype=rotation_matrix.dtype).fill_diagonal_(1).repeat(
+        rotation_matrix.size(0), 1, 1)
+    scaling_matrix = scaling_matrix * scale.unsqueeze(dim=2).repeat(1, 1, 2)
+    scaled_rotation: torch.Tensor = rotation_matrix @ scaling_matrix
     alpha: torch.Tensor = scaled_rotation[:, 0, 0]
     beta: torch.Tensor = scaled_rotation[:, 0, 1]
 
@@ -398,13 +400,13 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
                   [0., 0.]]]])
 
     """
-    if not torch.is_tensor(tensor):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
-    if not torch.is_tensor(map_x):
+    if not isinstance(map_x, torch.Tensor):
         raise TypeError("Input map_x type is not a torch.Tensor. Got {}"
                         .format(type(map_x)))
-    if not torch.is_tensor(map_y):
+    if not isinstance(map_y, torch.Tensor):
         raise TypeError("Input map_y type is not a torch.Tensor. Got {}"
                         .format(type(map_y)))
     if not tensor.shape[-2:] == map_x.shape[-2:] == map_y.shape[-2:]:
@@ -446,7 +448,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     Return:
         torch.Tensor: the reverse affine transform.
     """
-    if not torch.is_tensor(matrix):
+    if not isinstance(matrix, torch.Tensor):
         raise TypeError("Input matrix type is not a torch.Tensor. Got {}"
                         .format(type(matrix)))
     if not (len(matrix.shape) == 3 and matrix.shape[-2:] == (2, 3)):
@@ -464,7 +466,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
     Args:
         translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
         center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
-        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B, 2)`.
         sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
         sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
@@ -476,20 +478,57 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography(transform)
 
-    if sx is not None or sy is not None:
-        x, y = torch.split(center, 1, dim=-1)
-        x = x.view(-1)
-        y = y.view(-1)
-        sx_tan = torch.tan(sx)  # type: ignore
-        sy_tan = torch.tan(sy)  # type: ignore
-        zeros = torch.zeros_like(sx)  # type: ignore
-        ones = torch.ones_like(sx)  # type: ignore
-        shear_mat = torch.stack([ones, -sx_tan, sx_tan * y,  # type: ignore   # noqa: E241
-                                 -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)],  # noqa: E241
-                                dim=-1).view(-1, 2, 3)
-        shear_mat = convert_affinematrix_to_homography(shear_mat)
+    if any([s is not None for s in [sx, sy]]):
+        shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
     return transform_h
+
+
+def get_shear_matrix2d(center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None):
+    r"""Composes shear matrix Bx4x4 from the components.
+
+    Note: Ordered shearing, shear x-axis then y-axis.
+
+    .. math::
+        \begin{bmatrix}
+            1 & b \\
+            a & ab + 1 \\
+        \end{bmatrix}
+
+    Args:
+        center (torch.Tensor): shearing center coordinates of (x, y).
+        sx (torch.Tensor, optional): shearing degree along x axis.
+        sy (torch.Tensor, optional): shearing degree along y axis.
+
+    Returns:
+        torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sx = torch.randn(1)
+        >>> sx
+        tensor([1.5410])
+        >>> center = torch.tensor([[0., 0.]])  # Bx2
+        >>> get_shear_matrix2d(center, sx=sx)
+        tensor([[[  1.0000, -33.5468,   0.0000],
+                 [ -0.0000,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   1.0000]]])
+    """
+    sx = torch.tensor([0.]).repeat(center.size(0)) if sx is None else sx
+    sy = torch.tensor([0.]).repeat(center.size(0)) if sy is None else sy
+
+    x, y = torch.split(center, 1, dim=-1)
+    x, y = x.view(-1), y.view(-1)
+
+    sx_tan = torch.tan(sx)  # type: ignore
+    sy_tan = torch.tan(sy)  # type: ignore
+    ones = torch.ones_like(sx)  # type: ignore
+    shear_mat = torch.stack([
+        ones, -sx_tan, sx_tan * y,  # type: ignore   # noqa: E241
+        -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)  # noqa: E241
+    ], dim=-1).view(-1, 2, 3)
+    shear_mat = convert_affinematrix_to_homography(shear_mat)
+    return shear_mat
 
 
 def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale: torch.Tensor, angles: torch.Tensor,
@@ -499,8 +538,8 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     r"""Composes 3d affine matrix from the components.
 
     Args:
-        translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 3)`.
-        center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 3)`.
+        translations (torch.Tensor): tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
+        center (torch.Tensor): tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
         sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
         sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
@@ -516,8 +555,9 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
     transform[..., 3] += translations  # tx/ty/tz
     # pad transform to get Bx3x3
     transform_h = convert_affinematrix_to_homography3d(transform)
-    shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
-    transform_h = transform_h @ shear_mat
+    if any([s is not None for s in [sxy, sxz, syx, syz, szx, szy]]):
+        shear_mat = get_shear_matrix3d(center, sxy, sxz, syx, syz, szx, szy)
+        transform_h = transform_h @ shear_mat
     return transform_h
 
 
@@ -528,6 +568,7 @@ def get_shear_matrix3d(
     szx: Optional[torch.Tensor] = None, szy: Optional[torch.Tensor] = None,
 ):
     r"""Composes shear matrix Bx4x4 from the components.
+    Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::
         \begin{bmatrix}
@@ -545,15 +586,37 @@ def get_shear_matrix3d(
         r = S_{zx} + S_{yx}S_{zy}
         s = S_{xy}S_{zx} + (S_{xy}S_{yx} + 1)S_{zy}
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
+
+    Params:
+        center (torch.Tensor): shearing center coordinates of (x, y, z).
+        sxy (torch.Tensor, optional): shearing degree along x axis, towards y plane.
+        sxz (torch.Tensor, optional): shearing degree along x axis, towards z plane.
+        syx (torch.Tensor, optional): shearing degree along y axis, towards x plane.
+        syz (torch.Tensor, optional): shearing degree along y axis, towards z plane.
+        szx (torch.Tensor, optional): shearing degree along z axis, towards x plane.
+        szy (torch.Tensor, optional): shearing degree along z axis, towards y plane.
+
     Returns:
         torch.Tensor: params to be passed to the affine transformation.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> sxy, sxz, syx, syz = torch.randn(4, 1)
+        >>> sxy, sxz, syx, syz
+        (tensor([1.5410]), tensor([-0.2934]), tensor([-2.1788]), tensor([0.5684]))
+        >>> center = torch.tensor([[0., 0., 0.]])  # Bx3
+        >>> get_shear_matrix3d(center, sxy=sxy, sxz=sxz, syx=syx, syz=syz)
+        tensor([[[  1.0000,  -1.4369,   0.0000,   0.0000],
+                 [-33.5468,  49.2039,   0.0000,   0.0000],
+                 [  0.3022,  -1.0729,   1.0000,   0.0000],
+                 [  0.0000,   0.0000,   0.0000,   1.0000]]])
     """
-    sxy = torch.tensor(0) if sxy is None else sxy
-    sxz = torch.tensor(0) if sxz is None else sxz
-    syx = torch.tensor(0) if syx is None else syx
-    syz = torch.tensor(0) if syz is None else syz
-    szx = torch.tensor(0) if szx is None else szx
-    szy = torch.tensor(0) if szy is None else szy
+    sxy = torch.tensor([0.]).repeat(center.size(0)) if sxy is None else sxy
+    sxz = torch.tensor([0.]).repeat(center.size(0)) if sxz is None else sxz
+    syx = torch.tensor([0.]).repeat(center.size(0)) if syx is None else syx
+    syz = torch.tensor([0.]).repeat(center.size(0)) if syz is None else syz
+    szx = torch.tensor([0.]).repeat(center.size(0)) if szx is None else szx
+    szy = torch.tensor([0.]).repeat(center.size(0)) if szy is None else szy
 
     x, y, z = torch.split(center, 1, dim=-1)
     x, y, z = x.view(-1), y.view(-1), z.view(-1)
@@ -566,7 +629,7 @@ def get_shear_matrix3d(
     szy_tan = torch.tan(szy)  # type: ignore
 
     # compute translation matrix
-    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
         sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
 
     m03 = m01 * y + m02 * z
@@ -576,7 +639,7 @@ def get_shear_matrix3d(
     # shear matrix is implemented with negative values
     sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan = \
         - sxy_tan, - sxz_tan, - syx_tan, - syz_tan, - szx_tan, - szy_tan
-    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _computer_shear_matrix(
+    m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
         sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan)
 
     shear_mat = torch.stack([
@@ -588,7 +651,7 @@ def get_shear_matrix3d(
     return shear_mat
 
 
-def _computer_shear_matrix(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
     zeros = torch.zeros_like(sxy_tan)  # type: ignore
     ones = torch.ones_like(sxy_tan)  # type: ignore
 

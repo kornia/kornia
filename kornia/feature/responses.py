@@ -56,7 +56,7 @@ def harris_response(input: torch.Tensor,
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> harris_response(input, 0.04)
+        harris_response(input, 0.04)
         tensor([[[[0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012],
                   [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
                   [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
@@ -65,6 +65,7 @@ def harris_response(input: torch.Tensor,
                   [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
                   [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
     """
+    # TODO: Recompute doctest
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
@@ -142,7 +143,7 @@ def gftt_response(input: torch.Tensor,
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> gftt_response(input)
+        gftt_response(input)
         tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
@@ -151,6 +152,7 @@ def gftt_response(input: torch.Tensor,
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
+    # TODO: Recompute doctest
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
@@ -226,7 +228,7 @@ def hessian_response(input: torch.Tensor,
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ... ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> hessian_response(input)
+        hessian_response(input)
         tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
@@ -235,6 +237,7 @@ def hessian_response(input: torch.Tensor,
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
+    # TODO: Recompute doctest
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))

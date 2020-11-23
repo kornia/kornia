@@ -76,6 +76,36 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
     return tensor
 
 
+def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
+    """Converts a PyTorch tensor image to BCHW format.
+    Args:
+        tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
+            :math:`(B, C, D, H, W)`.
+        color_channel_num (Optional[int]): Color channel of the input tensor.
+            If None, it will not alter the input channel.
+
+    Returns:
+        torch.Tensor: input tensor of the form :math:`(B, C, D, H, W)`.
+    """
+    if not torch.is_tensor(tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+
+    if len(tensor.shape) > 5 or len(tensor.shape) < 3:
+        raise ValueError(f"Input size must be a three, four or five dimensional tensor. Got {tensor.shape}")
+
+    if len(tensor.shape) == 3:
+        tensor = tensor.unsqueeze(0)
+
+    if len(tensor.shape) == 4:
+        tensor = tensor.unsqueeze(0)
+
+    if color_channel_num is not None and color_channel_num != 1:
+        channel_list = [0, 1, 2, 3, 4]
+        channel_list.insert(1, channel_list.pop(color_channel_num))
+        tensor = tensor.permute(*channel_list)
+    return tensor
+
+
 def tensor_to_image(tensor: torch.Tensor) -> np.array:
     """Converts a PyTorch tensor image to a numpy image.
 
