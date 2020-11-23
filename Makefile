@@ -39,7 +39,7 @@ autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
 doctest:
-	pytest -v --doctest-modules kornia/color #kornia/augmentation ... etc
+	pytest -v --doctest-modules kornia/color kornia/augmentation #... etc
 
 docstyle: FORCE
 	pydocstyle kornia/

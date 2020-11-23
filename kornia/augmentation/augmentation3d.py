@@ -326,7 +326,7 @@ class RandomAffine3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_affine_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.degrees,
-            self.translate, self.scale, self.shear, self.same_on_batch)
+            self.translate, self.scale, self.shear, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation3d(input, params)
@@ -421,7 +421,7 @@ class RandomRotation3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator3d(batch_shape[0], self.degrees, self.same_on_batch)
+        return rg.random_rotation_generator3d(batch_shape[0], self.degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation3d(input, params)
@@ -519,7 +519,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_motion_blur_generator3d(
-            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch)
+            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input)
@@ -555,14 +555,24 @@ class CenterCrop3D(AugmentationBase3D):
 
     Examples:
         >>> rng = torch.manual_seed(0)
-        >>> inputs = torch.randn(1, 1, 3, 3, 3)
+        >>> inputs = torch.randn(1, 1, 2, 4, 6)
+        >>> inputs
+        tensor([[[[[-1.1258, -1.1524, -0.2506, -0.4339,  0.8487,  0.6920],
+                   [-0.3160, -2.1152,  0.3223, -1.2633,  0.3500,  0.3081],
+                   [ 0.1198,  1.2377,  1.1168, -0.2473, -1.3527, -1.6959],
+                   [ 0.5667,  0.7935,  0.5988, -1.5551, -0.3414,  1.8530]],
+        <BLANKLINE>
+                  [[ 0.7502, -0.5855, -0.1734,  0.1835,  1.3894,  1.5863],
+                   [ 0.9463, -0.8437, -0.6136,  0.0316, -0.4927,  0.2484],
+                   [ 0.4397,  0.1124,  0.6408,  0.4412, -0.1023,  0.7924],
+                   [-0.2897,  0.0525,  0.5229,  2.3022, -1.4689, -1.5867]]]]])
         >>> aug = CenterCrop3D(2, p=1.)
         >>> aug(inputs)
-        tensor([[[[[-0.2170,  0.1856],
-                   [-0.2126, -0.0129]],
+        tensor([[[[[ 0.3223, -1.2633],
+                   [ 1.1168, -0.2473]],
         <BLANKLINE>
-                  [[-0.1957, -0.1423],
-                   [-0.0310, -0.3132]]]]])
+                  [[-0.6136,  0.0316],
+                   [ 0.6408,  0.4412]]]]])
     """
 
     def __init__(self, size: Union[int, Tuple[int, int, int]], align_corners: bool = True,
@@ -669,7 +679,6 @@ class RandomCrop3D(AugmentationBase3D):
         self.fill = fill
         self.padding_mode = padding_mode
         self.resample = Resample.get(resample)
-        self.same_on_batch = same_on_batch
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -683,7 +692,8 @@ class RandomCrop3D(AugmentationBase3D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_crop_generator3d(batch_shape[0], (batch_shape[-3], batch_shape[-2], batch_shape[-1]),
-                                          self.size, same_on_batch=self.same_on_batch)
+                                          self.size, same_on_batch=self.same_on_batch, device=self.device,
+                                          dtype=self.dtype)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
         if self.padding is not None:
@@ -811,7 +821,7 @@ class RandomPerspective3D(AugmentationBase3D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return rg.random_perspective_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1],
-            self.distortion_scale, self.same_on_batch)
+            self.distortion_scale, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation3d(input, params)
