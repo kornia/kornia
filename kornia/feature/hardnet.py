@@ -28,7 +28,7 @@ class HardNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = kornia.feature.HardNet()
+        >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
     """
 

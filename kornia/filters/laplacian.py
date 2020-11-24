@@ -31,7 +31,7 @@ class Laplacian(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> laplace = kornia.filters.Laplacian(5)
+        >>> laplace = Laplacian(5)
         >>> output = laplace(input)  # 2x4x5x5
     """
 

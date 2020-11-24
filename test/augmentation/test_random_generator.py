@@ -552,14 +552,14 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=False)
         expected = dict(
             size=torch.tensor([
-                [89, 87],
+                [99, 94],
                 [91, 95],
-                [81, 87],
-                [92, 98],
-                [89, 92],
-                [88, 90],
-                [87, 95],
-                [92, 87]], device=device, dtype=torch.long)
+                [90, 96],
+                [87, 86],
+                [94, 98],
+                [87, 81],
+                [85, 93],
+                [83, 90]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -585,14 +585,14 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             same_on_batch=True)
         expected = dict(
             size=torch.tensor([
-                [89, 87],
-                [89, 87],
-                [89, 87],
-                [89, 87],
-                [89, 87],
-                [89, 87],
-                [89, 87],
-                [89, 87]], device=device, dtype=torch.long),
+                [99, 95],
+                [99, 95],
+                [99, 95],
+                [99, 95],
+                [99, 95],
+                [99, 95],
+                [99, 95],
+                [99, 95]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])

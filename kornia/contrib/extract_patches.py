@@ -54,14 +54,14 @@ class ExtractTensorPatches(nn.Module):
 
     Examples:
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
-        >>> patches = kornia.contrib.extract_tensor_patches(input, (2, 3))
+        >>> patches = extract_tensor_patches(input, (2, 3))
         >>> input
         tensor([[[[0., 1., 2.],
                   [3., 4., 5.],
                   [6., 7., 8.]]]])
         >>> patches[:, -1]
-        tensor([[[[3.0000, 4.0000, 5.0000],
-                  [6.0000, 7.0000, 8.0000]]]])
+        tensor([[[[3., 4., 5.],
+                  [6., 7., 8.]]]])
     """
 
     def __init__(
