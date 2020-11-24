@@ -8,10 +8,14 @@ from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
+from kornia.testing import tensor_to_gradcheck_var
 from kornia.augmentation import (
     RandomMotionBlur,
     RandomMotionBlur3D,
+)
+from kornia.filters import (
+    motion_blur,
+    motion_blur3d,
 )
 
 
@@ -22,7 +26,7 @@ class TestRandomMotionBlur:
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
-        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000,  0.5000]), "\
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000, 0.5000]), "\
             "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
@@ -32,7 +36,9 @@ class TestRandomMotionBlur:
     def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5,
                              same_on_batch=same_on_batch, return_transform=return_transform, p=p)
-        input = torch.randn(1, 3, 5, 6).repeat(2, 1, 1, 1)
+        torch.manual_seed(0)
+        batch_size = 2
+        input = torch.randn(1, 3, 5, 6).repeat(batch_size, 1, 1, 1)
 
         output = f(input)
 
@@ -49,10 +55,25 @@ class TestRandomMotionBlur:
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
+        assert output.shape == torch.Size([batch_size, 3, 5, 6])
+
+    @pytest.mark.parametrize("input_shape", [(5, 5), (1, 5, 5), (1, 1, 5, 5), (6, 1, 5, 5)])
+    def test_against_functional(self, input_shape):
+
+        input = torch.randn(*input_shape)
+
+        f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.)
+        output = f(input)
+
+        expected = motion_blur(input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'],
+                               f._params['direction_factor'], f.border_type.name.lower())
+
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        inp = tensor_to_gradcheck_var(inp)  # to var
         # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
         params = {
             'batch_prob': torch.tensor([True]),
@@ -72,7 +93,7 @@ class TestRandomMotionBlur3D:
     def test_smoke(self, device, dtype):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
         repr = "RandomMotionBlur3D(kernel_size=(3, 5), angle=tensor([[10., 30.],"\
-            "\n        [10., 30.],\n        [10., 30.]]), direction=tensor([-0.5000,  0.5000]), " \
+            "\n        [10., 30.],\n        [10., 30.]]), direction=tensor([-0.5000, 0.5000]), " \
             "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
@@ -82,7 +103,8 @@ class TestRandomMotionBlur3D:
     def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5,
                                same_on_batch=same_on_batch, return_transform=return_transform, p=p)
-        input = torch.randn(1, 3, 5, 6, 7).repeat(2, 1, 1, 1, 1)
+        batch_size = 2
+        input = torch.randn(1, 3, 5, 6, 7, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1, 1)
 
         output = f(input)
 
@@ -99,10 +121,25 @@ class TestRandomMotionBlur3D:
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
+        assert output.shape == torch.Size([batch_size, 3, 5, 6, 7])
+
+    @pytest.mark.parametrize("input_shape", [(5, 6, 7), (1, 5, 6, 7), (1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
+    def test_against_functional(self, input_shape):
+
+        input = torch.randn(*input_shape)
+
+        f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.)
+        output = f(input)
+
+        expected = motion_blur3d(input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'],
+                                 f._params['direction_factor'], f.border_type.name.lower())
+
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
+        inp = tensor_to_gradcheck_var(inp)  # to var
         params = {
             'batch_prob': torch.tensor([True]),
             'ksize_factor': torch.tensor([31]),
