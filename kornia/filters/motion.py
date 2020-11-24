@@ -149,6 +149,7 @@ def motion_blur(
         >>> # perform element-wise motion blur accross the batch
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1, -1]))
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
@@ -165,6 +166,14 @@ def motion_blur(
         >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1, -1]))
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+        >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1, -1]))
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+        >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1., -1.]))
+>>>>>>> [Feat] Enabled doctest for CI (#641)
+>>>>>>> [Feat] Enabled doctest for CI (#641)
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """
