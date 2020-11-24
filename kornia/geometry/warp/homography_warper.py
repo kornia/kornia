@@ -150,10 +150,14 @@ def homography_warp3d(patch_src: torch.Tensor,
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         >>> output = homography_warp(input, homography, (32, 32))
 =======
         >>> output = kornia.homography_warp(input, homography, (32, 32))
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        >>> output = homography_warp(input, homography, (32, 32))
+>>>>>>> [Feat] Enabled doctest for CI (#641)
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError("Patch and homography must be on the same device. \

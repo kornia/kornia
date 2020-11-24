@@ -548,9 +548,15 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
         - Output: :math:`(N, 4, 4)`
 
     Example:
+<<<<<<< refs/remotes/kornia/master
         pinhole_i = torch.rand(1, 12)    # Nx12
         pinhole_ref = torch.rand(1, 12)  # Nx12
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
+=======
+        >>> pinhole_i = torch.rand(1, 12)    # Nx12
+        >>> pinhole_ref = torch.rand(1, 12)  # Nx12
+        >>> homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
+>>>>>>> [Feat] Enabled doctest for CI (#641)
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
     assert len(

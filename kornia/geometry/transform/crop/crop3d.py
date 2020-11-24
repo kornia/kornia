@@ -263,10 +263,14 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
 
     Examples:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         >>> input = torch.tensor([[[
 =======
         >>> input = torch.tensor([[
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        >>> input = torch.tensor([[[
+>>>>>>> [Feat] Enabled doctest for CI (#641)
         ...         [[ 0.,  1.,  2.,  3.],
         ...          [ 4.,  5.,  6.,  7.],
         ...          [ 8.,  9., 10., 11.],
@@ -279,10 +283,14 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ...          [36., 37., 38., 39.],
         ...          [40., 41., 42., 43.],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         ...          [44., 45., 46., 47.]]]]])
 =======
         ...          [44., 45., 46., 47.]]]])
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        ...          [44., 45., 46., 47.]]]]])
+>>>>>>> [Feat] Enabled doctest for CI (#641)
         >>> src_box = torch.tensor([[
         ...     [1., 1., 1.],
         ...     [3., 1., 1.],
@@ -305,6 +313,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ... ]])  # 1x8x3
         >>> crop_by_boxes3d(input, src_box, dst_box, interpolation='nearest', align_corners=True)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         tensor([[[[[21., 22., 23.],
                    [25., 26., 27.],
                    [29., 30., 31.]],
@@ -321,6 +330,15 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
                   [41., 42., 43.],
                   [45., 46., 47.]]]])
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+        tensor([[[[[21., 22., 23.],
+                   [25., 26., 27.],
+                   [29., 30., 31.]],
+        <BLANKLINE>
+                  [[37., 38., 39.],
+                   [41., 42., 43.],
+                   [45., 46., 47.]]]]])
+>>>>>>> [Feat] Enabled doctest for CI (#641)
 
     """
     validate_bboxes3d(src_box)
