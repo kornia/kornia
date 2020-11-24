@@ -1685,7 +1685,11 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
                 [99, 94],
 >>>>>>> Fixed random_crop_size_generator across different devices (#793)
                 [91, 95],
@@ -1724,13 +1728,16 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 =======
 =======
                 [89, 87],
+=======
+                [99, 94],
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
                 [91, 95],
-                [81, 87],
-                [92, 98],
-                [89, 92],
-                [88, 90],
-                [87, 95],
-                [92, 87]], device=device, dtype=torch.long)
+                [90, 96],
+                [87, 86],
+                [94, 98],
+                [87, 81],
+                [85, 93],
+                [83, 90]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -1770,7 +1777,13 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+=======
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
                 [99, 95],
                 [99, 95],
                 [99, 95],
@@ -1781,8 +1794,12 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [99, 95]], device=device, dtype=torch.long),
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
 =======
                 [87, 89],
                 [87, 89],
@@ -1808,12 +1825,17 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [89, 87]], device=device, dtype=torch.long),
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Fixed random_crop_size_generator across different devices (#793)
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
+>>>>>>> Fixed random_crop_size_generator across different devices (#793)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
