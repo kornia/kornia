@@ -1,12 +1,12 @@
 name: tests-cuda
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0 0 * * *"
 
 jobs:
   tests-cuda:
@@ -25,8 +25,8 @@ jobs:
     - name: Setup conda dependencies
       uses: conda-incubator/setup-miniconda@v2
       with:
-        #auto-update-conda: true
         miniconda-version: "latest"
+        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       shell: bash -l {0}
