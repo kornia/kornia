@@ -6,8 +6,8 @@ from kornia.utils import _extract_device_dtype
 
 
 @pytest.mark.parametrize("tensor_list,out_device,out_dtype,will_throw_error", [
-    ([], None, None, False),
-    ([None, None], None, None, False),
+    ([], torch.device('cpu'), torch.get_default_dtype(), False),
+    ([None, None], torch.device('cpu'), torch.get_default_dtype(), False),
     ([torch.tensor(0, device='cpu', dtype=torch.float16), None], torch.device('cpu'), torch.float16, False),
     ([torch.tensor(0, device='cpu', dtype=torch.float32), None], torch.device('cpu'), torch.float32, False),
     ([torch.tensor(0, device='cpu', dtype=torch.float64), None], torch.device('cpu'), torch.float64, False),
