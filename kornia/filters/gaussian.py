@@ -30,7 +30,7 @@ class GaussianBlur2d(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> gauss = kornia.filters.GaussianBlur((3, 3), (1.5, 1.5))
+        >>> gauss = GaussianBlur2d((3, 3), (1.5, 1.5))
         >>> output = gauss(input)  # 2x4x5x5
     """
 

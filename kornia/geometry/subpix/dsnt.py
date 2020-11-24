@@ -38,10 +38,21 @@ def spatial_softmax2d(
     Shape:
         - Input: :math:`(B, N, H, W)`
         - Output: :math:`(B, N, H, W)`
+
+    Examples:
+        >>> heatmaps = torch.tensor([[[
+        ... [0., 0., 0.],
+        ... [0., 0., 0.],
+        ... [0., 1., 2.]]]])
+        >>> spatial_softmax2d(heatmaps)
+        tensor([[[[0.0585, 0.0585, 0.0585],
+                  [0.0585, 0.0585, 0.0585],
+                  [0.0585, 0.1589, 0.4319]]]])
     """
     _validate_batched_image_tensor_input(input)
 
     batch_size, channels, height, width = input.shape
+    temperature = temperature.to(device=input.device, dtype=input.dtype)
     x: torch.Tensor = input.view(batch_size, channels, -1)
 
     x_soft: torch.Tensor = F.softmax(x * temperature, dim=-1)
@@ -75,11 +86,11 @@ def spatial_expectation2d(
 
     Examples:
         >>> heatmaps = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 0.]]]])
-        >>> coords = spatial_expectation_2d(heatmaps, False)
-        tensor([[[1.0000, 2.0000]]])
+        ... [0., 0., 0.],
+        ... [0., 0., 0.],
+        ... [0., 1., 0.]]]])
+        >>> spatial_expectation2d(heatmaps, False)
+        tensor([[[1., 2.]]])
     """
     _validate_batched_image_tensor_input(input)
 
