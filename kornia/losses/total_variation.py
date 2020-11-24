@@ -10,10 +10,13 @@ class TotalVariation(nn.Module):
         - Output: :math:`(N,)` or :math:`()`
 
     Examples:
-        >>> kornia.losses.total_variation(torch.ones(3,4,4)) # tensor(0.)
-        >>> tv = kornia.losses.TotalVariation()
-        >>> output = tv(torch.ones(2,3,4,4)) # tensor([0., 0.])
-        >>> output.backward()
+        >>> total_variation(torch.ones(3, 4, 4))
+        tensor(0.)
+        >>> tv = TotalVariation()
+        >>> output = tv(torch.ones((2, 3, 4, 4), requires_grad=True))
+        >>> output.data
+        tensor([0., 0.])
+        >>> output.sum().backward()  # grad can be implicitly created only for scalar outputs
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation

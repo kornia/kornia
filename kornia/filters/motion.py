@@ -131,7 +131,7 @@ def motion_blur(
         >>> torch.allclose(out_1[0], out_1[1])
         True
         >>> # perform element-wise motion blur accross the batch
-        >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1, -1]))
+        >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1., -1.]))
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """

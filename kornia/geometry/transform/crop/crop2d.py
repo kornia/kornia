@@ -37,21 +37,21 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
 
     Example:
-        >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-            ]])
+        >>> input = torch.tensor([[[
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ... ]]])
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
-        >>> kornia.crop_and_resize(input, boxes, (2, 2))
-        tensor([[[ 6.0000,  7.0000],
-                 [ 10.0000, 11.0000]]])
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]])  # 1x4x2
+        >>> crop_and_resize(input, boxes, (2, 2), interpolation='nearest', align_corners=True)
+        tensor([[[[ 6.,  7.],
+                  [10., 11.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -98,15 +98,15 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         torch.Tensor: the output tensor with patches.
 
     Examples:
-        >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-             ]])
-        >>> kornia.center_crop(input, (2, 4))
-        tensor([[[ 5.0000,  6.0000,  7.0000,  8.0000],
-                 [ 9.0000, 10.0000, 11.0000, 12.0000]]])
+        >>> input = torch.tensor([[[
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ...  ]]])
+        >>> center_crop(input, (2, 4), interpolation='nearest', align_corners=True)
+        tensor([[[[ 5.,  6.,  7.,  8.],
+                  [ 9., 10., 11., 12.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -180,7 +180,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         torch.Tensor: the output tensor with patches.
 
     Examples:
-        >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 4, 4))
+        >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 1, 4, 4))
         >>> src_box = torch.tensor([[
         ...     [1., 1.],
         ...     [2., 1.],
@@ -194,8 +194,8 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         ...     [0., 1.],
         ... ]])  # 1x4x2
         >>> crop_by_boxes(input, src_box, dst_box, align_corners=True)
-        tensor([[[ 5.0000,  6.0000],
-                 [ 9.0000, 10.0000]]])
+        tensor([[[[ 5.0000,  6.0000],
+                  [ 9.0000, 10.0000]]]])
 
     Note:
         If the src_box is smaller than dst_box, the following error will be thrown.
@@ -345,14 +345,14 @@ def bbox_generator(
         >>> height = torch.tensor([7, 4])
         >>> bbox_generator(x_start, y_start, width, height)
         tensor([[[0, 1],
-                 [4, 1],
-                 [4, 7],
-                 [0, 7]],
+                 [5, 1],
+                 [5, 8],
+                 [0, 8]],
         <BLANKLINE>
                 [[1, 0],
-                 [3, 0],
-                 [3, 3],
-                 [1, 3]]])
+                 [4, 0],
+                 [4, 4],
+                 [1, 4]]])
     """
     assert x_start.shape == y_start.shape and x_start.dim() in [0, 1], \
         f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."

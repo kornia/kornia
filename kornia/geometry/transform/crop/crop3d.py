@@ -246,7 +246,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         torch.Tensor: the output tensor with patches.
 
     Examples:
-        >>> input = torch.tensor([[
+        >>> input = torch.tensor([[[
         ...         [[ 0.,  1.,  2.,  3.],
         ...          [ 4.,  5.,  6.,  7.],
         ...          [ 8.,  9., 10., 11.],
@@ -258,7 +258,7 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ...         [[32., 33., 34., 35.],
         ...          [36., 37., 38., 39.],
         ...          [40., 41., 42., 43.],
-        ...          [44., 45., 46., 47.]]]])
+        ...          [44., 45., 46., 47.]]]]])
         >>> src_box = torch.tensor([[
         ...     [1., 1., 1.],
         ...     [3., 1., 1.],
@@ -280,13 +280,13 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
         ...     [0., 2., 1.],
         ... ]])  # 1x8x3
         >>> crop_by_boxes3d(input, src_box, dst_box, interpolation='nearest', align_corners=True)
-        tensor([[[[21., 22., 23.],
-                  [25., 26., 27.],
-                  [29., 30., 31.]],
+        tensor([[[[[21., 22., 23.],
+                   [25., 26., 27.],
+                   [29., 30., 31.]],
         <BLANKLINE>
-                 [[37., 38., 39.],
-                  [41., 42., 43.],
-                  [45., 46., 47.]]]])
+                  [[37., 38., 39.],
+                   [41., 42., 43.],
+                   [45., 46., 47.]]]]])
 
     """
     validate_bboxes3d(src_box)

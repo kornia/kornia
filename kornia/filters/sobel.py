@@ -19,7 +19,7 @@ class SpatialGradient(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = kornia.filters.SpatialGradient()(input)  # 1x3x2x4x4
+        >>> output = SpatialGradient()(input)  # 1x3x2x4x4
     """
 
     def __init__(self,
@@ -78,7 +78,7 @@ class SpatialGradient3d(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = kornia.filters.SpatialGradient()(input)  # 1x3x2x4x4
+        >>> output = SpatialGradient()(input)  # 1x3x2x4x4
     """
 
     def __init__(self,
@@ -136,7 +136,7 @@ class Sobel(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = kornia.filters.Sobel()(input)  # 1x3x4x4
+        >>> output = Sobel()(input)  # 1x3x4x4
     """
 
     def __init__(self,
