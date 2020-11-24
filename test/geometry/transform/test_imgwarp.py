@@ -40,6 +40,7 @@ def test_warp_perspective_rotation(batch_shape, device):
     assert_allclose(mask_warped_inv * patch,
                     mask_warped_inv * patch_warped_inv)
 
+
 def test_warp_perspective_gradcheck(device, dtype):
     H, W = 5, 5
     patch = torch.rand(1, 1, 5, 5, device=device, dtype=torch.float64, requires_grad=True)
