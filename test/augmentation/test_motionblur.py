@@ -57,7 +57,7 @@ class TestRandomMotionBlur:
 
         assert output.shape == torch.Size([batch_size, 3, 5, 6])
 
-    @pytest.mark.parametrize("input_shape", [(5, 5), (1, 5, 5), (1, 1, 5, 5), (6, 1, 5, 5)])
+    @pytest.mark.parametrize("input_shape", [(1, 1, 5, 5), (2, 1, 5, 5)])
     def test_against_functional(self, input_shape):
 
         input = torch.randn(*input_shape)
@@ -123,7 +123,7 @@ class TestRandomMotionBlur3D:
 
         assert output.shape == torch.Size([batch_size, 3, 5, 6, 7])
 
-    @pytest.mark.parametrize("input_shape", [(5, 6, 7), (1, 5, 6, 7), (1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
+    @pytest.mark.parametrize("input_shape", [(1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
     def test_against_functional(self, input_shape):
 
         input = torch.randn(*input_shape)
