@@ -1,23 +1,21 @@
-name: tests-cpu
+name: test-cpu-versions
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
   schedule:
     - cron: "0 4 * * *"
 
 jobs:
-  tests-cpu:
+  test-cpu-versions:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.6, 3.7, 3.8]
-        pytorch-version: [1.7.0]
-
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -29,13 +27,9 @@ jobs:
       shell: bash -l {0}
       run: |
         conda install curl make -c conda-forge
-        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
+        conda install pytorch cpuonly -c pytorch-nightly
         pip install -r requirements-dev.txt
         make install
     - name: Run Tests
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype float32,float64 --cov=kornia --cov-report xml ./test
-    - name: Upload coverage
-      uses: codecov/codecov-action@v1
-      with:
-        file: ./coverage.xml
+      run: pytest -v --device cpu --dtype float32,float64 ./test --flake8 --mypy
