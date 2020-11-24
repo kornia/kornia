@@ -23,7 +23,7 @@ local tputests = base.BaseTest {
       python -c "import torch; print(torch.__version__)"
       python -c "import torch_xla; print(torch_xla.__version__)"
       python -c "import kornia; print(kornia.__version__)"
-      pytest -vv -r sx kornia/test/color --device tpu --dtype float64 -k "not gradcheck"
+      pytest -v kornia/test/color --device tpu --dtype float32 -k "not gradcheck"
       test_exit_code=$?
       echo "\nFinished running commands.\n"
       test $test_exit_code -eq 0

@@ -7,6 +7,8 @@ ARG GITHUB_REF=refs/heads/master
 # wheels available; see below.
 ARG PYTHON_VERSION=3.6
 
+ARG PYTORCH_VERSION=1.7
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
          build-essential \
          cmake \
@@ -32,15 +34,12 @@ RUN conda install -y python=$PYTHON_VERSION mkl
 
 RUN pip uninstall -y torch && \
     # Python 3.7 wheels are available. Replace cp36-cp36m with cp37-cp37m
-    gsutil cp 'gs://tpu-pytorch/wheels/torch-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' . && \
-    gsutil cp 'gs://tpu-pytorch/wheels/torch_xla-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' . && \
-    gsutil cp 'gs://tpu-pytorch/wheels/torchvision-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' . && \
-    pip install 'torch-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
-    pip install 'torch_xla-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
-    pip install 'torchvision-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
-    rm 'torch-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
-    rm 'torch_xla-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
-    rm 'torchvision-nightly-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
+    gsutil cp 'gs://tpu-pytorch/wheels/torch-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' . && \
+    gsutil cp 'gs://tpu-pytorch/wheels/torch_xla-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' . && \
+    pip install 'torch-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
+    pip install 'torch_xla-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
+    rm 'torch-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
+    rm 'torch_xla-${PYTORCH_VERSION}-cp${PYTHON_VERSION/./}-cp${PYTHON_VERSION/./}m-linux_x86_64.whl' && \
     apt-get install -y libomp5
 
 ENV LD_LIBRARY_PATH=root/miniconda3/envs/container/lib

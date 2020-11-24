@@ -22,7 +22,7 @@ references:
       command: |
         gcloud --quiet auth configure-docker
         cd docker/tpu-tests
-        docker build --tag "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID" -f Dockerfile --build-arg "PYTHON_VERSION=$PYTHON_VER" --build-arg "GITHUB_REF=pull/$CIRCLE_PR_NUMBER/head" .
+        docker build --tag "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID" -f Dockerfile --build-arg "PYTHON_VERSION=$PYTHON_VER" --build-arg "PYTORCH_VERSION=$PYTORCH_VER" --build-arg "GITHUB_REF=pull/$CIRCLE_PR_NUMBER/head" .
         docker push "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID"
 
   deploy_cluster: &deploy_cluster
@@ -73,10 +73,13 @@ jobs:
     parameters:
       python:
         type: string
+      pytorch:
+        type: string
     docker:
       - image: circleci/python:3.7
     environment:
       - PYTHON_VER: << parameters.python >>
+      - PYTORCH_VER: << parameters.pytorch >>
       - MAX_CHECKS: 240
       - CHECK_SPEEP: 5
     steps:
@@ -118,6 +121,7 @@ workflows:
           matrix:
             parameters:
               python: ["3.6", "3.7"]
+              pytorch: ["1.6", "1.7", "nightly"]
   tpu-cleanup:
     triggers:
       - schedule:
