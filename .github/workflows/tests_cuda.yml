@@ -1,24 +1,25 @@
 name: tests-cuda
 
 on:
-  #push:
-  #  branches:
-  #    - master
-  #pull_request:
+  push:
+    branches:
+      - master
+  pull_request:
   schedule:
     - cron: "0 4 * * *"
 
 jobs:
   tests-cuda:
     container:
-      image: nvcr.io/nvidia/pytorch:20.03-py3
+      #image: nvcr.io/nvidia/pytorch:20.03-py3
+      image: nvcr.io/nvidia/cuda:10.2-devel-ubuntu18.04
       options: --gpus all
     runs-on: [self-hosted, Linux, x64]
     strategy:
       fail-fast: false
       matrix:
         python-version: [3.7]
-        pytorch-version: [1.6.0]
+        pytorch-version: [1.6.0, 1.7.0]
         cuda-version: [9.2, 10.1, 10.2]
     steps:
     - uses: actions/checkout@v2
