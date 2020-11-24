@@ -109,6 +109,8 @@ class TestFindHomographyDLTIter:
         assert_allclose(
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
+    # TODO(ducha-aiki): remove once #795 is fixed
+    @pytest.mark.xfail
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -117,6 +119,8 @@ class TestFindHomographyDLTIter:
         assert gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights),
                          rtol=1e-3, atol=1e-4, raise_exception=True)
 
+    # TODO(ducha-aiki): remove once #795 is fixed
+    @pytest.mark.xfail
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dirty_points_and_gradcheck(self, batch_size, device, dtype):
         # generate input data
