@@ -48,7 +48,7 @@ class PyrDown(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = kornia.transform.PyrDown()(input)  # 1x2x2x2
+        >>> output = PyrDown()(input)  # 1x2x2x2
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
@@ -92,7 +92,7 @@ class PyrUp(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = kornia.transform.PyrUp()(input)  # 1x2x8x8
+        >>> output = PyrUp()(input)  # 1x2x8x8
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
@@ -141,7 +141,7 @@ class ScalePyramid(nn.Module):
 
     Examples::
         >>> input = torch.rand(2, 4, 100, 100)
-        >>> sp, sigmas, pds = kornia.ScalePyramid(3, 15)(input)
+        >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
 
     def __init__(self,

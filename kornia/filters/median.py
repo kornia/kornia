@@ -27,7 +27,7 @@ class MedianBlur(nn.Module):
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
-        >>> blur = kornia.filters.MedianBlur((3, 3))
+        >>> blur = MedianBlur((3, 3))
         >>> output = blur(input)  # 2x4x5x7
     """
 

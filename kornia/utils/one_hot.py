@@ -27,13 +27,16 @@ def one_hot(labels: torch.Tensor,
 
     Examples::
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
-        >>> kornia.losses.one_hot(labels, num_classes=3)
-        tensor([[[[1., 0.],
-                  [0., 1.]],
-                 [[0., 1.],
-                  [0., 0.]],
-                 [[0., 0.],
-                  [1., 0.]]]]
+        >>> one_hot(labels, num_classes=3)
+        tensor([[[[1.0000e+00, 1.0000e-06],
+                  [1.0000e-06, 1.0000e+00]],
+        <BLANKLINE>
+                 [[1.0000e-06, 1.0000e+00],
+                  [1.0000e-06, 1.0000e-06]],
+        <BLANKLINE>
+                 [[1.0000e-06, 1.0000e-06],
+                  [1.0000e+00, 1.0000e-06]]]])
+
     """
     if not torch.is_tensor(labels):
         raise TypeError("Input labels type is not a torch.Tensor. Got {}"

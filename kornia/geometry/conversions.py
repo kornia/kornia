@@ -38,8 +38,8 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
         torch.Tensor: Tensor with same shape as input.
 
     Example:
-        >>> input = kornia.pi * torch.rand(1, 3, 3)
-        >>> output = kornia.rad2deg(input)
+        >>> input = torch.tensor(3.1415926535) * torch.rand(1, 3, 3)
+        >>> output = rad2deg(input)
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -60,7 +60,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     Examples::
 
         >>> input = 360. * torch.rand(1, 3, 3)
-        >>> output = kornia.deg2rad(input)
+        >>> output = deg2rad(input)
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -76,7 +76,7 @@ def convert_points_from_homogeneous(
     Examples::
 
         >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> output = kornia.convert_points_from_homogeneous(input)  # BxNx2
+        >>> output = convert_points_from_homogeneous(input)  # BxNx2
     """
     if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -105,7 +105,7 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     Examples::
 
         >>> input = torch.rand(2, 4, 3)  # BxNx3
-        >>> output = kornia.convert_points_to_homogeneous(input)  # BxNx4
+        >>> output = convert_points_to_homogeneous(input)  # BxNx4
     """
     if not isinstance(points, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -129,7 +129,7 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
     Examples::
 
         >>> input = torch.rand(2, 2, 3)  # Bx2x3
-        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx3x3
+        >>> output = convert_affinematrix_to_homography(input)  # Bx3x3
     """
     if not isinstance(A, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -146,7 +146,7 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
     Examples::
 
         >>> input = torch.rand(2, 3, 4)  # Bx3x4
-        >>> output = kornia.convert_affinematrix_to_homography(input)  # Bx4x4
+        >>> output = convert_affinematrix_to_homography3d(input)  # Bx4x4
     """
     if not isinstance(A, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -172,7 +172,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_axis_to_rotation_matrix(input)  # Nx3x3
+        >>> output = angle_axis_to_rotation_matrix(input)  # Nx3x3
     """
     if not isinstance(angle_axis, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -256,7 +256,7 @@ def rotation_matrix_to_angle_axis(
 
     Example:
         >>> input = torch.rand(2, 3, 3)  # Nx3x3
-        >>> output = kornia.rotation_matrix_to_angle_axis(input)  # Nx3
+        >>> output = rotation_matrix_to_angle_axis(input)  # Nx3
     """
     if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -289,7 +289,7 @@ def rotation_matrix_to_quaternion(
 
     Example:
         >>> input = torch.rand(4, 3, 3)  # Nx3x3
-        >>> output = kornia.rotation_matrix_to_quaternion(input)  # Nx4
+        >>> output = rotation_matrix_to_quaternion(input)  # Nx4
     """
     if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -370,7 +370,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor([1., 0., 1., 0.])
-        >>> kornia.normalize_quaternion(quaternion)
+        >>> normalize_quaternion(quaternion)
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -401,10 +401,10 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> quaternion = torch.tensor([0., 0., 1., 0.])
-        >>> kornia.quaternion_to_rotation_matrix(quaternion)
-        tensor([[[-1.,  0.,  0.],
-                 [ 0., -1.,  0.],
-                 [ 0.,  0.,  1.]]])
+        >>> quaternion_to_rotation_matrix(quaternion)
+        tensor([[-1.,  0.,  0.],
+                [ 0., -1.,  0.],
+                [ 0.,  0.,  1.]])
     """
     if not isinstance(quaternion, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -464,7 +464,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> quaternion = torch.rand(2, 4)  # Nx4
-        >>> angle_axis = kornia.quaternion_to_angle_axis(quaternion)  # Nx3
+        >>> angle_axis = quaternion_to_angle_axis(quaternion)  # Nx3
     """
     if not torch.is_tensor(quaternion):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -511,7 +511,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor([0., 0., 0.])
-        >>> kornia.quaternion_log_to_exp(quaternion)
+        >>> quaternion_log_to_exp(quaternion)
         tensor([0., 0., 0., 1.])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -550,7 +550,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor([0., 0., 0., 1.])
-        >>> kornia.quaternion_exp_to_log(quaternion)
+        >>> quaternion_exp_to_log(quaternion)
         tensor([0., 0., 0.])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -596,8 +596,8 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
         - Output: :math:`(*, 4)`
 
     Example:
-        >>> angle_axis = torch.rand(2, 4)  # Nx4
-        >>> quaternion = kornia.angle_axis_to_quaternion(angle_axis)  # Nx3
+        >>> angle_axis = torch.rand(2, 3)  # Nx3
+        >>> quaternion = angle_axis_to_quaternion(angle_axis)  # Nx4
     """
     if not torch.is_tensor(angle_axis):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
