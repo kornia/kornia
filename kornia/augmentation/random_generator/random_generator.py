@@ -452,16 +452,14 @@ def random_crop_size_generator(
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
+
+    Examples:
+        >>> _ = torch.manual_seed(42)
+        >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
+        {'size': tensor([[29, 29],
+                [27, 28],
+                [26, 29]])}
     """
-
-    # TODO: Add a doctest to this function. The following code failed on the cloud environment.
-    # Examples:
-    #     >>> _ = torch.manual_seed(42)
-    #     >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-    #     {'size': tensor([[26, 27],
-    #             [27, 28],
-    #             [24, 26]])}
-
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
     _joint_range_check(ratio, "ratio")
@@ -486,10 +484,12 @@ def random_crop_size_generator(
     h = torch.sqrt(area / aspect_ratio).round().int()
     # Element-wise w, h condition
     cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
-    cond_bool = torch.sum(cond, dim=1) > 0
 
-    h_out = w[torch.arange(0, batch_size, device=device, dtype=torch.long), torch.argmax(cond, dim=1)]
-    w_out = h[torch.arange(0, batch_size, device=device, dtype=torch.long), torch.argmax(cond, dim=1)]
+    # torch.argmax is not reproducible accross devices: https://github.com/pytorch/pytorch/issues/17738
+    # Here, we will select the first occurance of the duplicated elements.
+    cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).max(1)
+    h_out = w[torch.arange(0, batch_size, device=device, dtype=torch.long), argmax_dim1]
+    w_out = h[torch.arange(0, batch_size, device=device, dtype=torch.long), argmax_dim1]
 
     if not cond_bool.all():
         # Fallback to center crop
