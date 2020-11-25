@@ -183,10 +183,10 @@ class ColorJitter(AugmentationBase2D):
     ) -> None:
         super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                           keepdim=keepdim)
-        self.brightness: torch.Tensor = brightness
-        self.contrast: torch.Tensor = contrast
-        self.saturation: torch.Tensor = saturation
-        self.hue: torch.Tensor = hue
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
 
     def __repr__(self) -> str:
         repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
