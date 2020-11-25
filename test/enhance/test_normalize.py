@@ -26,7 +26,7 @@ class TestNormalize:
 
         # expected output
         expected = torch.tensor([0.25],
-            device=device, dtype=dtype).repeat(1, 2, 2).view_as(data)
+                                device=device, dtype=dtype).repeat(1, 2, 2).view_as(data)
 
         f = kornia.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)

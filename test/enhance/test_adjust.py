@@ -774,7 +774,7 @@ class TestSharpness(BaseTester):
     def test_value(self, device, dtype):
         torch.manual_seed(0)
 
-        inputs = torch.rand(1, 3, 3).to(device=device, dtype=dtype)
+        inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
 
         # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
         # img = PIL.Image.fromarray(arr)
@@ -782,8 +782,8 @@ class TestSharpness(BaseTester):
         # np.array(en) / 255.
         expected = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
-             [0.1320, 0.3305, 0.6341],
-             [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
 
         # If factor == 1, shall return original
         assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
@@ -800,18 +800,18 @@ class TestSharpness(BaseTester):
         # np.array(en) / 255.
         expected_08 = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
-             [0.1320, 0.3305, 0.6341],
-             [0.4901, 0.8964, 0.4556]]],
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]],
             [[[0.6323, 0.3489, 0.4017],
-             [0.0223, 0.2052, 0.2939],
-             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+              [0.0223, 0.2052, 0.2939],
+              [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
         expected_08_13 = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
-             [0.1320, 0.3305, 0.6341],
-             [0.4901, 0.8964, 0.4556]]],
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]],
             [[[0.6323, 0.3489, 0.4017],
-             [0.0223, 0.1143, 0.2939],
-             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+              [0.0223, 0.1143, 0.2939],
+              [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
 
         # If factor == 1, shall return original
         assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
