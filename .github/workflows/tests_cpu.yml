@@ -21,17 +21,27 @@ jobs:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+<<<<<<< master
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         pytorch-version: [1.7.0]
 =======
         pytorch-version: [1.6.0]
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         pytorch-version: [1.7.0]
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
 =======
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+        pytorch-version: [1.7.0]
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
     steps:
     - uses: actions/checkout@v2

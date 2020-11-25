@@ -33,9 +33,16 @@ on:
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
 =======
   schedule:
+<<<<<<< master
     - cron: "0 4 * * *"
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+=======
+    - cron: "0 0 * * *"
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
 jobs:
   tests-cuda:
@@ -58,7 +65,11 @@ jobs:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
+=======
+<<<<<<< master
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         pytorch-version: [1.7.0]
         cuda-version: [10.2]
     steps:
@@ -110,6 +121,9 @@ jobs:
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
         cuda-version: [9.2, 10.1, 10.2, 11.0]
 =======
+=======
+        pytorch-version: [1.6.0, 1.7.0]
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         cuda-version: [9.2, 10.1, 10.2]
 >>>>>>> drop cuda 11.0 support for nightly tests
     steps:
@@ -118,12 +132,16 @@ jobs:
       uses: conda-incubator/setup-miniconda@v2
       with:
 <<<<<<< master
+<<<<<<< master
         miniconda-version: "latest"
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 <<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 =======
 =======
+=======
+        miniconda-version: "latest"
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         auto-update-conda: true
 >>>>>>> update setup-miniconda to v2 (#789)
 >>>>>>> update setup-miniconda to v2 (#789)
