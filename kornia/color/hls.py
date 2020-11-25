@@ -56,7 +56,10 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
 
     image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
 
-    image_hls[torch.isnan(image_hls)] = 0.
+    # JIT indexing is not supported before 1.6.0 https://github.com/pytorch/pytorch/issues/38962
+    # image_hls[torch.isnan(image_hls)] = 0.
+    image_hls = torch.where(
+        torch.isnan(image_hls), torch.tensor(0., device=image_hls.device, dtype=image_hls.dtype), image_hls)
 
     return image_hls
 

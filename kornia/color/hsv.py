@@ -27,16 +27,11 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    # TODO: enable again for later versions than 1.6.0 or find a different implementation.
-    # It turns out that .max(...) does not return the index in the first position when
-    # all the inputs have the same value in CUDA.
-    # maxc, max_indices = image.max(-3)
-    if image.is_cuda and torch.__version__ == '1.6.0':
-        maxc, max_indices = image.cpu().max(-3)
-        maxc, max_indices = maxc.to(image), max_indices.to(image.device)
-    else:
-        maxc, max_indices = image.max(-3)
-
+    # The first or last occurance is not guarenteed before 1.6.0
+    # https://github.com/pytorch/pytorch/issues/20414
+    maxc, _ = image.max(-3)
+    maxc_mask = image == maxc.unsqueeze(-3)
+    _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
@@ -46,7 +41,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
 
     # avoid division by zero
     deltac = torch.where(
-        deltac == 0, torch.ones_like(deltac), deltac)
+        deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
 
     maxc_tmp = maxc.unsqueeze(-3) - image
     rc: torch.Tensor = maxc_tmp[..., 0, :, :]

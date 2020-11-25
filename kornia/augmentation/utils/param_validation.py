@@ -12,11 +12,12 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 
 def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
                  center: float = 0., bounds: Tuple[float, float] = (0, float('inf')),
-                 check: Optional[str] = 'joint') -> torch.Tensor:
+                 check: Optional[str] = 'joint', device: torch.device = torch.device('cpu'),
+                 dtype: torch.dtype = torch.get_default_dtype()) -> torch.Tensor:
     r"""Check inputs and compute the corresponding factor bounds
     """
     if not isinstance(factor, (torch.Tensor)):
-        factor = torch.tensor(factor, dtype=torch.float32)
+        factor = torch.tensor(factor, device=device, dtype=dtype)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
@@ -25,9 +26,10 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = torch.tensor([center - factor, center + factor], dtype=torch.float32).clamp(bounds[0], bounds[1])
+        factor_bound = torch.tensor(
+            [center - factor, center + factor], device=device, dtype=dtype).clamp(bounds[0], bounds[1])
     else:
-        factor_bound = factor.to(dtype=torch.float32)
+        factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
     if check is not None:
         if check == 'joint':
