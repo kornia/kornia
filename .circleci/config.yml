@@ -24,6 +24,7 @@ references:
         cd docker/tpu-tests  
         # Update PR refs for testing.
         if [[ -n "${CIRCLE_PR_NUMBER}" ]]
+        then
             FETCH_REF="pull/$CIRCLE_PR_NUMBER/head"
         else
             FETCH_REF="refs/heads/master"
