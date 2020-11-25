@@ -38,6 +38,13 @@ fi
 python_version=${PYTHON_VERSION:-"3.7"}
 pytorch_version=${PYTORCH_VERSION:-"1.6.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+cuda_version=${CUDA_VERSION:-""}
+
+cuda_toolkit=""
+if [ ! -z "$cuda_version" ]
+then
+    cuda_toolkit="cudatoolkit=$cuda_version"
+fi
 
 # create an environment with the specific python version
 $conda_bin config --append channels conda-forge
@@ -49,7 +56,7 @@ $conda_bin clean -ya
 source $conda_bin_dir/activate $dev_env_dir/envs/venv
 
 # install pytorch and torchvision
-conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c pytorch
 
 # install testing dependencies
 pip install -r requirements-dev.txt

@@ -258,7 +258,8 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return (height, width)
 
 
-def validate_bboxes(boxes: torch.Tensor) -> None:
+@torch.jit.ignore
+def validate_bboxes(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not.
 
     This function checks if the boxes are rectangular or not.
@@ -270,12 +271,19 @@ def validate_bboxes(boxes: torch.Tensor) -> None:
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
     """
-    assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
-        "Boxes must have be rectangular, while get widths %s and %s" % \
-        (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
-    assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
-        "Boxes must have be rectangular, while get heights %s and %s" % \
-        (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
+    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
+                          (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
+        raise ValueError("Boxes must have be rectangular, while get widths %s and %s" %
+                         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
+                          str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1)))
+
+    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
+                          (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
+        raise ValueError("Boxes must have be rectangular, while get heights %s and %s" %
+                         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
+                          str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1)))
+
+    return True
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:

@@ -6,7 +6,7 @@ on:
   #    - master
   #pull_request:
   schedule:
-    - cron: "0 4 * * *"
+    - cron: "0 0 * * *"
 
 jobs:
   tests-cuda:
@@ -18,13 +18,14 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
-        pytorch-version: [1.6.0]
+        pytorch-version: [1.6.0, 1.7.0]
         cuda-version: [9.2, 10.1, 10.2]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
       uses: conda-incubator/setup-miniconda@v2
       with:
+        miniconda-version: "latest"
         auto-update-conda: true
         python-version: ${{ matrix.python-version }}
     - name: Install dependencies
