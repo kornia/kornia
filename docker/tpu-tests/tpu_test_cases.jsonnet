@@ -14,7 +14,11 @@ local tputests = base.BaseTest {
   imageTag: std.extVar('image-tag'),
 
   tpuSettings+: {
+<<<<<<< refs/remotes/kornia/master
     softwareVersion: 'pytorch-VERSION',
+=======
+    softwareVersion: 'pytorch-nightly',
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
   },
   accelerator: tpus.v3_8,
 

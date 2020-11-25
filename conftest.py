@@ -47,6 +47,18 @@ DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 
 @pytest.fixture()
 def device(device_name) -> torch.device:
+<<<<<<< refs/remotes/kornia/master
+=======
+    # To work with TPUs on Colab:
+    # pip install cloud-tpu-client==0.10
+    # pip install https://storage.googleapis.com/tpu-pytorch/wheels/torch_xla-1.6-cp36-cp36m-linux_x86_64.whl
+    # Issue: gradcheck on TPUs takes ages...
+    if device_name == "tpu":
+        import torch_xla.core.xla_model as xm
+        return xm.xla_device()
+    elif device_name not in TEST_DEVICES:
+        pytest.skip(f"Unsupported device type: {device_name}")
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
     return TEST_DEVICES[device_name]
 
 

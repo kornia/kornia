@@ -12,6 +12,14 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
+    if 'xla' in device.type:
+        return 1e-2
+    elif dtype == torch.float16:
+        return 1e-3
+    return 1e-4
+
+
 class TestRgbToLuv(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
@@ -69,11 +77,16 @@ class TestRgbToLuv(BaseTester):
         ], device=device, dtype=dtype)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         tol_val: float = _get_precision(device, dtype)
         assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
 =======
         assert_allclose(kornia.color.rgb_to_luv(data), expected)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+        tol_val: float = _get_precision(device, dtype)
+        assert_allclose(kornia.color.rgb_to_luv(data), expected, rtol=tol_val, atol=tol_val)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -172,10 +185,14 @@ class TestLuvToRgb(BaseTester):
         ]], device=device, dtype=dtype)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
 =======
         assert_allclose(kornia.color.luv_to_rgb(data), expected)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+        assert_allclose(kornia.color.luv_to_rgb(data), expected, rtol=1e-4, atol=1e-4)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
