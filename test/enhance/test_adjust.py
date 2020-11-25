@@ -20,7 +20,7 @@ class TestAdjustSaturation:
                              [[.25, .25],
                               [.25, .25]]], device=device)  # 3x2x2
 
-        data = data
+        expected = data
 
         f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
