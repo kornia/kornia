@@ -97,7 +97,14 @@ fi
 >>>>>>> refactor setup_dev_env script (#756)
 =======
 cuda_version=${CUDA_VERSION:-""}
+pytorch_channel="pytorch"
 
+# configure for nightly builds
+if [ "$pytorch_version" == "nightly" ]; then
+    pytorch_version=""
+    pytorch_channel="pytorch-nightly"
+
+# configure cudatoolkit
 cuda_toolkit=""
 if [ ! -z "$cuda_version" ]
 then

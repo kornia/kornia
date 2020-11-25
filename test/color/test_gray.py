@@ -59,17 +59,27 @@ class TestRgbToGrayscale(BaseTester):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
         expected = torch.tensor([[
 =======
         expected = torch.tensor([
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        expected = torch.tensor([[
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
             [0.4684734, 0.8954562, 0.6064363, 0.5236061, 0.6106016],
             [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
             [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
@@ -87,11 +97,18 @@ class TestRgbToGrayscale(BaseTester):
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
 =======
 <<<<<<< master
+<<<<<<< master
         ]], device=device, dtype=dtype)
 =======
         ], device=device, dtype=dtype)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        ]], device=device, dtype=dtype)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
 
         img_gray = kornia.rgb_to_grayscale(data)
         assert_allclose(img_gray, expected)
@@ -170,17 +187,27 @@ class TestBgrToGrayscale(BaseTester):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
         expected = torch.tensor([[
 =======
         expected = torch.tensor([
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         expected = torch.tensor([[
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        expected = torch.tensor([[
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
             [0.4485849, 0.8233618, 0.6262833, 0.6218331, 0.6341921],
             [0.3200093, 0.4340172, 0.7107211, 0.5454938, 0.2801398],
             [0.6149265, 0.7018101, 0.3503231, 0.4891168, 0.5292346],
@@ -198,11 +225,18 @@ class TestBgrToGrayscale(BaseTester):
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
 =======
 <<<<<<< master
+<<<<<<< master
         ]], device=device, dtype=dtype)
 =======
         ], device=device, dtype=dtype)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        ]], device=device, dtype=dtype)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
 
         img_gray = kornia.bgr_to_grayscale(data)
         assert_allclose(img_gray, expected)

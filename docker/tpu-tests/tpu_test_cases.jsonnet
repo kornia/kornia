@@ -16,13 +16,20 @@ local tputests = base.BaseTest {
   tpuSettings+: {
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
     softwareVersion: 'pytorch-VERSION',
 =======
     softwareVersion: 'pytorch-nightly',
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
+<<<<<<< refs/remotes/kornia/master
 =======
     softwareVersion: 'pytorch-VERSION',
 >>>>>>> [Enhancement] TPU tests for for pytorch 1.7, nightly (#807)
+=======
+>>>>>>> [Feat] Add tpu-testing in circleci (#787)
   },
   accelerator: tpus.v3_8,
 
