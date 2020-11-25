@@ -15,11 +15,17 @@
 .. image:: https://github.com/kornia/kornia/workflows/tests-cuda/badge.svg
     :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
 .. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
     :target: https://circleci.com/gh/kornia/kornia
 =======
 >>>>>>> update github actions badges for cpu and cuda
+=======
+
+.. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
+    :target: https://circleci.com/gh/kornia/kornia
+>>>>>>> add circleci-tpu badge to readme
     
 .. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
     :target: https://codecov.io/github/kornia/kornia
