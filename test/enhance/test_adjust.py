@@ -22,9 +22,15 @@ class TestAdjustSaturation:
                               [.5, .5]],
 
                              [[.25, .25],
+<<<<<<< refs/remotes/kornia/master
                               [.25, .25]]], device=device, dtype=dtype)  # 3x2x2
 
         expected = data.clone()
+=======
+                              [.25, .25]]], device=device)  # 3x2x2
+
+        expected = data
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
         f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
@@ -46,13 +52,21 @@ class TestAdjustSaturation:
                                [.5, .5]],
 
                               [[.25, .25],
+<<<<<<< refs/remotes/kornia/master
                                [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
+=======
+                               [.25, .25]]]], device=device)  # 2x3x2x2
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
         expected = data
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
+<<<<<<< refs/remotes/kornia/master
     def test_gradcheck(self, device, dtype):
+=======
+    def test_gradcheck(self, device):
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
         batch_size, channels, height, width = 2, 3, 4, 5
 <<<<<<< refs/remotes/kornia/master
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)

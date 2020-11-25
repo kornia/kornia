@@ -27,12 +27,16 @@ version = '0.4.2'  # this a tag for the current development version
 kornia_pt_dependencies = {
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     '0.4.2': '>=1.5.1',
 =======
 >>>>>>> [Fix] gpu tests for crop3d and flip (#727)
 =======
     '0.4.2': '>=1.6.0',
 >>>>>>> bump kornia version to 0.4.2
+=======
+    '0.4.2': '>=1.5.1',
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     '0.4.1': '>=1.6.0',
     '0.4.0': '>=1.6.0,<1.7.0',
     '0.3.2': '>=1.5.0,<1.6.0',

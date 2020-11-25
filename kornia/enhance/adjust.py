@@ -687,6 +687,19 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     nonzero_histo = torch.reshape(histo[histo != 0], [-1])
     step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
 
+<<<<<<< refs/remotes/kornia/master
+=======
+    def build_lut(histo, step):
+        # Compute the cumulative sum, shifting by step // 2
+        # and then normalization by step.
+        lut = (torch.cumsum(histo, 0) + (step // 2)) // step
+        # Shift lut, prepending with 0.
+        lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
+        # Clip the counts to be in range.  This is done
+        # in the C code for image.point.
+        return torch.clamp(lut, 0, 255)
+
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     # If step is zero, return the original image.  Otherwise, build
     # lut from the full histogram and step and then index from it.
     if step == 0:

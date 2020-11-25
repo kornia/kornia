@@ -220,16 +220,22 @@ class ColorJitter(AugmentationBase2D):
         super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                           keepdim=keepdim)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
+<<<<<<< refs/remotes/kornia/master
 =======
         self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
         self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
         self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
         self.hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
 >>>>>>> [Feat] Added keepdim flag to augmentation functions. (#731)
+=======
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
     def __repr__(self) -> str:
         repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
@@ -246,10 +252,14 @@ class ColorJitter(AugmentationBase2D):
             self.hue, 'hue', bounds=(-0.5, 0.5), device=self.device, dtype=self.dtype)
         return rg.random_color_jitter_generator(
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch,
 =======
             batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch,
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+            batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch,
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:

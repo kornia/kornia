@@ -1,4 +1,5 @@
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 name: tests-cpu-versions
 
 on:
@@ -15,6 +16,15 @@ on:
   #    - master
   #pull_request:
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+name: tests-cpu-versions
+
+on:
+  push:
+   branches:
+     - master
+  # pull_request:
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
   schedule:
     - cron: "0 4 * * *"
 
