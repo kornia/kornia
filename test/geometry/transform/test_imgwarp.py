@@ -40,15 +40,12 @@ def test_warp_perspective_rotation(batch_shape, device):
     assert_allclose(mask_warped_inv * patch,
                     mask_warped_inv * patch_warped_inv)
 
-    # evaluate function gradient
-    patch = utils.tensor_to_gradcheck_var(patch)  # to var
-    M = utils.tensor_to_gradcheck_var(M, requires_grad=False)  # to var
-    assert gradcheck(
-        kornia.warp_perspective, (patch, M, (
-            height,
-            width,
-        )),
-        raise_exception=True)
+
+def test_warp_perspective_gradcheck(device, dtype):
+    H, W = 5, 5
+    patch = torch.rand(1, 1, 5, 5, device=device, dtype=torch.float64, requires_grad=True)
+    M = kornia.eye_like(3, patch)
+    assert gradcheck(kornia.warp_perspective, (patch, M, (H, W),), raise_exception=True)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
