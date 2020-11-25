@@ -13,19 +13,19 @@ from torch.testing import assert_allclose
 class TestZCA:
 
     @pytest.mark.parametrize("unbiased", [True, False])
-    def test_zca_unbiased(self, unbiased, device):
+    def test_zca_unbiased(self, unbiased, device, dtype):
 
         data = torch.tensor([[0, 1],
                              [1, 0],
                              [-1, 0],
-                             [0, -1]], dtype=torch.float32).to(device)
+                             [0, -1]], device=device, dtype=dtype)
 
         if unbiased:
-            expected = torch.sqrt(1.5 * torch.abs(data)) * torch.sign(data)
+            unbiased_val = 1.5
         else:
-            expected = torch.sqrt(2 * torch.abs(data)) * torch.sign(data)
+            unbiased_val = 2.0
 
-        expected = expected.to(device)
+        expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
         zca = kornia.enhance.ZCAWhitening(unbiased=unbiased).fit(data)
 
@@ -34,39 +34,42 @@ class TestZCA:
         assert_allclose(actual, expected)
 
     @pytest.mark.parametrize("dim", [0, 1])
-    def test_dim_args(self, dim, device):
+    def test_dim_args(self, dim, device, dtype):
 
         data = torch.tensor([[0, 1],
                              [1, 0],
                              [-1, 0],
-                             [0, -1]], dtype=torch.float32).to(device)
+                             [0, -1]], device=device, dtype=dtype)
 
         if dim == 1:
-            expected = torch.tensor([[-0.35360718, 0.35360718],
-                                     [0.35351562, -0.35351562],
-                                     [-0.35353088, 0.35353088],
-                                     [0.35353088, -0.35353088]], dtype=torch.float32)
+            expected = torch.tensor([
+                [-0.35360718, 0.35360718],
+                [0.35351562, -0.35351562],
+                [-0.35353088, 0.35353088],
+                [0.35353088, -0.35353088],
+            ], device=device, dtype=dtype)
         elif dim == 0:
-            expected = torch.tensor([[0., 1.2247448],
-                                     [1.2247448, 0.],
-                                     [-1.2247448, 0.],
-                                     [0., -1.2247448]], dtype=torch.float32)
-        expected = expected.to(device)
+            expected = torch.tensor([
+                [0., 1.2247448],
+                [1.2247448, 0.],
+                [-1.2247448, 0.],
+                [0., -1.2247448],
+            ], device=device, dtype=dtype)
 
         zca = kornia.enhance.ZCAWhitening(dim=dim)
         actual = zca(data, True)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), .1), ((20, 3, 2, 2), 1e-3)])
-    def test_identity(self, input_shape, eps, device):
+    def test_identity(self, input_shape, eps, device, dtype):
         """
 
         Assert that data can be recovered by the inverse transform
 
         """
 
-        data = torch.randn(*input_shape, dtype=torch.float32).to(device)
+        data = torch.randn(*input_shape, device=device, dtype=dtype)
 
         zca = kornia.enhance.ZCAWhitening(compute_inv=True, eps=eps).fit(data)
 
@@ -76,7 +79,7 @@ class TestZCA:
 
         assert_allclose(data, data_hat)
 
-    def test_grad_zca_individual_transforms(self, device):
+    def test_grad_zca_individual_transforms(self, device, dtype):
         """
 
         Checks if the gradients of the transforms are correct w.r.t to the input data
@@ -87,7 +90,7 @@ class TestZCA:
                              [0, 1],
                              [-2, 0],
                              [0, -1]],
-                            dtype=torch.float32).to(device)
+                            device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
 
@@ -104,13 +107,13 @@ class TestZCA:
         assert gradcheck(zca_mu, (data,), raise_exception=True)
         assert gradcheck(zca_T_inv, (data,), raise_exception=True)
 
-    def test_grad_zca_with_fit(self, device):
+    def test_grad_zca_with_fit(self, device, dtype):
 
         data = torch.tensor([[2, 0],
                              [0, 1],
                              [-2, 0],
                              [0, -1]],
-                            dtype=torch.float32).to(device)
+                            device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
 
@@ -120,13 +123,13 @@ class TestZCA:
 
         assert gradcheck(zca_fit, (data,), raise_exception=True)
 
-    def test_grad_detach_zca(self, device):
+    def test_grad_detach_zca(self, device, dtype):
 
         data = torch.tensor([[1, 0],
                              [0, 1],
                              [-2, 0],
                              [0, -1]],
-                            dtype=torch.float32).to(device)
+                            device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
         zca = kornia.enhance.ZCAWhitening()
@@ -136,44 +139,44 @@ class TestZCA:
         assert gradcheck(zca,
                          (data,), raise_exception=True)
 
-    def test_not_fitted(self, device):
+    def test_not_fitted(self, device, dtype):
 
         with pytest.raises(RuntimeError):
-            data = torch.rand(10, 2).to(device)
+            data = torch.rand(10, 2, device=device, dtype=dtype)
 
             zca = kornia.enhance.ZCAWhitening()
             zca(data)
 
-    def test_not_fitted_inv(self, device):
+    def test_not_fitted_inv(self, device, dtype):
 
         with pytest.raises(RuntimeError):
-            data = torch.rand(10, 2).to(device)
+            data = torch.rand(10, 2, device=device, dtype=dtype)
 
             zca = kornia.enhance.ZCAWhitening()
             zca.inverse_transform(data)
 
     def test_jit(self, device, dtype):
 
-        data = torch.rand((10, 3, 1, 2)).to(device)
+        data = torch.rand(10, 3, 1, 2, device=device, dtype=dtype)
         zca = kornia.enhance.ZCAWhitening().fit(data)
         zca_jit = kornia.enhance.ZCAWhitening().fit(data)
         zca_jit = torch.jit.script(zca_jit)
         assert_allclose(zca_jit(data), zca(data))
 
     @pytest.mark.parametrize("unbiased", [True, False])
-    def test_zca_whiten_func_unbiased(self, unbiased, device):
+    def test_zca_whiten_func_unbiased(self, unbiased, device, dtype):
 
         data = torch.tensor([[0, 1],
                              [1, 0],
                              [-1, 0],
-                             [0, -1]], dtype=torch.float32).to(device)
+                             [0, -1]], device=device, dtype=dtype)
 
         if unbiased:
-            expected = torch.sqrt(1.5 * torch.abs(data)) * torch.sign(data)
+            unbiased_val = 1.5
         else:
-            expected = torch.sqrt(2 * torch.abs(data)) * torch.sign(data)
+            unbiased_val = 2.0
 
-        expected = expected.to(device)
+        expected = torch.sqrt(unbiased_val * torch.abs(data)) * torch.sign(data)
 
         actual = kornia.zca_whiten(data, unbiased=unbiased)
 

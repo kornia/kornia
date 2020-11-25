@@ -5,7 +5,6 @@ from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.enhance import histogram, histogram2d
 import kornia.testing as utils  # test utils
 
 
