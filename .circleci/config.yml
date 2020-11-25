@@ -24,12 +24,10 @@ references:
         cd docker/tpu-tests  
         # Update PR refs for testing.
         if [[ -n "${CIRCLE_PR_NUMBER}" ]]
-            FETCH_REF="pull/$CIRCLE_PR_NUMBER/merge"
-        then
             FETCH_REF="pull/$CIRCLE_PR_NUMBER/head"
+        else
+            FETCH_REF="refs/heads/master"
         fi
-        echo "FETCH_REF: ${CIRCLE_PR_NUMBER}"
-        echo "FETCH_REF: ${FETCH_REF}"
         docker build --tag "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID" -f Dockerfile --build-arg "PYTHON_VERSION=$PYTHON_VER" --build-arg "PYTORCH_VERSION=$PYTORCH_VER" --build-arg "GITHUB_REF=$FETCH_REF" .
         docker push "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID"
 
