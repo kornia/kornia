@@ -8,12 +8,22 @@ on:
 >>>>>>> add cuda version and pull_requests workflows (#799)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+<<<<<<< master
+=======
+>>>>>>> add cuda version and pull_requests workflows (#799)
+>>>>>>> add cuda version and pull_requests workflows (#799)
   push:
     branches:
       - master
   pull_request:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> add cuda version and pull_requests workflows (#799)
   schedule:
     - cron: "0 0 * * *"
 =======
@@ -21,6 +31,7 @@ on:
   #  branches:
   #    - master
   #pull_request:
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> add cuda version and pull_requests workflows (#799)
@@ -32,6 +43,10 @@ on:
     - cron: "0 0 * * *"
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
 =======
+=======
+=======
+>>>>>>> add cuda version and pull_requests workflows (#799)
+>>>>>>> add cuda version and pull_requests workflows (#799)
   schedule:
 <<<<<<< master
     - cron: "0 4 * * *"
@@ -69,7 +84,11 @@ jobs:
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+<<<<<<< master
+>>>>>>> add cuda version and pull_requests workflows (#799)
         pytorch-version: [1.7.0]
         cuda-version: [10.2]
     steps:
@@ -126,6 +145,10 @@ jobs:
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
         cuda-version: [9.2, 10.1, 10.2]
 >>>>>>> drop cuda 11.0 support for nightly tests
+=======
+        pytorch-version: [1.7.0]
+        cuda-version: [10.2]
+>>>>>>> add cuda version and pull_requests workflows (#799)
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
