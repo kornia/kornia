@@ -99,3 +99,11 @@ class BaseTester(ABC):
     @abstractmethod
     def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")
+
+
+def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
+    if 'xla' in device.type:
+        return 1e-2
+    elif dtype == torch.float16:
+        return 1e-3
+    return 1e-4

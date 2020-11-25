@@ -267,8 +267,8 @@ class TestNormalizeMinMax(BaseTester):
     def test_range(self, device, dtype, min_val, max_val):
         x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
         out = kornia.normalize_min_max(x, min_val=min_val, max_val=max_val)
-        assert_allclose(out.min(), min_val)
-        assert_allclose(out.max(), max_val)
+        assert_allclose(out.min().item(), min_val)
+        assert_allclose(out.max().item(), max_val)
 
     def test_values(self, device, dtype):
         x = torch.tensor([[[

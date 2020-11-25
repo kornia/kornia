@@ -2,6 +2,7 @@ import pytest
 
 import kornia
 from kornia.testing import tensor_to_gradcheck_var, BaseTester
+import kornia.testing as utils
 from kornia.constants import pi
 
 import torch
@@ -794,10 +795,11 @@ class TestSharpness(BaseTester):
               [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
 
         # If factor == 1, shall return original
-        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
-        assert_allclose(TestSharpness.f(inputs, torch.tensor([1., 1.])), inputs, rtol=1e-4, atol=1e-4)
-        assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=1e-4, atol=1e-4)
-        assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=1e-4, atol=1e-4)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([1., 1.])), inputs, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

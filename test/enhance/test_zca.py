@@ -4,7 +4,6 @@ import pytest
 import kornia
 import kornia.testing as utils  # test utils
 
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -31,7 +30,8 @@ class TestZCA:
 
         actual = zca(data)
 
-        assert_allclose(actual, expected)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("dim", [0, 1])
     def test_dim_args(self, dim, device, dtype):
@@ -59,7 +59,8 @@ class TestZCA:
         zca = kornia.enhance.ZCAWhitening(dim=dim)
         actual = zca(data, True)
 
-        assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), .1), ((20, 3, 2, 2), 1e-3)])
     def test_identity(self, input_shape, eps, device, dtype):
@@ -77,7 +78,8 @@ class TestZCA:
 
         data_hat = zca.inverse_transform(data_w)
 
-        assert_allclose(data, data_hat)
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(data, data_hat, rtol=tol_val, atol=tol_val)
 
     def test_grad_zca_individual_transforms(self, device, dtype):
         """
@@ -180,4 +182,6 @@ class TestZCA:
 
         actual = kornia.zca_whiten(data, unbiased=unbiased)
 
-        assert_allclose(actual, expected)
+       
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(actual, expected, atol=tol_val, rtol=tol_val)
