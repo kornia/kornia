@@ -21,8 +21,14 @@ references:
       name: Build and push Docker image
       command: |
         gcloud --quiet auth configure-docker
-        cd docker/tpu-tests
-        docker build --tag "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID" -f Dockerfile --build-arg "PYTHON_VERSION=$PYTHON_VER" --build-arg "PYTORCH_VERSION=$PYTORCH_VER" --build-arg "GITHUB_REF=pull/$CIRCLE_PR_NUMBER/head" .
+        cd docker/tpu-tests  
+        # Update PR refs for testing.
+        if [[ -n "${CIRCLE_PR_NUMBER}" ]]
+            FETCH_REFS="pull/$CIRCLE_PR_NUMBER/head"
+        then
+            FETCH_REFS="pull/$CIRCLE_PR_NUMBER/merge"
+        fi
+        docker build --tag "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID" -f Dockerfile --build-arg "PYTHON_VERSION=$PYTHON_VER" --build-arg "PYTORCH_VERSION=$PYTORCH_VER" --build-arg "GITHUB_REF=$FETCH_REFS" .
         docker push "$GCR_IMAGE_PATH:$CIRCLE_WORKFLOW_JOB_ID"
 
   deploy_cluster: &deploy_cluster
