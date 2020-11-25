@@ -31,7 +31,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     # https://github.com/pytorch/pytorch/issues/20414
     maxc, _ = image.cpu().max(-3)
     maxc_mask = image == maxc.unsqueeze(-3)
-    _, max_indices = ((maxc_mask.cumsum(0) == 1) & maxc_mask).max(-3)
+    _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
     minc: torch.Tensor = image.min(-3)[0]
 
     v: torch.Tensor = maxc  # brightness
