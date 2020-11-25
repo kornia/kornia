@@ -13,7 +13,13 @@ Kornia Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Package Reference
+   :caption: Kornia API
+   module_intro/core_module
+   module_intro/augmentation_module
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API References
 
    augmentation
    color

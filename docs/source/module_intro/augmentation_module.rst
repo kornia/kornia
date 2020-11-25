@@ -1,39 +1,7 @@
-Kornia Differentiable Data Augmentation
-=======================================
+Differentiable Data Augmentation
+================================
 
 Kornia DDA module leverages differentiable computer vision solutions from Kornia, with an aim of integrating data augmentation (DA) pipelines and strategies to existing PyTorch components (e.g. autograd for differentiability, optim for optimization).
-
-
-Supported Operations
-====================
-
-+--------------------------------------------+------------------------------------------+
-|  Geometric Augmentations                   |   Color-space Augmentations              |
-+==========================+========+========+=========================+========+=======+
-|                          | ``2D`` | ``3D`` |                         | ``2D`` | ``3D``|
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomHorizontalFlip     | ✔      | ✔      |ColorJitter              | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomVerticalFlip       | ✔      | ✔      |RandomGrayscale          | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomDepthicalFlip      | ✔      | ✔      |RandomSolarize           | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomRotation           | ✔      | ✔      |RandomPosterize          | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomAffine             | ✔      | ✔      |RandomSharpness          | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomPerspective        | ✔      | ✔      |RandomEqualize           | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomErasing            | ✔      | ✘      |                                          |
-+--------------------------+--------+--------+------------------------------------------+
-| CenterCrop               | ✔      | ✔      |      **Mix Augmentations**               |
-+--------------------------+--------+--------+------------------------------------------+
-| RandomCrop               | ✔      | ✔      |                                          |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomResizedCrop        | ✔      | ✔      |RandomMixUp              | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
-| RandomMotionBlur         | ✔      | ✔      |RandomCutMix             | ✔      | ✘     |
-+--------------------------+--------+--------+-------------------------+--------+-------+
 
 
 Features
@@ -186,27 +154,17 @@ The Updated results as follows.
 From left to right: the original input, augmented image and gradient-updated image.
 
 
-How to Contribute?
-==================
+Customization
+-------------
 
-We welcome all sort of contributions for a better augmentation module. Please read the general guidance for the conduct of code.
+Kornia provides useful 2D and 3D augmentation base classes for an easier customization of your new augmenatation ideas. In general, all augmentations shall inherit from either ``AugmentationBase2D``, ``AugmentationBase3D`` or ``AugmentationBaseMix``. Those base classes would handle 1) forward/backward operations, 2) which images to apply the augmentation in a batch, 3) the device and dtype for random numbers, 4) if to compute the transformation matrices. You shall only need to implement 4 intuitive functions:
 
-1. Docstring
-    - We use Google Style Docstring, see [`Tutorial <https://google.github.io/styleguide/pyguide.html>`_] [`Example <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`_].
-    - We would also add one example for doctest. For details, you may refer to [`here <https://docs.python.org/3/library/doctest.html>`_].
-
-2. Implementation
-    In general, all augmentations shall inherit from either ``AugmentationBase2D``, ``AugmentationBase3D`` or ``AugmentationBaseMix``. You shall only need to implement 4 functions:
-
-    a. **__init__**
+    a. **__init__**: To define the learnable or static parameters.
     b. **generate_parameters**: The function to generate the augmentation parameters, that returns a dict with {key: tensor} paradigm.  Note that the random states are **NOT** reproducible across devices.
     c. **compute_transformation**: Compute the corresponding transformation according to the provided parameters. For geometric transformations, it shall return the transformation matrix. Otherwise, it shall return an identity matrix.
     d. **apply_transform**: Compute the augmentation output.
 
-3. Testing
-    Pending ...
-
-The following code is a short example of a customized augmentation:
+- The following code is a short example of a customized augmentation:
 
 .. code-block:: python
 
@@ -223,7 +181,7 @@ The following code is a short example of a customized augmentation:
             ...
 
         Shape:
-            - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+            - Input: :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
             - Output: :math:`(B, C, H, W)`
 
         Examples:
@@ -263,6 +221,39 @@ The following code is a short example of a customized augmentation:
             # apply transformation and return
             output = K.warp_affine(input, transform, (H, W))
             return output
+
+
+Supported Operations
+====================
+
++--------------------------------------------+------------------------------------------+
+|  Geometric Augmentations                   |   Color-space Augmentations              |
++==========================+========+========+=========================+========+=======+
+|                          | ``2D`` | ``3D`` |                         | ``2D`` | ``3D``|
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomHorizontalFlip     | ✔      | ✔      |ColorJitter              | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomVerticalFlip       | ✔      | ✔      |RandomGrayscale          | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomDepthicalFlip      | ✔      | ✔      |RandomSolarize           | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomRotation           | ✔      | ✔      |RandomPosterize          | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomAffine             | ✔      | ✔      |RandomSharpness          | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomPerspective        | ✔      | ✔      |RandomEqualize           | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomErasing            | ✔      | ✘      |                                          |
++--------------------------+--------+--------+------------------------------------------+
+| CenterCrop               | ✔      | ✔      |      **Mix Augmentations**               |
++--------------------------+--------+--------+------------------------------------------+
+| RandomCrop               | ✔      | ✔      |                                          |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomResizedCrop        | ✔      | ✔      |RandomMixUp              | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+| RandomMotionBlur         | ✔      | ✔      |RandomCutMix             | ✔      | ✘     |
++--------------------------+--------+--------+-------------------------+--------+-------+
+
 
 Cite
 ====

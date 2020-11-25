@@ -87,6 +87,10 @@ This section provides general guidance for developing code for the project. The 
 
 - Use meaningful names for variables, functions and classes.
 
+- Write docstring for the new functions you ma
+    - We use Google Style Docstring, see [`Tutorial <https://google.github.io/styleguide/pyguide.html>`_] [`Example <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`_].
+    - We would also add doctests for each non-private function. For details, you may refer to [`here <https://docs.python.org/3/library/doctest.html>`_].
+
 - Write small incremental changes:
 
   - In order to have a linear and clean commits history, we recommend to commit each small change that you do to the source code.
@@ -121,15 +125,13 @@ This section provides general guidance for developing code for the project. The 
                  #  test the functionality using jit modules
                  pass
 
-  - Tests should cover different devices (CPU and CUDA) and different input batch size. See an example:
+  - Tests should cover different devices (CPU and CUDA) and different input batch size. It is required to have ``device`` and ``dtype`` signatures for all the testing cases. See an example:
 
   .. code:: python
 
-   @pytest.mark.parametrize("device_type", ("cpu", "cuda"))
    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-   def test_smoke(batch_size, device_type):
-       x = torch.rand(batch_size, 2, 3)
-       x = x.to(torch.device(device_type))
+   def test_smoke(batch_size, device, dtype):
+       x = torch.rand(batch_size, 2, 3, device=device, dtype=dtype)
        assert x.shape == (batch_size, 2, 3), x.shape
 
 - We give support to static type checker for Python >= 3.6
@@ -172,13 +174,13 @@ This section provides general guidance for developing code for the project. The 
 
 .. code:: python
 
-   determinant = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -
+   determinant = (A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -
                  A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
 
 -  Using 3rd party libraries:
 
   - Everything from standard library (https://docs.python.org/3/library/) and PyTorch (https://pytorch.org/) is OK.
-    It does`t mean, that one should import urllib  just because, but doing it when needed is fine.
+    It doesn't mean, that one should import urllib  just because, but doing it when needed is fine.
 
 
 
