@@ -17,10 +17,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.6, 3.7, 3.8]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         pytorch-version: [1.7.0]
 =======
         pytorch-version: [1.6.0]
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+        pytorch-version: [1.7.0]
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
     steps:
     - uses: actions/checkout@v2

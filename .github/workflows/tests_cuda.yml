@@ -14,8 +14,12 @@ on:
   #    - master
   #pull_request:
   schedule:
+<<<<<<< refs/remotes/kornia/master
     - cron: "0 4 * * *"
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+    - cron: "0 0 * * *"
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
 jobs:
   tests-cuda:
@@ -27,6 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
         pytorch-version: [1.7.0]
@@ -45,6 +50,9 @@ jobs:
 >>>>>>> fix pytorch version to 1.6.0 in cuda tests (#755)
         cuda-version: [9.2, 10.1, 10.2, 11.0]
 =======
+=======
+        pytorch-version: [1.6.0, 1.7.0]
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         cuda-version: [9.2, 10.1, 10.2]
 >>>>>>> drop cuda 11.0 support for nightly tests
     steps:
@@ -53,9 +61,13 @@ jobs:
       uses: conda-incubator/setup-miniconda@v2
       with:
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         miniconda-version: "latest"
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
 =======
+=======
+        miniconda-version: "latest"
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         auto-update-conda: true
 >>>>>>> update setup-miniconda to v2 (#789)
         python-version: ${{ matrix.python-version }}

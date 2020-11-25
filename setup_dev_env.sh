@@ -57,7 +57,17 @@ fi
 =======
 pytorch_version=${PYTORCH_VERSION:-"1.6.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> refactor setup_dev_env script (#756)
+=======
+cuda_version=${CUDA_VERSION:-""}
+
+cuda_toolkit=""
+if [ ! -z "$cuda_version" ]
+then
+    cuda_toolkit="cudatoolkit=$cuda_version"
+fi
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
 # create an environment with the specific python version
 $conda_bin config --append channels conda-forge
@@ -70,10 +80,14 @@ source $conda_bin_dir/activate $dev_env_dir/envs/venv
 
 # install pytorch and torchvision
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 =======
 conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
 >>>>>>> refactor setup_dev_env script (#756)
+=======
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c pytorch
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
 
 # install testing dependencies
 pip install -r requirements-dev.txt

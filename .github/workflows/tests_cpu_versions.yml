@@ -28,6 +28,7 @@ jobs:
         python-version: [3.6, 3.7, 3.8]
         pytorch-version: [1.5.1, 1.6.0, 1.7.0]
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -41,6 +42,8 @@ jobs:
           pytorch-channel: pytorch-nightly
         - os: windows-latest
           pytorch-channel: pytorch-nightly
+=======
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
@@ -58,10 +61,14 @@ jobs:
       run: |
         conda install curl make -c conda-forge
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
 =======
         conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c ${{ matrix.pytorch-channel }}
 >>>>>>> [Feat] Add Github Actions as main CI (#744)
+=======
+        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
+>>>>>>> [Feat] update to pytorch 1.7 (#768)
         pip install -r requirements-dev.txt
         make install
     - name: Run Tests
