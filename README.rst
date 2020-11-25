@@ -19,6 +19,7 @@
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> update github actions badges for cpu and cuda
 
 .. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
@@ -27,12 +28,20 @@
 >>>>>>> update github actions badges for cpu and cuda
 <<<<<<< refs/remotes/kornia/master
 =======
+=======
+<<<<<<< master
+>>>>>>> add circleci-tpu badge to readme
 
 .. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
     :target: https://circleci.com/gh/kornia/kornia
 >>>>>>> add circleci-tpu badge to readme
 =======
 >>>>>>> update github actions badges for cpu and cuda
+=======
+
+.. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
+    :target: https://circleci.com/gh/kornia/kornia
+>>>>>>> add circleci-tpu badge to readme
     
 .. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
     :target: https://codecov.io/github/kornia/kornia
