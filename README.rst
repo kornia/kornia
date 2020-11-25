@@ -14,6 +14,9 @@
 
 .. image:: https://github.com/kornia/kornia/workflows/tests-cuda/badge.svg
     :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda
+
+.. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
+    :target: https://circleci.com/gh/kornia/kornia
     
 .. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
     :target: https://codecov.io/github/kornia/kornia
