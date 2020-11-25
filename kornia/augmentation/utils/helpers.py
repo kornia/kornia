@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List, Callable, Optional
+from typing import Tuple, Union, List, Callable, Optional, cast
 
 import torch
 from torch.distributions import Uniform, Beta
@@ -141,10 +141,12 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
         torch.Tensor
     """
     is_tuple = isinstance(output, tuple)
+    out_tensor: torch.Tensor
+    trans_matrix: Optional[torch.Tensor]
     if is_tuple:
-        out_tensor, trans_matrix = output
+        out_tensor, trans_matrix = cast(Tuple[torch.Tensor, torch.Tensor], output)
     else:
-        out_tensor = output
+        out_tensor = cast(torch.Tensor, output)
         trans_matrix = None
 
     if trans_matrix is not None:

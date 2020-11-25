@@ -494,12 +494,12 @@ def random_crop_size_generator(
     if not cond_bool.all():
         # Fallback to center crop
         in_ratio = float(size[0]) / float(size[1])
-        if (in_ratio < min(ratio)):
+        if (in_ratio < ratio.min()):
             h_ct = torch.tensor(size[0], device=device, dtype=dtype)
-            w_ct = torch.round(h_ct / min(ratio))
-        elif (in_ratio > max(ratio)):
+            w_ct = torch.round(h_ct / ratio.min())
+        elif (in_ratio > ratio.min()):
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
-            h_ct = torch.round(w_ct * max(ratio))
+            h_ct = torch.round(w_ct * ratio.min())
         else:  # whole image
             h_ct = torch.tensor(size[0], device=device, dtype=dtype)
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
