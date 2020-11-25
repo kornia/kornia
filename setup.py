@@ -41,6 +41,7 @@ kornia_pt_dependencies = {
 =======
 <<<<<<< master
 <<<<<<< master
+<<<<<<< master
     '0.4.2': '>=1.5.1',
 =======
 >>>>>>> [Fix] gpu tests for crop3d and flip (#727)
@@ -50,7 +51,13 @@ kornia_pt_dependencies = {
 =======
     '0.4.2': '>=1.6.0',
 >>>>>>> bump kornia version to 0.4.2
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> bump kornia version to 0.4.2
+=======
+=======
+    '0.4.2': '>=1.5.1',
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     '0.4.1': '>=1.6.0',
     '0.4.0': '>=1.6.0,<1.7.0',
     '0.3.2': '>=1.5.0,<1.6.0',

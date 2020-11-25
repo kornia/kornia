@@ -39,17 +39,27 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
         factor = torch.tensor(factor, device=device, dtype=dtype)
 =======
         factor = torch.tensor(factor, dtype=torch.float32)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         factor = torch.tensor(factor, device=device, dtype=dtype)
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+        factor = torch.tensor(factor, device=device, dtype=dtype)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
@@ -73,11 +83,18 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 =======
 <<<<<<< master
+<<<<<<< master
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 =======
         factor_bound = factor.to(dtype=torch.float32)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+        factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
     if check is not None:
         if check == 'joint':

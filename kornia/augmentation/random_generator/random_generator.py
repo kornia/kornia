@@ -993,7 +993,11 @@ def random_crop_size_generator(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
         if (in_ratio < ratio.min()):
             h_ct = torch.tensor(size[0], device=device, dtype=dtype)
             w_ct = torch.round(h_ct / ratio.min())
@@ -1005,6 +1009,7 @@ def random_crop_size_generator(
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
 =======
         if (in_ratio < min(ratio)):
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
@@ -1031,8 +1036,16 @@ def random_crop_size_generator(
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
             w_ct = torch.round(h_ct / min(ratio))
         elif (in_ratio > max(ratio)):
+=======
+=======
+        if (in_ratio < ratio.min()):
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+            h_ct = torch.tensor(size[0], device=device, dtype=dtype)
+            w_ct = torch.round(h_ct / ratio.min())
+        elif (in_ratio > ratio.min()):
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
-            h_ct = torch.round(w_ct * max(ratio))
+            h_ct = torch.round(w_ct * ratio.min())
         else:  # whole image
 <<<<<<< master
             h_ct = torch.tensor(size[0])

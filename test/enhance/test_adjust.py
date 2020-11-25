@@ -35,6 +35,7 @@ class TestAdjustSaturation:
                              [[.25, .25],
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                               [.25, .25]]], device=device, dtype=dtype)  # 3x2x2
 
         expected = data.clone()
@@ -48,6 +49,17 @@ class TestAdjustSaturation:
 
         expected = data.clone()
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+                              [.25, .25]]], device=device, dtype=dtype)  # 3x2x2
+
+        expected = data.clone()
+=======
+                              [.25, .25]]], device=device)  # 3x2x2
+
+        expected = data
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
         f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
@@ -71,6 +83,7 @@ class TestAdjustSaturation:
                               [[.25, .25],
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                                [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
 =======
                                [.25, .25]]]], device=device)  # 2x3x2x2
@@ -78,6 +91,13 @@ class TestAdjustSaturation:
 =======
                                [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+                               [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
+=======
+                               [.25, .25]]]], device=device)  # 2x3x2x2
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 
         expected = data
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
@@ -85,6 +105,10 @@ class TestAdjustSaturation:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     def test_gradcheck(self, device, dtype):
 =======
     def test_gradcheck(self, device):

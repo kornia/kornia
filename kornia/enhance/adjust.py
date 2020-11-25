@@ -738,6 +738,10 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 =======
     def build_lut(histo, step):
         # Compute the cumulative sum, shifting by step // 2
@@ -750,8 +754,11 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
         return torch.clamp(lut, 0, 255)
 
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+>>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
     # If step is zero, return the original image.  Otherwise, build
     # lut from the full histogram and step and then index from it.
     if step == 0:
