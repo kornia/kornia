@@ -39,7 +39,14 @@ python_version=${PYTHON_VERSION:-"3.7"}
 pytorch_version=${PYTORCH_VERSION:-"1.6.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
 cuda_version=${CUDA_VERSION:-""}
+pytorch_channel="pytorch"
 
+# configure for nightly builds
+if [ "$pytorch_version" == "nightly" ]; then
+    pytorch_version=""
+    pytorch_channel="pytorch-nightly"
+
+# configure cudatoolkit
 cuda_toolkit=""
 if [ ! -z "$cuda_version" ]
 then
