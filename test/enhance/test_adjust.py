@@ -10,7 +10,7 @@ from torch.testing import assert_allclose
 
 
 class TestAdjustSaturation:
-    def test_saturation_one(self, device):
+    def test_saturation_one(self, device, dtype):
         data = torch.tensor([[[.5, .5],
                               [.5, .5]],
 
@@ -18,15 +18,14 @@ class TestAdjustSaturation:
                               [.5, .5]],
 
                              [[.25, .25],
-                              [.25, .25]]])  # 3x2x2
+                              [.25, .25]]], device=device)  # 3x2x2
 
-        data = data.to(device)
-        expected = data.clone()
+        data = data
 
         f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
 
-    def test_saturation_one_batch(self):
+    def test_saturation_one_batch(self, device, dtype):
         data = torch.tensor([[[[.5, .5],
                                [.5, .5]],
 
@@ -43,13 +42,13 @@ class TestAdjustSaturation:
                                [.5, .5]],
 
                               [[.25, .25],
-                               [.25, .25]]]])  # 2x3x2x2
+                               [.25, .25]]]], device=device)  # 2x3x2x2
 
         expected = data
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width)
         img = tensor_to_gradcheck_var(img)  # to var
