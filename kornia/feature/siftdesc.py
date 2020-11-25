@@ -71,7 +71,7 @@ class SIFTDescriptor(nn.Module):
 
     Examples::
         >>> input = torch.rand(23, 1, 32, 32)
-        >>> SIFT = kornia.SIFTDescriptor(32, 8, 4)
+        >>> SIFT = SIFTDescriptor(32, 8, 4)
         >>> descs = SIFT(input) # 23x128
     """
 

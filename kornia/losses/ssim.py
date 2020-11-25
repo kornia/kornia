@@ -56,7 +56,7 @@ class SSIM(nn.Module):
 
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
-        >>> ssim = kornia.losses.SSIM(5, reduction='none')
+        >>> ssim = SSIM(5, reduction='none')
         >>> loss = ssim(input1, input2)  # 1x4x5x5
     """
 

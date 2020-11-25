@@ -17,18 +17,10 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: [3.6, 3.7, 3.8]
         pytorch-version: [1.5.1, 1.6.0, 1.7.0]
-        pytorch-channel: [pytorch]
-        include:
-        - os: ubuntu-latest
-          pytorch-channel: pytorch-nightly
-        - os: macos-latest
-          pytorch-channel: pytorch-nightly
-        - os: windows-latest
-          pytorch-channel: pytorch-nightly
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v1
+      uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
         python-version: ${{ matrix.python-version }}
@@ -36,7 +28,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda install curl make -c conda-forge
-        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c ${{ matrix.pytorch-channel }}
+        conda install pytorch=${{ matrix.pytorch-version }} cpuonly -c pytorch
         pip install -r requirements-dev.txt
         make install
     - name: Run Tests
