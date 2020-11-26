@@ -553,7 +553,11 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         pinhole_i = torch.rand(1, 12)    # Nx12
         pinhole_ref = torch.rand(1, 12)  # Nx12
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
@@ -563,13 +567,19 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
         >>> homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
 >>>>>>> [Feat] Enabled doctest for CI (#641)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
         pinhole_i = torch.rand(1, 12)    # Nx12
         pinhole_ref = torch.rand(1, 12)  # Nx12
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] Enabled doctest for CI (#641)
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
     assert len(

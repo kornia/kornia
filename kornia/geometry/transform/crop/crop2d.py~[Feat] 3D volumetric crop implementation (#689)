@@ -353,14 +353,14 @@ def bbox_generator(
         >>> height = torch.tensor([7, 4])
         >>> bbox_generator(x_start, y_start, width, height)
         tensor([[[0, 1],
-                 [5, 1],
-                 [5, 8],
-                 [0, 8]],
+                 [4, 1],
+                 [4, 7],
+                 [0, 7]],
         <BLANKLINE>
                 [[1, 0],
-                 [4, 0],
-                 [4, 4],
-                 [1, 4]]])
+                 [3, 0],
+                 [3, 3],
+                 [1, 3]]])
     """
     assert x_start.shape == y_start.shape and x_start.dim() in [0, 1], \
         f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}."

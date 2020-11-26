@@ -248,9 +248,16 @@ def motion_blur3d(
         >>> torch.allclose(out_1[0], out_1[1])
         True
         >>> # perform element-wise motion blur accross the batch
+<<<<<<< master
         >>> out_1 = motion_blur3d(input, 5, torch.tensor([[0., 90., 90.], [90., 180., 0.]]), torch.tensor([1, -1]))
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+        >>> out_1 = motion_blur3d(input, 5, torch.tensor([[0., 90., 90.], [90., 180., 0.]]), torch.tensor([1., -1.]))
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """

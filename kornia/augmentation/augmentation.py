@@ -1324,7 +1324,13 @@ class RandomMotionBlur(AugmentationBase2D):
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         tensor([[[[0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
@@ -1332,8 +1338,12 @@ class RandomMotionBlur(AugmentationBase2D):
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561]]]])
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
         tensor([[[[-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
                   [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
@@ -1342,10 +1352,15 @@ class RandomMotionBlur(AugmentationBase2D):
                   [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094]]]])
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
     """
 
     def __init__(

@@ -13,17 +13,27 @@ import kornia
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 from kornia.testing import tensor_to_gradcheck_var
 =======
 import kornia.testing as utils  # test utils
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
 from kornia.testing import tensor_to_gradcheck_var
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+from kornia.testing import tensor_to_gradcheck_var
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 from kornia.augmentation import (
     RandomMotionBlur,
     RandomMotionBlur3D,
@@ -35,12 +45,22 @@ from kornia.augmentation import (
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 from kornia.filters import (
     motion_blur,
     motion_blur3d,
 )
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 
 
 class TestRandomMotionBlur:
@@ -64,6 +84,7 @@ class TestRandomMotionBlur:
     def test_smoke(self, device):
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000,  0.5000]), "\
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
@@ -80,6 +101,14 @@ class TestRandomMotionBlur:
         repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000,  0.5000]), "\
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000,  0.5000]), "\
+>>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+        repr = "RandomMotionBlur(kernel_size=(3, 5), angle=tensor([10., 30.]), direction=tensor([-0.5000, 0.5000]), "\
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
             "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
@@ -105,13 +134,22 @@ class TestRandomMotionBlur:
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< master
         torch.manual_seed(0)
         batch_size = 2
         input = torch.randn(1, 3, 5, 6).repeat(batch_size, 1, 1, 1)
 =======
         input = torch.randn(1, 3, 5, 6).repeat(2, 1, 1, 1)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+        torch.manual_seed(0)
+        batch_size = 2
+        input = torch.randn(1, 3, 5, 6).repeat(batch_size, 1, 1, 1)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 
         output = f(input)
 
@@ -135,7 +173,13 @@ class TestRandomMotionBlur:
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         assert output.shape == torch.Size([batch_size, 3, 5, 6])
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 5), (2, 1, 5, 5)])
@@ -152,6 +196,10 @@ class TestRandomMotionBlur:
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
@@ -168,6 +216,7 @@ class TestRandomMotionBlur:
         inp = torch.rand((1, 3, 11, 7)).to(device)
         inp = tensor_to_gradcheck_var(inp)  # to var
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 =======
@@ -177,6 +226,9 @@ class TestRandomMotionBlur:
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
         params = {
             'batch_prob': torch.tensor([True]),
@@ -209,6 +261,10 @@ class TestRandomMotionBlur3D:
             "\n        [10., 30.],\n        [10., 30.]]), direction=tensor([-0.5000, 0.5000]), " \
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 =======
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -227,10 +283,15 @@ class TestRandomMotionBlur3D:
             "\n        [10., 30.],\n        [10., 30.]]), direction=tensor([-0.5000,  0.5000]), " \
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
             "border_type='constant', p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
 
@@ -245,19 +306,29 @@ class TestRandomMotionBlur3D:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         batch_size = 2
         input = torch.randn(1, 3, 5, 6, 7, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1, 1)
 =======
         input = torch.randn(1, 3, 5, 6, 7).repeat(2, 1, 1, 1, 1)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
         batch_size = 2
         input = torch.randn(1, 3, 5, 6, 7, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1, 1)
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 
         output = f(input)
 
@@ -281,7 +352,13 @@ class TestRandomMotionBlur3D:
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         assert output.shape == torch.Size([batch_size, 3, 5, 6, 7])
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
@@ -298,6 +375,10 @@ class TestRandomMotionBlur3D:
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
@@ -314,6 +395,7 @@ class TestRandomMotionBlur3D:
         inp = torch.rand((1, 3, 11, 7)).to(device)
         inp = tensor_to_gradcheck_var(inp)  # to var
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
 =======
 =======
@@ -323,6 +405,9 @@ class TestRandomMotionBlur3D:
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         params = {
             'batch_prob': torch.tensor([True]),
             'ksize_factor': torch.tensor([31]),
