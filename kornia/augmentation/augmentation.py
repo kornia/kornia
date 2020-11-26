@@ -183,18 +183,26 @@ class ColorJitter(AugmentationBase2D):
     ) -> None:
         super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                           keepdim=keepdim)
-        self.brightness: torch.Tensor = _range_bound(brightness, 'brightness', center=1., bounds=(0, 2))
-        self.contrast: torch.Tensor = _range_bound(contrast, 'contrast', center=1.)
-        self.saturation: torch.Tensor = _range_bound(saturation, 'saturation', center=1.)
-        self.hue: torch.Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
 
     def __repr__(self) -> str:
         repr = f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        brightness: torch.Tensor = _range_bound(
+            self.brightness, 'brightness', center=1., bounds=(0, 2), device=self.device, dtype=self.dtype)
+        contrast: torch.Tensor = _range_bound(
+            self.contrast, 'contrast', center=1., device=self.device, dtype=self.dtype)
+        saturation: torch.Tensor = _range_bound(
+            self.saturation, 'saturation', center=1., device=self.device, dtype=self.dtype)
+        hue: torch.Tensor = _range_bound(
+            self.hue, 'hue', bounds=(-0.5, 0.5), device=self.device, dtype=self.dtype)
         return rg.random_color_jitter_generator(
-            batch_shape[0], self.brightness, self.contrast, self.saturation, self.hue, self.same_on_batch,
+            batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch,
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -490,8 +498,8 @@ class RandomAffine(AugmentationBase2D):
             shear = shear if isinstance(shear, torch.Tensor) else torch.tensor(shear)
             self.shear = torch.stack([
                 _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-                torch.tensor([0, 0]) if shear.dim() == 0 or len(shear) == 2 else
-                _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+                torch.tensor([0, 0], device=shear.device, dtype=shear.dtype) if shear.dim() == 0 or len(shear) == 2
+                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
             ])
         self.resample: Resample = Resample.get(resample)
         self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
@@ -905,11 +913,11 @@ class RandomMotionBlur(AugmentationBase2D):
         >>> input = torch.ones(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
-        tensor([[[[-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
-                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
-                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
-                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094],
-                  [-0.5761,  1.0000,  1.0000,  1.0000,  1.9094]]]])
+        tensor([[[[0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
+                  [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
+                  [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
+                  [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
+                  [0.5773, 1.0000, 1.0000, 1.0000, 0.7561]]]])
     """
 
     def __init__(

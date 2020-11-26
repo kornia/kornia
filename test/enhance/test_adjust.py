@@ -49,7 +49,7 @@ class TestAdjustSaturation:
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
