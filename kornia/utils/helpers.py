@@ -12,6 +12,7 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
 
     Returns:
         [torch.device, torch.dtype]
+<<<<<<< refs/remotes/kornia/master
 =======
 def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]):
     """This function will check if all the input tensors are in the same device.
@@ -24,6 +25,8 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
     """
     device, dtype = None, None
     for tensor in tensor_list:
