@@ -1,12 +1,13 @@
 from typing import Union, Optional
 
+from math import pi
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
-from kornia.constants import pi
 
 
 __all__ = [
@@ -112,7 +113,7 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
     h, s, v = torch.chunk(input, chunks=3, dim=-3)
 
     # transform the hue value and appl module
-    divisor: float = 2 * pi.item()
+    divisor: float = 2 * pi
     h_out: torch.Tensor = torch.fmod(h + hue_factor, divisor)
 
     # pack back back the corrected hue
