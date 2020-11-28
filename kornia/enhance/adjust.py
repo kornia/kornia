@@ -71,7 +71,37 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
 def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
-    See :class:`~kornia.color.AdjustSaturation` for details.
+    The input image is expected to be an RGB image in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
+        and white image, 1 will give the original image while 2 will enhance the saturation
+        by a factor of 2.
+
+    Return:
+        torch.Tensor: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> adjust_saturation(x, 2.)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.ones(2)
+        >>> out = adjust_saturation(x, y)
+        >>> torch.nn.functional.mse_loss(x, out)
+        tensor(0.)
     """
 
     # convert the rgb image to hsv
@@ -127,7 +157,37 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
 def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
 
-    See :class:`~kornia.color.AdjustHue` for details.
+    The input image is expected to be an RGB image in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        hue_factor (Union[float, torch.Tensor]): How much to shift the hue channel. Should be in [-PI, PI]. PI
+          and -PI give complete reversal of hue channel in HSV space in positive and negative
+          direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
+          image with complementary colors while 0 gives the original image.
+
+    Return:
+        torch.Tensor: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> adjust_hue(x, 3.141516)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.ones(2) * 3.141516
+        >>> adjust_hue(x, y).shape
+        torch.Size([2, 3, 3, 3])
     """
 
     # convert the rgb image to hsv
@@ -146,7 +206,30 @@ def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
                  gain: Union[float, torch.Tensor] = 1.) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
-    See :class:`~kornia.color.AdjustGamma` for details.
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image to be adjusted in the shape of :math:`(*, N)`.
+        gamma (Union[float, torch.Tensor]): Non negative real number, same as γ\gammaγ in the equation.
+          gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+          dark regions lighter.
+        gain (Union[float, torch.Tensor], optional): The constant multiplier. Default 1.
+
+    Return:
+        torch.Tenor: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> adjust_gamma(x, 1.0, 2.0)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y1 = torch.ones(2) * 1.0
+        >>> y2 = torch.ones(2) * 2.0
+        >>> adjust_gamma(x, y1, y2).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     if not isinstance(input, torch.Tensor):
@@ -190,7 +273,30 @@ def adjust_contrast(input: torch.Tensor,
                     contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
 
-    See :class:`~kornia.color.AdjustContrast` for details.
+    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): Image to be adjusted in the shape of :math:`(*, N)`.
+        contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
+          in the batch. 0 generates a compleatly black image, 1 does not modify
+          the input image while any other non-negative number modify the
+          brightness by this factor.
+
+    Return:
+        torch.Tensor: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> adjust_contrast(x, 0.5)
+        tensor([[[[0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> adjust_contrast(x, y).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     if not isinstance(input, torch.Tensor):
@@ -224,7 +330,29 @@ def adjust_brightness(input: torch.Tensor,
                       brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Brightness of an image.
 
-    See :class:`~kornia.color.AdjustBrightness` for details.
+    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
+    The input image is expected to be in the range of [0, 1].
+
+    Args:
+        input (torch.Tensor): image to be adjusted in the shape of :math:`(*, N)`.
+        brightness_factor (Union[float, torch.Tensor]): Brightness adjust factor per element
+          in the batch. 0 does not modify the input image while any other number modify the
+          brightness.
+
+    Return:
+        torch.Tensor: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> adjust_brightness(x, 1.)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> adjust_brightness(x, y).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     if not isinstance(input, torch.Tensor):
@@ -592,20 +720,41 @@ class AdjustSaturation(nn.Module):
     The input image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
-        saturation_factor (float):  How much to adjust the saturation. 0 will give a black
+        saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
 
-    Returns:
-        torch.Tensor: Adjusted image.
+    Shape:
+        - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        - Ouput: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> AdjustSaturation(2.)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.ones(2)
+        >>> out = AdjustSaturation(y)(x)
+        >>> torch.nn.functional.mse_loss(x, out)
+        tensor(0.)
     """
 
     def __init__(self, saturation_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustSaturation, self).__init__()
         self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_saturation(input, self.saturation_factor)
 
 
@@ -615,21 +764,41 @@ class AdjustHue(nn.Module):
     The input image is expected to be an RGB image in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
-        hue_factor (float): How much to shift the hue channel. Should be in [-PI, PI]. PI
+        hue_factor (Union[float, torch.Tensor]): How much to shift the hue channel. Should be in [-PI, PI]. PI
           and -PI give complete reversal of hue channel in HSV space in positive and negative
           direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
           image with complementary colors while 0 gives the original image.
 
-    Returns:
-        torch.Tensor: Adjusted image.
+    Shape:
+        - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
+        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> x = torch.ones(1, 3, 3, 3)
+        >>> AdjustHue(3.141516)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]],
+        <BLANKLINE>
+                 [[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 3, 3, 3)
+        >>> y = torch.ones(2) * 3.141516
+        >>> AdjustHue(y)(x).shape
+        torch.Size([2, 3, 3, 3])
     """
 
     def __init__(self, hue_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustHue, self).__init__()
         self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_hue(input, self.hue_factor)
 
 
@@ -639,14 +808,27 @@ class AdjustGamma(nn.Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image/Tensor to be adjusted in the shape of (\*, N).
-        gamma (float): Non negative real number, same as γ\gammaγ in the equation.
+        gamma (Union[float, torch.Tensor]): Non negative real number, same as γ\gammaγ in the equation.
           gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
           dark regions lighter.
-        gain (float, optional): The constant multiplier. Default 1.
+        gain (Union[float, torch.Tensor], optional): The constant multiplier. Default 1.
 
-    Returns:
-        torch.Tensor: Adjusted image.
+    Shape:
+        - Input: Image to be adjusted in the shape of :math:`(*, N)`.
+        - Output: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> AdjustGamma(1.0, 2.0)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y1 = torch.ones(2) * 1.0
+        >>> y2 = torch.ones(2) * 2.0
+        >>> AdjustGamma(y1, y2)(x).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
@@ -654,54 +836,78 @@ class AdjustGamma(nn.Module):
         self.gamma: Union[float, torch.Tensor] = gamma
         self.gain: Union[float, torch.Tensor] = gain
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_gamma(input, self.gamma, self.gain)
 
 
 class AdjustContrast(nn.Module):
-    r"""Adjust Contrast of an image. This implementation aligns OpenCV, not PIL. Hence,
-    the output differs from TorchVision.
+    r"""Adjust Contrast of an image.
 
+    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image to be adjusted in the shape of (\*, N).
         contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
           in the batch. 0 generates a compleatly black image, 1 does not modify
           the input image while any other non-negative number modify the
           brightness by this factor.
 
-    Returns:
-        torch.Tensor: Adjusted image.
+    Shape:
+        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
+        - Output: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> AdjustContrast(0.5)(x)
+        tensor([[[[0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000],
+                  [0.5000, 0.5000, 0.5000]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> AdjustContrast(y)(x).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     def __init__(self, contrast_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustContrast, self).__init__()
         self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_contrast(input, self.contrast_factor)
 
 
 class AdjustBrightness(nn.Module):
-    r"""Adjust Brightness of an image. This implementation aligns OpenCV, not PIL. Hence,
-    the output differs from TorchVision.
+    r"""Adjust Brightness of an image.
 
+    This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        input (torch.Tensor): Image/Input to be adjusted in the shape of (\*, N).
         brightness_factor (Union[float, torch.Tensor]): Brightness adjust factor per element
           in the batch. 0 does not modify the input image while any other number modify the
           brightness.
 
-    Returns:
-        torch.Tensor: Adjusted image.
+    Shape:
+        - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
+        - Output: Adjusted image in the shape of :math:`(*, N)`.
+
+    Example:
+        >>> x = torch.ones(1, 1, 3, 3)
+        >>> AdjustBrightness(1.)(x)
+        tensor([[[[1., 1., 1.],
+                  [1., 1., 1.],
+                  [1., 1., 1.]]]])
+
+        >>> x = torch.ones(2, 5, 3, 3)
+        >>> y = torch.ones(2)
+        >>> AdjustBrightness(y)(x).shape
+        torch.Size([2, 5, 3, 3])
     """
 
     def __init__(self, brightness_factor: Union[float, torch.Tensor]) -> None:
         super(AdjustBrightness, self).__init__()
         self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_brightness(input, self.brightness_factor)
