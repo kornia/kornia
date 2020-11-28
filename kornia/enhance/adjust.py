@@ -33,7 +33,7 @@ __all__ = [
 def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image. Expecting input to be in hsv format already.
 
-    See :class:`~kornia.color.AdjustSaturation` for details.
+    See :class:`~kornia.enhance.AdjustSaturation` for details.
     """
 
     if not torch.is_tensor(input):
@@ -69,7 +69,7 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
 def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
-    See :class:`~kornia.color.AdjustSaturation` for details.
+    See :class:`~kornia.enhance.AdjustSaturation` for details.
     """
 
     # convert the rgb image to hsv
@@ -87,7 +87,7 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
 def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image. Expecting input to be in hsv format already.
 
-    See :class:`~kornia.color.AdjustHue` for details.
+    See :class:`~kornia.enhance.AdjustHue` for details.
     """
 
     if not torch.is_tensor(input):
@@ -124,7 +124,7 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
 def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image.
 
-    See :class:`~kornia.color.AdjustHue` for details.
+    See :class:`~kornia.enhance.AdjustHue` for details.
     """
 
     # convert the rgb image to hsv
@@ -143,7 +143,7 @@ def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
                  gain: Union[float, torch.Tensor] = 1.) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
-    See :class:`~kornia.color.AdjustGamma` for details.
+    See :class:`~kornia.enhance.AdjustGamma` for details.
     """
 
     if not torch.is_tensor(input):
@@ -187,7 +187,7 @@ def adjust_contrast(input: torch.Tensor,
                     contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
 
-    See :class:`~kornia.color.AdjustContrast` for details.
+    See :class:`~kornia.enhance.AdjustContrast` for details.
     """
 
     if not torch.is_tensor(input):
@@ -221,7 +221,7 @@ def adjust_brightness(input: torch.Tensor,
                       brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Brightness of an image.
 
-    See :class:`~kornia.color.AdjustBrightness` for details.
+    See :class:`~kornia.enhance.AdjustBrightness` for details.
     """
 
     if not torch.is_tensor(input):
