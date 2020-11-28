@@ -935,6 +935,7 @@ class TestPosterize(BaseTester):
             assert TestPosterize.f(img, 1.)
 
     # TODO: add better cases
+    @pytest.mark.skip_device('xla')
     def test_value(self, device, dtype):
         torch.manual_seed(0)
 
@@ -942,7 +943,7 @@ class TestPosterize(BaseTester):
 
         # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
         # img = PIL.Image.fromarray((255*inputs[0,0]).byte().numpy())
-        # en = ImageOps.Solarize(img, 128)
+        # en = ImageOps.posterize(img, 1)
         # np.array(en) / 255.
         expected = torch.tensor([
             [[[0., 0.50196078, 0.],
