@@ -36,7 +36,7 @@ class TestZCA:
     @pytest.mark.parametrize("dim", [0, 1])
     def test_dim_args(self, dim, device, dtype):
         if 'xla' in device.type:
-            pytest.mark.xfail("buggy with XLA devices.")
+            pytest.mark.skip(reason="buggy with XLA devices.")
 
         data = torch.tensor([[0, 1],
                              [1, 0],
