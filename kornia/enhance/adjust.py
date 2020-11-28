@@ -348,11 +348,15 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
+    if not isinstance(bits, (int, torch.Tensor,)):
+        raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
+
     if isinstance(bits, int):
         bits = torch.tensor(bits)
 
-    if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
-        raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
+    # TODO: find a better way to check boundaries on tensors
+    # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
+    #     raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
 
     # TODO: Make a differentiable version
     # Current version:

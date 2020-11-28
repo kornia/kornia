@@ -765,8 +765,9 @@ class TestSharpness(BaseTester):
               [0.1320, 0.3305, 0.6341],
               [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
 
-        # If factor == 0 or 1, shall return original
-        assert_allclose(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
+        # If factor == 1, shall return original
+        # TODO(jian): add test for this case
+        # assert_allclose(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, 1.), inputs, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
 
@@ -818,6 +819,156 @@ class TestSharpness(BaseTester):
         actual = op_script(input, 0.8)
         assert_allclose(actual, expected)
 
+    @pytest.mark.skip(reason="Not having it yet.")
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
+        # assert_allclose(gray_ops(img), f(img))
+
+
+class TestSolarize(BaseTester):
+
+    f = kornia.enhance.solarize
+
+    def test_smoke(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 5
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        assert isinstance(TestSolarize.f(img, 0.8), torch.Tensor)
+
+    # TODO(jian): verify thresholds test and include addtions
+    @pytest.mark.parametrize("batch_size, height, width, thresholds", [
+        (1, 4, 5, 0.8), (2, 4, 5, 0.8),
+        (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
+        (2, 4, 5, torch.tensor([0.8, 0.7]))])
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_cardinality(self, batch_size, channels, height, width, thresholds, device, dtype):
+        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+        assert TestSolarize.f(inputs, thresholds).shape == torch.Size([batch_size, channels, height, width])
+
+    # TODO(jian): add better assertions
+    def test_exception(self, device, dtype):
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+
+        with pytest.raises(TypeError):
+            assert TestSolarize.f([1.], 0.)
+
+        with pytest.raises(TypeError):
+            assert TestSolarize.f(img, 1)
+
+        with pytest.raises(TypeError):
+            assert TestSolarize.f(img, 0.8, 1)
+
+    # TODO: add better cases
+    def test_value(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
+
+        # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
+        # img = PIL.Image.fromarray((255*inputs[0,0]).byte().numpy())
+        # en = ImageOps.Solarize(img, 128)
+        # np.array(en) / 255.
+        expected = torch.tensor([
+            [[[0.49411765, 0.23529412, 0.08627451],
+              [0.12941176, 0.30588235, 0.36862745],
+              [0.48627451, 0.10588235, 0.45490196]]]], device=device, dtype=dtype)
+
+        # TODO(jian): precision is very bad compared to PIL
+        assert_allclose(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 2, 3, 4, 5
+        inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(TestSolarize.f, (inputs, 0.8), raise_exception=True)
+
+    # TODO: implement me
+    @pytest.mark.skip(reason="union type input")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        op = torch.jit.script(kornia.enhance.adjust.solarize)
+        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(input, 0.8)
+        actual = op_script(input, 0.8)
+        assert_allclose(actual, expected)
+
+    # TODO: implement me
+    @pytest.mark.skip(reason="Not having it yet.")
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
+        # gray_ops = kornia.enhance.sharpness().to(device, dtype)
+        # assert_allclose(gray_ops(img), f(img))
+
+
+class TestPosterize(BaseTester):
+
+    f = kornia.enhance.posterize
+
+    def test_smoke(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 5
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        assert isinstance(TestPosterize.f(img, 8), torch.Tensor)
+
+    @pytest.mark.parametrize("batch_size, height, width, bits", [
+        (1, 4, 5, 8), (2, 4, 5, 0),
+        (1, 4, 5, torch.tensor(8)), (2, 4, 5, torch.tensor(8)),
+        (2, 4, 5, torch.tensor([0, 8]))])
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_cardinality(self, batch_size, channels, height, width, bits, device, dtype):
+        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+        assert TestPosterize.f(inputs, bits).shape == torch.Size([batch_size, channels, height, width])
+
+    # TODO(jian): add better assertions
+    def test_exception(self, device, dtype):
+        img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
+
+        with pytest.raises(TypeError):
+            assert TestPosterize.f([1.], 0.)
+
+        with pytest.raises(TypeError):
+            assert TestPosterize.f(img, 1.)
+
+    # TODO: add better cases
+    def test_value(self, device, dtype):
+        torch.manual_seed(0)
+
+        inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
+
+        # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
+        # img = PIL.Image.fromarray((255*inputs[0,0]).byte().numpy())
+        # en = ImageOps.Solarize(img, 128)
+        # np.array(en) / 255.
+        expected = torch.tensor([
+            [[[0., 0.50196078, 0.],
+              [0., 0., 0.50196078],
+              [0., 0.50196078, 0.]]]], device=device, dtype=dtype)
+
+        assert_allclose(TestPosterize.f(inputs, 1), expected)
+        assert_allclose(TestPosterize.f(inputs, 0), torch.zeros_like(inputs))
+        assert_allclose(TestPosterize.f(inputs, 8), inputs)
+
+    @pytest.mark.skip(reason="IndexError: tuple index out of range")
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 2, 3, 4, 5
+        inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
+        inputs = tensor_to_gradcheck_var(inputs)
+        assert gradcheck(TestPosterize.f, (inputs, 0), raise_exception=True)
+
+    # TODO: implement me
+    @pytest.mark.skip(reason="union type input")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        op = torch.jit.script(kornia.enhance.adjust.posterize)
+        inputs = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
+        expected = op(input, 8)
+        actual = op_script(input, 8)
+        assert_allclose(actual, expected)
+
+    # TODO: implement me
     @pytest.mark.skip(reason="Not having it yet.")
     @pytest.mark.nn
     def test_module(self, device, dtype):
