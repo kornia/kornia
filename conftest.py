@@ -60,6 +60,20 @@ def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
+@pytest.fixture(autouse=True)
+def skip_device(request, device):
+    if request.node.get_closest_marker('skip_device'):
+        if request.node.get_closest_marker('skip_device').args[0] in device.type:
+            pytest.skip('Skipped on this device type: {}'.format(device.type))
+
+
+@pytest.fixture(autouse=True)
+def skip_dtype(request, dtype):
+    if request.node.get_closest_marker('skip_dtype'):
+        if request.node.get_closest_marker('skip_dtype').args[0] == dtype:
+            pytest.skip('Skipped on this dtype: {}'.format(str(dtype)))
+
+
 def pytest_generate_tests(metafunc):
     device_names = None
     dtype_names = None

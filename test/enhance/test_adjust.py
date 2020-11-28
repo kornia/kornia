@@ -827,6 +827,9 @@ class TestSharpness(BaseTester):
         # assert_allclose(gray_ops(img), f(img))
 
 
+# TODO: torch.where issue with xla
+@pytest.mark.skip_device('xla')
+@pytest.mark.skip_dtype(torch.float16)
 class TestSolarize(BaseTester):
 
     f = kornia.enhance.solarize
