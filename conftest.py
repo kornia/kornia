@@ -3,6 +3,7 @@ from typing import Dict
 
 import pytest
 import torch
+import kornia
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -16,6 +17,9 @@ def get_test_devices() -> Dict[str, torch.device]:
     devices["cpu"] = torch.device("cpu")
     if torch.cuda.is_available():
         devices["cuda"] = torch.device("cuda:0")
+    if kornia.xla_is_available():
+        import torch_xla.core.xla_model as xm
+        devices["tpu"] = xm.xla_device()
     return devices
 
 
@@ -43,35 +47,12 @@ DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 
 @pytest.fixture()
 def device(device_name) -> torch.device:
-    # To work with TPUs on Colab:
-    # pip install cloud-tpu-client==0.10
-    # pip install https://storage.googleapis.com/tpu-pytorch/wheels/torch_xla-1.6-cp36-cp36m-linux_x86_64.whl
-    # Issue: gradcheck on TPUs takes ages...
-    if device_name == "tpu":
-        import torch_xla.core.xla_model as xm
-        return xm.xla_device()
-    elif device_name not in TEST_DEVICES:
-        pytest.skip(f"Unsupported device type: {device_name}")
     return TEST_DEVICES[device_name]
 
 
 @pytest.fixture()
 def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
-
-
-@pytest.fixture()
-def skip_device(request, device):
-    if request.node.get_closest_marker('skip_device'):
-        if request.node.get_closest_marker('skip_device').args[0] in device.type:
-            pytest.skip('Skipped on this device type: {}'.format(device.type))
-
-
-@pytest.fixture()
-def skip_dtype(request, dtype):
-    if request.node.get_closest_marker('skip_dtype'):
-        if request.node.get_closest_marker('skip_dtype').args[0] == dtype:
-            pytest.skip('Skipped on this dtype: {}'.format(str(dtype)))
 
 
 def pytest_generate_tests(metafunc):

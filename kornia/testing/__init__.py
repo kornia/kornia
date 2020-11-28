@@ -2,14 +2,22 @@
 The testing package contains testing-specific utilities.
 """
 from abc import ABC, abstractmethod
+import importlib
 
 import torch
 import numpy as np
 
 
 __all__ = [
-    'tensor_to_gradcheck_var', 'create_eye_batch',
+    'tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available'
 ]
+
+
+def xla_is_available() -> bool:
+    """Return whether `torch_xla` is available in the system."""
+    if importlib.util.find_spec("torch_xla") is not None:
+        return True
+    return False
 
 
 def create_checkerboard(h, w, nw):
