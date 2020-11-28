@@ -107,3 +107,14 @@ def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
     elif dtype == torch.float16:
         return 1e-3
     return 1e-4
+
+
+def _get_precision_by_name(device: torch.device, device_target: str,
+                           tol_val: float, tol_val_default: float = 1e-4) -> float:
+    if device_target not in ['cpu', 'cuda', 'xla']:
+        raise ValueError(f"Invalid device name: {device_target}.")
+
+    if device_target in device.type:
+        return tol_val
+
+    return tol_val_default

@@ -35,6 +35,8 @@ class TestZCA:
 
     @pytest.mark.parametrize("dim", [0, 1])
     def test_dim_args(self, dim, device, dtype):
+        if 'xla' in device.type:
+            pytest.mark.xfail("buggy with XLA devices.")
 
         data = torch.tensor([[0, 1],
                              [1, 0],
@@ -78,7 +80,7 @@ class TestZCA:
 
         data_hat = zca.inverse_transform(data_w)
 
-        tol_val: float = utils._get_precision(device, dtype)
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_allclose(data, data_hat, rtol=tol_val, atol=tol_val)
 
     def test_grad_zca_individual_transforms(self, device, dtype):
@@ -182,6 +184,5 @@ class TestZCA:
 
         actual = kornia.zca_whiten(data, unbiased=unbiased)
 
-       
         tol_val: float = utils._get_precision(device, dtype)
         assert_allclose(actual, expected, atol=tol_val, rtol=tol_val)

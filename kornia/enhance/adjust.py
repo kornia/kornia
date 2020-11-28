@@ -37,7 +37,7 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
     See :class:`~kornia.color.AdjustSaturation` for details.
     """
 
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(saturation_factor, (float, torch.Tensor,)):
@@ -45,12 +45,13 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
                         f"Got {type(saturation_factor)}")
 
     if isinstance(saturation_factor, float):
-        saturation_factor = torch.tensor([saturation_factor])
+        saturation_factor = torch.as_tensor(saturation_factor)
 
     saturation_factor = saturation_factor.to(input.device).to(input.dtype)
 
-    if (saturation_factor < 0).any():
-        raise ValueError(f"Saturation factor must be non-negative. Got {saturation_factor}")
+    # TODO: find a proper way to check bound values in batched tensors.
+    # if (saturation_factor < 0).any():
+    #     raise ValueError(f"Saturation factor must be non-negative. Got {saturation_factor}")
 
     for _ in input.shape[1:]:
         saturation_factor = torch.unsqueeze(saturation_factor, dim=-1)
@@ -91,7 +92,7 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
     See :class:`~kornia.color.AdjustHue` for details.
     """
 
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(hue_factor, (float, torch.Tensor)):
@@ -99,12 +100,13 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
                         f" [-PI, PI]. Got {type(hue_factor)}")
 
     if isinstance(hue_factor, float):
-        hue_factor = torch.tensor([hue_factor])
+        hue_factor = torch.as_tensor(hue_factor)
 
-    hue_factor = hue_factor.to(input.device).to(input.dtype)
+    hue_factor = hue_factor.to(input.device, input.dtype)
 
-    if ((hue_factor < -pi) | (hue_factor > pi)).any():
-        raise ValueError(f"Hue-factor must be in the range [-PI, PI]. Got {hue_factor}")
+    # TODO: find a proper way to check bound values in batched tensors.
+    # if ((hue_factor < -pi) | (hue_factor > pi)).any():
+    #     raise ValueError(f"Hue-factor must be in the range [-PI, PI]. Got {hue_factor}")
 
     for _ in input.shape[1:]:
         hue_factor = torch.unsqueeze(hue_factor, dim=-1)
@@ -147,7 +149,7 @@ def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
     See :class:`~kornia.color.AdjustGamma` for details.
     """
 
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(gamma, (float, torch.Tensor)):
@@ -191,7 +193,7 @@ def adjust_contrast(input: torch.Tensor,
     See :class:`~kornia.color.AdjustContrast` for details.
     """
 
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(contrast_factor, (float, torch.Tensor,)):
@@ -225,7 +227,7 @@ def adjust_brightness(input: torch.Tensor,
     See :class:`~kornia.color.AdjustBrightness` for details.
     """
 
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(brightness_factor, (float, torch.Tensor,)):
@@ -262,7 +264,7 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     Returns:
         torch.Tensor: Solarized images.
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(thresholds, (float, torch.Tensor,)):
@@ -297,7 +299,7 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
     Returns:
         torch.Tensor: Solarized images.
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(thresholds, (float, torch.Tensor,)):
@@ -343,7 +345,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     Returns:
         torch.Tensor: Image with reduced color channels.
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if isinstance(bits, int):
