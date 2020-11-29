@@ -67,8 +67,10 @@ class AddWeighted(nn.Module):
         beta (float): weight of the src2 elements.
         gamma (float): scalar added to each sum.
 
-    Returns:
-        torch.Tensor: Weighted Tensor of shape :math:`(B, C, H, W)`.
+    Shape:
+        Input1: Tensor of shape :math:`(B, C, H, W)`.
+        Input2: Tensor of shape :math:`(B, C, H, W)`.
+        Output: Weighted tensor of shape :math:`(B, C, H, W)`.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)

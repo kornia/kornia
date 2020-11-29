@@ -411,11 +411,13 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
 
 def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
              additions: Optional[Union[float, torch.Tensor]] = None) -> torch.Tensor:
-    r"""For each pixel in the image less than threshold, we add 'addition' amount to it and then clip the
-    pixel value to be between 0 and 1.0. The value of 'addition' is between -0.5 and 0.5.
+    r"""For each pixel in the image less than threshold.
+
+    We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
+    The value of 'addition' is between -0.5 and 0.5.
 
     Args:
-        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to solarize.
+        input (torch.Tensor): image tensor with shapes like :math:`(B, C, H, W)` to solarize.
         thresholds (float or torch.Tensor): solarize thresholds.
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
@@ -425,7 +427,19 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
-        torch.Tensor: Solarized images.
+        torch.Tensor: The solarized images with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> x = torch.rand(1, 4, 3, 3)
+        >>> out = solarize(x, thresholds=0.5, additions=0.)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3])
+
+        >>> x = torch.rand(2, 4, 3, 3)
+        >>> thresholds = torch.tensor([0.8, 0.7])
+        >>> out = solarize(x, thresholds)
+        >>> out.shape
+        torch.Size([2, 4, 3, 3])
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
@@ -461,17 +475,29 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
 
 
 def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tensor:
-    r"""Reduce the number of bits for each color channel. Non-differentiable function, uint8 involved.
+    r"""Reduce the number of bits for each color channel.
+
+    Non-differentiable function, torch.uint8 involved.
 
     Args:
-        input (torch.Tensor): image tensor with shapes like (C, H, W) or (B, C, H, W) to posterize.
+        input (torch.Tensor): image tensor with shapes like :math:`(B, C, H, W)` to posterize.
         bits (int or torch.Tensor): number of high bits. Must be in range [0, 8].
             If int or one element tensor, input will be posterized by this bits.
             If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[1].
             If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
 
     Returns:
-        torch.Tensor: Image with reduced color channels.
+        torch.Tensor: Image with reduced color channels with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> x = torch.rand(1, 6, 3, 3)
+        >>> out = posterize(x, bits=8)
+        >>> torch.testing.assert_allclose(x, out)
+
+        >>> x = torch.rand(2, 6, 3, 3)
+        >>> bits = torch.tensor([0, 8])
+        >>> posterize(x, bits).shape
+        torch.Size([2, 6, 3, 3])
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
@@ -671,13 +697,25 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
 
     Implements Equalize function from PIL using PyTorch ops based on uint8 format:
-    https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
+    https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
-        input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
+        input (torch.Tensor): image tensor to equalizr with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 
     Returns:
-        torch.Tensor: Sharpened image or images.
+        torch.Tensor: Sharpened image or images with shape as the input.
+
+    Example:
+        >>> _ = torch.manual_seed(0)
+        >>> x = torch.rand(1, 2, 3, 3)
+        >>> equalize(x)
+        tensor([[[[0.4963, 0.7682, 0.0885],
+                  [0.1320, 0.3074, 0.6341],
+                  [0.4901, 0.8964, 0.4556]],
+        <BLANKLINE>
+                 [[0.6323, 0.3489, 0.4017],
+                  [0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000]]]])
     """
     input = _to_bchw(input)
 
