@@ -108,3 +108,5 @@ from kornia.utils import (
 
 from kornia.geometry import *
 from kornia.constants import *
+
+from kornia.testing import xla_is_available
