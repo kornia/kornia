@@ -149,7 +149,7 @@ def histogram2d(
         epsilon (float): A scalar, for numerical stability. Default: 1e-10.
 
     Returns:
-        torch.Tensor: Computed histogram of shape :math:`(B, N_{bins})`.
+        torch.Tensor: Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 
     Examples:
         >>> x1 = torch.rand(2, 32)
