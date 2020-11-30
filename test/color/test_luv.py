@@ -1,19 +1,11 @@
 import pytest
 
 import kornia
-from kornia.testing import BaseTester
+from kornia.testing import BaseTester, _get_precision
 
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-
-def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
-    if 'xla' in device.type:
-        return 1e-2
-    elif dtype == torch.float16:
-        return 1e-3
-    return 1e-4
 
 
 class TestRgbToLuv(BaseTester):
