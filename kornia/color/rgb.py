@@ -131,7 +131,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 4:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
+        raise ValueError(f"Input size must have a shape of (*, 4, H, W).Got {image.shape}")
 
     # unpack channels
     r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
@@ -162,7 +162,7 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 4:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
+        raise ValueError(f"Input size must have a shape of (*, 4, H, W).Got {image.shape}")
 
     # convert to RGB first, then to BGR
     x_rgb: torch.Tensor = rgba_to_rgb(image)

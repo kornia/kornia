@@ -14,50 +14,49 @@ def random_shape(dim, min_elem=1, max_elem=10):
 
 
 class TestAddWeighted:
-    def get_input(self, size, max_elem=10):
+
+    fcn = kornia.enhance.add_weighted
+
+    def get_input(self, device, dtype, size, max_elem=10):
         shape = random_shape(size, max_elem)
-        src1 = torch.randn(shape)
-        src2 = torch.randn(shape)
+        src1 = torch.randn(shape, device=device, dtype=dtype)
+        src2 = torch.randn(shape, device=device, dtype=dtype)
         alpha = random.random()
         beta = random.random()
         gamma = random.random()
         return src1, src2, alpha, beta, gamma
 
     @pytest.mark.parametrize("size", [2, 3, 4, 5])
-    def test_addweighted(self, size, device):
-        src1, src2, alpha, beta, gamma = self.get_input(3)
-        src1 = src1.to(device)
-        src2 = src2.to(device)
+    def test_smoke(self, device, dtype, size):
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
+        assert_allclose(
+            TestAddWeighted.fcn(src1, alpha, src2, beta, gamma),
+            src1 * alpha + src2 * beta + gamma
+        )
 
-        f = kornia.enhance.AddWeighted(alpha, beta, gamma)
-        assert_allclose(f(src1, src2), src1 * alpha + src2 * beta + gamma)
+    def test_jit(self, device, dtype):
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
+        inputs = (src1, alpha, src2, beta, gamma)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(src1: torch.Tensor, alpha: float, src2: torch.Tensor,
-                      beta: float, gamma: float) -> torch.Tensor:
-            return kornia.enhance.add_weighted(src1, alpha, src2, beta, gamma)
+        op = TestAddWeighted.fcn
+        op_script = torch.jit.script(op)
 
-        src1, src2, alpha, beta, gamma = self.get_input(3)
-        src1 = src1.to(device)
-        src2 = src2.to(device)
-
-        actual = op_script(src1, alpha, src2, beta, gamma)
-        expected = kornia.enhance.add_weighted(src1, alpha, src2, beta, gamma)
-        assert_allclose(actual, expected)
+        assert_allclose(op(*inputs), op_script(*inputs))
 
     @pytest.mark.parametrize("size", [2, 3])
-    def test_gradcheck(self, size, device):
-        shape = random_shape(size, max_elem=5)  # to shave time on gradcheck
-        src1 = torch.randn(shape).to(device)
-        src2 = torch.randn(shape).to(device)
-        alpha = random.random()
-        beta = random.random()
-        gamma = random.random()
-
+    def test_gradcheck(self, size, device, dtype):
+        src1, src2, alpha, beta, gamma = self.get_input(
+            device, dtype, size=3, max_elem=5)  # to shave time on gradcheck
         src1 = utils.tensor_to_gradcheck_var(src1)  # to var
         src2 = utils.tensor_to_gradcheck_var(src2)  # to var
-
         assert gradcheck(kornia.enhance.AddWeighted(alpha, beta, gamma), (src1, src2),
                          raise_exception=True)
+
+    def test_module(self, device, dtype):
+        src1, src2, alpha, beta, gamma = self.get_input(device, dtype, size=3)
+        inputs = (src1, alpha, src2, beta, gamma)
+
+        op = TestAddWeighted.fcn
+        op_module = kornia.enhance.AddWeighted(alpha, beta, gamma)
+
+        assert_allclose(op(*inputs), op_module(src1, src2))

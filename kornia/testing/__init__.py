@@ -2,6 +2,7 @@
 The testing package contains testing-specific utilities.
 """
 from abc import ABC, abstractmethod
+import importlib
 from itertools import product
 from copy import deepcopy
 
@@ -10,8 +11,15 @@ import numpy as np
 
 
 __all__ = [
-    'tensor_to_gradcheck_var', 'create_eye_batch',
+    'tensor_to_gradcheck_var', 'create_eye_batch', 'xla_is_available'
 ]
+
+
+def xla_is_available() -> bool:
+    """Return whether `torch_xla` is available in the system."""
+    if importlib.util.find_spec("torch_xla") is not None:
+        return True
+    return False
 
 
 def create_checkerboard(h, w, nw):
@@ -121,3 +129,22 @@ def default_with_one_parameter_changed(*, default={}, **possible_parameters):
             param_set = deepcopy(default)
             param_set[parameter_name] = v
             yield param_set
+
+
+def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
+    if 'xla' in device.type:
+        return 1e-2
+    elif dtype == torch.float16:
+        return 1e-3
+    return 1e-4
+
+
+def _get_precision_by_name(device: torch.device, device_target: str,
+                           tol_val: float, tol_val_default: float = 1e-4) -> float:
+    if device_target not in ['cpu', 'cuda', 'xla']:
+        raise ValueError(f"Invalid device name: {device_target}.")
+
+    if device_target in device.type:
+        return tol_val
+
+    return tol_val_default

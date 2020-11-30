@@ -392,8 +392,13 @@ def pinhole_matrix(pinholes, eps=1e-6):
         - Output: :math:`(N, 4, 4)`
 
     Example:
+        >>> rng = torch.manual_seed(0)
         >>> pinhole = torch.rand(1, 12)    # Nx12
-        >>> pinhole_matrix = kornia.pinhole_matrix(pinhole)  # Nx4x4
+        >>> pinhole_matrix(pinhole)  # Nx4x4
+        tensor([[[4.9626e-01, 1.0000e-06, 8.8477e-02, 1.0000e-06],
+                 [1.0000e-06, 7.6822e-01, 1.3203e-01, 1.0000e-06],
+                 [1.0000e-06, 1.0000e-06, 1.0000e+00, 1.0000e-06],
+                 [1.0000e-06, 1.0000e-06, 1.0000e-06, 1.0000e+00]]])
     """
     # warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.camera_matrix instead",
@@ -430,8 +435,13 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
         - Output: :math:`(N, 4, 4)`
 
     Example:
-        >>> pinhole = torch.rand(1, 12)    # Nx12
-        >>> pinhole_matrix_inv = kornia.inverse_pinhole_matrix(pinhole)  # Nx4x4
+        >>> rng = torch.manual_seed(0)
+        >>> pinhole = torch.rand(1, 12)  # Nx12
+        >>> inverse_pinhole_matrix(pinhole)  # Nx4x4
+        tensor([[[ 2.0151,  0.0000, -0.1783,  0.0000],
+                 [ 0.0000,  1.3017, -0.1719,  0.0000],
+                 [ 0.0000,  0.0000,  1.0000,  0.0000],
+                 [ 0.0000,  0.0000,  0.0000,  1.0000]]])
     """
     # warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.intrinsics_inverse() instead",
@@ -469,9 +479,12 @@ def scale_pinhole(pinholes, scale):
         - Output: :math:`(N, 12)`
 
     Example:
+        >>> rng = torch.manual_seed(0)
         >>> pinhole_i = torch.rand(1, 12)  # Nx12
         >>> scales = 2.0 * torch.ones(1)   # N
-        >>> pinhole_i_scaled = kornia.scale_pinhole(pinhole_i)  # Nx12
+        >>> scale_pinhole(pinhole_i, scales)  # Nx12
+        tensor([[0.9925, 1.5364, 0.1770, 0.2641, 0.6148, 1.2682, 0.4901, 0.8964, 0.4556,
+                 0.6323, 0.3489, 0.4017]])
     """
     # warnings.warn("scale_pinhole will be deprecated in version 0.2, "
     #              "use PinholeCamera.scale() instead",
@@ -496,6 +509,7 @@ def get_optical_pose_base(pinholes):
     """
     assert len(pinholes.shape) == 2 and pinholes.shape[1] == 12, pinholes.shape
     optical_pose_parent = pinholes[..., 6:]
+    # TODO: where is rtvec_to_pose?
     return rtvec_to_pose(optical_pose_parent)
 
 
@@ -532,10 +546,11 @@ def homography_i_H_ref(pinhole_i, pinhole_ref):
         - Output: :math:`(N, 4, 4)`
 
     Example:
-        >>> pinhole_i = torch.rand(1, 12)    # Nx12
-        >>> pinhole_ref = torch.rand(1, 12)  # Nx12
-        >>> i_H_ref = kornia.homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
+        pinhole_i = torch.rand(1, 12)    # Nx12
+        pinhole_ref = torch.rand(1, 12)  # Nx12
+        homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
     """
+    # TODO: Add doctest once having `rtvec_to_pose`.
     assert len(
         pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12, pinhole.shape
     assert pinhole_i.shape == pinhole_ref.shape, pinhole_ref.shape
@@ -638,7 +653,7 @@ def cam2pixel(
 
     Example:
         >>> pinhole = torch.rand(1, 12)          # Nx12
-        >>> transform = kornia.PinholeMatrix()
+        >>> transform = PinholeMatrix()
         >>> pinhole_matrix = transform(pinhole)  # Nx4x4
     """
 

@@ -90,7 +90,7 @@ class InverseDepthSmoothnessLoss(nn.Module):
 
         >>> idepth = torch.rand(1, 1, 4, 5)
         >>> image = torch.rand(1, 3, 4, 5)
-        >>> smooth = kornia.losses.DepthSmoothnessLoss()
+        >>> smooth = InverseDepthSmoothnessLoss()
         >>> loss = smooth(idepth, image)
     """
 

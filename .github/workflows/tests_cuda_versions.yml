@@ -1,10 +1,10 @@
-name: tests-cuda
+name: tests-cuda-versions
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
+  #push:
+  #  branches:
+  #    - master
+  #pull_request:
   schedule:
     - cron: "0 0 * * *"
 
@@ -18,8 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7]
-        pytorch-version: [1.7.0]
-        cuda-version: [10.2]
+        pytorch-version: [1.5.1, 1.6.0, 1.7.0]
+        cuda-version: [9.2, 10.1, 10.2]
     steps:
     - uses: actions/checkout@v2
     - name: Setup conda dependencies
