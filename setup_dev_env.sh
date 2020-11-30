@@ -41,7 +41,11 @@ python_version=${PYTHON_VERSION:-"3.7"}
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> refactor setup_dev_env script (#756)
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
 cuda_version=${CUDA_VERSION:-"10.2"}
@@ -98,17 +102,24 @@ fi
 =======
 cuda_version=${CUDA_VERSION:-""}
 pytorch_channel="pytorch"
+=======
+pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
+pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+cuda_version=${CUDA_VERSION:-"10.2"}
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 # configure for nightly builds
+pytorch_channel="pytorch"
 if [ "$pytorch_version" == "nightly" ]; then
     pytorch_version=""
     pytorch_channel="pytorch-nightly"
+fi
 
 # configure cudatoolkit
-cuda_toolkit=""
-if [ ! -z "$cuda_version" ]
+cuda_toolkit="cudatoolkit=$cuda_version"
+if [ "$pytorch_mode" == "cpuonly" ]
 then
-    cuda_toolkit="cudatoolkit=$cuda_version"
+    cuda_toolkit=""
 fi
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
 
@@ -139,6 +150,7 @@ conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -
 =======
 <<<<<<< master
 <<<<<<< master
+<<<<<<< master
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 =======
 conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
@@ -149,7 +161,13 @@ conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
 =======
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c pytorch
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+=======
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 # install testing dependencies
 pip install -r requirements-dev.txt

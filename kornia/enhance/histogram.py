@@ -151,13 +151,20 @@ def histogram2d(
     Returns:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         torch.Tensor: Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 =======
         torch.Tensor: Computed histogram of shape :math:`(B, N_{bins})`.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 =======
         torch.Tensor: Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Examples:
         >>> x1 = torch.rand(2, 32)

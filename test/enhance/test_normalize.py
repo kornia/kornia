@@ -309,10 +309,17 @@ class TestNormalizeMinMax(BaseTester):
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
 <<<<<<< master
+<<<<<<< master
     @pytest.mark.skip(reason="not implemented yet")
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+    @pytest.mark.skip(reason="not implemented yet")
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
     @pytest.mark.nn
     def test_module(self, device, dtype):
         pass

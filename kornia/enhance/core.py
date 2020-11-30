@@ -70,6 +70,10 @@ class AddWeighted(nn.Module):
     Shape:
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         - Input1: Tensor of shape :math:`(B, C, H, W)`.
         - Input2: Tensor of shape :math:`(B, C, H, W)`.
         - Output: Weighted tensor of shape :math:`(B, C, H, W)`.
@@ -78,11 +82,14 @@ class AddWeighted(nn.Module):
         Input2: Tensor of shape :math:`(B, C, H, W)`.
         Output: Weighted tensor of shape :math:`(B, C, H, W)`.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 =======
         - Input1: Tensor of shape :math:`(B, C, H, W)`.
         - Input2: Tensor of shape :math:`(B, C, H, W)`.
         - Output: Weighted tensor of shape :math:`(B, C, H, W)`.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)

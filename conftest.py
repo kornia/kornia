@@ -52,7 +52,11 @@ def device(device_name) -> torch.device:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
     # To work with TPUs on Colab:
     # pip install cloud-tpu-client==0.10
@@ -65,10 +69,15 @@ def device(device_name) -> torch.device:
         pytest.skip(f"Unsupported device type: {device_name}")
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
 >>>>>>> [Feat] Add tpu-testing in circleci (#787)
+=======
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
     return TEST_DEVICES[device_name]
 
 

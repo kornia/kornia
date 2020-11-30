@@ -6,29 +6,31 @@ import kornia
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 from kornia.testing import BaseTester, _get_precision
 =======
 from kornia.testing import BaseTester
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
 from kornia.testing import BaseTester, _get_precision
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+from kornia.testing import BaseTester, _get_precision
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
-
-
-def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
-    if 'xla' in device.type:
-        return 1e-2
-    elif dtype == torch.float16:
-        return 1e-3
-    return 1e-4
 
 
 class TestRgbToLuv(BaseTester):

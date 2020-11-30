@@ -241,7 +241,13 @@ class TestRgbToRgba(BaseTester):
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     @pytest.mark.nn
     def test_module_bgra2rgb(self, device, dtype):
@@ -260,11 +266,17 @@ class TestRgbToRgba(BaseTester):
         assert_allclose(ops(img), fcn(img))
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)

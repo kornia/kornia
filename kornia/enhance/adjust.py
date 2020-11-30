@@ -76,14 +76,21 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 =======
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Return:
         torch.Tensor: Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -285,13 +292,20 @@ def adjust_contrast(input: torch.Tensor,
         contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
           in the batch. 0 generates a completely black image, 1 does not modify
 =======
           in the batch. 0 generates a compleatly black image, 1 does not modify
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 =======
           in the batch. 0 generates a completely black image, 1 does not modify
 >>>>>>> [Docs] Minor spelling tweaks (#818)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
           the input image while any other non-negative number modify the
           brightness by this factor.
 
@@ -704,6 +718,17 @@ def _build_lut(histo, step):
 >>>>>>> Make sharpness output channel nums as input (#783)
 
 
+def _build_lut(histo, step):
+    # Compute the cumulative sum, shifting by step // 2
+    # and then normalization by step.
+    lut = (torch.cumsum(histo, 0) + (step // 2)) // step
+    # Shift lut, prepending with 0.
+    lut = torch.cat([torch.zeros(1, device=lut.device), lut[:-1]])
+    # Clip the counts to be in range.  This is done
+    # in the C code for image.point.
+    return torch.clamp(lut, 0, 255)
+
+
 # Code taken from: https://github.com/pytorch/vision/pull/796
 def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     r"""Scale the data in the channel to implement equalize.
@@ -741,7 +766,11 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
     def build_lut(histo, step):
         # Compute the cumulative sum, shifting by step // 2
@@ -755,10 +784,15 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 =======
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
     # If step is zero, return the original image.  Otherwise, build
     # lut from the full histogram and step and then index from it.
     if step == 0:
@@ -784,11 +818,16 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 =======
         input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
 >>>>>>> Make sharpness output channel nums as input (#783)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         input (torch.Tensor): image tensor to equalizr with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
@@ -798,6 +837,11 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 >>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+=======
+        input (torch.Tensor): image tensor to equalizr with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+>>>>>>> [Feat] better kornia.enhance testing (#801)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Returns:
         torch.Tensor: Sharpened image or images with shape as the input.
@@ -858,11 +902,16 @@ class AdjustSaturation(nn.Module):
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+<<<<<<< master
+>>>>>>> [Feat] better kornia.enhance testing (#801)
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
@@ -870,13 +919,21 @@ class AdjustSaturation(nn.Module):
 =======
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
+=======
+=======
+        and white image, 1 will give the original image while 2 will enhance the saturation
+        by a factor of 2.
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         - Ouput: Adjusted image in the shape of :math:`(*, 3, H, W)`.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Docs] Minor spelling tweaks (#818)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
