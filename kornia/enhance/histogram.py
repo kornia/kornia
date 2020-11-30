@@ -149,7 +149,11 @@ def histogram2d(
         epsilon (float): A scalar, for numerical stability. Default: 1e-10.
 
     Returns:
+<<<<<<< refs/remotes/kornia/master
         torch.Tensor: Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
+=======
+        torch.Tensor: Computed histogram of shape :math:`(B, N_{bins})`.
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Examples:
         >>> x1 = torch.rand(2, 32)

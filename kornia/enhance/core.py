@@ -68,9 +68,15 @@ class AddWeighted(nn.Module):
         gamma (float): scalar added to each sum.
 
     Shape:
+<<<<<<< refs/remotes/kornia/master
         - Input1: Tensor of shape :math:`(B, C, H, W)`.
         - Input2: Tensor of shape :math:`(B, C, H, W)`.
         - Output: Weighted tensor of shape :math:`(B, C, H, W)`.
+=======
+        Input1: Tensor of shape :math:`(B, C, H, W)`.
+        Input2: Tensor of shape :math:`(B, C, H, W)`.
+        Output: Weighted tensor of shape :math:`(B, C, H, W)`.
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)

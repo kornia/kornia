@@ -3,8 +3,11 @@ The testing package contains testing-specific utilities.
 """
 from abc import ABC, abstractmethod
 import importlib
+<<<<<<< refs/remotes/kornia/master
 from itertools import product
 from copy import deepcopy
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 import torch
 import numpy as np
@@ -110,6 +113,7 @@ class BaseTester(ABC):
     def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
 
 def cartesian_product_of_parameters(**possible_parameters):
@@ -130,6 +134,8 @@ def default_with_one_parameter_changed(*, default={}, **possible_parameters):
             param_set = deepcopy(default)
             param_set[parameter_name] = v
             yield param_set
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 
 def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
@@ -149,5 +155,8 @@ def _get_precision_by_name(device: torch.device, device_target: str,
         return tol_val
 
     return tol_val_default
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)

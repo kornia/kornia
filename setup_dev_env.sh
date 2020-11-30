@@ -37,6 +37,7 @@ fi
 # by default we assume python 3.7.
 python_version=${PYTHON_VERSION:-"3.7"}
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
 cuda_version=${CUDA_VERSION:-"10.2"}
@@ -62,17 +63,24 @@ pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank f
 =======
 cuda_version=${CUDA_VERSION:-""}
 pytorch_channel="pytorch"
+=======
+pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
+pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+cuda_version=${CUDA_VERSION:-"10.2"}
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 # configure for nightly builds
+pytorch_channel="pytorch"
 if [ "$pytorch_version" == "nightly" ]; then
     pytorch_version=""
     pytorch_channel="pytorch-nightly"
+fi
 
 # configure cudatoolkit
-cuda_toolkit=""
-if [ ! -z "$cuda_version" ]
+cuda_toolkit="cudatoolkit=$cuda_version"
+if [ "$pytorch_mode" == "cpuonly" ]
 then
-    cuda_toolkit="cudatoolkit=$cuda_version"
+    cuda_toolkit=""
 fi
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
 
@@ -88,6 +96,7 @@ source $conda_bin_dir/activate $dev_env_dir/envs/venv
 # install pytorch and torchvision
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
 =======
 conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
@@ -95,6 +104,9 @@ conda install pytorch=$pytorch_version torchvision $pytorch_mode -c pytorch
 =======
 conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c pytorch
 >>>>>>> [Feat] update to pytorch 1.7 (#768)
+=======
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 # install testing dependencies
 pip install -r requirements-dev.txt

@@ -3,9 +3,13 @@ import pytest
 import kornia
 from kornia.testing import tensor_to_gradcheck_var, BaseTester
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 import kornia.testing as utils
 =======
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+import kornia.testing as utils
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 from kornia.constants import pi
 
 import torch
@@ -23,6 +27,7 @@ class TestAdjustSaturation:
 
                              [[.25, .25],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                               [.25, .25]]], device=device, dtype=dtype)  # 3x2x2
 
         expected = data.clone()
@@ -31,6 +36,11 @@ class TestAdjustSaturation:
 
         expected = data
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+                              [.25, .25]]], device=device, dtype=dtype)  # 3x2x2
+
+        expected = data.clone()
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
         f = kornia.enhance.AdjustSaturation(1.)
         assert_allclose(f(data), expected)
@@ -53,15 +63,20 @@ class TestAdjustSaturation:
 
                               [[.25, .25],
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
                                [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
 =======
                                [.25, .25]]]], device=device)  # 2x3x2x2
 >>>>>>> [Feat] Enabled Torch1.5.1 cpu support (#796)
+=======
+                               [.25, .25]]]], device=device, dtype=dtype)  # 2x3x2x2
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
         expected = data
         f = kornia.enhance.AdjustSaturation(torch.ones(2))
         assert_allclose(f(data), expected)
 
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
     def test_gradcheck(self, device, dtype):
 =======
@@ -73,6 +88,11 @@ class TestAdjustSaturation:
 =======
         img = torch.rand(batch_size, channels, height, width)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+    def test_gradcheck(self, device, dtype):
+        batch_size, channels, height, width = 2, 3, 4, 5
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_saturation, (img, 2.),
                          raise_exception=True)
@@ -145,10 +165,14 @@ class TestAdjustHue:
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
 =======
         img = torch.rand(batch_size, channels, height, width)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_hue, (img, 2.),
                          raise_exception=True)
@@ -275,11 +299,15 @@ class TestAdjustGamma:
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 =======
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_gamma, (img, 1., 2.),
                          raise_exception=True)
@@ -461,11 +489,15 @@ class TestAdjustContrast:
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 =======
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_contrast, (img, 2.),
                          raise_exception=True)
@@ -594,11 +626,15 @@ class TestAdjustBrightness:
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 =======
         img = torch.ones(batch_size, channels, height, width)
         img = img.to(device)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         img = tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.adjust_brightness, (img, 2.),
                          raise_exception=True)
@@ -658,6 +694,7 @@ class TestEqualize:
         assert_allclose(f(inputs), expected, atol=1e-4, rtol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     def test_gradcheck(self, device, dtype):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
@@ -667,6 +704,11 @@ class TestEqualize:
         inputs = torch.ones(bs, channels, height, width)
         inputs = inputs.to(device)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+    def test_gradcheck(self, device, dtype):
+        bs, channels, height, width = 1, 2, 3, 3
+        inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         inputs = tensor_to_gradcheck_var(inputs)
         assert gradcheck(kornia.enhance.equalize, (inputs,),
                          raise_exception=True)
@@ -743,6 +785,7 @@ class TestEqualize3D:
         assert_allclose(f(inputs3d), expected, atol=1e-4, rtol=1e-4)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     def test_gradcheck(self, device, dtype):
         bs, channels, depth, height, width = 1, 2, 3, 4, 5
         inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
@@ -752,6 +795,11 @@ class TestEqualize3D:
         inputs3d = torch.ones(bs, channels, depth, height, width)
         inputs3d = inputs3d.to(device)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+    def test_gradcheck(self, device, dtype):
+        bs, channels, depth, height, width = 1, 2, 3, 4, 5
+        inputs3d = torch.ones(bs, channels, depth, height, width, device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         inputs3d = tensor_to_gradcheck_var(inputs3d)
         assert gradcheck(kornia.enhance.equalize3d, (inputs3d,),
                          raise_exception=True)
@@ -819,10 +867,14 @@ class TestSharpness(BaseTester):
         torch.manual_seed(0)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
 =======
         inputs = torch.rand(1, 3, 3).to(device=device, dtype=dtype)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
         # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
         # img = PIL.Image.fromarray(arr)
@@ -830,6 +882,7 @@ class TestSharpness(BaseTester):
         # np.array(en) / 255.
         expected = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
               [0.1320, 0.3305, 0.6341],
               [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
@@ -845,6 +898,15 @@ class TestSharpness(BaseTester):
         # If factor == 1, shall return original
         assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]]], device=device, dtype=dtype)
+
+        # If factor == 1, shall return original
+        # TODO(jian): add test for this case
+        # assert_allclose(TestSharpness.f(inputs, 0.), inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(TestSharpness.f(inputs, 1.), inputs, rtol=1e-4, atol=1e-4)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
         assert_allclose(TestSharpness.f(inputs, 0.8), expected, rtol=1e-4, atol=1e-4)
 
     def test_value_batch(self, device, dtype):
@@ -858,6 +920,7 @@ class TestSharpness(BaseTester):
         # np.array(en) / 255.
         expected_08 = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
               [0.1320, 0.3305, 0.6341],
               [0.4901, 0.8964, 0.4556]]],
@@ -882,23 +945,36 @@ class TestSharpness(BaseTester):
 =======
              [0.1320, 0.3305, 0.6341],
              [0.4901, 0.8964, 0.4556]]],
+=======
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]],
+>>>>>>> [Feat] better kornia.enhance testing (#801)
             [[[0.6323, 0.3489, 0.4017],
-             [0.0223, 0.2052, 0.2939],
-             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+              [0.0223, 0.2052, 0.2939],
+              [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+
         expected_08_13 = torch.tensor([
             [[[0.4963, 0.7682, 0.0885],
-             [0.1320, 0.3305, 0.6341],
-             [0.4901, 0.8964, 0.4556]]],
+              [0.1320, 0.3305, 0.6341],
+              [0.4901, 0.8964, 0.4556]]],
             [[[0.6323, 0.3489, 0.4017],
-             [0.0223, 0.1143, 0.2939],
-             [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
+              [0.0223, 0.1143, 0.2939],
+              [0.5185, 0.6977, 0.8000]]]], device=device, dtype=dtype)
 
         # If factor == 1, shall return original
+<<<<<<< refs/remotes/kornia/master
         assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, torch.tensor([1., 1.])), inputs, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=1e-4, atol=1e-4)
         assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=1e-4, atol=1e-4)
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+        tol_val: float = utils._get_precision(device, dtype)
+        assert_allclose(TestSharpness.f(inputs, 1), inputs, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([1., 1.])), inputs, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, 0.8), expected_08, rtol=tol_val, atol=tol_val)
+        assert_allclose(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, rtol=tol_val, atol=tol_val)
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -923,6 +999,9 @@ class TestSharpness(BaseTester):
         # gray_ops = kornia.enhance.sharpness().to(device, dtype)
         # assert_allclose(gray_ops(img), f(img))
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
 
 @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
@@ -935,6 +1014,7 @@ class TestSolarize(BaseTester):
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         assert isinstance(TestSolarize.f(img, 0.8), torch.Tensor)
 
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize("batch_size, height, width, thresholds, additions", [
         (1, 4, 5, 0.8, None),
         (1, 4, 5, 0.8, 0.4),
@@ -948,6 +1028,17 @@ class TestSolarize(BaseTester):
     def test_cardinality(self, batch_size, channels, height, width, thresholds, additions, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         assert TestSolarize.f(inputs, thresholds, additions).shape == torch.Size([batch_size, channels, height, width])
+=======
+    # TODO(jian): verify thresholds test and include addtions
+    @pytest.mark.parametrize("batch_size, height, width, thresholds", [
+        (1, 4, 5, 0.8), (2, 4, 5, 0.8),
+        (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
+        (2, 4, 5, torch.tensor([0.8, 0.7]))])
+    @pytest.mark.parametrize("channels", [1, 3, 5])
+    def test_cardinality(self, batch_size, channels, height, width, thresholds, device, dtype):
+        inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+        assert TestSolarize.f(inputs, thresholds).shape == torch.Size([batch_size, channels, height, width])
+>>>>>>> [Feat] better kornia.enhance testing (#801)
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
@@ -1016,6 +1107,7 @@ class TestPosterize(BaseTester):
         assert isinstance(TestPosterize.f(img, 8), torch.Tensor)
 
     @pytest.mark.parametrize("batch_size, height, width, bits", [
+<<<<<<< refs/remotes/kornia/master
         (1, 4, 5, 8),
         (2, 4, 5, 1),
         (2, 4, 5, 0),
@@ -1024,6 +1116,11 @@ class TestPosterize(BaseTester):
         (2, 4, 5, torch.tensor([0, 8])),
         (3, 4, 5, torch.tensor([0, 1, 8]))
     ])
+=======
+        (1, 4, 5, 8), (2, 4, 5, 0),
+        (1, 4, 5, torch.tensor(8)), (2, 4, 5, torch.tensor(8)),
+        (2, 4, 5, torch.tensor([0, 8]))])
+>>>>>>> [Feat] better kornia.enhance testing (#801)
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, bits, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -1084,5 +1181,8 @@ class TestPosterize(BaseTester):
         img = torch.ones(2, 3, 4, 4, device=device, dtype=dtype)
         # gray_ops = kornia.enhance.sharpness().to(device, dtype)
         # assert_allclose(gray_ops(img), f(img))
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+>>>>>>> [Feat] better kornia.enhance testing (#801)
