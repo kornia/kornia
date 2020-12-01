@@ -30,3 +30,26 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
+
+
+def _parse_align_corners(
+    align_corners: Optional[bool], interpolation: str
+) -> Optional[bool]:
+    r"""Set a sensible default value for ``align_corners`` used in :func:`torch.nn.functional.interpolate`.
+
+    ``align_corners`` has to be ``False`` for the interpolation modes ``"linear"``, ``"bilinear"``, ``"bicubic"``, and
+    ``"trilinear"`` to suppress a warning. For all other interpolation modes ``align_corners`` is not a valid parameter
+    and has to be ``None``.
+
+    Args:
+        align_corners: If not ``None``, i.e. the default value, it is returned as is.
+        interpolation: Interpolation mode.
+    """
+    if align_corners is not None:
+        return align_corners
+
+    return (
+        False
+        if interpolation in ("linear", "bilinear", "bicubic", "trilinear")
+        else None
+    )
