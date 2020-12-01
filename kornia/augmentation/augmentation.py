@@ -376,7 +376,7 @@ class RandomPerspective(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: Optional[bool] = False, p: float = 0.5, keepdim: bool = False
+        align_corners: Optional[bool] = None, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                 keepdim=keepdim)
@@ -647,7 +647,7 @@ class RandomRotation(AugmentationBase2D):
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: Optional[bool] = True,
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: Optional[bool] = None,
         p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
