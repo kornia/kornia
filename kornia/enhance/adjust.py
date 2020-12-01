@@ -33,8 +33,6 @@ __all__ = [
 
 def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image. Expecting input to be in hsv format already.
-
-    See :class:`~kornia.color.AdjustSaturation` for details.
     """
 
     if not isinstance(input, torch.Tensor):
@@ -76,8 +74,7 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
     Args:
         input (torch.Tensor): Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
-        and white image, 1 will give the original image while 2 will enhance the saturation
-        by a factor of 2.
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
         torch.Tensor: Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -118,8 +115,6 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
 
 def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust hue of an image. Expecting input to be in hsv format already.
-
-    See :class:`~kornia.color.AdjustHue` for details.
     """
 
     if not isinstance(input, torch.Tensor):
@@ -759,8 +754,7 @@ class AdjustSaturation(nn.Module):
 
     Args:
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
-        and white image, 1 will give the original image while 2 will enhance the saturation
-        by a factor of 2.
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
