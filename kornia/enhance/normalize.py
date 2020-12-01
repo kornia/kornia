@@ -26,17 +26,27 @@ class Normalize(nn.Module):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         mean (Union[torch.Tensor, float]): Mean for each channel.
@@ -95,11 +105,18 @@ def normalize(
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
 <<<<<<< master
+<<<<<<< master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         data (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.
@@ -169,17 +186,27 @@ class Denormalize(nn.Module):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         mean (Union[torch.Tensor, float]): Mean for each channel.
@@ -238,11 +265,18 @@ def denormalize(
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
 <<<<<<< master
+<<<<<<< master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         input (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.

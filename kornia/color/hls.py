@@ -110,17 +110,27 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+<<<<<<< master
+>>>>>>> improve kornia.enhance docs and coverage (#805)
         image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 =======
         image (torch.Tensor): HLS image to be converted to RGB woth shape :math:`(*, 3, H, W)`.
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
         image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
 >>>>>>> [Feat] refactor tests for kornia.color (#759)
+=======
+=======
+        image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+>>>>>>> improve kornia.enhance docs and coverage (#805)
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Returns:
         torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
