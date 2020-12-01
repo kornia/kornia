@@ -391,7 +391,7 @@ class RandomPerspective(AugmentationBase2D):
         self.align_corners = _parse_align_corners(align_corners, self.resample)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
@@ -508,7 +508,7 @@ class RandomAffine(AugmentationBase2D):
         self.flags: Dict[str, torch.Tensor] = dict(
             resample=torch.tensor(self.resample.value),
             padding_mode=torch.tensor(self.padding_mode.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
@@ -576,7 +576,7 @@ class CenterCrop(AugmentationBase2D):
         self.align_corners = _parse_align_corners(align_corners, self.resample)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
@@ -663,7 +663,7 @@ class RandomRotation(AugmentationBase2D):
         self.align_corners = _parse_align_corners(align_corners, self.resample)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
@@ -745,7 +745,7 @@ class RandomCrop(AugmentationBase2D):
         self.align_corners = _parse_align_corners(align_corners, self.resample)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
@@ -858,7 +858,7 @@ class RandomResizedCrop(AugmentationBase2D):
         self.align_corners = _parse_align_corners(align_corners, self.resample)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(self.align_corners)
         )
 
     def __repr__(self) -> str:
