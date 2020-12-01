@@ -22,10 +22,14 @@ class Normalize(nn.Module):
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         mean (Union[torch.Tensor, float]): Mean for each channel.
@@ -73,10 +77,14 @@ def normalize(
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         data (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.
@@ -142,10 +150,14 @@ class Denormalize(nn.Module):
         \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         mean (Union[torch.Tensor, float]): Mean for each channel.
@@ -193,10 +205,14 @@ def denormalize(
         \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 =======
     Where `mean` is :math:`(M_1,...,M_n)` and `std` :math:`(S_1,..,S_n)` for `n` channels,
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Args:
         input (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.

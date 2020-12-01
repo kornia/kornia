@@ -837,6 +837,9 @@ class TestSharpness(BaseTester):
 
     @pytest.mark.parametrize("batch_size, height, width, factor", [
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
         (1, 4, 5, 0.0),
         (1, 4, 5, 0.8),
         (2, 4, 5, 0.8),
@@ -844,11 +847,14 @@ class TestSharpness(BaseTester):
         (2, 4, 5, torch.tensor(0.8)),
         (2, 4, 5, torch.tensor([0.8, 0.7]))
     ])
+<<<<<<< refs/remotes/kornia/master
 =======
         (1, 4, 5, 0.8), (2, 4, 5, 0.8),
         (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
         (2, 4, 5, torch.tensor([0.8, 0.7]))])
 >>>>>>> Make sharpness output channel nums as input (#783)
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, factor, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -1015,6 +1021,9 @@ class TestSolarize(BaseTester):
         assert isinstance(TestSolarize.f(img, 0.8), torch.Tensor)
 
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     @pytest.mark.parametrize("batch_size, height, width, thresholds, additions", [
         (1, 4, 5, 0.8, None),
         (1, 4, 5, 0.8, 0.4),
@@ -1024,6 +1033,7 @@ class TestSolarize(BaseTester):
         (2, 4, 5, torch.tensor([0.8, 0.7]), None),
         (2, 4, 5, torch.tensor([0.8, 0.7]), torch.tensor([0., 0.4]))
     ])
+<<<<<<< refs/remotes/kornia/master
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, thresholds, additions, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -1034,11 +1044,17 @@ class TestSolarize(BaseTester):
         (1, 4, 5, 0.8), (2, 4, 5, 0.8),
         (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
         (2, 4, 5, torch.tensor([0.8, 0.7]))])
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     @pytest.mark.parametrize("channels", [1, 3, 5])
-    def test_cardinality(self, batch_size, channels, height, width, thresholds, device, dtype):
+    def test_cardinality(self, batch_size, channels, height, width, thresholds, additions, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
+<<<<<<< refs/remotes/kornia/master
         assert TestSolarize.f(inputs, thresholds).shape == torch.Size([batch_size, channels, height, width])
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+        assert TestSolarize.f(inputs, thresholds, additions).shape == torch.Size([batch_size, channels, height, width])
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
@@ -1108,6 +1124,9 @@ class TestPosterize(BaseTester):
 
     @pytest.mark.parametrize("batch_size, height, width, bits", [
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
         (1, 4, 5, 8),
         (2, 4, 5, 1),
         (2, 4, 5, 0),
@@ -1116,11 +1135,14 @@ class TestPosterize(BaseTester):
         (2, 4, 5, torch.tensor([0, 8])),
         (3, 4, 5, torch.tensor([0, 1, 8]))
     ])
+<<<<<<< refs/remotes/kornia/master
 =======
         (1, 4, 5, 8), (2, 4, 5, 0),
         (1, 4, 5, torch.tensor(8)), (2, 4, 5, torch.tensor(8)),
         (2, 4, 5, torch.tensor([0, 8]))])
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+>>>>>>> improve kornia.enhance docs and coverage (#805)
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, bits, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)

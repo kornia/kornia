@@ -75,11 +75,15 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
         input (torch.Tensor): Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Return:
         torch.Tensor: Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -810,6 +814,7 @@ class AdjustSaturation(nn.Module):
     Args:
         saturation_factor (Union[float, torch.Tensor]):  How much to adjust the saturation. 0 will give a black
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Shape:
@@ -818,6 +823,9 @@ class AdjustSaturation(nn.Module):
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
+=======
+          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+>>>>>>> improve kornia.enhance docs and coverage (#805)
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
