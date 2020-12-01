@@ -6,6 +6,7 @@ from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation import AugmentationBase2D
+from kornia.utils import _parse_align_corners
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -345,7 +346,7 @@ class RandomPerspective(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
                                  applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(Optional[bool]): interpolation flag. Default: None.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -375,7 +376,7 @@ class RandomPerspective(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 0.5, keepdim: bool = False
+        align_corners: Optional[bool] = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                 keepdim=keepdim)
@@ -387,7 +388,7 @@ class RandomPerspective(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
@@ -440,7 +441,7 @@ class RandomAffine(AugmentationBase2D):
         return_transform (bool): if ``True`` return the matrix describing the transformation
             applied to each. Default: False.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(Optional[bool]): interpolation flag. Default: None.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -471,7 +472,7 @@ class RandomAffine(AugmentationBase2D):
         scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
         shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False,
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: Optional[bool] = None,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomAffine, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
@@ -503,7 +504,7 @@ class RandomAffine(AugmentationBase2D):
             ])
         self.resample: Resample = Resample.get(resample)
         self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             resample=torch.tensor(self.resample.value),
             padding_mode=torch.tensor(self.padding_mode.value),
@@ -563,7 +564,7 @@ class CenterCrop(AugmentationBase2D):
                   [-1.2633,  0.3500]]]])
     """
 
-    def __init__(self, size: Union[int, Tuple[int, int]], align_corners: bool = True,
+    def __init__(self, size: Union[int, Tuple[int, int]], align_corners: Optional[bool] = None,
                  resample: Union[str, int, Resample] = Resample.BILINEAR.name,
                  return_transform: bool = False, p: float = 1., keepdim: bool = False) -> None:
         # same_on_batch is always True for CenterCrop
@@ -572,7 +573,7 @@ class CenterCrop(AugmentationBase2D):
                                          keepdim=keepdim)
         self.size = size
         self.resample = Resample.get(resample)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
@@ -612,7 +613,7 @@ class RandomRotation(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(Optional[bool]): interpolation flag. Default: None.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -646,8 +647,8 @@ class RandomRotation(AugmentationBase2D):
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 0.5,
-        keepdim: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: Optional[bool] = True,
+        p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                              keepdim=keepdim)
@@ -659,7 +660,7 @@ class RandomRotation(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
@@ -703,7 +704,7 @@ class RandomCrop(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(Optional[bool]): interpolation flag. Default: None.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -729,8 +730,8 @@ class RandomCrop(AugmentationBase2D):
         self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0,
-        keepdim: bool = False
+        return_transform: bool = False, same_on_batch: bool = False, align_corners: Optional[bool] = None,
+        p: float = 1.0, keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
@@ -741,7 +742,7 @@ class RandomCrop(AugmentationBase2D):
         self.fill = fill
         self.padding_mode = padding_mode
         self.resample = Resample.get(resample)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
@@ -809,7 +810,7 @@ class RandomResizedCrop(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
         same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(Optional[bool]): interpolation flag. Default: None.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -840,7 +841,7 @@ class RandomResizedCrop(AugmentationBase2D):
         interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 1., keepdim: bool = False
+        align_corners: Optional[bool] = None, p: float = 1., keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
@@ -854,7 +855,7 @@ class RandomResizedCrop(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = align_corners
+        self.align_corners = _parse_align_corners(align_corners, self.resample.name)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
