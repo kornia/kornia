@@ -3,6 +3,7 @@ import pytest
 import torch
 
 from kornia.utils import _extract_device_dtype, _parse_align_corners
+from kornia.constants import Resample
 
 
 @pytest.mark.parametrize("tensor_list,out_device,out_dtype,will_throw_error", [
@@ -36,23 +37,28 @@ def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_err
         assert dtype == out_dtype
 
 
-interpolations = pytest.mark.parametrize(
-    "interpolation",
-    ("nearest", "linear", "bilinear", "bicubic", "trilinear", "area"),
-    ids=lambda argvalue: f"interpolation={argvalue}"
-)
+def parametrize_resample():
+    argvalues = []
+    for interpolation in ("nearest", "linear", "bilinear", "bicubic", "trilinear", "area"):
+        try:
+            resample = Resample.get(interpolation)
+        except KeyError:
+            continue
+
+        argvalues.append(pytest.param(resample, id=f"resample={resample.name}"))
+    return pytest.mark.parametrize("resample", argvalues)
 
 
-@interpolations
-def test_parse_align_corners_default(interpolation):
-    align_corners = _parse_align_corners(None, interpolation)
-    if interpolation in ("linear", "bilinear", "bicubic", "trilinear"):
+@parametrize_resample()
+def test_parse_align_corners_default(resample):
+    align_corners = _parse_align_corners(None, resample)
+    if resample.name.lower() in ("linear", "bilinear", "bicubic", "trilinear"):
         assert align_corners is False
     else:
         assert align_corners is None
 
 
-@interpolations
+@parametrize_resample()
 @pytest.mark.parametrize("align_corners", (True, False), ids=lambda align_corners: f"align_corners={align_corners}")
-def test_parse_align_corners_non_default(align_corners, interpolation):
-    assert _parse_align_corners(align_corners, interpolation) is align_corners
+def test_parse_align_corners_non_default(align_corners, resample):
+    assert _parse_align_corners(align_corners, resample) is align_corners

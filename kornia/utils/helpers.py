@@ -2,6 +2,8 @@ from typing import Tuple, Union, List, cast, Optional
 
 import torch
 
+from kornia.constants import Resample
+
 
 def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input tensors are in the same device.
@@ -32,9 +34,7 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
     return (device, dtype)
 
 
-def _parse_align_corners(
-    align_corners: Optional[bool], interpolation: str
-) -> Optional[bool]:
+def _parse_align_corners(align_corners: Optional[bool], resample: Resample) -> Optional[bool]:
     r"""Set a sensible default value for ``align_corners`` used in :func:`torch.nn.functional.interpolate`.
 
     ``align_corners`` has to be ``False`` for the interpolation modes ``"linear"``, ``"bilinear"``, ``"bicubic"``, and
@@ -43,13 +43,13 @@ def _parse_align_corners(
 
     Args:
         align_corners: If not ``None``, i.e. the default value, it is returned as is.
-        interpolation: Interpolation mode.
+        resample: Interpolation mode.
     """
     if align_corners is not None:
         return align_corners
 
     return (
         False
-        if interpolation in ("linear", "bilinear", "bicubic", "trilinear")
+        if resample.name.lower() in ("linear", "bilinear", "bicubic", "trilinear")
         else None
     )
