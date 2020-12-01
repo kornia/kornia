@@ -128,7 +128,7 @@ workflows:
           matrix:
             parameters:
               python: ["3.6", "3.7"]
-              pytorch: ["nightly"]
+              pytorch: ["1.6", "1.7", "nightly"]
   tpu-cleanup:
     triggers:
       - schedule:
