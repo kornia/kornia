@@ -70,7 +70,7 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image (torch.Tensor): HLS image to be converted to RGB woth shape :math:`(*, 3, H, W)`.
+        image (torch.Tensor): HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
         torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
