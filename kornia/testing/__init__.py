@@ -8,18 +8,28 @@ import importlib
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+>>>>>>> Augmentation tests refactor (#706)
 from itertools import product
 from copy import deepcopy
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> Augmentation tests refactor (#706)
 =======
 from itertools import product
 from copy import deepcopy
 >>>>>>> Augmentation tests refactor (#706)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+>>>>>>> Augmentation tests refactor (#706)
 
 import torch
 import numpy as np
@@ -178,6 +188,26 @@ def default_with_one_parameter_changed(*, default={}, **possible_parameters):
             yield param_set
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+
+
+def cartesian_product_of_parameters(**possible_parameters):
+    """Creates cartesian product of given parameters
+    """
+    parameter_names = possible_parameters.keys()
+    possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
+
+    for param_combination in product(*possible_values):
+        yield dict(zip(parameter_names, param_combination))
+
+
+def default_with_one_parameter_changed(*, default={}, **possible_parameters):
+    assert isinstance(default, dict), f"default should be a dict not a {type(default)}"
+
+    for parameter_name, possible_values in possible_parameters.items():
+        for v in possible_values:
+            param_set = deepcopy(default)
+            param_set[parameter_name] = v
+            yield param_set
 
 
 def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
