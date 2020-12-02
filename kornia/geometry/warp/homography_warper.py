@@ -284,7 +284,6 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     Args:
         height (int): image height.
         width (int): image width.
-        eps (float): epsilon to prevent divide by zero
 
     Returns:
         torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`.
@@ -299,7 +298,6 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     # in the case that height or width is 1, prevent divide by zero bug
     # torch.finfo(torch.float32).max
     tr_mat[torch.isinf(tr_mat)] = 3.40282e+38
-
     return tr_mat.unsqueeze(0)  # 1x3x3
 
 
@@ -326,7 +324,6 @@ def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tenso
     # in the case that height, width, or depth is 1, prevent divide by zero bug
     # torch.finfo(torch.float32).max
     tr_mat[torch.isinf(tr_mat)] = 3.40282e+38
-
     return tr_mat.unsqueeze(0)  # 1x4x4
 
 
