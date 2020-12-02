@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+__all__ = [
+    "inverse_depth_smoothness_loss",
+    "InverseDepthSmoothnessLoss"
+]
+
 # Based on
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641
 

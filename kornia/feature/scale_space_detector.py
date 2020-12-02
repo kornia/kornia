@@ -13,6 +13,10 @@ from kornia.feature.laf import (
     normalize_laf, laf_is_inside_image)
 from kornia.geometry.transform import ScalePyramid
 
+__all__ = [
+    "ScaleSpaceDetector",
+]
+
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
     """Auxilary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d

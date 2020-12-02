@@ -29,6 +29,29 @@ from kornia.filters import motion_blur3d
 
 from .__temp__ import __deprecation_warning
 
+__all__ = [
+    "random_hflip3d",
+    "random_vflip3d",
+    "random_dflip3d",
+    "apply_hflip3d",
+    "compute_hflip_transformation3d",
+    "apply_vflip3d",
+    "compute_vflip_transformation3d",
+    "apply_dflip3d",
+    "compute_intensity_transformation3d",
+    "compute_dflip_transformation3d",
+    "apply_affine3d",
+    "compute_affine_transformation3d",
+    "apply_rotation3d",
+    "compute_rotate_tranformation3d",
+    "apply_motion_blur3d",
+    "apply_crop3d",
+    "compute_crop_transformation3d",
+    "apply_perspective3d",
+    "compute_perspective_transformation3d",
+    "apply_equalize3d",
+]
+
 
 def random_hflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool = False
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:

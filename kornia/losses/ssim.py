@@ -6,6 +6,11 @@ import torch.nn.functional as F
 
 from kornia.filters import get_gaussian_kernel2d, filter2D
 
+__all__ = [
+    "ssim",
+    "SSIM"
+]
+
 
 def _compute_zero_padding(kernel_size: int) -> int:
     """Computes zero padding."""

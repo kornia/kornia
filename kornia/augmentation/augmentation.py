@@ -13,6 +13,26 @@ from .utils import (
     _singular_range_check
 )
 
+__all__ = [
+    "AugmentationBase",
+    "CenterCrop",
+    "ColorJitter",
+    "RandomAffine",
+    "RandomCrop",
+    "RandomErasing",
+    "RandomGrayscale",
+    "RandomHorizontalFlip",
+    "RandomVerticalFlip",
+    "RandomPerspective",
+    "RandomResizedCrop",
+    "RandomRotation",
+    "RandomSolarize",
+    "RandomPosterize",
+    "RandomSharpness",
+    "RandomEqualize",
+    "RandomMotionBlur"
+]
+
 
 class AugmentationBase(AugmentationBase2D):
     __doc__ = AugmentationBase2D.__doc__

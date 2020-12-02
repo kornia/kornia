@@ -12,6 +12,11 @@ from .utils import (
     _infer_batch_shape
 )
 
+__all__ = [
+    "RandomMixUp",
+    "RandomCutMix"
+]
+
 
 class RandomMixUp(MixAugmentationBase):
     r"""Apply MixUp augmentation to a batch of tensor images.

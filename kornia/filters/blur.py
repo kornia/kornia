@@ -7,6 +7,11 @@ import kornia
 from kornia.filters.kernels import get_box_kernel2d
 from kornia.filters.kernels import normalize_kernel2d
 
+__all__ = [
+    "BoxBlur",
+    "box_blur"
+]
+
 
 class BoxBlur(nn.Module):
     r"""Blurs an image using the box filter.

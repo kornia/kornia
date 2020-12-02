@@ -6,6 +6,11 @@ import torch.nn.functional as F
 
 from kornia.utils.one_hot import one_hot
 
+__all__ = [
+    "tversky_loss",
+    "TverskyLoss"
+]
+
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 

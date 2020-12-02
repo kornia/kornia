@@ -7,6 +7,11 @@ from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import spatial_gradient
 from kornia.geometry.conversions import pi
 
+__all__ = [
+    "SIFTDescriptor",
+    "sift_describe",
+]
+
 
 def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """Returns a weighted pooling kernel for SIFT descriptor

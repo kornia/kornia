@@ -6,6 +6,13 @@ import torch.nn as nn
 import kornia
 from kornia.constants import pi
 
+__all__ = [
+    "rgb_to_hls",
+    "hls_to_rgb",
+    "RgbToHls",
+    "HlsToRgb"
+]
+
 
 def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to HLS.

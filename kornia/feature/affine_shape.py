@@ -11,6 +11,11 @@ from kornia.feature.laf import (ellipse_to_laf,
                                 scale_laf, make_upright)
 from kornia.feature import extract_patches_from_pyramid
 
+__all__ = [
+    "PatchAffineShapeEstimator",
+    "LAFAffineShapeEstimator"
+]
+
 
 class PatchAffineShapeEstimator(nn.Module):
     """Module, which estimates the second moment matrix of the patch gradients in order to determine the

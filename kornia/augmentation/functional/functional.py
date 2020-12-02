@@ -43,6 +43,45 @@ from ..utils import (
 
 from .__temp__ import __deprecation_warning
 
+__all__ = [
+    "random_hflip",
+    "random_vflip",
+    "color_jitter",
+    "random_grayscale",
+    "random_perspective",
+    "random_affine",
+    "random_rectangle_erase",
+    "random_rotation",
+    "apply_hflip",
+    "compute_hflip_transformation",
+    "apply_vflip",
+    "compute_vflip_transformation",
+    "apply_color_jitter",
+    "compute_intensity_transformation",
+    "apply_grayscale",
+    "apply_perspective",
+    "compute_perspective_transformation",
+    "apply_affine",
+    "compute_affine_transformation",
+    "apply_rotation",
+    "compute_rotate_tranformation",
+    "apply_crop",
+    "compute_crop_transformation",
+    "apply_erase_rectangles",
+    "apply_adjust_brightness",
+    "apply_adjust_contrast",
+    "apply_adjust_saturation",
+    "apply_adjust_hue",
+    "apply_adjust_gamma",
+    "apply_motion_blur",
+    "apply_solarize",
+    "apply_posterize",
+    "apply_sharpness",
+    "apply_equalize",
+    "apply_mixup",
+    "apply_cutmix",
+]
+
 
 @_validate_input
 def random_hflip(input: torch.Tensor, p: float = 0.5, return_transform: bool = False

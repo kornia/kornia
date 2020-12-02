@@ -15,6 +15,11 @@ from .utils import (
     _adapted_sampling
 )
 
+__all__ = [
+    "AugmentationBase2D",
+    "AugmentationBase3D"
+]
+
 
 class _BasicAugmentationBase(nn.Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.

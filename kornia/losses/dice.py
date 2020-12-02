@@ -6,6 +6,11 @@ import torch.nn.functional as F
 
 from kornia.utils.one_hot import one_hot
 
+__all__ = [
+    "dice_loss",
+    "DiceLoss"
+]
+
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py

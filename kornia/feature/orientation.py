@@ -11,6 +11,12 @@ from kornia.feature import (extract_patches_from_pyramid, make_upright,
                             normalize_laf, raise_error_if_laf_is_not_valid)
 from kornia.geometry import rad2deg, angle_to_rotation_matrix
 
+__all__ = [
+    "PassLAF",
+    "PatchDominantGradientOrientation",
+    "LAFOrienter",
+]
+
 
 class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator"""

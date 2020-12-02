@@ -7,6 +7,11 @@ import torch.nn.functional as F
 from kornia.filters.kernels import normalize_kernel2d
 import kornia.testing as testing
 
+__all__ = [
+    "filter2D",
+    "filter3D"
+]
+
 
 def compute_padding(kernel_size: List[int]) -> List[int]:
     """Computes padding tuple."""

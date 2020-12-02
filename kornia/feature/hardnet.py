@@ -9,6 +9,11 @@ urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pre
 urls["liberty_aug"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"  # noqa pylint: disable
 
 
+__all__ = [
+    "HardNet"
+]
+
+
 class HardNet(nn.Module):
     """
     Module, which computes HardNet descriptors of given grayscale patches of 32x32.

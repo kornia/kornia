@@ -1,6 +1,13 @@
 import torch
 from typing import Tuple, Optional
 
+__all__ = [
+    "match_nn",
+    "match_mnn",
+    "match_snn",
+    "match_smnn",
+]
+
 
 def match_nn(desc1: torch.Tensor, desc2: torch.Tensor,
              dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:

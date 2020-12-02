@@ -4,6 +4,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+__all__ = [
+    "NonMaximaSuppression2d",
+    "NonMaximaSuppression3d",
+    "nms2d",
+    "nms3d",
+]
+
 
 def _get_nms_kernel2d(kx: int, ky: int) -> torch.Tensor:
     """Utility function, which returns neigh2channels conv kernel"""

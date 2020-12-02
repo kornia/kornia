@@ -6,6 +6,35 @@ from math import sqrt
 from kornia.geometry.transform.affwarp import rotate, rotate3d
 from kornia.utils import _extract_device_dtype
 
+__all__ = [
+    "normalize_kernel2d",
+    "gaussian",
+    "gaussian_discrete_erf",
+    "gaussian_discrete",
+    "laplacian_1d",
+    "get_box_kernel2d",
+    "get_binary_kernel2d",
+    "get_sobel_kernel_3x3",
+    "get_sobel_kernel_5x5_2nd_order",
+    "get_diff_kernel_3x3",
+    "get_diff_kernel3d",
+    "get_diff_kernel3d_2nd_order",
+    "get_sobel_kernel2d",
+    "get_sobel_kernel2d_2nd_order",
+    "get_diff_kernel2d",
+    "get_diff_kernel2d_2nd_order",
+    "get_spatial_gradient_kernel2d",
+    "get_spatial_gradient_kernel3d",
+    "get_gaussian_kernel1d",
+    "get_gaussian_discrete_kernel1d",
+    "get_gaussian_erf_kernel1d",
+    "get_gaussian_kernel2d",
+    "get_laplacian_kernel1d",
+    "get_laplacian_kernel2d",
+    "get_motion_kernel2d",
+    "get_motion_kernel3d",
+]
+
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     r"""Normalizes both derivative and smoothing kernel.

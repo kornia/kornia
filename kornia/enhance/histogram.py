@@ -4,6 +4,8 @@ import torch
 
 
 __all__ = [
+    "marginal_pdf",
+    "joint_pdf",
     "histogram",
     "histogram2d",
 ]

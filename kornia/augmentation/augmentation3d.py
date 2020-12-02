@@ -13,6 +13,18 @@ from .utils import (
     _singular_range_check
 )
 
+__all__ = [
+    "RandomHorizontalFlip3D",
+    "RandomVerticalFlip3D",
+    "RandomDepthicalFlip3D",
+    "RandomRotation3D",
+    "RandomAffine3D",
+    "RandomMotionBlur3D",
+    "RandomCrop3D",
+    "CenterCrop3D",
+    "RandomEqualize3D"
+]
+
 
 class RandomHorizontalFlip3D(AugmentationBase3D):
     r"""Apply random horizontal flip to 3D volumes (5D tensor).

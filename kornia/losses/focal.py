@@ -6,9 +6,14 @@ import torch.nn.functional as F
 
 from kornia.utils.one_hot import one_hot
 
+__all__ = [
+    "focal_loss",
+    "FocalLoss"
+]
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
+
 
 def focal_loss(
         input: torch.Tensor,

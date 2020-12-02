@@ -14,6 +14,16 @@ from ..utils import (
 from kornia.utils import _extract_device_dtype
 
 
+__all__ = [
+    "random_rotation_generator3d",
+    "random_affine_generator3d",
+    "random_motion_blur_generator3d",
+    "center_crop_generator3d",
+    "random_crop_generator3d",
+    "random_perspective_generator3d"
+]
+
+
 def random_rotation_generator3d(
     batch_size: int,
     degrees: torch.Tensor,

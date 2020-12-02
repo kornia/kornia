@@ -6,6 +6,11 @@ import torch.nn.functional as F
 
 from torch.nn.modules.utils import _pair
 
+__all__ = [
+    "extract_tensor_patches",
+    "ExtractTensorPatches",
+]
+
 
 class ExtractTensorPatches(nn.Module):
     r"""Module that extract patches from tensors and stack them.

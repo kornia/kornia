@@ -7,6 +7,11 @@ import kornia
 from kornia.filters.kernels import get_laplacian_kernel2d
 from kornia.filters.kernels import normalize_kernel2d
 
+__all__ = [
+    "Laplacian",
+    "laplacian"
+]
+
 
 class Laplacian(nn.Module):
     r"""Creates an operator that returns a tensor using a Laplacian filter.

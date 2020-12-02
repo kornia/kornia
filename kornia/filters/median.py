@@ -5,6 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from kornia.filters.kernels import get_binary_kernel2d
 
+__all__ = [
+    "MedianBlur",
+    "median_blur"
+]
+
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
     r"""Utility function that computes zero padding tuple."""

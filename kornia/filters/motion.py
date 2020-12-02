@@ -6,6 +6,13 @@ import torch.nn as nn
 from kornia.filters.kernels import get_motion_kernel2d, get_motion_kernel3d
 from kornia.filters.filter import filter2D, filter3D
 
+__all__ = [
+    "MotionBlur",
+    "MotionBlur3D",
+    "motion_blur",
+    "motion_blur3d",
+]
+
 
 class MotionBlur(nn.Module):
     r"""Blur 2D images (4D tensor) using the motion filter.

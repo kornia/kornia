@@ -6,6 +6,11 @@ import torch.nn as nn
 import kornia
 from kornia.filters.kernels import get_gaussian_kernel2d
 
+__all__ = [
+    "GaussianBlur2d",
+    "gaussian_blur2d"
+]
+
 
 class GaussianBlur2d(nn.Module):
     r"""Creates an operator that blurs a tensor using a Gaussian filter.

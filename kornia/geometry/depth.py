@@ -10,6 +10,13 @@ from kornia.utils import create_meshgrid
 from kornia.filters import spatial_gradient
 
 
+__all__ = [
+    "depth_to_3d",
+    "depth_to_normals",
+    "warp_frame_depth",
+]
+
+
 def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 

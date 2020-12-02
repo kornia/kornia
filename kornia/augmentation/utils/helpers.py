@@ -6,6 +6,25 @@ from functools import wraps
 
 from kornia.utils import _extract_device_dtype
 
+__all__ = [
+    "_validate_input",
+    "_validate_input3D",
+    "_infer_batch_shape",
+    "_infer_batch_shape3d",
+    "_transform_input",
+    "_transform_input3d",
+    "_validate_input_dtype",
+    "_transform_output_shape",
+    "_validate_shape",
+    "_validate_input_shape",
+    "_adapted_rsampling",
+    "_adapted_sampling",
+    "_adapted_uniform",
+    "_adapted_beta",
+    "_check_and_bound",
+    "_shape_validation",
+]
+
 
 def _validate_input(f: Callable) -> Callable:
     r"""Validates the 2D input of the wrapped function.

@@ -4,6 +4,11 @@ r"""Losses based on the divergence between probability distributions."""
 import torch
 import torch.nn.functional as F
 
+__all__ = [
+    "js_div_loss_2d",
+    "kl_div_loss_2d"
+]
+
 
 def _kl_div_2d(p, q):
     # D_KL(P || Q)

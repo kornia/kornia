@@ -3,6 +3,13 @@ import torch.nn as nn
 
 from kornia.color.rgb import bgr_to_rgb
 
+__all__ = [
+    "rgb_to_grayscale",
+    "bgr_to_grayscale",
+    "RgbToGrayscale",
+    "BgrToGrayscale"
+]
+
 
 def rgb_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to grayscale version of image.

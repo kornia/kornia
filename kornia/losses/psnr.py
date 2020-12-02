@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 from torch.nn.functional import mse_loss
 
+__all__ = [
+    "psnr_loss",
+    "PSNRLoss"
+]
+
 
 class PSNRLoss(nn.Module):
     r"""Creates a criterion that calculates the PSNR between 2 images. Given an m x n image, the PSNR is:

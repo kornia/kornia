@@ -5,6 +5,15 @@ import torch.nn.functional as F
 from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d
 from kornia.filters.kernels import normalize_kernel2d
 
+__all__ = [
+    "SpatialGradient",
+    "SpatialGradient3d",
+    "Sobel",
+    "spatial_gradient",
+    "spatial_gradient3d",
+    "sobel",
+]
+
 
 class SpatialGradient(nn.Module):
     r"""Computes the first order image derivative in both x and y using a Sobel

@@ -3,6 +3,21 @@ from typing import Union, cast
 import torch
 import torch.nn as nn
 
+__all__ = [
+    "rgb_to_bgr",
+    "bgr_to_rgb",
+    "rgb_to_rgba",
+    "bgr_to_rgba",
+    "rgba_to_rgb",
+    "rgba_to_bgr",
+    "BgrToRgb",
+    "RgbToBgr",
+    "RgbToRgba",
+    "BgrToRgba",
+    "RgbaToRgb",
+    "RgbaToBgr",
+]
+
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a RGB image to BGR.
