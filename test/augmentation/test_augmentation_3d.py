@@ -1065,11 +1065,18 @@ class TestRandomRotation3D:
 >>>>>>> RandomRotation3D cuda fix (#810)
 =======
 <<<<<<< master
+<<<<<<< master
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
 =======
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1, 1)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+=======
+        input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
+>>>>>>> RandomRotation3D cuda fix (#810)
+>>>>>>> RandomRotation3D cuda fix (#810)
         res = f(input)
         assert (res[0] == res[1]).all()
 
