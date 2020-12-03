@@ -858,10 +858,14 @@ class TestRandomRotation3D:
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
 =======
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1, 1)
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+        input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
+>>>>>>> RandomRotation3D cuda fix (#810)
         res = f(input)
         assert (res[0] == res[1]).all()
 
