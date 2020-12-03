@@ -5,6 +5,8 @@ kornia.geometry.conversions
 
 .. autofunction:: rad2deg
 .. autofunction:: deg2rad
+.. autofunction:: pol2cart
+.. autofunction:: cart2pol
 .. autofunction:: convert_points_from_homogeneous
 .. autofunction:: convert_points_to_homogeneous
 .. autofunction:: convert_affinematrix_to_homography

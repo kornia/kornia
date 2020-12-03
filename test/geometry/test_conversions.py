@@ -364,44 +364,49 @@ def test_deg2rad(batch_shape, device, dtype):
                      raise_exception=True)
 
 
-@pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-def test_pol2cart(batch_shape, device):
-    # generate input data
-    rho = torch.rand(batch_shape)
-    phi = kornia.pi * torch.rand(batch_shape)
-    rho = rho.to(device)
-    phi = phi.to(device)
+class TestPolCartConversions:
+    def test_smoke(self, device, dtype):
+        x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+        assert kornia.pol2cart(x, x) is not None
+        assert kornia.cart2pol(x, x) is not None
 
-    # convert pol/cart
-    x_pol2cart, y_pol2cart = kornia.pol2cart(rho, phi)
-    rho_pol2cart, phi_pol2cart = kornia.cart2pol(x_pol2cart, y_pol2cart)
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_pol2cart(self, batch_shape, device, dtype):
+        # generate input data
+        rho = torch.rand(batch_shape, dtype=dtype)
+        phi = kornia.pi * torch.rand(batch_shape, dtype=dtype)
+        rho = rho.to(device)
+        phi = phi.to(device)
 
-    assert_allclose(rho, rho_pol2cart)
-    assert_allclose(phi, phi_pol2cart)
+        # convert pol/cart
+        x_pol2cart, y_pol2cart = kornia.pol2cart(rho, phi)
+        rho_pol2cart, phi_pol2cart = kornia.cart2pol(x_pol2cart, y_pol2cart)
 
-    assert gradcheck(kornia.pol2cart, (tensor_to_gradcheck_var(rho),
-                                       tensor_to_gradcheck_var(phi), ), raise_exception=True)
+        assert_allclose(rho, rho_pol2cart)
+        assert_allclose(phi, phi_pol2cart)
 
+        assert gradcheck(kornia.pol2cart, (tensor_to_gradcheck_var(rho),
+                                           tensor_to_gradcheck_var(phi), ), raise_exception=True)
 
-@pytest.mark.parametrize("batch_shape", [
-    (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-def test_cart2pol(batch_shape, device):
-    # generate input data
-    x = torch.rand(batch_shape)
-    y = torch.rand(batch_shape)
-    x = x.to(device)
-    y = y.to(device)
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_cart2pol(self, batch_shape, device, dtype):
+        # generate input data
+        x = torch.rand(batch_shape, dtype=dtype)
+        y = torch.rand(batch_shape, dtype=dtype)
+        x = x.to(device)
+        y = y.to(device)
 
-    # convert cart/pol
-    rho_cart2pol, phi_cart2pol = kornia.cart2pol(x, y)
-    x_cart2pol, y_cart2pol = kornia.pol2cart(rho_cart2pol, phi_cart2pol)
+        # convert cart/pol
+        rho_cart2pol, phi_cart2pol = kornia.cart2pol(x, y)
+        x_cart2pol, y_cart2pol = kornia.pol2cart(rho_cart2pol, phi_cart2pol)
 
-    assert_allclose(x, x_cart2pol)
-    assert_allclose(y, y_cart2pol)
+        assert_allclose(x, x_cart2pol)
+        assert_allclose(y, y_cart2pol)
 
-    assert gradcheck(kornia.cart2pol, (tensor_to_gradcheck_var(x),
-                                       tensor_to_gradcheck_var(y), ), raise_exception=True)
+        assert gradcheck(kornia.cart2pol, (tensor_to_gradcheck_var(x),
+                                           tensor_to_gradcheck_var(y), ), raise_exception=True)
 
 
 class TestConvertPointsToHomogeneous:
