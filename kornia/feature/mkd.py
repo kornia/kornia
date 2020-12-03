@@ -520,31 +520,21 @@ class MKDDescriptor(nn.Module):
                                         'replicate')
         self.gradients = MKDGradients()
 
-        # Cartesian embedding with absolute gradients.
-        if kerneltype in ['cart', 'concat']:
-            ori_abs = EmbedGradients(patch_size=patch_size,
-                                     relative=False)
-            cart_emb = ExplicitSpacialEncoding(kerneltype='cart',
-                                               fmap_size=patch_size,
-                                               in_dims=ori_abs.kernel.d)
-            self.cart_feats = nn.Sequential(ori_abs, cart_emb)
+        self.parametrizations = ['polar', 'cart'] if self.kerneltype == 'concat' else [self.kerneltype]
 
-        # Polar embedding with relative gradients.
-        if kerneltype in ['polar', 'concat']:
-            ori_rel = EmbedGradients(patch_size=patch_size,
-                                     relative=True)
-            polar_emb = ExplicitSpacialEncoding(kerneltype='polar',
-                                                fmap_size=patch_size,
-                                                in_dims=ori_rel.kernel.d)
-            self.polar_feats = nn.Sequential(ori_rel, polar_emb)
-
+        # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
-        if kerneltype == 'concat':
-            self.odims = polar_emb.odims + cart_emb.odims
-        elif kerneltype == 'cart':
-            self.odims = cart_emb.odims
-        elif kerneltype == 'polar':
-            self.odims = polar_emb.odims
+        relative_orientations = {'polar': True, 'cart': False}
+        self.feats = {'polar': None, 'cart': None}
+        for parametrization in self.parametrizations:
+            gradient_embedding = EmbedGradients(patch_size=patch_size,
+                                                relative=relative_orientations[parametrization])
+            spatial_encoding = ExplicitSpacialEncoding(kerneltype=parametrization,
+                                                       fmap_size=patch_size,
+                                                       in_dims=gradient_embedding.kernel.d)
+
+            self.feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
+            self.odims += spatial_encoding.odims
 
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
@@ -572,19 +562,14 @@ class MKDDescriptor(nn.Module):
         g = self.smoothing(patches)
         g = self.gradients(g)
 
-        # Extract polar and/or cart features.
-        if self.kerneltype in ['polar', 'concat']:
-            pe = self.polar_feats(g)
-        if self.kerneltype in ['cart', 'concat']:
-            ce = self.cart_feats(g)
+        # Extract polar/cart features.
+        features = []
+        for parametrization in self.parametrizations:
+            self.feats[parametrization].to(g.device)
+            features.append(self.feats[parametrization](g))
 
         # Concatenate.
-        if self.kerneltype == 'concat':
-            y = torch.cat([pe, ce], dim=1)
-        elif self.kerneltype == 'cart':
-            y = ce
-        elif self.kerneltype == 'polar':
-            y = pe
+        y = torch.cat(features, dim=1)
 
         # l2-normalize.
         y = F.normalize(y, dim=1)
