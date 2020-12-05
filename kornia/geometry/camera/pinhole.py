@@ -303,7 +303,7 @@ class PinholeCamera:
         """
         return self.apply(lambda tensor: tensor.to(*args, **kwargs))
 
-    def __getitem__(self, ixs) -> 'PinholeCamera':
+    def __getitem__(self, index: Union[int, slice]) -> 'PinholeCamera':
         r"""Sub-selects PinholeCamera across the batch dimension.
 
         Args:
@@ -317,15 +317,15 @@ class PinholeCamera:
             >>> camera = PinholeCamera(...) # camera.batch_size() == 3
             >>> sliced = camera[1:] # sliced.batch_size() == 2
         """
-        if not isinstance(ixs, (int, slice)):
+        if not isinstance(index, (int, slice)):
             raise TypeError("PinholeCamera can be indexed only with integers or
-                             integer slices, got {}".format(type(ixs)))
+                             integer slices, got {}".format(type(index)))
 
         # we have to keep the batch dimension
-        if isinstance(ixs, int):
-            ixs = slice(ixs, ixs+1)
+        if isinstance(index, int):
+            index = slice(index, index+1)
 
-        return self.apply(lambda t: t[ixs])
+        return self.apply(lambda t: t[index])
 
     def pin_memory(self) -> 'PinholeCamera':
     r"""Returns the PinholeCamera with member tensors moved to pinned memory"""
