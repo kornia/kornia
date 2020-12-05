@@ -192,6 +192,75 @@ class TestPinholeCamera:
         assert_allclose(
             pinhole_scale.width, pinhole.width * scale_val)
 
+    def _make_example_camera(self):
+        return PinholeCamera(
+            torch.randn(3, 4, 4),
+            torch.randn(3, 4, 4),
+            torch.randn(3),
+            torch.randn(3),
+        )
+
+    def test_to_dtype(self, device):
+        camera = self._make_example_camera().to(device)
+        assert camera.extrinsics.dtype == torch.float32
+
+        camera = camera.to(torch.float64)
+        assert camera.extrinsics.dtype == torch.float64
+        assert camera.intrinsics.dtype == torch.float64
+        assert camera.height.dtype == torch.float64
+        assert camera.width.dtype == torch.float64
+
+        camera = camera.to(torch.float32)
+        assert camera.extrinsics.dtype == torch.float32
+        assert camera.intrinsics.dtype == torch.float32
+        assert camera.height.dtype == torch.float32
+        assert camera.width.dtype == torch.float32
+          
+    @pytest.mark.parametrize("device", ("cuda"))
+    def test_to_device(self, device):
+        cpu = torch.device('cpu')
+        gpu = torch.device('cuda')
+
+        camera = self._make_example_camera()
+        assert camera.device == cpu
+
+        camera = camera.to(gpu)
+        assert camera.device == gpu
+
+        camera = camera.to(cpu)
+        assert camera.device == cpu
+
+    @pytest.mark.parametrize("device", ("cuda"))
+    def test_pin_memory(self, device):
+        camera = self._make_example_camera().to(device)
+        assert not camera.intrinsics.is_pinned()
+        assert not camera.extrinsics.is_pinned()
+        assert not camera.height.is_pinned()
+        assert not camera.width.is_pinned()
+
+        camera = camera.pin_memory()
+        assert camera.intrinsics.is_pinned()
+        assert camera.extrinsics.is_pinned()
+        assert camera.height.is_pinned()
+        assert camera.width.is_pinned()
+
+    def test_getitem_slice(self, device):
+        camera = _make_example_camera().to(device)
+
+        sliced = camera[1:]
+        assert (sliced.intrinsics == camera.intrinsics[1:]).all().item()
+        assert (sliced.extrinsics == camera.intrinsics[1:]).all().item()
+        assert (sliced.height == camera.height[1:]).all().item()
+        assert (sliced.width == camera.width[1:]).all().item()
+
+    def test_getitem_int(self, device):
+        camera = _make_example_camera().to(device)
+
+        sliced = camera[1]
+        assert (sliced.intrinsics[0] == camera.intrinsics[1]).all().item()
+        assert (sliced.extrinsics[0] == camera.intrinsics[1]).all().item()
+        assert (sliced.height[0] == camera.height[1]).all().item()
+        assert (sliced.width[0] == camera.width[1]).all().item()
 
 '''@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])
 def test_scale_pinhole(batch_size, device_type):
