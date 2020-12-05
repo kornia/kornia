@@ -318,8 +318,8 @@ class PinholeCamera:
             >>> sliced = camera[1:] # sliced.batch_size() == 2
         """
         if not isinstance(index, (int, slice)):
-            raise TypeError("PinholeCamera can be indexed only with integers or
-                             integer slices, got {}".format(type(index)))
+            raise TypeError("PinholeCamera can be indexed only with integers "
+                           f"or integer slices, got {type(index)}.")
 
         # we have to keep the batch dimension
         if isinstance(index, int):
@@ -328,12 +328,12 @@ class PinholeCamera:
         return self.apply(lambda t: t[index])
 
     def pin_memory(self) -> 'PinholeCamera':
-    r"""Returns the PinholeCamera with member tensors moved to pinned memory"""
+        r"""Returns the PinholeCamera with member tensors moved to pinned memory"""
         return self.apply(lambda t: t.pin_memory())
 
     @property
     def device(self) -> torch.device:
-    r"""Returns the device on which tensors of PinholeCamera reside"""
+        r"""Returns the device on which tensors of PinholeCamera reside"""
         return self.intrinsics.device
 
     # NOTE: just for test. Decide if we keep it.
