@@ -1,4 +1,4 @@
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional, Union, Callable
 import warnings
 
 import torch
@@ -283,30 +283,57 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
-    def to(self, *args, **kwargs) -> 'PinholeCamera':
+    def apply(self, f: Callable[[torch.Tensor], torch.Tensor]) -> 'PinholeCamera':
+        r"""Returns a PinholeCamera with callback f applied to all its tensor
+        members.
+        """
         return PinholeCamera(
-            self.intrinsics.to(*args, **kwargs),
-            self.extrinsics.to(*args, **kwargs),
-            self.height.to(*args, **kwargs),
-            self.width.to(*args, **kwargs),
+            f(self.intrinsics),
+            f(self.extrinsics),
+            f(self.height),
+            f(self.width),
         )
+        
+    def to(self, *args, **kwargs) -> 'PinholeCamera':
+        r"""Returns PinholeCamera with torch.Tensor.to(*args, **kwrags) applied
+        to all tensor members.
+
+        .. note::
+            Useful for moving PinholeCamera between CPU and GPU.
+        """
+        return self.apply(lambda tensor: tensor.to(*args, **kwargs))
 
     def __getitem__(self, ixs) -> 'PinholeCamera':
-        assert isinstance(ixs, (int, slice))
+        r"""Sub-selects PinholeCamera across the batch dimension.
+
+        Args:
+            index (slice or int): the range to select. Range selections
+            (`camera[start:end]`) as well as integer selections
+            (`camera[index]`) are supported, but because PinholeCamera always has
+            a leading batch dimension the latter is just shorthand for 
+            `camera[index:index+1]`.
+
+        Example:
+            >>> camera = PinholeCamera(...) # camera.batch_size() == 3
+            >>> sliced = camera[1:] # sliced.batch_size() == 2
+        """
+        if not isinstance(ixs, (int, slice)):
+            raise TypeError("PinholeCamera can be indexed only with integers or
+                             integer slices, got {}".format(type(ixs)))
 
         # we have to keep the batch dimension
         if isinstance(ixs, int):
             ixs = slice(ixs, ixs+1)
 
-        return PinholeCamera(
-            self.intrinsics[ixs],
-            self.extrinsics[ixs],
-            self.height[ixs],
-            self.width[ixs],
-        )
+        return self.apply(lambda t: t[ixs])
+
+    def pin_memory(self) -> 'PinholeCamera':
+    r"""Returns the PinholeCamera with member tensors moved to pinned memory"""
+        return self.apply(lambda t: t.pin_memory())
 
     @property
     def device(self) -> torch.device:
+    r"""Returns the device on which tensors of PinholeCamera reside"""
         return self.intrinsics.device
 
     # NOTE: just for test. Decide if we keep it.
