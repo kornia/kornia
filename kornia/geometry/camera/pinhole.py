@@ -44,8 +44,17 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
-        if not all(data.shape[0] for data in data_iter):
-            raise ValueError("Arguments shapes must match")
+        data_iter = iter(data_iter)
+        first = next(data_iter)
+
+        for data in data_iter:
+            if data.shape[0] != first.shape[0]:
+                raise ValueError("Arguments shapes must match")
+            if data.dtype != first.dtype:
+                raise ValueError("Arguments dtypes must match")
+            if data.device != first.device:
+                raise ValueError("Arguments devices must match")
+
         return True
 
     @staticmethod
