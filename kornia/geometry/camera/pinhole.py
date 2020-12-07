@@ -224,14 +224,6 @@ class PinholeCamera:
         """
         return self.extrinsics[..., :3, -1:]
 
-    def clone(self) -> 'PinholeCamera':
-        r"""Returns a deep copy of the current object instance."""
-        height: torch.Tensor = self.height.clone()
-        width: torch.Tensor = self.width.clone()
-        intrinsics: torch.Tensor = self.intrinsics.clone()
-        extrinsics: torch.Tensor = self.extrinsics.clone()
-        return PinholeCamera(intrinsics, extrinsics, height, width)
-
     def intrinsics_inverse(self) -> torch.Tensor:
         r"""Returns the inverse of the 4x4 instrisics matrix.
 
@@ -293,6 +285,10 @@ class PinholeCamera:
             f(self.height),
             f(self.width),
         )
+
+    def clone(self) -> 'PinholeCamera':
+        r"""Returns a deep copy of the current object instance."""
+        return self.apply(lambda tensor: tensor.clone())
 
     def to(self, *args, **kwargs) -> 'PinholeCamera':
         r"""Returns PinholeCamera with torch.Tensor.to(*args, **kwrags) applied
