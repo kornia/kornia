@@ -69,7 +69,7 @@ class PinholeCamera:
         if not torch.is_floating_point(data):
             raise ValueError("Argument {0} shape must be of floating point "
                              "type. Got {1}".format(data_name, data.dtype))
-            
+
         return True
 
     @property
@@ -293,7 +293,7 @@ class PinholeCamera:
             f(self.height),
             f(self.width),
         )
-        
+
     def to(self, *args, **kwargs) -> 'PinholeCamera':
         r"""Returns PinholeCamera with torch.Tensor.to(*args, **kwrags) applied
         to all tensor members.
@@ -310,7 +310,7 @@ class PinholeCamera:
             index (slice or int): the range to select. Range selections
             (`camera[start:end]`) as well as integer selections
             (`camera[index]`) are supported, but because PinholeCamera always has
-            a leading batch dimension the latter is just shorthand for 
+            a leading batch dimension the latter is just shorthand for
             `camera[index:index+1]`.
 
         Example:
@@ -319,11 +319,11 @@ class PinholeCamera:
         """
         if not isinstance(index, (int, slice)):
             raise TypeError("PinholeCamera can be indexed only with integers "
-                           f"or integer slices, got {type(index)}.")
+                            f"or integer slices, got {type(index)}.")
 
         # we have to keep the batch dimension
         if isinstance(index, int):
-            index = slice(index, index+1)
+            index = slice(index, index + 1)
 
         return self.apply(lambda t: t[index])
 
