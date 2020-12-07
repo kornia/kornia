@@ -315,8 +315,13 @@ class PinholeCamera:
             `camera[index:index+1]`.
 
         Example:
-            >>> camera = PinholeCamera(...) # camera.batch_size() == 3
-            >>> sliced = camera[1:] # sliced.batch_size() == 2
+            >>> intrinsics = torch.randn(3, 4, 4)
+            >>> extrinsics = torch.randn(3, 4, 4)
+            >>> height = torch.randn(3)
+            >>> width = torch.randn(3)
+            >>> camera = PinholeCamera(intrinsics, extrinsics, height, width)
+            >>> sliced = camera[1:]
+            >>> assert (sliced.intrinsics == camera.intrinsics[1:]).all()
         """
         if not isinstance(index, (int, slice)):
             raise TypeError("PinholeCamera can be indexed only with integers "
