@@ -256,13 +256,21 @@ class TestHomographyWarper:
 
 
 class TestHomographyNormalTransform:
-
     def test_transform2d(self):
         height, width = 2, 5
         output = kornia.normal_transform_pixel(height, width)
         expected = torch.tensor([[
             [0.5, 0.0, -1.],
             [0.0, 2.0, -1.],
+            [0.0, 0.0, 1.]]])
+        assert_allclose(output, expected)
+
+        # check to ensure it handles case where a dimension == 1
+        height = 1
+        output = kornia.normal_transform_pixel(height, width)
+        expected = torch.tensor([[
+            [0.5, 0.0, -1.],
+            [0.0, 2e14, -1.],
             [0.0, 0.0, 1.]]])
         assert_allclose(output, expected)
 
@@ -280,6 +288,17 @@ class TestHomographyNormalTransform:
         expected = torch.tensor([[
             [0.4, 0.0, 0.0, -1.],
             [0.0, 2.0, 0.0, -1.],
+            [0.0, 0.0, 0.6667, -1.],
+            [0.0, 0.0, 0.0, 1.],
+        ]])
+        assert_allclose(output, expected)
+
+        # check to ensure it handles case where a dimension == 1
+        height, width, depth = 1, 6, 4
+        output = kornia.normal_transform_pixel3d(depth, height, width)
+        expected = torch.tensor([[
+            [0.4, 0.0, 0.0, -1.],
+            [0.0, 2e14, 0.0, -1.],
             [0.0, 0.0, 0.6667, -1.],
             [0.0, 0.0, 0.0, 1.],
         ]])
