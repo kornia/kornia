@@ -288,16 +288,16 @@ def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
     Returns:
         torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`.
     """
-    # prevent divide by zero bugs
-    width = 1e-14 if width == 1 else width - 1.0
-    height = 1e-14 if height == 1 else height - 1.0
-
     tr_mat = torch.tensor([[1.0, 0.0, -1.0],
                            [0.0, 1.0, -1.0],
                            [0.0, 0.0, 1.0]])  # 3x3
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height
+    # prevent divide by zero bugs
+    width_denom: float = 1e-14 if width == 1 else width - 1.0
+    height_denom: float = 1e-14 if height == 1 else height - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -313,19 +313,19 @@ def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tenso
     Returns:
         Tensor: normalized transform with shape :math:`(1, 4, 4)`.
     """
-    # prevent divide by zero bugs
-    width = 1e-14 if width == 1 else width - 1.0
-    height = 1e-14 if height == 1 else height - 1.0
-    depth = 1e-14 if depth == 1 else depth - 1.0
-
     tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
                            [0.0, 1.0, 0.0, -1.0],
                            [0.0, 0.0, 1.0, -1.0],
                            [0.0, 0.0, 0.0, 1.0]])  # 4x4
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height
-    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth
+    # prevent divide by zero bugs
+    width_denom: float = 1e-14 if width == 1 else width - 1.0
+    height_denom: float = 1e-14 if height == 1 else height - 1.0
+    depth_denom: float = 1e-14 if depth == 1 else depth - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
 
     return tr_mat.unsqueeze(0)  # 1x4x4
 
