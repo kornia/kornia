@@ -193,7 +193,7 @@ class TestPinholeCamera:
             pinhole_scale.width, pinhole.width * scale_val)
 
     def _make_example_camera(self):
-        return PinholeCamera(
+        return kornia.PinholeCamera(
             torch.randn(3, 4, 4),
             torch.randn(3, 4, 4),
             torch.randn(3),
@@ -215,9 +215,11 @@ class TestPinholeCamera:
         assert camera.intrinsics.dtype == torch.float32
         assert camera.height.dtype == torch.float32
         assert camera.width.dtype == torch.float32
-          
-    @pytest.mark.parametrize("device", ("cuda"))
+
     def test_to_device(self, device):
+        if 'cuda' not in str(device):
+            pytest.skip('This test is cuda-specific')
+
         cpu = torch.device('cpu')
         gpu = torch.device('cuda')
 
@@ -230,8 +232,10 @@ class TestPinholeCamera:
         camera = camera.to(cpu)
         assert camera.device == cpu
 
-    @pytest.mark.parametrize("device", ("cuda"))
     def test_pin_memory(self, device):
+        if 'cuda' not in str(device):
+            pytest.skip('This test is cuda-specific')
+
         camera = self._make_example_camera().to(device)
         assert not camera.intrinsics.is_pinned()
         assert not camera.extrinsics.is_pinned()
@@ -245,20 +249,20 @@ class TestPinholeCamera:
         assert camera.width.is_pinned()
 
     def test_getitem_slice(self, device):
-        camera = _make_example_camera().to(device)
+        camera = self._make_example_camera().to(device)
 
         sliced = camera[1:]
         assert (sliced.intrinsics == camera.intrinsics[1:]).all().item()
-        assert (sliced.extrinsics == camera.intrinsics[1:]).all().item()
+        assert (sliced.extrinsics == camera.extrinsics[1:]).all().item()
         assert (sliced.height == camera.height[1:]).all().item()
         assert (sliced.width == camera.width[1:]).all().item()
 
     def test_getitem_int(self, device):
-        camera = _make_example_camera().to(device)
+        camera = self._make_example_camera().to(device)
 
         sliced = camera[1]
         assert (sliced.intrinsics[0] == camera.intrinsics[1]).all().item()
-        assert (sliced.extrinsics[0] == camera.intrinsics[1]).all().item()
+        assert (sliced.extrinsics[0] == camera.extrinsics[1]).all().item()
         assert (sliced.height[0] == camera.height[1]).all().item()
         assert (sliced.width[0] == camera.width[1]).all().item()
 
