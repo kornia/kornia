@@ -137,11 +137,13 @@ def motion_from_essential_choose_solution(
     x2: torch.Tensor,
     mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""Recovers the relative camera rotation and the translation from an estimated essential matrix.
-    The method check the corresponding points in two images and also returns the triangulated
+    r"""Recover the relative camera rotation and the translation from an estimated essential matrix.
+
+    The method checks the corresponding points in two images and also returns the triangulated
     3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and then chooses
     the best solution based on the combination that gives more 3d points in front of the camera plane from
     :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
+
     Args:
         E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
         K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
@@ -151,11 +153,14 @@ def motion_from_essential_choose_solution(
         x2 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
         mask (torch.Tensor): A boolean mask which can be used to exclude some points from choosing
-          the best solution. This is useful for using this method with function with batched
-          sets of points of different cardinality. Mask is of shape :math:`(*, N)`.
+          the best solution. This is useful for using this function with sets of points of
+          different cardinality (for instance after filtering with RANSAC) while keeping batch
+          semantics. Mask is of shape :math:`(*, N)`.
+
     Returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The rotation and translation plus the
         3d triangulated points. The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
     assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
