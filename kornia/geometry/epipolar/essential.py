@@ -1,5 +1,5 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 
