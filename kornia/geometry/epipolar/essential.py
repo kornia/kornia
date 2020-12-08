@@ -134,15 +134,14 @@ def motion_from_essential_choose_solution(
     K1: torch.Tensor,
     K2: torch.Tensor,
     x1: torch.Tensor,
-    x2: torch.Tensor
+    x2: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Recovers the relative camera rotation and the translation from an estimated essential matrix.
-
     The method check the corresponding points in two images and also returns the triangulated
     3d points. Internally uses :py:meth:`~kornia.geometry.epipolar.decompose_essential_matrix` and then chooses
     the best solution based on the combination that gives more 3d points in front of the camera plane from
     :py:meth:`~kornia.geometry.epipolar.triangulate_points`.
-
     Args:
         E_mat (torch.Tensor): The essential matrix in the form of :math:`(*, 3, 3)`.
         K1 (torch.Tensor): The camera matrix from first camera with shape :math:`(*, 3, 3)`.
@@ -151,11 +150,12 @@ def motion_from_essential_choose_solution(
           coordinates with shape :math:`(*, N, 2)`.
         x2 (torch.Tensor): The set of points seen from the first camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
-
+        mask (torch.Tensor): A boolean mask which can be used to exclude some points from choosing
+          the best solution. This is useful for using this method with function with batched
+          sets of points of different cardinality. Mask is of shape :math:`(*, N)`.
     Returns:
         Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: The rotation and translation plus the
         3d triangulated points. The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
-
     """
     assert len(E_mat.shape) >= 2 and E_mat.shape[-2:], E_mat.shape
     assert len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3), K1.shape
@@ -163,6 +163,9 @@ def motion_from_essential_choose_solution(
     assert len(x1.shape) >= 2 and x1.shape[-1] == 2, x1.shape
     assert len(x2.shape) >= 2 and x2.shape[-1] == 2, x2.shape
     assert len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
+    if mask is not None:
+        assert len(mask.shape) >= 2, mask.shape
+        assert mask.shape == x1.shape[:-1], mask.shape
 
     # compute four possible pose solutions
     Rs, ts = motion_from_essential(E_mat)
@@ -193,7 +196,10 @@ def motion_from_essential_choose_solution(
     d2 = projection.depth(R2, t2, X)
 
     # verify the point values that have a postive depth value
-    mask = ((d1 > 0.) & (d2 > 0.))
+    if mask is None:
+        mask = ((d1 > 0.) & (d2 > 0.))
+    else:
+        mask = ((d1 > 0.) & (d2 > 0.)) & mask.unsqueeze(1)
     mask_indices = torch.max(mask.sum(-1), dim=-1, keepdim=True)[1]
 
     # get pose and points 3d and return
