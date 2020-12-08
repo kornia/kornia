@@ -201,11 +201,11 @@ def motion_from_essential_choose_solution(
     d2 = projection.depth(R2, t2, X)
 
     # verify the point values that have a postive depth value
-    if mask is None:
-        mask = ((d1 > 0.) & (d2 > 0.))
-    else:
-        mask = ((d1 > 0.) & (d2 > 0.)) & mask.unsqueeze(1)
-    mask_indices = torch.max(mask.sum(-1), dim=-1, keepdim=True)[1]
+    depth_mask = ((d1 > 0.) & (d2 > 0.))
+    if mask is not None:
+        depth_mask &= mask.unsqueeze(1)
+
+    mask_indices = torch.max(depth_mask.sum(-1), dim=-1, keepdim=True)[1]
 
     # get pose and points 3d and return
     R_out = Rs[:, mask_indices][:, 0, 0]
