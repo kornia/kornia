@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, cast
 
 import torch
 import torch.nn as nn
@@ -58,8 +58,9 @@ class VideoSequential(nn.Sequential):
                 raise NotImplementedError(f"MixAugmentations are not supported at this moment.")
 
     def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor) -> torch.Size:
-        batch_shape = input.shape
-        return batch_shape[:2] + batch_shape[3:]
+        batch_shape: torch.Size = input.shape
+        # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
+        return cast(torch.Size, batch_shape[:2] + batch_shape[3:])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -70,7 +71,7 @@ class VideoSequential(nn.Sequential):
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
-        return torch.stack([param] * frame_num).T.reshape(-1, *list(param.shape[1:]))
+        return torch.stack([param] * frame_num).t().reshape(-1, *list(param.shape[1:]))
 
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         assert len(input.shape) == 5, f"Input must be (B, C, T, H, W). Got {input.shape}."
@@ -85,8 +86,8 @@ class VideoSequential(nn.Sequential):
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
-        # for aug in self.augmentation_list:
         for aug in self.children():
+            aug = cast(_AugmentationBase, aug)
             param = aug.__forward_parameters__(batch_shape, aug.p, aug.p_batch, aug.same_on_batch)
             if self.same_on_frame:
                 for k, v in param.items():
