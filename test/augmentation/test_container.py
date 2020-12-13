@@ -25,7 +25,7 @@ class TestVideoSequential:
         aug_list = K.VideoSequential(*augmentations, same_on_frame=True)
         output = aug_list(input)
 
-        assert (output[0] == input[0]).all()
+        assert not (output[0] == input[0]).all()
         assert (output[1] == input[1]).all()
 
     @pytest.mark.parametrize('augmentations', [
