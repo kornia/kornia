@@ -55,7 +55,7 @@ class VideoSequential(nn.Sequential):
         self.same_on_frame = same_on_frame
         for aug in args:
             if isinstance(aug, MixAugmentationBase):
-                raise NotImplementedError(f"MixAugmentations are not supported at this moment.")
+                raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {aug}.")
 
     def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor) -> torch.Size:
         batch_shape: torch.Size = input.shape
