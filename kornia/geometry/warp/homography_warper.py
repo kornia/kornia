@@ -263,7 +263,7 @@ class HomographyWarper(nn.Module):
         elif _warped_grid is not None:
             if not _warped_grid.device == patch_src.device:
                 raise TypeError("Patch and warped grid must be on the same device. \
-                                 Got patch.device: {} warped_grid.device: {}. Wheter \
+                                 Got patch.device: {} warped_grid.device: {}. Whether \
                                  recall precompute_warp_grid() with the correct device \
                                  for the homograhy or change the patch device.".format(
                                 patch_src.device, _warped_grid.device))
@@ -272,7 +272,7 @@ class HomographyWarper(nn.Module):
                 align_corners=self.align_corners)
         else:
             raise RuntimeError("Unknown warping. If homographies are not provided \
-                                they must be presetted using the method: \
+                                they must be preset using the method: \
                                 precompute_warp_grid().")
 
         return warped_patch
@@ -326,7 +326,7 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destiantion to be
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
           normalized. :math:`(B, 3, 3)`
         dsize_src (tuple): size of the source image (height, width).
         dsize_dst (tuple): size of the destination image (height, width).
@@ -363,7 +363,7 @@ def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destiantion to be
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
           normalized. :math:`(B, 4, 4)`
         dsize_src (tuple): size of the source image (depth, height, width).
         dsize_src (tuple): size of the destination image (depth, height, width).

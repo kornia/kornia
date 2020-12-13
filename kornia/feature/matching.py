@@ -4,7 +4,7 @@ from typing import Tuple, Optional
 
 def match_nn(desc1: torch.Tensor, desc2: torch.Tensor,
              dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Function, which finds nearest neightbors in desc2 for each vector in desc1.
+    r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
 
@@ -35,7 +35,7 @@ def match_nn(desc1: torch.Tensor, desc2: torch.Tensor,
 
 def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
               dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Function, which finds mutual nearest neightbors in desc2 for each vector in desc1.
+    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
 
@@ -77,7 +77,7 @@ def match_mnn(desc1: torch.Tensor, desc2: torch.Tensor,
 
 def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
               th: float = 0.8, dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Function, which finds nearest neightbors in desc2 for each vector in desc1.
+    """Function, which finds nearest neighbors in desc2 for each vector in desc1.
     which satisfy first to second nearest neighbor distance <= th.
 
     If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.
@@ -116,7 +116,7 @@ def match_snn(desc1: torch.Tensor, desc2: torch.Tensor,
 
 def match_smnn(desc1: torch.Tensor, desc2: torch.Tensor,
                th: float = 0.8, dm: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Function, which finds mutual nearest neightbors in desc2 for each vector in desc1.
+    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
     which satisfy first to second nearest neighbor distance <= th.
 
     If the distance matrix dm is not provided, torch.cdist(desc1, desc2) is used.

@@ -263,7 +263,7 @@ def hessian_response(input: torch.Tensor,
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Difference-of-Gaussian responce given the Gaussian 5d input:
+    r"""Computes the Difference-of-Gaussian response given the Gaussian 5d input:
 
 
     Args:
