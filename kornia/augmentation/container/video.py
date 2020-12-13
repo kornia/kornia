@@ -26,8 +26,8 @@ class VideoSequential(nn.Sequential):
 
         >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1),
-        ...     kornia.augmentation.RandomAffine(360),
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ... same_on_frame=True)
         >>> output = aug_list(input)
         >>> (output[0, :, 0] == output[0, :, 1]).all()
@@ -40,8 +40,8 @@ class VideoSequential(nn.Sequential):
         If set `same_on_frame` to False:
 
         >>> aug_list = VideoSequential(
-        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1),
-        ...     kornia.augmentation.RandomAffine(360),
+        ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ... same_on_frame=False)
         >>> output = aug_list(input)
         >>> output.shape
@@ -87,7 +87,7 @@ class VideoSequential(nn.Sequential):
             batch_shape = input.shape
         # for aug in self.augmentation_list:
         for aug in self.children():
-            param = aug.generate_parameters(batch_shape)
+            param = aug.__forward_parameters__(batch_shape, aug.p, aug.p_batch, aug.same_on_batch)
             if self.same_on_frame:
                 for k, v in param.items():
                     # TODO: revise colorjitter order param in the future to align the standard.

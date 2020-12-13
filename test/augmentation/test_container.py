@@ -15,20 +15,41 @@ class TestVideoSequential:
 
     @pytest.mark.parametrize('augmentations', [
         [
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=.5),
+            K.RandomAffine(360, p=.5),
+        ]
+    ])
+    def test_p_half(self, augmentations, device, dtype):
+        input = torch.randn(1, 3, 4, 5, 6, device=device, dtype=dtype).repeat(2, 1, 1, 1, 1)
+        torch.manual_seed(21)
+        aug_list = K.VideoSequential(*augmentations, same_on_frame=True)
+        output = aug_list(input)
+
+        assert (output[0] == input[0]).all()
+        assert (output[1] == input[1]).all()
+
+    @pytest.mark.parametrize('augmentations', [
+        [
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
             K.RandomAffine(360, p=1.),
         ],
         [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)],
         [K.RandomAffine(360, p=1.)],
+        [
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.),
+            K.RandomAffine(360, p=0.),
+        ],
+        [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.)],
+        [K.RandomAffine(360, p=0.)],
     ])
     def test_same_on_frame(self, augmentations, device, dtype):
         input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
         aug_list = K.VideoSequential(*augmentations, same_on_frame=True)
         output = aug_list(input)
 
-        assert (output[0, :, 0] == output[0, :, 1]).all()
-        assert (output[0, :, 1] == output[0, :, 2]).all()
-        assert (output[0, :, 2] == output[0, :, 3]).all()
+        assert (output[:, :, 0] == output[:, :, 1]).all()
+        assert (output[:, :, 1] == output[:, :, 2]).all()
+        assert (output[:, :, 2] == output[:, :, 3]).all()
 
     @pytest.mark.parametrize('augmentations', [
         [K.RandomAffine(360, p=1.)],
