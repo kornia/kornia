@@ -71,7 +71,7 @@ class VideoSequential(nn.Sequential):
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
-        return torch.stack([param] * frame_num).t().reshape(-1, *list(param.shape[1:]))
+        return torch.stack([param] * frame_num).T.reshape(-1, *list(param.shape[1:]))  # type: ignore
 
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         assert len(input.shape) == 5, f"Input must be (B, C, T, H, W). Got {input.shape}."
