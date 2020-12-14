@@ -305,17 +305,27 @@ def adjust_contrast(input: torch.Tensor,
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+>>>>>>> [Docs] Minor spelling tweaks (#818)
           in the batch. 0 generates a completely black image, 1 does not modify
 =======
           in the batch. 0 generates a compleatly black image, 1 does not modify
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+<<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
 =======
           in the batch. 0 generates a completely black image, 1 does not modify
 >>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+          in the batch. 0 generates a completely black image, 1 does not modify
+>>>>>>> [Docs] Minor spelling tweaks (#818)
+>>>>>>> [Docs] Minor spelling tweaks (#818)
           the input image while any other non-negative number modify the
           brightness by this factor.
 
@@ -832,7 +842,11 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 >>>>>>> Make sharpness output channel nums as input (#783)
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+<<<<<<< master
+>>>>>>> [Docs] Minor spelling tweaks (#818)
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 =======
         input (torch.Tensor): image tensor with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)` to equalize.
@@ -845,6 +859,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
 =======
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 >>>>>>> [Docs] Minor spelling tweaks (#818)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Make sharpness output channel nums as input (#783)
 =======
@@ -852,6 +867,8 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         input (torch.Tensor): image tensor to equalizr with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 
     Returns:
         torch.Tensor: Sharpened image or images with shape as the input.
@@ -927,6 +944,7 @@ class AdjustSaturation(nn.Module):
         - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
 <<<<<<< refs/remotes/kornia/master
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
@@ -934,6 +952,9 @@ class AdjustSaturation(nn.Module):
           and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 >>>>>>> improve kornia.enhance docs and coverage (#805)
 =======
+=======
+<<<<<<< master
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
         and white image, 1 will give the original image while 2 will enhance the saturation
         by a factor of 2.
@@ -950,10 +971,15 @@ class AdjustSaturation(nn.Module):
         - Ouput: Adjusted image in the shape of :math:`(*, 3, H, W)`.
 >>>>>>> [Feat] better kornia.enhance testing (#801)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
 >>>>>>> [Feat] better kornia.enhance testing (#801)
+=======
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)

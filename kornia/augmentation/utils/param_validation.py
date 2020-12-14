@@ -9,7 +9,11 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+<<<<<<< master
+>>>>>>> [Docs] Minor spelling tweaks (#818)
     """Valid batch_size and same_on_batch params."""
     assert type(batch_size) == int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
 =======
@@ -17,12 +21,18 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
     assert type(batch_size) == int and batch_size >= 0, f"`batchsize` shall be a positive integer. Got {batch_size}."
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
     """Valid batch_size and same_on_batch params."""
     assert type(batch_size) == int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
 >>>>>>> [Docs] Minor spelling tweaks (#818)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Added random param gen tests. Added device awareness for parameter generators. (#757)
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
     if same_on_batch is not None:
         assert type(same_on_batch) == bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
 

@@ -37,7 +37,11 @@ def random_rotation_generator3d(
 <<<<<<< refs/remotes/kornia/master
 =======
 <<<<<<< master
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+<<<<<<< master
+>>>>>>> [Docs] Minor spelling tweaks (#818)
             - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
             - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
             - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
@@ -47,13 +51,19 @@ def random_rotation_generator3d(
             - roll (torch.Tensor): element-wise roataion rolls with a shape of (B,).
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 =======
             - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
             - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
             - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
 >>>>>>> [Docs] Minor spelling tweaks (#818)
+<<<<<<< refs/remotes/kornia/master
 =======
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
     """
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     _device, _dtype = _extract_device_dtype([degrees])
@@ -1137,6 +1147,7 @@ def random_perspective_generator3d(
             - src (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -1157,6 +1168,9 @@ def random_perspective_generator3d(
             - src (torch.Tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspecive target bounding boxes with a shape (B, 8, 3).
 =======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
+=======
+<<<<<<< master
 >>>>>>> [Docs] Minor spelling tweaks (#818)
 
     Note:
@@ -1184,6 +1198,8 @@ def random_perspective_generator3d(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspecive target bounding boxes with a shape (B, 8, 3).
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
