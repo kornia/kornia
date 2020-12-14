@@ -337,10 +337,16 @@ class TestHomographyWarper3D:
 >>>>>>> Fixed divide by zero bug (#812)
 =======
 <<<<<<< master
+<<<<<<< master
 =======
 
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+>>>>>>> Fixed divide by zero bug (#812)
+>>>>>>> Fixed divide by zero bug (#812)
     num_tests = 10
     threshold = 0.1
 

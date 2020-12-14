@@ -191,11 +191,18 @@ def homography_warp3d(patch_src: torch.Tensor,
 >>>>>>> Fixed divide by zero bug (#812)
 =======
 <<<<<<< master
+<<<<<<< master
             patch_src.device, src_homo_dst.device))
 =======
                         patch_src.device, src_homo_dst.device))
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+<<<<<<< refs/remotes/kornia/master
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+=======
+            patch_src.device, src_homo_dst.device))
+>>>>>>> Fixed divide by zero bug (#812)
+>>>>>>> Fixed divide by zero bug (#812)
 
     depth, height, width = dsize
     grid = create_meshgrid3d(depth, height, width, normalized_coordinates=normalized_coordinates,
