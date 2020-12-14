@@ -163,10 +163,14 @@ def homography_warp3d(patch_src: torch.Tensor,
         raise TypeError("Patch and homography must be on the same device. \
                          Got patch.device: {} src_H_dst.device: {}.".format(
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             patch_src.device, src_homo_dst.device))
 =======
                         patch_src.device, src_homo_dst.device))
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+            patch_src.device, src_homo_dst.device))
+>>>>>>> Fixed divide by zero bug (#812)
 
     depth, height, width = dsize
     grid = create_meshgrid3d(depth, height, width, normalized_coordinates=normalized_coordinates,
