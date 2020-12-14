@@ -23,7 +23,7 @@ def xla_is_available() -> bool:
 
 
 def create_checkerboard(h, w, nw):
-    """Creates a synthetic checkerd board of shape HxW and window size `nw`.
+    """Creates a synthetic checkered board of shape HxW and window size `nw`.
     """
     return np.kron([[1, 0] * nw, [0, 1] * nw] * nw,
                    np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)

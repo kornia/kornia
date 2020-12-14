@@ -28,13 +28,13 @@ class ZCAWhitening(nn.Module):
 
         \mathbf{X}_{\text{zca}} = (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T
 
-    where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the correpsonding
+    where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
     eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
     args:
 
         dim (int): Determines the dimension that represents the samples axis. Default = 0
-        eps (float) : a small number used for numerial stablility. Default=1e-6
+        eps (float) : a small number used for numerical stability. Default=1e-6
         unbiased (bool): Whether to use the biased estimate of the covariance matrix. Default=False
         compute_inv (bool): Compute the inverse transform matrix. Default=False
         detach_transforms (bool): Detaches gradient from the ZCA fitting. Default=True
@@ -58,7 +58,7 @@ class ZCAWhitening(nn.Module):
     Note:
 
         This implementation uses :py:meth:`~torch.svd` which yields NaNs in the backwards step
-        if the sigular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
+        if the singular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
         more information.
 
     References:
@@ -273,7 +273,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
         inp (torch.Tensor) : input data tensor
         dim (int): Specifies the dimension that serves as the samples dimension. Default = 0
         unbiased (bool): Whether to use the unbiased estimate of the covariance matrix. Default = True
-        eps (float) : a small number used for numerial stablility. Default = 0
+        eps (float) : a small number used for numerical stability. Default = 0
 
 
     returns:

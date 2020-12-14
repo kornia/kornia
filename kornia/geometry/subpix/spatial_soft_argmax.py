@@ -246,7 +246,7 @@ def conv_soft_argmax2d(input: torch.Tensor,
         normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
                                        it will return the coordinates in the range of the input shape. Default is True.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is outputed, if False, only ij
+        output_value (bool): if True, val is output, if False, only ij
 
     Shape:
         - Input: :math:`(N, C, H_{in}, W_{in})`
@@ -370,7 +370,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
         normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
                                        it will return the coordinates in the range of the input shape. Default is False.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is outputed, if False, only ij
+        output_value (bool): if True, val is output, if False, only ij
         strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
                                      This is needed for mimic behavior of strict NMS in classic local features
     Shape:
