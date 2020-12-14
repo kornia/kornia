@@ -229,7 +229,7 @@ class RandomAffine3D(AugmentationBase3D):
             If ((a, b), (c, d), (e, f)), the scale is randomly sampled from the range a <= scale_x <= b,
             c <= scale_y <= d, e <= scale_z <= f. Will keep original scale by default.
         shear (sequence or float, optional): Range of degrees to select from.
-            If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be apllied.
+            If shear is a number, a shear to the 6 facets in the range (-shear, +shear) will be applied.
             If shear is a tuple of 2 values, a shear to the 6 facets in the range (shear[0], shear[1]) will be applied.
             If shear is a tuple of 6 values, a shear to the i-th facet in the range (-shear[i], shear[i])
             will be applied.

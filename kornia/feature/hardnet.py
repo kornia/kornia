@@ -20,7 +20,7 @@ class HardNet(nn.Module):
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
 
     Returns:
-        torch.Tensor: HardeNet descriptor of the patches.
+        torch.Tensor: HardNet descriptor of the patches.
 
     Shape:
         - Input: (B, 1, 32, 32)

@@ -68,7 +68,7 @@ class DepthWarper(nn.Module):
 
     def compute_projection_matrix(
             self, pinhole_src: PinholeCamera) -> 'DepthWarper':
-        r"""Computes the projection matrix from the source to destinaion frame.
+        r"""Computes the projection matrix from the source to destination frame.
         """
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError("Member self._pinhole_dst expected to be of class "

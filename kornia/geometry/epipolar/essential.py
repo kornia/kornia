@@ -231,7 +231,7 @@ def relative_camera_motion(
         t2 (torch.Tensor): The second camera translation vector with shape :math:`(*, 3, 1)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]: A tuple with the relatice rotation matrix and
+        Tuple[torch.Tensor, torch.Tensor]: A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
 
     """

@@ -33,7 +33,7 @@ def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
                         dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
                         grid_mode: str, padding_mode: str,
                         align_corners: bool) -> torch.Tensor:
-    """Compute the transform in normalized cooridnates and perform the warping.
+    """Compute the transform in normalized coordinates and perform the warping.
     """
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)

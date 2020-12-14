@@ -197,7 +197,7 @@ def _adapted_rsampling(
     dist: torch.distributions.Distribution,
     same_on_batch=False
 ) -> torch.Tensor:
-    r"""The uniform reparamiterized sampling function that accepts 'same_on_batch'.
+    r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
