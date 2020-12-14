@@ -23,7 +23,7 @@ class PinholeCamera:
 
     .. note::
         We assume that the class attributes are in batch form in order to take
-        advantage of PyTorch parallelism to boost computing performce.
+        advantage of PyTorch parallelism to boost computing performance.
     """
 
     def __init__(self, intrinsics: torch.Tensor,
@@ -107,7 +107,7 @@ class PinholeCamera:
 
     @property
     def fy(self) -> torch.Tensor:
-        r"""Returns the focal lenght in the y-direction.
+        r"""Returns the focal length in the y-direction.
 
         Returns:
             torch.Tensor: tensor of shape :math:`(B)`
