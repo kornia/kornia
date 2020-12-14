@@ -499,10 +499,14 @@ def apply_perspective3d(
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
               bottom-left] of the original image with shape Bx8x3.
 =======
               bottom-left] of the orignal image with shape Bx8x3.
 >>>>>>> [Feat] 3D volumetric crop implementation (#689)
+=======
+              bottom-left] of the original image with shape Bx8x3.
+>>>>>>> [Docs] Minor spelling tweaks (#818)
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx8x3.
         flags (Dict[str, torch.Tensor]):

@@ -33,6 +33,7 @@ def random_rotation_generator3d(
     Returns:
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
             - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
             - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
             - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
@@ -41,6 +42,11 @@ def random_rotation_generator3d(
             - pitch (torch.Tensor): element-wise roataion pitchs with a shape of (B,).
             - roll (torch.Tensor): element-wise roataion rolls with a shape of (B,).
 >>>>>>> Exposed rng generation device and dtype for augmentations. (#770)
+=======
+            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
+            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
+            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
+>>>>>>> [Docs] Minor spelling tweaks (#818)
     """
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     _device, _dtype = _extract_device_dtype([degrees])
@@ -724,6 +730,7 @@ def random_perspective_generator3d(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
+<<<<<<< refs/remotes/kornia/master
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -742,6 +749,8 @@ def random_perspective_generator3d(
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): perspecive source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspecive target bounding boxes with a shape (B, 8, 3).
+=======
+>>>>>>> [Docs] Minor spelling tweaks (#818)
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.

@@ -130,6 +130,7 @@ def motion_blur(
     Example:
         >>> input = torch.randn(1, 3, 80, 90).repeat(2, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         >>> # perform exact motion blur across the batch
         >>> out_1 = motion_blur(input, 5, 90., 1)
         >>> torch.allclose(out_1[0], out_1[1])
@@ -146,6 +147,13 @@ def motion_blur(
         >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1, -1]))
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
+=======
+        >>> # perform exact motion blur across the batch
+        >>> out_1 = motion_blur(input, 5, 90., 1)
+        >>> torch.allclose(out_1[0], out_1[1])
+        True
+        >>> # perform element-wise motion blur across the batch
+>>>>>>> [Docs] Minor spelling tweaks (#818)
         >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1., -1.]))
 >>>>>>> [Feat] Enabled doctest for CI (#641)
         >>> torch.allclose(out_1[0], out_1[1])
@@ -184,6 +192,7 @@ def motion_blur3d(
     Example:
         >>> input = torch.randn(1, 3, 120, 80, 90).repeat(2, 1, 1, 1, 1)
 <<<<<<< refs/remotes/kornia/master
+<<<<<<< refs/remotes/kornia/master
         >>> # perform exact motion blur across the batch
         >>> out_1 = motion_blur3d(input, 5, (0., 90., 90.), 1)
         >>> torch.allclose(out_1[0], out_1[1])
@@ -200,6 +209,13 @@ def motion_blur3d(
         >>> out_1 = motion_blur3d(input, 5, torch.tensor([[0., 90., 90.], [90., 180., 0.]]), torch.tensor([1, -1]))
 >>>>>>> [Feat] 3D motion blur with element-wise implementations. (#713)
 =======
+=======
+        >>> # perform exact motion blur across the batch
+        >>> out_1 = motion_blur3d(input, 5, (0., 90., 90.), 1)
+        >>> torch.allclose(out_1[0], out_1[1])
+        True
+        >>> # perform element-wise motion blur across the batch
+>>>>>>> [Docs] Minor spelling tweaks (#818)
         >>> out_1 = motion_blur3d(input, 5, torch.tensor([[0., 90., 90.], [90., 180., 0.]]), torch.tensor([1., -1.]))
 >>>>>>> [Fix] MotionBlur bug fix and doctest update (#782)
         >>> torch.allclose(out_1[0], out_1[1])
