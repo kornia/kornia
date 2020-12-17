@@ -990,6 +990,9 @@ class TestRandomGrayscale:
 
 
 class TestCenterCrop:
+    def test_align_corners_future_warning(self):
+        with pytest.warns(FutureWarning):
+            kornia.augmentation.CenterCrop(1)
 
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, device=device, dtype=dtype)
@@ -1015,6 +1018,9 @@ class TestCenterCrop:
 
 
 class TestRandomRotation:
+    def test_align_corners_future_warning(self):
+        with pytest.warns(FutureWarning):
+            RandomRotation(0)
 
     torch.manual_seed(0)  # for random reproductibility
 

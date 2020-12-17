@@ -388,7 +388,7 @@ class RandomPerspective(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=False)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(self.align_corners)
@@ -504,7 +504,7 @@ class RandomAffine(AugmentationBase2D):
             ])
         self.resample: Resample = Resample.get(resample)
         self.padding_mode: SamplePadding = SamplePadding.get(padding_mode)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=False)
         self.flags: Dict[str, torch.Tensor] = dict(
             resample=torch.tensor(self.resample.value),
             padding_mode=torch.tensor(self.padding_mode.value),
@@ -573,7 +573,7 @@ class CenterCrop(AugmentationBase2D):
                                          keepdim=keepdim)
         self.size = size
         self.resample = Resample.get(resample)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=True)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(self.align_corners)
@@ -660,7 +660,7 @@ class RandomRotation(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=True)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(self.align_corners)
@@ -742,7 +742,7 @@ class RandomCrop(AugmentationBase2D):
         self.fill = fill
         self.padding_mode = padding_mode
         self.resample = Resample.get(resample)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=False)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(self.align_corners)
@@ -855,7 +855,7 @@ class RandomResizedCrop(AugmentationBase2D):
             warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
             self.resample = Resample.get(interpolation)
         self.resample = Resample.get(resample)
-        self.align_corners = _parse_align_corners(align_corners, self.resample)
+        self.align_corners = _parse_align_corners(align_corners, self.resample, old_default=False)
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(self.align_corners)
