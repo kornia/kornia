@@ -1,4 +1,5 @@
 from typing import Tuple, Union, List, cast, Optional
+import warnings
 
 import torch
 
@@ -34,7 +35,9 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
     return (device, dtype)
 
 
-def _parse_align_corners(align_corners: Optional[bool], resample: Resample) -> Optional[bool]:
+def _parse_align_corners(
+        align_corners: Optional[bool], resample: Resample, old_default: Optional[bool] = None
+) -> Optional[bool]:
     r"""Set a sensible default value for ``align_corners`` used in :func:`torch.nn.functional.interpolate`.
 
     ``align_corners`` has to be ``False`` for the interpolation modes ``"linear"``, ``"bilinear"``, ``"bicubic"``, and
@@ -48,8 +51,19 @@ def _parse_align_corners(align_corners: Optional[bool], resample: Resample) -> O
     if align_corners is not None:
         return align_corners
 
-    return (
+    new_default = (
         False
         if resample.name.lower() in ("linear", "bilinear", "bicubic", "trilinear")
         else None
     )
+    if old_default is not None and new_default is not old_default:
+        warnings.warn(
+            f"The current default value for 'align_corners' is '{old_default}', but will be changed to '{new_default}' "
+            f"in the future. For most applications this should not make a notable difference. See the documentation of "
+            f"torch.nn.functional.interpolate for details. If you rely on the current default value, please set it "
+            f"explicitly.",
+            FutureWarning
+        )
+        return old_default
+
+    return new_default

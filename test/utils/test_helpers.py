@@ -62,3 +62,14 @@ def test_parse_align_corners_default(resample):
 @pytest.mark.parametrize("align_corners", (True, False), ids=lambda align_corners: f"align_corners={align_corners}")
 def test_parse_align_corners_non_default(align_corners, resample):
     assert _parse_align_corners(align_corners, resample) is align_corners
+
+
+@parametrize_resample()
+@pytest.mark.parametrize("old_default", (True, False), ids=lambda old_default: f"old_default={old_default}")
+def test_parse_align_corners_future_warning(old_default, resample):
+    new_default = _parse_align_corners(None, resample)
+    if new_default is old_default:
+        pytest.skip("Old and new default value is identical.")
+
+    with pytest.warns(FutureWarning):
+        _parse_align_corners(None, resample, old_default=old_default)
