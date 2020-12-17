@@ -734,9 +734,13 @@ class TestSharpness(BaseTester):
         assert isinstance(TestSharpness.f(img, 0.8), torch.Tensor)
 
     @pytest.mark.parametrize("batch_size, height, width, factor", [
-        (1, 4, 5, 0.8), (2, 4, 5, 0.8),
-        (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
-        (2, 4, 5, torch.tensor([0.8, 0.7]))])
+        (1, 4, 5, 0.0),
+        (1, 4, 5, 0.8),
+        (2, 4, 5, 0.8),
+        (1, 4, 5, torch.tensor(0.8)),
+        (2, 4, 5, torch.tensor(0.8)),
+        (2, 4, 5, torch.tensor([0.8, 0.7]))
+    ])
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, factor, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
@@ -837,15 +841,19 @@ class TestSolarize(BaseTester):
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         assert isinstance(TestSolarize.f(img, 0.8), torch.Tensor)
 
-    # TODO(jian): verify thresholds test and include addtions
-    @pytest.mark.parametrize("batch_size, height, width, thresholds", [
-        (1, 4, 5, 0.8), (2, 4, 5, 0.8),
-        (1, 4, 5, torch.tensor(0.8)), (2, 4, 5, torch.tensor(0.8)),
-        (2, 4, 5, torch.tensor([0.8, 0.7]))])
+    @pytest.mark.parametrize("batch_size, height, width, thresholds, additions", [
+        (1, 4, 5, 0.8, None),
+        (1, 4, 5, 0.8, 0.4),
+        (2, 4, 5, 0.8, None),
+        (1, 4, 5, torch.tensor(0.8), None),
+        (2, 4, 5, torch.tensor(0.8), None),
+        (2, 4, 5, torch.tensor([0.8, 0.7]), None),
+        (2, 4, 5, torch.tensor([0.8, 0.7]), torch.tensor([0., 0.4]))
+    ])
     @pytest.mark.parametrize("channels", [1, 3, 5])
-    def test_cardinality(self, batch_size, channels, height, width, thresholds, device, dtype):
+    def test_cardinality(self, batch_size, channels, height, width, thresholds, additions, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        assert TestSolarize.f(inputs, thresholds).shape == torch.Size([batch_size, channels, height, width])
+        assert TestSolarize.f(inputs, thresholds, additions).shape == torch.Size([batch_size, channels, height, width])
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
@@ -914,9 +922,14 @@ class TestPosterize(BaseTester):
         assert isinstance(TestPosterize.f(img, 8), torch.Tensor)
 
     @pytest.mark.parametrize("batch_size, height, width, bits", [
-        (1, 4, 5, 8), (2, 4, 5, 0),
-        (1, 4, 5, torch.tensor(8)), (2, 4, 5, torch.tensor(8)),
-        (2, 4, 5, torch.tensor([0, 8]))])
+        (1, 4, 5, 8),
+        (2, 4, 5, 1),
+        (2, 4, 5, 0),
+        (1, 4, 5, torch.tensor(8)),
+        (2, 4, 5, torch.tensor(8)),
+        (2, 4, 5, torch.tensor([0, 8])),
+        (3, 4, 5, torch.tensor([0, 1, 8]))
+    ])
     @pytest.mark.parametrize("channels", [1, 3, 5])
     def test_cardinality(self, batch_size, channels, height, width, bits, device, dtype):
         inputs = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)

@@ -13,7 +13,7 @@ def triangulate_points(P1: torch.Tensor, P2: torch.Tensor, points1: torch.Tensor
     Triangulates the 3d position of 2d correspondences between several images.
     Reference: Internally it uses DLT method from Hartley/Zisserman 12.2 pag.312
 
-    The input points are assumend to be in homogeneous coordinate system and being inliers
+    The input points are assumed to be in homogeneous coordinate system and being inliers
     correspondences. The method does not perform any robust estimation.
 
     Args:

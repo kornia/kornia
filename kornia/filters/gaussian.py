@@ -11,7 +11,7 @@ class GaussianBlur2d(nn.Module):
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
-    it to each channel. It suports batched operation.
+    it to each channel. It supports batched operation.
 
     Arguments:
         kernel_size (Tuple[int, int]): the size of the kernel.

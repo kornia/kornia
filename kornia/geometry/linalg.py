@@ -327,7 +327,7 @@ def perspective_transform_lafs(trans_01: torch.Tensor,
     if not trans_01.shape[0] == lafs_1.shape[0]:
         raise ValueError("Input batch size must be the same for both tensors")
     if (not (trans_01.shape[-1] == 3)) or (not (trans_01.shape[-2] == 3)):
-        raise ValueError("Tranformation should be homography")
+        raise ValueError("Transformation should be homography")
     bs, n, _, _ = lafs_1.size()
     # First, we convert LAF to points
     threepts_1 = kornia.feature.laf.laf_to_three_points(lafs_1)
