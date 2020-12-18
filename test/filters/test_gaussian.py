@@ -41,35 +41,33 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
-class TestGaussianBlur:
+class TestGaussianBlur2d:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_gaussian_blur(self, batch_shape, device):
+    def test_cardinality(self, batch_shape, device, dtype):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
 
-        input = torch.rand(batch_shape).to(device)
-        gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
-        assert gauss(input).shape == batch_shape
+        input = torch.rand(batch_shape, device=device, dtype=dtype)
+        actual = kornia.filters.gaussian_blur2d(input, kernel_size, sigma, "replicate")
+        assert actual.shape == batch_shape
 
-    def test_noncontiguous(self, device):
+    def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        gauss = kornia.filters.GaussianBlur2d(kernel_size, sigma, "replicate")
-        actual = gauss(inp)
-        expected = actual
+        actual = kornia.filters.gaussian_blur2d(input, kernel_size, sigma, "replicate")
         assert_allclose(actual, actual)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         # test parameters
-        batch_shape = (2, 3, 11, 7)
-        kernel_size = (5, 3)
+        batch_shape = (1, 3, 5, 5)
+        kernel_size = (3, 3)
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape).to(device)
+        input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
             kornia.gaussian_blur2d,
@@ -77,74 +75,18 @@ class TestGaussianBlur:
             raise_exception=True,
         )
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
-        @torch.jit.script
-        def op_script(img):
+    def test_jit(self, device, dtype):
+        op = kornia.filters.gaussian_blur2d
+        op_script = torch.jit.script(op)
+        params = [(3, 3), (1.5, 1.5)]
 
-            return kornia.gaussian_blur2d(img, (5, 5), (1.2, 1.2), "replicate")
+        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        assert_allclose(op(img, *params), op_script(img, *params))
 
-        batch_size, channels, height, width = 2, 3, 64, 64
-        img = torch.ones(batch_size, channels, height, width).to(device)
-        expected = kornia.filters.GaussianBlur2d(
-            (5, 5), (1.2, 1.2), "replicate"
-        )(img)
-        actual = op_script(img)
-        assert_allclose(actual, expected)
+    def test_module(self, device, dtype):
+        params = [(3, 3), (1.5, 1.5)]
+        op = kornia.filters.gaussian_blur2d
+        op_module = kornia.filters.GaussianBlur2d(*params)
 
-
-@pytest.mark.parametrize("window_size", [5])
-def test_get_laplacian_kernel(window_size):
-    kernel = kornia.get_laplacian_kernel1d(window_size)
-    assert kernel.shape == (window_size,)
-    assert kernel.sum().item() == pytest.approx(0.0)
-
-
-@pytest.mark.parametrize("window_size", [7])
-def test_get_laplacian_kernel2d(window_size):
-    kernel = kornia.get_laplacian_kernel2d(window_size)
-    assert kernel.shape == (window_size, window_size)
-    assert kernel.sum().item() == pytest.approx(0.0)
-    expected = torch.tensor(
-        [
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, -48.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        ]
-    )
-    assert_allclose(expected, kernel)
-
-
-class TestLaplacian:
-    @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_laplacian(self, batch_shape, device):
-        kernel_size = 5
-
-        input = torch.rand(batch_shape).to(device)
-        laplace = kornia.filters.Laplacian(kernel_size)
-        assert laplace(input).shape == batch_shape
-
-    def test_noncontiguous(self, device):
-        batch_size = 3
-        inp = torch.rand(3, 5, 5).expand(batch_size, -1, -1, -1).to(device)
-
-        kernel_size = 3
-        laplace = kornia.filters.Laplacian(kernel_size)
-        actual = laplace(inp)
-        expected = actual
-        assert_allclose(actual, actual)
-
-    def test_gradcheck(self, device):
-        # test parameters
-        batch_shape = (2, 3, 11, 7)
-        kernel_size = 9
-
-        # evaluate function gradient
-        input = torch.rand(batch_shape).to(device)
-        input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(
-            kornia.laplacian, (input, kernel_size), raise_exception=True)
+        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        assert_allclose(op(img, *params), op_module(img))
