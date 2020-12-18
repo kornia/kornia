@@ -274,7 +274,7 @@ def adjust_contrast(input: torch.Tensor,
     Args:
         input (torch.Tensor): Image to be adjusted in the shape of :math:`(*, N)`.
         contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
-          in the batch. 0 generates a compleatly black image, 1 does not modify
+          in the batch. 0 generates a completely black image, 1 does not modify
           the input image while any other non-negative number modify the
           brightness by this factor.
 
@@ -638,7 +638,7 @@ def _build_lut(histo, step):
     # and then normalization by step.
     lut = (torch.cumsum(histo, 0) + (step // 2)) // step
     # Shift lut, prepending with 0.
-    lut = torch.cat([torch.zeros(1, device=lut.device), lut[:-1]])
+    lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
     # Clip the counts to be in range.  This is done
     # in the C code for image.point.
     return torch.clamp(lut, 0, 255)
@@ -695,7 +695,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
     https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
-        input (torch.Tensor): image tensor to equalizr with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 
     Returns:
         torch.Tensor: Sharpened image or images with shape as the input.
@@ -758,7 +758,7 @@ class AdjustSaturation(nn.Module):
 
     Shape:
         - Input: Image/Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
-        - Ouput: Adjusted image in the shape of :math:`(*, 3, H, W)`.
+        - Output: Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -880,7 +880,7 @@ class AdjustContrast(nn.Module):
 
     Args:
         contrast_factor (Union[float, torch.Tensor]): Contrast adjust factor per element
-          in the batch. 0 generates a compleatly black image, 1 does not modify
+          in the batch. 0 generates a completely black image, 1 does not modify
           the input image while any other non-negative number modify the
           brightness by this factor.
 

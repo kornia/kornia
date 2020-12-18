@@ -3,6 +3,8 @@ The testing package contains testing-specific utilities.
 """
 from abc import ABC, abstractmethod
 import importlib
+from itertools import product
+from copy import deepcopy
 
 import torch
 import numpy as np
@@ -21,7 +23,7 @@ def xla_is_available() -> bool:
 
 
 def create_checkerboard(h, w, nw):
-    """Creates a synthetic checkerd board of shape HxW and window size `nw`.
+    """Creates a synthetic checkered board of shape HxW and window size `nw`.
     """
     return np.kron([[1, 0] * nw, [0, 1] * nw] * nw,
                    np.ones((h // (2 * nw), w // (2 * nw)))).astype(np.float32)
@@ -107,6 +109,26 @@ class BaseTester(ABC):
     @abstractmethod
     def test_module(self):
         raise NotImplementedError("Implement a stupid routine.")
+
+
+def cartesian_product_of_parameters(**possible_parameters):
+    """Creates cartesian product of given parameters
+    """
+    parameter_names = possible_parameters.keys()
+    possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
+
+    for param_combination in product(*possible_values):
+        yield dict(zip(parameter_names, param_combination))
+
+
+def default_with_one_parameter_changed(*, default={}, **possible_parameters):
+    assert isinstance(default, dict), f"default should be a dict not a {type(default)}"
+
+    for parameter_name, possible_values in possible_parameters.items():
+        for v in possible_values:
+            param_set = deepcopy(default)
+            param_set[parameter_name] = v
+            yield param_set
 
 
 def _get_precision(device: torch.device, dtype: torch.dtype) -> float:

@@ -54,7 +54,7 @@ def tversky_loss(input: torch.Tensor, target: torch.Tensor,
 
 
 class TverskyLoss(nn.Module):
-    r"""Criterion that computes Tversky Coeficient loss.
+    r"""Criterion that computes Tversky Coefficient loss.
 
     According to [1], we compute the Tversky Coefficient as follows:
 

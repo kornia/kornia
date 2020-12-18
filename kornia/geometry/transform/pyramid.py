@@ -283,7 +283,7 @@ def build_pyramid(
     by recursively applying pyrDown to the previously built pyramid layers.
 
     Args:
-        input (torch.Tensor): the tensor to be used to constructuct the pyramid.
+        input (torch.Tensor): the tensor to be used to construct the pyramid.
         max_level (int): 0-based index of the last (the smallest) pyramid layer.
           It must be non-negative.
         border_type (str): the padding mode to be applied before convolving.

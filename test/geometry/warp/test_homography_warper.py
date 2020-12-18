@@ -9,7 +9,6 @@ from torch.testing import assert_allclose
 
 
 class TestHomographyWarper:
-
     num_tests = 10
     threshold = 0.1
 
@@ -256,15 +255,44 @@ class TestHomographyWarper:
 
 
 class TestHomographyNormalTransform:
+    expected_2d_0 = torch.tensor([[
+        [0.5, 0.0, -1.],
+        [0.0, 2.0, -1.],
+        [0.0, 0.0, 1.]]])
 
-    def test_transform2d(self):
-        height, width = 2, 5
+    expected_2d_1 = torch.tensor([[
+        [0.5, 0.0, -1.],
+        [0.0, 2e14, -1.],
+        [0.0, 0.0, 1.]]])
+
+    expected_3d_0 = expected = torch.tensor([[
+        [0.4, 0.0, 0.0, -1.],
+        [0.0, 2.0, 0.0, -1.],
+        [0.0, 0.0, 0.6667, -1.],
+        [0.0, 0.0, 0.0, 1.],
+    ]])
+
+    expected_3d_1 = torch.tensor([[
+        [0.4, 0.0, 0.0, -1.],
+        [0.0, 2e14, 0.0, -1.],
+        [0.0, 0.0, 0.6667, -1.],
+        [0.0, 0.0, 0.0, 1.],
+    ]])
+
+    @pytest.mark.parametrize("height,width,expected", [
+        (2, 5, expected_2d_0),
+        (1, 5, expected_2d_1)
+    ])
+    def test_transform2d(self, height, width, expected):
         output = kornia.normal_transform_pixel(height, width)
-        expected = torch.tensor([[
-            [0.5, 0.0, -1.],
-            [0.0, 2.0, -1.],
-            [0.0, 0.0, 1.]]])
+
         assert_allclose(output, expected)
+
+    @pytest.mark.parametrize("height", [1, 2, 5])
+    @pytest.mark.parametrize("width", [1, 2, 5])
+    def test_divide_by_zero2d(self, height, width):
+        output = kornia.normal_transform_pixel(height, width)
+        assert torch.isinf(output).sum().item() == 0
 
     def test_transform2d_apply(self):
         height, width = 2, 5
@@ -274,16 +302,20 @@ class TestHomographyNormalTransform:
         output = kornia.transform_points(transform, input)
         assert_allclose(output, expected)
 
-    def test_transform3d(self):
-        height, width, depth = 2, 6, 4
+    @pytest.mark.parametrize("height,width,depth,expected", [
+        (2, 6, 4, expected_3d_0),
+        (1, 6, 4, expected_3d_1)
+    ])
+    def test_transform3d(self, height, width, depth, expected):
         output = kornia.normal_transform_pixel3d(depth, height, width)
-        expected = torch.tensor([[
-            [0.4, 0.0, 0.0, -1.],
-            [0.0, 2.0, 0.0, -1.],
-            [0.0, 0.0, 0.6667, -1.],
-            [0.0, 0.0, 0.0, 1.],
-        ]])
         assert_allclose(output, expected)
+
+    @pytest.mark.parametrize("height", [1, 2, 5])
+    @pytest.mark.parametrize("width", [1, 2, 5])
+    @pytest.mark.parametrize("depth", [1, 2, 5])
+    def test_divide_by_zero3d(self, height, width, depth):
+        output = kornia.normal_transform_pixel3d(depth, height, width)
+        assert torch.isinf(output).sum().item() == 0
 
     def test_transform3d_apply(self):
         depth, height, width = 3, 2, 5
@@ -295,7 +327,6 @@ class TestHomographyNormalTransform:
 
 
 class TestHomographyWarper3D:
-
     num_tests = 10
     threshold = 0.1
 

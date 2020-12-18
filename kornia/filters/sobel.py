@@ -124,7 +124,7 @@ class Sobel(nn.Module):
     r"""Computes the Sobel operator and returns the magnitude per channel.
 
     Return:
-        torch.Tensor: the sobel edge gradient maginitudes map.
+        torch.Tensor: the sobel edge gradient magnitudes map.
 
     Args:
         normalized (bool): if True, L1 norm of the kernel is set to 1.

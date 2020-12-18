@@ -18,7 +18,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 
     Args:
        points (torch.Tensor): Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
-       eps (float): epsilon value to avoid numerical unstabilities. Default: 1e-8.
+       eps (float): epsilon value to avoid numerical instabilities. Default: 1e-8.
 
     Returns:
        Tuple[torch.Tensor, torch.Tensor]: tuple containing the normalized points in the

@@ -447,7 +447,7 @@ def apply_perspective3d(
         input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
-              bottom-left] of the orignal image with shape Bx8x3.
+              bottom-left] of the original image with shape Bx8x3.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx8x3.
         flags (Dict[str, torch.Tensor]):

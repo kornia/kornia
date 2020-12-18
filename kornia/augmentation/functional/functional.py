@@ -402,7 +402,7 @@ def apply_perspective(
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
-              bottom-left] of the orignal image with shape Bx4x2.
+              bottom-left] of the original image with shape Bx4x2.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx4x2.
         flags (Dict[str, torch.Tensor]):
@@ -788,7 +788,7 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
               CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Returns:
-        torch.Tensor: Adjusted image with the shape as the inpute (\*, C, H, W).
+        torch.Tensor: Adjusted image with the shape as the input (\*, C, H, W).
 
     """
     kernel_size: int = cast(int, params['ksize_factor'].unique().item())
