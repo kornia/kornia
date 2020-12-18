@@ -30,10 +30,10 @@ def create_checkerboard(h, w, nw):
 
 
 # TODO: Isn't this function duplicated with eye_like?
-def create_eye_batch(batch_size, eye_size):
+def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
     """Creates a batch of identity matrices of shape Bx3x3
     """
-    return torch.eye(eye_size).view(
+    return torch.eye(eye_size, device=None, dtype=None).view(
         1, eye_size, eye_size).expand(batch_size, -1, -1)
 
 
