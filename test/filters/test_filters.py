@@ -50,13 +50,14 @@ class TestFilter2D:
             [0., 0., 0., 0., 0.],
             [0., 0., 0., 0., 0.],
         ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+
         expected = torch.tensor([[[
             [0., 0., 0., 0., 0.],
             [0., 5., 5., 5., 0.],
             [0., 5., 5., 5., 0.],
             [0., 5., 5., 5., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
 
         actual = kornia.filter2D(input, kernel)
         assert_allclose(actual, expected)
@@ -78,7 +79,7 @@ class TestFilter2D:
             [0., nv, nv, nv, 0.],
             [0., nv, nv, nv, 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
 
         actual = kornia.filter2D(input, kernel, normalized=True)
         assert_allclose(actual, expected)
@@ -123,14 +124,12 @@ class TestFilter2D:
         assert gradcheck(kornia.filter2D, (input, kernel),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="not found compute_padding()")
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         op = kornia.filter2D
-        op = torch.jit.script(op)
+        op_script = torch.jit.script(op)
 
-        kernel = torch.rand(1, 3, 3)
-        input = torch.ones(1, 1, 7, 8)
+        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
         expected = op(input, kernel)
         actual = op_script(input, kernel)
         assert_allclose(actual, expected)
@@ -236,6 +235,7 @@ class TestFilter3D:
             [0., 5., 5., 5., 0.],
             [0., 0., 0., 0., 0.],
         ]]]], device=device, dtype=dtype)
+        expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3D(input, kernel)
         assert_allclose(actual, expected)
@@ -283,6 +283,7 @@ class TestFilter3D:
             [0., nv, nv, nv, 0.],
             [0., 0., 0., 0., 0.],
         ]]]], device=device, dtype=dtype)
+        expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3D(input, kernel, normalized=True)
         assert_allclose(actual, expected)
@@ -351,3 +352,13 @@ class TestFilter3D:
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
         assert gradcheck(kornia.filter3D, (input, kernel),
                          raise_exception=True)
+
+    def test_jit(self, device, dtype):
+        op = kornia.filter3D
+        op_script = torch.jit.script(op)
+
+        kernel = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
+        input = torch.ones(1, 1, 2, 7, 8, device=device, dtype=dtype)
+        expected = op(input, kernel)
+        actual = op_script(input, kernel)
+        assert_allclose(actual, expected)
