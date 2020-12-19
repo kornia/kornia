@@ -12,11 +12,11 @@ class TestHomographyWarper:
     num_tests = 10
     threshold = 0.1
 
-    def test_identity(self, device):
+    def test_identity(self, device, dtype):
         # create input data
         height, width = 2, 5
-        patch_src = torch.rand(1, 1, height, width).to(device)
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
+        patch_src = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3, device=device, dtype=dtype)
 
         # instantiate warper
         warper = kornia.HomographyWarper(height, width, align_corners=True)
@@ -26,14 +26,14 @@ class TestHomographyWarper:
         assert_allclose(patch_src, patch_dst)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_normalize_homography_identity(self, batch_size, device):
+    def test_normalize_homography_identity(self, batch_size, device, dtype):
         # create input data
         height, width = 2, 5
-        dst_homo_src = utils.create_eye_batch(batch_size=batch_size, eye_size=3).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size=batch_size, eye_size=3, device=device, dtype=dtype)
 
         res = torch.tensor([[[0.5, 0.0, -1.0],
                              [0.0, 2.0, -1.0],
-                             [0.0, 0.0, 1.0]]])
+                             [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (kornia.normal_transform_pixel(height, width) == res).all()
 
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
@@ -50,14 +50,14 @@ class TestHomographyWarper:
                                                 (height * 2, width // 2))
         res = torch.tensor([[[4.0, 0.0, 3.0],
                              [0.0, 1 / 3, -2 / 3],
-                             [0.0, 0.0, 1.0]]]).to(device)
+                             [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert_allclose(norm_homo, res)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
-    def test_normalize_homography_general(self, batch_size, device):
+    def test_normalize_homography_general(self, batch_size, device, dtype):
         # create input data
         height, width = 2, 5
-        dst_homo_src = torch.eye(3).to(device)
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)
         dst_homo_src[..., 0, 0] = 0.5
         dst_homo_src[..., 1, 1] = 2.0
         dst_homo_src[..., 0, 2] = 1.0
@@ -67,16 +67,16 @@ class TestHomographyWarper:
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
         res = torch.tensor([[[0.5, 0.0, 0.0],
                              [0.0, 2.0, 5.0],
-                             [0.0, 0.0, 1.0]]]).to(device)
+                             [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         assert (norm_homo == res).all()
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [
         (4, 5), (2, 6), (4, 3), (5, 7), ])
-    def test_warp_grid_translation(self, shape, offset, device):
+    def test_warp_grid_translation(self, shape, offset, device, dtype):
         # create input data
         height, width = shape
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3, device=device, dtype=dtype)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
         grid = kornia.create_meshgrid(height, width, normalized_coordinates=False)
         flow = kornia.warp_grid(grid, dst_homo_src)
@@ -84,17 +84,17 @@ class TestHomographyWarper:
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
         assert_allclose(
-            grid[..., 0].to(device) + offset, flow[..., 0])
+            grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0])
         assert_allclose(
-            grid[..., 1].to(device), flow[..., 1])
+            grid[..., 1].to(device=device, dtype=dtype), flow[..., 1])
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 4, 5), (2, 2, 4, 6), (3, 1, 5, 7), ])
-    def test_identity_resize(self, device, batch_shape):
+    def test_identity_resize(self, batch_shape, device, dtype):
         # create input data
         batch_size, channels, height, width = batch_shape
-        patch_src = torch.rand(batch_size, channels, height, width).to(device)
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3).to(device)
+        patch_src = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size=3, device=device, dtype=dtype)
 
         # instantiate warper warp from source to destination
         warper = kornia.HomographyWarper(height // 2, width // 2, align_corners=True)
@@ -112,12 +112,12 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("shape", [
         (4, 5), (2, 6), (4, 3), (5, 7), ])
-    def test_translation(self, device, shape):
+    def test_translation(self, shape, device, dtype):
         # create input data
         offset = 2.  # in pixel
         height, width = shape
-        patch_src = torch.rand(1, 1, height, width).to(device)
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3).to(device)
+        patch_src = torch.rand(1, 1, height, width, device=device, dtype=dtype)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=3, device=device, dtype=dtype)
         dst_homo_src[..., 0, 2] = offset / (width - 1)  # apply offset in x
 
         # instantiate warper and from source to destination
@@ -127,12 +127,12 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3), ])
-    def test_rotation(self, device, batch_shape):
+    def test_rotation(self, batch_shape, device, dtype):
         # create input data
         batch_size, channels, height, width = batch_shape
-        patch_src = torch.rand(batch_size, channels, height, width).to(device)
+        patch_src = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         # rotation of 90deg
-        dst_homo_src = torch.eye(3).to(device)
+        dst_homo_src = torch.eye(3, device=device, dtype=dtype)
         dst_homo_src[..., 0, 0] = 0.0
         dst_homo_src[..., 0, 1] = 1.0
         dst_homo_src[..., 1, 0] = -1.0
@@ -154,18 +154,18 @@ class TestHomographyWarper:
             patch_src[..., -1, -1], patch_dst[..., -1, 0])
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
-    def test_homography_warper(self, device, batch_size):
+    def test_homography_warper(self, batch_size, device, dtype):
         # generate input data
         height, width = 128, 64
         eye_size = 3  # identity 3x3
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view(
-            1, 1, height, width).expand(batch_size, 1, height, width).to(device)
+        patch_src = torch.from_numpy(board).to(device=device, dtype=dtype).view(
+            1, 1, height, width).expand(batch_size, 1, height, width)
 
         # create base homography
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
 
         # instantiate warper
         warper = kornia.HomographyWarper(height, width, align_corners=True)
@@ -200,17 +200,17 @@ class TestHomographyWarper:
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16), ])
-    def test_gradcheck(self, device, batch_shape):
+    def test_gradcheck(self, batch_shape, device, dtype):
         # generate input data
         eye_size = 3  # identity 3x3
 
         # create checkerboard
-        patch_src = torch.rand(batch_shape).to(device)
+        patch_src = torch.rand(batch_shape, device=device, dtype=dtype)
         patch_src = utils.tensor_to_gradcheck_var(patch_src)  # to var
 
         # create base homography
         batch_size, _, height, width = patch_src.shape
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
         dst_homo_src = utils.tensor_to_gradcheck_var(
             dst_homo_src, requires_grad=False)  # to var
 
@@ -224,18 +224,18 @@ class TestHomographyWarper:
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
-    def test_jit_warp_homography(self, device, batch_size, align_corners, normalized_coordinates):
+    def test_jit_warp_homography(self, batch_size, align_corners, normalized_coordinates, device, dtype):
         # generate input data
         height, width = 128, 64
         eye_size = 3  # identity 3x3
 
         # create checkerboard
         board = utils.create_checkerboard(height, width, 4)
-        patch_src = torch.from_numpy(board).view(1, 1, height, width).expand(batch_size, 1, height,
-                                                                             width).to(device)
+        patch_src = torch.from_numpy(board).to(device=device, dtype=dtype).view(
+            1, 1, height, width).expand(batch_size, 1, height, width)
 
         # create base homography
-        dst_homo_src = utils.create_eye_batch(batch_size, eye_size).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size, eye_size, device=device, dtype=dtype)
 
         for i in range(self.num_tests):
             # generate homography noise
@@ -283,47 +283,47 @@ class TestHomographyNormalTransform:
         (2, 5, expected_2d_0),
         (1, 5, expected_2d_1)
     ])
-    def test_transform2d(self, height, width, expected):
-        output = kornia.normal_transform_pixel(height, width)
+    def test_transform2d(self, height, width, expected, device, dtype):
+        output = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)
 
-        assert_allclose(output, expected)
+        assert_allclose(output, expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
-    def test_divide_by_zero2d(self, height, width):
-        output = kornia.normal_transform_pixel(height, width)
+    def test_divide_by_zero2d(self, height, width, device, dtype):
+        output = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)
         assert torch.isinf(output).sum().item() == 0
 
-    def test_transform2d_apply(self):
+    def test_transform2d_apply(self, device, dtype):
         height, width = 2, 5
-        input = torch.tensor([[0., 0.], [width - 1, height - 1]])
-        expected = torch.tensor([[-1., -1.], [1., 1.]])
-        transform = kornia.normal_transform_pixel(height, width)
+        input = torch.tensor([[0., 0.], [width - 1, height - 1]], device=device, dtype=dtype)
+        expected = torch.tensor([[-1., -1.], [1., 1.]], device=device, dtype=dtype)
+        transform = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)
         output = kornia.transform_points(transform, input)
-        assert_allclose(output, expected)
+        assert_allclose(output, expected.to(device=device, dtype=dtype))
 
     @pytest.mark.parametrize("height,width,depth,expected", [
         (2, 6, 4, expected_3d_0),
         (1, 6, 4, expected_3d_1)
     ])
-    def test_transform3d(self, height, width, depth, expected):
-        output = kornia.normal_transform_pixel3d(depth, height, width)
-        assert_allclose(output, expected)
+    def test_transform3d(self, height, width, depth, expected, device, dtype):
+        output = kornia.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
+        assert_allclose(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
     @pytest.mark.parametrize("depth", [1, 2, 5])
-    def test_divide_by_zero3d(self, height, width, depth):
-        output = kornia.normal_transform_pixel3d(depth, height, width)
+    def test_divide_by_zero3d(self, height, width, depth, device, dtype):
+        output = kornia.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
         assert torch.isinf(output).sum().item() == 0
 
-    def test_transform3d_apply(self):
+    def test_transform3d_apply(self, device, dtype):
         depth, height, width = 3, 2, 5
-        input = torch.tensor([[0., 0., 0.], [width - 1, height - 1, depth - 1]])
-        expected = torch.tensor([[-1., -1., -1.], [1., 1., 1.]])
-        transform = kornia.normal_transform_pixel3d(depth, height, width)
+        input = torch.tensor([[0., 0., 0.], [width - 1, height - 1, depth - 1]], device=device, dtype=dtype)
+        expected = torch.tensor([[-1., -1., -1.], [1., 1., 1.]], device=device, dtype=dtype)
+        transform = kornia.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
         output = kornia.transform_points(transform, input)
-        assert_allclose(output, expected)
+        assert_allclose(output, expected.to(device=device, dtype=dtype))
 
 
 class TestHomographyWarper3D:
@@ -365,7 +365,7 @@ class TestHomographyWarper3D:
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):
         # create input data
-        dst_homo_src = torch.eye(4).to(device)
+        dst_homo_src = torch.eye(4, device=device, dtype=dtype)
         dst_homo_src[..., 0, 0] = 0.5
         dst_homo_src[..., 1, 1] = 0.5
         dst_homo_src[..., 2, 2] = 2.0
@@ -383,10 +383,10 @@ class TestHomographyWarper3D:
 
     @pytest.mark.parametrize("offset", [1, 3, 7])
     @pytest.mark.parametrize("shape", [(4, 5, 6), (2, 4, 6), (4, 3, 9), (5, 7, 8)])
-    def test_warp_grid_translation(self, shape, offset, device):
+    def test_warp_grid_translation(self, shape, offset, device, dtype):
         # create input data
         depth, height, width = shape
-        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=4).to(device)
+        dst_homo_src = utils.create_eye_batch(batch_size=1, eye_size=4, device=device, dtype=dtype)
         dst_homo_src[..., 0, 3] = offset  # apply offset in x
         grid = kornia.create_meshgrid3d(depth, height, width, normalized_coordinates=False)
         flow = kornia.warp_grid3d(grid, dst_homo_src)
@@ -394,8 +394,8 @@ class TestHomographyWarper3D:
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
         assert_allclose(
-            grid[..., 0].to(device) + offset, flow[..., 0])
+            grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0])
         assert_allclose(
-            grid[..., 1].to(device), flow[..., 1])
+            grid[..., 1].to(device=device, dtype=dtype), flow[..., 1])
         assert_allclose(
-            grid[..., 2].to(device), flow[..., 2])
+            grid[..., 2].to(device=device, dtype=dtype), flow[..., 2])
