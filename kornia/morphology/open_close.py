@@ -2,26 +2,32 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import kornia.morphology as m
+import kornia.morphology as morph
 
 
 # open
 def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+
     r"""
+
         Returns the opened image, (that means, erosion after a dilation) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.
 
         Args
+
            tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
            kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
         Returns:
+
            torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
         Example:
+
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> opened_img = kornia.morphology.open(tensor, kernel)
+            >>> opened_img = open(tensor, kernel)
+
         """
 
     if not isinstance(tensor, torch.Tensor):
@@ -40,26 +46,32 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return m.dilation(m.erosion(tensor, kernel), kernel)
+    return morph.dilation(morph.erosion(tensor, kernel), kernel)
 
 
 # close
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+
     r"""
+
         Returns the closed image, (that means, dilation after an erosion) applying the same kernel in each channel.
         The kernel must have 2 dimensions, each one defined by an odd number.
 
         Args
+
            tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
            kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
         Returns:
+
            torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
         Example:
+
             >>> tensor = torch.rand(1, 3, 5, 5)
             >>> kernel = torch.ones(3, 3)
-            >>> closed_img = kornia.morphology.close(tensor, kernel)
+            >>> closed_img = close(tensor, kernel)
+
         """
 
     if not isinstance(tensor, torch.Tensor):
@@ -78,4 +90,4 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return m.erosion(m.dilation(tensor, kernel), kernel)
+    return morph.erosion(morph.dilation(tensor, kernel), kernel)

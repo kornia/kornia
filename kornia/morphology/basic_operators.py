@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-# se_to_mask
-def se_to_mask(se: torch.Tensor) -> torch.Tensor:
+# _se_to_mask
+def _se_to_mask(se: torch.Tensor) -> torch.Tensor:
     se_h, se_w = se.size()
     se_flat = se.view(-1)
     num_feats = se_h * se_w
@@ -25,7 +25,7 @@ class Dilate(nn.Module):
         self.se = se - 1
         self.se_h, self.se_w = se.shape
         self.pad = (self.se_h // 2, self.se_w // 2)
-        self.kernel = se_to_mask(self.se)
+        self.kernel = _se_to_mask(self.se)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         output = input.view(input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
@@ -37,20 +37,25 @@ class Dilate(nn.Module):
 def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     r"""
+
     Returns the dilated image applying the same kernel in each channel.
     The kernel must have 2 dimensions, each one defined by an odd number.
 
     Args
+
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
        kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
     Returns:
+
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
     Example:
+
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
-        >>> dilated_img = kornia.morphology.dilation(tensor, kernel)
+        >>> dilated_img = dilation(tensor, kernel)
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -79,7 +84,7 @@ class Erode(nn.Module):
         self.se = se - 1
         self.se_h, self.se_w = se.shape
         self.pad = (self.se_h // 2, self.se_w // 2, self.se_h // 2, self.se_w // 2)
-        self.kernel = se_to_mask(self.se)
+        self.kernel = _se_to_mask(self.se)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         output = input.view(input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
@@ -90,21 +95,26 @@ class Erode(nn.Module):
 
 
 def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+
     r"""
+
     Returns the eroded image applying the same kernel in each channel.
     The kernel must have 2 dimensions, each one defined by an odd number.
 
     Args
+
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
        kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
     Returns:
+
        torch.Tensor: Eroded image with shape :math:`(B, C, H, W)`.
 
     Example:
+
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(5, 5)
-        >>> output = kornia.morphology.erosion(tensor, kernel)
+        >>> output = erosion(tensor, kernel)
 
     """
 

@@ -1,6 +1,6 @@
 import pytest
 import torch
-import kornia.morphology as m
+import kornia.morphology as morph
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -10,12 +10,12 @@ class TestDilate(utils.BaseTester):
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        assert m.se_to_mask(kernel) is not None
+        assert morph.se_to_mask(kernel) is not None
 
     def test_batch(self, device, dtype):
         input = torch.rand(3, 2, 6, 10, device=device, dtype=dtype)
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        test = m.dilation(input, kernel)
+        test = morph.dilation(input, kernel)
         assert input.shape == test.shape == (3, 2, 6, 10)
 
     def test_value(self, device, dtype):
@@ -24,34 +24,34 @@ class TestDilate(utils.BaseTester):
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[1., 1., 1.], [0.7, 1., 0.8], [0.9, 0.9, 0.9]],
                                 device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
-        assert_allclose(m.dilation(input, kernel), expected)
+        assert_allclose(morph.dilation(input, kernel), expected)
 
     def test_exception(self, device, dtype):
-        input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype).double()
-        kernel = torch.ones(3, 3, device=device, dtype=dtype).double()
+        input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert m.dilation([0.], kernel)
+            assert morph.dilation([0.], kernel)
 
         with pytest.raises(TypeError):
-            assert m.dilation(input, [0.])
+            assert morph.dilation(input, [0.])
 
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4)
-            assert m.dilation(test, kernel)
+            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
+            assert morph.dilation(test, kernel)
 
         with pytest.raises(ValueError):
-            test = torch.ones(2, 3, 4)
-            assert m.dilation(input, test)
+            test = torch.ones(2, 3, 4, device=device, dtype=dtype)
+            assert morph.dilation(input, test)
 
     def test_gradcheck(self, device, dtype):
-        input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=dtype).double()
-        kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype).double()
-        assert gradcheck(m.dilation, (input, kernel), raise_exception=True)
+        input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=dtype)
+        kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype)
+        assert gradcheck(morph.dilation, (input, kernel), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = m.dilation
+        op = morph.dilation
         op_script = torch.jit.script(op)
 
         input = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)
