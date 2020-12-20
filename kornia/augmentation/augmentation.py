@@ -1203,6 +1203,7 @@ class RandomEqualize(AugmentationBase2D):
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_equalize(input, params)
 
+
 class GaussianBlur(AugmentationBase2D):
     
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
