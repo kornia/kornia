@@ -1242,11 +1242,12 @@ class GaussianBlur(AugmentationBase2D):
     """
     def __init__(self, kernel_size: Tuple[int, int],
                  sigma: Tuple[float, float],
-                 border_type: str = 'reflect', 
+                 border_type: str = 'reflect',
                  return_transform: bool = False,
                  same_on_batch: bool = False,
                  p: float = 0.5) -> None:
-        super(GaussianBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        super(GaussianBlur, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.transform = GaussianBlur2d(kernel_size, sigma, border_type)
 
     def __repr__(self) -> str:
