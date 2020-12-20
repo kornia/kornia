@@ -65,9 +65,9 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     L: torch.Tensor = (116. * y) - 16.
     a: torch.Tensor = 500. * (x - y)
-    b: torch.Tensor = 200. * (y - z)
+    _b: torch.Tensor = 200. * (y - z)
 
-    out: torch.Tensor = torch.stack([L, a, b], dim=-3)
+    out: torch.Tensor = torch.stack([L, a, _b], dim=-3)
 
     return out
 
