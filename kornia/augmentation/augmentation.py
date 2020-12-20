@@ -1239,7 +1239,7 @@ class GaussianBlur(AugmentationBase2D):
                  return_transform: bool = False,
                  same_on_batch: bool = False,
                  p: float = 0.5) -> None:
-        super(GaussianBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p)
+        super(GaussianBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.transform = K.filters.GaussianBlur2d(kernel_size, sigma, border_type)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
