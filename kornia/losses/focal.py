@@ -134,7 +134,7 @@ def binary_focal_loss_with_logits(
     r"""Function that computes Binary Focal loss.
 
     """
-    if not torch.is_tensor(inp):
+    if not isinstance(inp, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(inp)))
 
