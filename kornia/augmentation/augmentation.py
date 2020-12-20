@@ -6,6 +6,7 @@ from torch.nn.functional import pad
 
 from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation import AugmentationBase2D
+from kornia.filters import GaussianBlur2d
 from . import functional as F
 from . import random_generator as rg
 from .utils import (
@@ -1205,7 +1206,7 @@ class RandomEqualize(AugmentationBase2D):
 
 
 class GaussianBlur(AugmentationBase2D):
-    
+
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
 
     Args:
@@ -1233,6 +1234,11 @@ class GaussianBlur(AugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> blur = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
         >>> blur(input)
+        tensor([[[[0.6699, 0.4645, 0.3193, 0.1741, 0.1955],
+                  [0.5422, 0.6657, 0.6261, 0.6527, 0.5195],
+                  [0.3826, 0.2638, 0.1902, 0.1620, 0.2141],
+                  [0.6329, 0.6732, 0.5634, 0.4037, 0.2049],
+                  [0.8307, 0.6753, 0.7147, 0.5768, 0.7097]]]])
     """
     def __init__(self, kernel_size: Tuple[int, int],
                  sigma: Tuple[float, float],
@@ -1241,7 +1247,7 @@ class GaussianBlur(AugmentationBase2D):
                  same_on_batch: bool = False,
                  p: float = 0.5) -> None:
         super(GaussianBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
-        self.transform = K.filters.GaussianBlur2d(kernel_size, sigma, border_type)
+        self.transform = GaussianBlur2d(kernel_size, sigma, border_type)
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
