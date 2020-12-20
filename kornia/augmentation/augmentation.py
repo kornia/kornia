@@ -1249,6 +1249,9 @@ class GaussianBlur(AugmentationBase2D):
         super(GaussianBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.transform = GaussianBlur2d(kernel_size, sigma, border_type)
 
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
