@@ -131,7 +131,18 @@ def binary_focal_loss_with_logits(
         eps: float = 1e-8) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
+    args:
+        inp (torch.Tensor) : input data tensor
+        target (torch.Tensor): the target tensor
+        alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.  Default: 0.25.
+        gamma (float): Focusing parameter :math:`\gamma >= 0`.  Default: 2.0.
+        reduction (str, optional): Specifies the reduction to apply to the.  Default: 'none'.
+        eps (float): for numerically stability when dividing. Default: 1e-8.
+
+    returns:
+        torch.tensor: loss
     """
+
     if not isinstance(inp, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(inp)))
@@ -192,6 +203,14 @@ class BinaryFocalLossWithLogits(nn.Module):
         - Input: :math:`(N, 1, *)`
         - Target: :math:`(N, 1, *)`
 
+    Examples:
+        >>> N = 5  # num_classes
+        >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
+        >>> loss = kornia.losses.BinaryFocalLossWithLogits(**kwargs)
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = loss(input, target)
+        >>> output.backward()
     """
 
     def __init__(self, alpha: float, gamma: float = 2.0,
@@ -200,7 +219,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: float = 1e-6
+        self.eps: float = 1e-8
 
     def forward(
             self,

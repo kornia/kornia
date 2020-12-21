@@ -77,6 +77,16 @@ class TestFocalLossWithLogits:
             raise_exception=True,
         )
 
+    def test_same_output(self, device, dtype):
+        num_classes = 1
+        logits = torch.rand(2, num_classes, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+
+        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
+
+        assert kornia.losses.binary_focal_loss_with_logits(logits, labels, **kwargs) == \
+               kornia.losses.BinaryFocalLossWithLogits(**kwargs)(logits, labels)
+
 
 class TestFocalLoss:
     def test_smoke_none(self, device):
