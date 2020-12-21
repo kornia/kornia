@@ -83,5 +83,5 @@ class Laplacian(nn.Module):
             'normalized=' + str(self.normalized) + ', ' + \
             'border_type=' + self.border_type + ')'
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

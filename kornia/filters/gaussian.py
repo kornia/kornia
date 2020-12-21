@@ -83,5 +83,5 @@ class GaussianBlur2d(nn.Module):
             'sigma=' + str(self.sigma) + ', ' +\
             'border_type=' + self.border_type + ')'
 
-    def forward(self, input: torch.Tensor):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type)

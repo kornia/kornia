@@ -37,7 +37,7 @@ def spatial_gradient(input: torch.Tensor,
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
     # allocate kernel
-    kernel = get_spatial_gradient_kernel2d(mode, order)
+    kernel: torch.Tensor = get_spatial_gradient_kernel2d(mode, order)
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
@@ -95,7 +95,7 @@ def spatial_gradient3d(input: torch.Tensor,
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
                          .format(input.shape))
     # allocate kernel
-    kernel = get_spatial_gradient_kernel3d(mode, order)
+    kernel: torch.Tensor = get_spatial_gradient_kernel3d(mode, order)
 
     # prepare kernel
     b, c, d, h, w = input.shape
