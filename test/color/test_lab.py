@@ -6,6 +6,7 @@ from kornia.testing import BaseTester
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+import kornia.testing as utils
 
 
 class TestRgbToLab(BaseTester):
@@ -76,7 +77,8 @@ class TestRgbToLab(BaseTester):
                                   [-25.45166461, -22.94347485, -31.32259433, 47.2621717,
                                      -60.05694598]]], device=device, dtype=dtype)
 
-        assert_allclose(kornia.color.rgb_to_lab(data), expected)
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(kornia.color.rgb_to_lab(data), expected, rtol=tol_val, atol=tol_val)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -84,7 +86,8 @@ class TestRgbToLab(BaseTester):
         rgb = kornia.color.lab_to_rgb
 
         data_out = lab(rgb(data, clip=False))
-        assert_allclose(data_out, data, rtol=1e-4, atol=1e-4)
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(data_out, data, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -204,8 +207,9 @@ class TestLabToRgb(BaseTester):
                                              [-0.55802926, 1.0223477, 0.80867314, 1.07334156,
                                                 0.28778443]]]], device=device, dtype=dtype)
 
-        assert_allclose(kornia.color.lab_to_rgb(data), expected)
-        assert_allclose(kornia.color.lab_to_rgb(data, clip=False), expected_unclipped)
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(kornia.color.lab_to_rgb(data), expected, rtol=tol_val, atol=tol_val)
+        assert_allclose(kornia.color.lab_to_rgb(data, clip=False), expected_unclipped, rtol=tol_val, atol=tol_val)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -213,7 +217,8 @@ class TestLabToRgb(BaseTester):
         rgb = kornia.color.lab_to_rgb
 
         unclipped_data_out = rgb(lab(data), clip=False)
-        assert_allclose(unclipped_data_out, data, rtol=1e-4, atol=1e-4)
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(unclipped_data_out, data, rtol=tol_val, atol=tol_val)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
