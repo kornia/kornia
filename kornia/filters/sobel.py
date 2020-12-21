@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d
-from kornia.filters.kernels import normalize_kernel2d
-import kornia.filters.kernels as kernels
+from kornia.filters.kernels import (
+    get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
+)
 
 
 def spatial_gradient(input: torch.Tensor,
@@ -95,7 +95,7 @@ def spatial_gradient3d(input: torch.Tensor,
         raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
                          .format(input.shape))
     # allocate kernel
-    kernel = kernels.get_spatial_gradient_kernel3d(mode, order)
+    kernel = get_spatial_gradient_kernel3d(mode, order)
 
     # prepare kernel
     b, c, d, h, w = input.shape
@@ -235,30 +235,6 @@ class SpatialGradient3d(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return spatial_gradient3d(input, self.mode, self.order)
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 5:
-            raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
-                             .format(input.shape))
-        # prepare kernel
-        b, c, d, h, w = input.shape
-        tmp_kernel: torch.Tensor = self.kernel.to(input.device).to(input.dtype).detach()
-        kernel: torch.Tensor = tmp_kernel.repeat(c, 1, 1, 1, 1)
-
-        # convolve input tensor with grad kernel
-        kernel_flip: torch.Tensor = kernel.flip(-3)
-
-        # Pad with "replicate for spatial dims, but with zeros for channel
-        spatial_pad = [self.kernel.size(2) // 2,
-                       self.kernel.size(2) // 2,
-                       self.kernel.size(3) // 2,
-                       self.kernel.size(3) // 2,
-                       self.kernel.size(4) // 2,
-                       self.kernel.size(4) // 2]
-        out_ch: int = 6 if self.order == 2 else 3
-        input_pad: torch.Tensor = F.pad(input, spatial_pad, 'replicate')
-        return F.conv3d(input_pad, kernel_flip, padding=0, groups=c).view(b, c, out_ch, d, h, w)
 
 
 class Sobel(nn.Module):

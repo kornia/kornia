@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-import kornia.filters.kernels as kernels
+from kornia.filters.kernels import get_gaussian_kernel2d
 
 
 def gaussian_blur2d(
@@ -35,7 +35,7 @@ def gaussian_blur2d(
         torch.Size([2, 4, 5, 5])
     """
     kernel: torch.Tensor = torch.unsqueeze(
-        kernels.get_gaussian_kernel2d(kernel_size, sigma), dim=0)
+        get_gaussian_kernel2d(kernel_size, sigma), dim=0)
 
     return kornia.filter2D(input, kernel, border_type)
 

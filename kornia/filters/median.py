@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import kornia.filters.kernels as kernels
+from kornia.filters.kernels import get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
@@ -41,7 +41,7 @@ def median_blur(input: torch.Tensor,
     padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
 
     # prepare kernel
-    kernel: torch.Tensor = kernels.get_binary_kernel2d(kernel_size).to(input)
+    kernel: torch.Tensor = get_binary_kernel2d(kernel_size).to(input)
     b, c, h, w = input.shape
 
     # map the local window to single vector

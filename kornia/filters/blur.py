@@ -3,8 +3,10 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-import kornia.filters as filters
-import kornia.filters.kernels as kernels
+import kornia
+from kornia.filters.kernels import (
+    get_box_kernel2d, normalize_kernel2d
+)
 
 
 def box_blur(input: torch.Tensor,
@@ -41,10 +43,10 @@ def box_blur(input: torch.Tensor,
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    kernel: torch.Tensor = kernels.get_box_kernel2d(kernel_size)
+    kernel: torch.Tensor = get_box_kernel2d(kernel_size)
     if normalized:
-        kernel = kernels.normalize_kernel2d(kernel)
-    return filters.filter2D(input, kernel, border_type)
+        kernel = normalize_kernel2d(kernel)
+    return kornia.filter2D(input, kernel, border_type)
 
 
 class BoxBlur(nn.Module):

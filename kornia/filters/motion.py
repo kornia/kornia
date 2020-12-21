@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 
 import kornia
-import kornia.filters.kernels as kernels
+from kornia.filters.kernels import (
+    get_motion_kernel2d, get_motion_kernel3d
+)
 
 
 class MotionBlur(nn.Module):
@@ -137,8 +139,8 @@ def motion_blur(
         False
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
-    kernel: torch.Tensor = kernels.get_motion_kernel2d(kernel_size, angle, direction)
-    return kornia.filters.filter2D(input, kernel, border_type)
+    kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction)
+    return kornia.filter2D(input, kernel, border_type)
 
 
 def motion_blur3d(
@@ -178,5 +180,5 @@ def motion_blur3d(
         False
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
-    kernel: torch.Tensor = kernels.get_motion_kernel3d(kernel_size, angle, direction)
-    return kornia.filters.filter3D(input, kernel, border_type)
+    kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction)
+    return kornia.filter3D(input, kernel, border_type)
