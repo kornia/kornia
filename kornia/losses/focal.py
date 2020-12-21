@@ -73,7 +73,7 @@ def focal_loss(
 class FocalLoss(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to [1], the Focal loss is computed as follows:
+    According to :cite:`lin2017focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -105,8 +105,6 @@ class FocalLoss(nn.Module):
         >>> output = loss(input, target)
         >>> output.backward()
 
-    References:
-        [1] https://arxiv.org/abs/1708.02002
     """
 
     def __init__(self, alpha: float, gamma: float = 2.0,
@@ -172,7 +170,7 @@ def binary_focal_loss_with_logits(
 class BinaryFocalLossWithLogits(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to [1], the Focal loss is computed as follows:
+    According to :cite:`lin2017focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -194,9 +192,6 @@ class BinaryFocalLossWithLogits(nn.Module):
         - Input: :math:`(N, 1, *)`
         - Target: :math:`(N, 1, *)`
 
-
-    References:
-        [1] https://arxiv.org/abs/1708.02002
     """
 
     def __init__(self, alpha: float, gamma: float = 2.0,
