@@ -64,7 +64,7 @@ class TestTransformPoints:
         points_dst_to_src = kornia.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
-        assert_allclose(points_src, points_dst_to_src)
+        assert_allclose(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # generate input data
@@ -89,7 +89,7 @@ class TestTransformPoints:
         op_script = torch.jit.script(op)
         actual = op_script(transform, points)
         expected = op(transform, points)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_trace(self, device, dtype):
@@ -103,7 +103,7 @@ class TestTransformPoints:
         actual = op_script_trace(transform, points)
         expected = kornia.transform_points(transform, points)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestTransformBoxes:
@@ -119,7 +119,7 @@ class TestTransformBoxes:
                                    [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_multiple_boxes(self, device, dtype):
 
@@ -149,7 +149,7 @@ class TestTransformBoxes:
                                    [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_boxes_wh(self, device, dtype):
 
@@ -168,7 +168,7 @@ class TestTransformBoxes:
                                    [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes, mode='xywh')
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
 
@@ -201,7 +201,7 @@ class TestTransformBoxes:
         actual = op_script(trans_mat, boxes)
         expected = kornia.transform_points(trans_mat, boxes)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestComposeTransforms:
@@ -213,7 +213,7 @@ class TestComposeTransforms:
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_translation_Bx4x4(self, batch_size, device, dtype):
@@ -223,7 +223,7 @@ class TestComposeTransforms:
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -245,7 +245,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_translation_Bx4x4(self, batch_size, device, dtype):
@@ -255,7 +255,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size, device, dtype):
@@ -270,7 +270,7 @@ class TestInverseTransformation:
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -290,7 +290,7 @@ class TestRelativeTransformation:
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_rotation_translation_Bx4x4(self, batch_size, device, dtype):
@@ -306,7 +306,7 @@ class TestRelativeTransformation:
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size, device, dtype):

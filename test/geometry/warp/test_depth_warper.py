@@ -70,7 +70,7 @@ class TestDepthWarper:
 
         # check offset in x-axis
         assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0])
+            grid_warped[..., -2, 0], grid_norm[..., -1, 0], atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
         assert_allclose(
             grid_warped[..., -1, 1], grid_norm[..., -1, 1], rtol=1e-4, atol=1e-4)
@@ -98,7 +98,7 @@ class TestDepthWarper:
 
         # check offset in x-axis
         assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0])
+            grid_warped[..., -2, 0], grid_norm[..., -1, 0], atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
         assert_allclose(
             grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1], rtol=1e-4, atol=1e-4)
@@ -126,7 +126,7 @@ class TestDepthWarper:
 
         # compare patches
         assert_allclose(
-            patch_dst[..., 1:, 1:], patch_src[..., :2, :4])
+            patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
     def test_compute_projection(self, batch_size, device, dtype):

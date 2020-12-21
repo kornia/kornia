@@ -31,21 +31,21 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_small_angle(self, device, dtype):
         theta = 1e-2
         angle_axis = torch.tensor([theta, 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_x_rotation(self, device, dtype):
         half_sqrt2 = 0.5 * np.sqrt(2)
         angle_axis = torch.tensor([kornia.pi / 2, 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         eps = 1e-12
@@ -73,7 +73,7 @@ class TestRotationMatrixToQuaternion:
         expected = torch.tensor(
             [0., 0., 0., 1.], device=device, dtype=dtype)
         quaternion = kornia.rotation_matrix_to_quaternion(matrix)
-        assert_allclose(quaternion, expected)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_rot_x_45(self, device, dtype):
         matrix = torch.tensor([
@@ -85,7 +85,7 @@ class TestRotationMatrixToQuaternion:
         expected = torch.tensor(
             [pi_half2, 0., 0., pi_half2], device=device, dtype=dtype)
         quaternion = kornia.rotation_matrix_to_quaternion(matrix)
-        assert_allclose(quaternion, expected)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_back_and_forth(self, device, dtype):
         matrix = torch.tensor([
@@ -124,7 +124,7 @@ class TestRotationMatrixToQuaternion:
         quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = op(quaternion)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestQuaternionToRotationMatrix:
@@ -143,7 +143,7 @@ class TestQuaternionToRotationMatrix:
             [0., 0., 1.],
         ], device=device, dtype=dtype)
         matrix = kornia.quaternion_to_rotation_matrix(quaternion)
-        assert_allclose(matrix, expected)
+        assert_allclose(matrix, expected, atol=1e-4, rtol=1e-4)
 
     def test_x_rotation(self, device, dtype):
         quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
@@ -153,7 +153,7 @@ class TestQuaternionToRotationMatrix:
             [0., 0., -1.],
         ], device=device, dtype=dtype)
         matrix = kornia.quaternion_to_rotation_matrix(quaternion)
-        assert_allclose(matrix, expected)
+        assert_allclose(matrix, expected, atol=1e-4, rtol=1e-4)
 
     def test_y_rotation(self, device, dtype):
         quaternion = torch.tensor([0., 1., 0., 0.], device=device, dtype=dtype)
@@ -163,7 +163,7 @@ class TestQuaternionToRotationMatrix:
             [0., 0., -1.],
         ], device=device, dtype=dtype)
         matrix = kornia.quaternion_to_rotation_matrix(quaternion)
-        assert_allclose(matrix, expected)
+        assert_allclose(matrix, expected, atol=1e-4, rtol=1e-4)
 
     def test_z_rotation(self, device, dtype):
         quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
@@ -173,7 +173,7 @@ class TestQuaternionToRotationMatrix:
             [0., 0., 1.],
         ], device=device, dtype=dtype)
         matrix = kornia.quaternion_to_rotation_matrix(quaternion)
-        assert_allclose(matrix, expected)
+        assert_allclose(matrix, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         quaternion = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
@@ -191,7 +191,7 @@ class TestQuaternionToRotationMatrix:
         quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = kornia.quaternion_to_rotation_matrix(quaternion)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestQuaternionLogToExp:
@@ -234,7 +234,7 @@ class TestQuaternionLogToExp:
         quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = op(quaternion)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestQuaternionExpToLog:
@@ -248,18 +248,18 @@ class TestQuaternionExpToLog:
     def test_unit_quaternion(self, device, dtype):
         quaternion_exp = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
-        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
 
     def test_pi_quaternion(self, device, dtype):
         quaternion_exp = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([kornia.pi / 2, 0., 0.], device=device, dtype=dtype)
-        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected)
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
 
     def test_back_and_forth(self, device, dtype):
         quaternion_exp = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
         quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
         quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log)
-        assert_allclose(quaternion_exp, quaternion_exp_hat)
+        assert_allclose(quaternion_exp, quaternion_exp_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
@@ -276,7 +276,7 @@ class TestQuaternionExpToLog:
         quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = op(quaternion)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestQuaternionToAngleAxis:
@@ -296,26 +296,26 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert_allclose(angle_axis, expected)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_y_rotation(self, device, dtype):
         quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
         expected = torch.tensor([0., kornia.pi, 0.], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert_allclose(angle_axis, expected)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_z_rotation(self, device, dtype):
         quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., kornia.pi / 3], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert_allclose(angle_axis, expected)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_small_angle(self, device, dtype):
         theta = 1e-2
         quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([theta, 0., 0.], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
-        assert_allclose(angle_axis, expected)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         eps = 1e-12
@@ -358,7 +358,7 @@ def test_deg2rad(batch_shape, device, dtype):
     x_rad = kornia.deg2rad(x_deg)
     x_rad_to_deg = kornia.rad2deg(x_rad)
 
-    assert_allclose(x_deg, x_rad_to_deg)
+    assert_allclose(x_deg, x_rad_to_deg, atol=1e-4, rtol=1e-4)
 
     assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)
@@ -385,7 +385,7 @@ class TestConvertPointsToHomogeneous:
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)
-        assert_allclose(points, expected)
+        assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
     def test_convert_points_batch(self, device, dtype):
         # generate input data
@@ -407,7 +407,7 @@ class TestConvertPointsToHomogeneous:
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)
-        assert_allclose(points, expected)
+        assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [
         (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
@@ -428,7 +428,7 @@ class TestConvertPointsToHomogeneous:
         actual = op_script(points_h)
         expected = op(points_h)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestConvertAtoH:
@@ -468,7 +468,7 @@ class TestConvertAtoH:
         actual = op_script(points_h)
         expected = op(points_h)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestConvertPointsFromHomogeneous:
@@ -492,7 +492,7 @@ class TestConvertPointsFromHomogeneous:
 
         # to euclidean
         points = kornia.convert_points_from_homogeneous(points_h)
-        assert_allclose(points, expected)
+        assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
     def test_convert_points_batch(self, device, dtype):
         # generate input data
@@ -514,7 +514,7 @@ class TestConvertPointsFromHomogeneous:
 
         # to euclidean
         points = kornia.convert_points_from_homogeneous(points_h)
-        assert_allclose(points, expected)
+        assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [
         (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
@@ -535,7 +535,7 @@ class TestConvertPointsFromHomogeneous:
         actual = op_script(points_h)
         expected = op(points_h)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -597,7 +597,7 @@ class TestNormalizePixelCoordinates:
         grid_norm = kornia.normalize_pixel_coordinates(
             grid, height, width)
 
-        assert_allclose(grid_norm, expected)
+        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_list(self, device, dtype):
         height, width = 3, 4
@@ -612,7 +612,7 @@ class TestNormalizePixelCoordinates:
         grid_norm = kornia.normalize_pixel_coordinates(
             grid, height, width)
 
-        assert_allclose(grid_norm, expected)
+        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -626,7 +626,7 @@ class TestNormalizePixelCoordinates:
         actual = op_script(grid, height, width)
         expected = op(grid, height, width)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestDenormalizePixelCoordinates:
@@ -641,7 +641,7 @@ class TestDenormalizePixelCoordinates:
         grid_norm = kornia.denormalize_pixel_coordinates(
             grid, height, width)
 
-        assert_allclose(grid_norm, expected)
+        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_list(self, device, dtype):
         height, width = 3, 4
@@ -656,7 +656,7 @@ class TestDenormalizePixelCoordinates:
         grid_norm = kornia.denormalize_pixel_coordinates(
             grid, height, width)
 
-        assert_allclose(grid_norm, expected)
+        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -670,4 +670,4 @@ class TestDenormalizePixelCoordinates:
         actual = op_script(grid, height, width)
         expected = op(grid, height, width)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)

@@ -141,22 +141,22 @@ class TestPinholeCamera:
 
         assert_allclose(
             pinhole_scale.intrinsics[..., 0, 0],
-            pinhole.intrinsics[..., 0, 0] * scale_val)  # fx
+            pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
         assert_allclose(
             pinhole_scale.intrinsics[..., 1, 1],
-            pinhole.intrinsics[..., 1, 1] * scale_val)  # fy
+            pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
         assert_allclose(
             pinhole_scale.intrinsics[..., 0, 2],
-            pinhole.intrinsics[..., 0, 2] * scale_val)  # cx
+            pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
         assert_allclose(
             pinhole_scale.intrinsics[..., 1, 2],
-            pinhole.intrinsics[..., 1, 2] * scale_val)  # cy
+            pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
         assert_allclose(
             pinhole_scale.height,
-            pinhole.height * scale_val)
+            pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_allclose(
             pinhole_scale.width,
-            pinhole.width * scale_val)
+            pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_scale_inplace(self, device, dtype):
         batch_size = 2
@@ -177,20 +177,20 @@ class TestPinholeCamera:
 
         assert_allclose(
             pinhole_scale.intrinsics[..., 0, 0],
-            pinhole.intrinsics[..., 0, 0] * scale_val)  # fx
+            pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
         assert_allclose(
             pinhole_scale.intrinsics[..., 1, 1],
-            pinhole.intrinsics[..., 1, 1] * scale_val)  # fy
+            pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
         assert_allclose(
             pinhole_scale.intrinsics[..., 0, 2],
-            pinhole.intrinsics[..., 0, 2] * scale_val)  # cx
+            pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
         assert_allclose(
             pinhole_scale.intrinsics[..., 1, 2],
-            pinhole.intrinsics[..., 1, 2] * scale_val)  # cy
+            pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
         assert_allclose(
-            pinhole_scale.height, pinhole.height * scale_val)
+            pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
         assert_allclose(
-            pinhole_scale.width, pinhole.width * scale_val)
+            pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
 
 '''@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])

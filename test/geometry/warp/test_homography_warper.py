@@ -286,7 +286,7 @@ class TestHomographyNormalTransform:
     def test_transform2d(self, height, width, expected, device, dtype):
         output = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)
 
-        assert_allclose(output, expected.to(device=device, dtype=dtype))
+        assert_allclose(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height", [1, 2, 5])
     @pytest.mark.parametrize("width", [1, 2, 5])
@@ -300,7 +300,7 @@ class TestHomographyNormalTransform:
         expected = torch.tensor([[-1., -1.], [1., 1.]], device=device, dtype=dtype)
         transform = kornia.normal_transform_pixel(height, width, device=device, dtype=dtype)
         output = kornia.transform_points(transform, input)
-        assert_allclose(output, expected.to(device=device, dtype=dtype))
+        assert_allclose(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("height,width,depth,expected", [
         (2, 6, 4, expected_3d_0),
@@ -323,7 +323,7 @@ class TestHomographyNormalTransform:
         expected = torch.tensor([[-1., -1., -1.], [1., 1., 1.]], device=device, dtype=dtype)
         transform = kornia.normal_transform_pixel3d(depth, height, width, device=device, dtype=dtype)
         output = kornia.transform_points(transform, input)
-        assert_allclose(output, expected.to(device=device, dtype=dtype))
+        assert_allclose(output, expected.to(device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
 
 class TestHomographyWarper3D:
@@ -394,8 +394,8 @@ class TestHomographyWarper3D:
         # the grid the src plus the offset should be equal to the flow
         # on the x-axis, y-axis remains the same.
         assert_allclose(
-            grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0])
+            grid[..., 0].to(device=device, dtype=dtype) + offset, flow[..., 0], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            grid[..., 1].to(device=device, dtype=dtype), flow[..., 1])
+            grid[..., 1].to(device=device, dtype=dtype), flow[..., 1], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            grid[..., 2].to(device=device, dtype=dtype), flow[..., 2])
+            grid[..., 2].to(device=device, dtype=dtype), flow[..., 2], atol=1e-4, rtol=1e-4)

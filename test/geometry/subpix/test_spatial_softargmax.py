@@ -30,14 +30,14 @@ class TestCenterKernel2d:
              [[0., 0., 0.],
               [0., 1., 0.],
               [0., 0., 0.]]]], device=device, dtype=dtype)
-        assert_allclose(kernel, expected)
+        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel2d(2, 2, device=device).to(dtype=dtype)
         expected = torch.ones(2, 2, 2, 2, device=device, dtype=dtype) * 0.25
         expected[0, 1] = 0
         expected[1, 0] = 0
-        assert_allclose(kernel, expected)
+        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestCenterKernel3d:
@@ -51,7 +51,7 @@ class TestCenterKernel3d:
         expected[0, 0, 1, 2, 3] = 1.
         expected[1, 1, 1, 2, 3] = 1.
         expected[2, 2, 1, 2, 3] = 1.
-        assert_allclose(kernel, expected)
+        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel3d(2, 4, 3, device=device).to(dtype=dtype)
@@ -59,7 +59,7 @@ class TestCenterKernel3d:
         expected[0, 0, :, 1:3, 1] = 0.25
         expected[1, 1, :, 1:3, 1] = 0.25
         expected[2, 2, :, 1:3, 1] = 0.25
-        assert_allclose(kernel, expected)
+        assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestSpatialSoftArgmax2d:
@@ -78,32 +78,32 @@ class TestSpatialSoftArgmax2d:
         input[..., 0, 0] = 1e16
 
         coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=True)
-        assert_allclose(coord[..., 0].item(), -1.0)
-        assert_allclose(coord[..., 1].item(), -1.0)
+        assert_allclose(coord[..., 0].item(), -1.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[..., 1].item(), -1.0, atol=1e-4, rtol=1e-4)
 
     def test_top_left(self, device, dtype):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         input[..., 0, 0] = 1e16
 
         coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=False)
-        assert_allclose(coord[..., 0].item(), 0.0)
-        assert_allclose(coord[..., 1].item(), 0.0)
+        assert_allclose(coord[..., 0].item(), 0.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[..., 1].item(), 0.0, atol=1e-4, rtol=1e-4)
 
     def test_bottom_right_normalized(self, device, dtype):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         input[..., -1, -1] = 1e16
 
         coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=True)
-        assert_allclose(coord[..., 0].item(), 1.0)
-        assert_allclose(coord[..., 1].item(), 1.0)
+        assert_allclose(coord[..., 0].item(), 1.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
     def test_bottom_right(self, device, dtype):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         input[..., -1, -1] = 1e16
 
         coord = kornia.spatial_soft_argmax2d(input, normalized_coordinates=False)
-        assert_allclose(coord[..., 0].item(), 2.0)
-        assert_allclose(coord[..., 1].item(), 1.0)
+        assert_allclose(coord[..., 0].item(), 2.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
     def test_batch2_n2(self, device, dtype):
         input = torch.zeros(2, 2, 2, 3, device=device, dtype=dtype)
@@ -113,14 +113,14 @@ class TestSpatialSoftArgmax2d:
         input[1, 1, -1, -1] = 1e16  # bottom-right
 
         coord = kornia.spatial_soft_argmax2d(input)
-        assert_allclose(coord[0, 0, 0].item(), -1.0)  # top-left
-        assert_allclose(coord[0, 0, 1].item(), -1.0)
-        assert_allclose(coord[0, 1, 0].item(), 1.0)  # top-right
-        assert_allclose(coord[0, 1, 1].item(), -1.0)
-        assert_allclose(coord[1, 0, 0].item(), -1.0)  # bottom-left
-        assert_allclose(coord[1, 0, 1].item(), 1.0)
-        assert_allclose(coord[1, 1, 0].item(), 1.0)  # bottom-right
-        assert_allclose(coord[1, 1, 1].item(), 1.0)
+        assert_allclose(coord[0, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # top-left
+        assert_allclose(coord[0, 0, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[0, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # top-right
+        assert_allclose(coord[0, 1, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[1, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # bottom-left
+        assert_allclose(coord[1, 0, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+        assert_allclose(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
+        assert_allclose(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
@@ -134,15 +134,16 @@ class TestSpatialSoftArgmax2d:
         std = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
 
         hm = kornia.geometry.dsnt.spatial_softmax2d(input)
-        assert_allclose(hm.sum(-1).sum(-1), torch.tensor(1.0, device=device, dtype=dtype))
+        assert_allclose(hm.sum(-1).sum(-1), torch.tensor(1.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
         pred = kornia.geometry.dsnt.spatial_expectation2d(hm)
-        assert_allclose(pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype))
+        assert_allclose(
+            pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
         loss1 = mse_loss(pred, target, size_average=None, reduce=None,
                          reduction='none').mean(-1, keepdim=False)
         expected_loss1 = torch.as_tensor([[0.0, 1.0]], device=device, dtype=dtype)
-        assert_allclose(loss1, expected_loss1)
+        assert_allclose(loss1, expected_loss1, atol=1e-4, rtol=1e-4)
 
         target_hm = kornia.geometry.dsnt.render_gaussian2d(
             target, std, input.shape[-2:]).contiguous()
@@ -217,8 +218,8 @@ class TestConvSoftArgmax2d:
                                          [[1., 1.],
                                           [3., 3.]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
         input = torch.tensor([[[
@@ -239,8 +240,8 @@ class TestConvSoftArgmax2d:
                                          [[1., 1.],
                                           [3., 3.]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
         input = torch.tensor([[[
@@ -261,8 +262,8 @@ class TestConvSoftArgmax2d:
                                          [[-0.5, -0.5],
                                           [0.5, 0.5]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
         input = torch.tensor([[[
@@ -283,8 +284,8 @@ class TestConvSoftArgmax2d:
                                          [[-0.5, -0.5],
                                           [0.5, 0.5]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
 class TestConvSoftArgmax3d:
@@ -328,8 +329,8 @@ class TestConvSoftArgmax3d:
                                         [[[1., 1.],
                                           [3., 3.]]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
         input = torch.tensor([[[[
@@ -353,8 +354,8 @@ class TestConvSoftArgmax3d:
                                         [[[1., 1.],
                                           [3., 3.]]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
         input = torch.tensor([[[[
@@ -378,8 +379,8 @@ class TestConvSoftArgmax3d:
             [[[-0.5, -0.5],
               [0.5, 0.5]]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
         input = torch.tensor([[[[
@@ -403,8 +404,8 @@ class TestConvSoftArgmax3d:
             [[[-0.5, -0.5],
               [0.5, 0.5]]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
 class TestConvQuadInterp3d:
@@ -516,5 +517,5 @@ class TestConvQuadInterp3d:
                                              [3.0, 3.0, 3.0, 3.0, 3.0],
                                              [4.0, 4.0, 4.0, 4.0, 4.0]]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
-        assert_allclose(val, expected_val)
-        assert_allclose(coords, expected_coord)
+        assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
