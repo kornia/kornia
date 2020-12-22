@@ -18,6 +18,7 @@ class VideoSequential(nn.Sequential):
 
     Args:
         *args (_AugmentationBase): a list of augmentation module.
+        data_format (str): only BCTHW and BTCHW are supported.
         same_on_frame (bool): apply the same transformation across the channel per frame. Default: True.
 
     Example:
@@ -50,17 +51,25 @@ class VideoSequential(nn.Sequential):
         tensor(False)
     """
 
-    def __init__(self, *args: _AugmentationBase, same_on_frame: bool = True) -> None:
+    def __init__(self, *args: _AugmentationBase, data_format="BCTHW", same_on_frame: bool = True) -> None:
         super(VideoSequential, self).__init__(*args)
         self.same_on_frame = same_on_frame
         for aug in args:
             if isinstance(aug, MixAugmentationBase):
                 raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {aug}.")
+        self.data_format = data_format.upper()
+        assert self.data_format in ["BCTHW", "BTCHW"], \
+            f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
+        self._temporal_channel: int
+        if self.data_format == "BCTHW":
+            self._temporal_channel = 2
+        elif self.data_format == "BTCHW":
+            self._temporal_channel = 1
 
     def __infer_channel_exclusive_batch_shape__(self, input: torch.Tensor) -> torch.Size:
         batch_shape: torch.Size = input.shape
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
-        return cast(torch.Size, batch_shape[:2] + batch_shape[3:])
+        return cast(torch.Size, batch_shape[:self._temporal_channel] + batch_shape[self._temporal_channel + 1:])
 
     def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
@@ -73,14 +82,30 @@ class VideoSequential(nn.Sequential):
         """
         return torch.stack([param] * frame_num).T.reshape(-1, *list(param.shape[1:]))  # type: ignore
 
+    def _input_shape_convert_in(self, input: torch.Tensor) -> torch.Tensor:
+        # Convert any shape to (B, T, C, H, W)
+        if self.data_format == "BCTHW":
+            # Convert (B, C, T, H, W) to (B, T, C, H, W)
+            input = input.transpose(1, 2)
+        if self.data_format == "BTCHW":
+            pass
+        return input
+
+    def _input_shape_convert_back(self, input: torch.Tensor, original_shape: torch.Size) -> torch.Tensor:
+        input = input.view(*original_shape)
+        if self.data_format == "BCTHW":
+            input = input.transpose(1, 2)
+        if self.data_format == "BTCHW":
+            pass
+        return input
+
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        assert len(input.shape) == 5, f"Input must be (B, C, T, H, W). Got {input.shape}."
+        assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         # Size of T
-        frame_num = input.size(2)
+        frame_num = input.size(self._temporal_channel)
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(input)
-        # Convert to (B, T, C, H, W)
-        input = input.transpose(1, 2)
+        input = self._input_shape_convert_in(input)
         _original_shape = input.shape
         input = input.reshape(-1, *batch_shape[1:])
         if not self.same_on_frame:
@@ -97,8 +122,8 @@ class VideoSequential(nn.Sequential):
             input = aug(input, params=param)
 
         if isinstance(input, (tuple, list)):
-            input[0] = input[0].view(*_original_shape).transpose(1, 2)
+            input[0] = self._input_shape_convert_back(input[0], _original_shape)
         else:
-            input = input.view(*_original_shape).transpose(1, 2)
+            input = self._input_shape_convert_back(input, _original_shape)
 
         return input
