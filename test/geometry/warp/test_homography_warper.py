@@ -34,7 +34,7 @@ class TestHomographyWarper:
         res = torch.tensor([[[0.5, 0.0, -1.0],
                              [0.0, 2.0, -1.0],
                              [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        assert (kornia.normal_transform_pixel(height, width) == res).all()
+        assert (kornia.normal_transform_pixel(height, width, device=device, dtype=dtype) == res).all()
 
         norm_homo = kornia.normalize_homography(dst_homo_src, (height, width), (height, width))
         assert (norm_homo == dst_homo_src).all()

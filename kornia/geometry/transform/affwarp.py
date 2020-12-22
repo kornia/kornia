@@ -9,6 +9,7 @@ from kornia.geometry.transform.imgwarp import (
 from kornia.geometry.transform.projwarp import (
     warp_affine3d, get_projective_transform
 )
+from kornia.utils import _extract_device_dtype
 
 __all__ = [
     "affine",
@@ -465,17 +466,18 @@ class Affine(nn.Module):
         self._batch_size = batch_size
 
         super().__init__()
+        device, dtype = _extract_device_dtype([angle, translation, scale_factor])
 
         if angle is None:
-            angle = torch.zeros(batch_size)
+            angle = torch.zeros(batch_size, device=device, dtype=dtype)
         self.angle = angle
 
         if translation is None:
-            translation = torch.zeros(batch_size, 2)
+            translation = torch.zeros(batch_size, 2, device=device, dtype=dtype)
         self.translation = translation
 
         if scale_factor is None:
-            scale_factor = torch.ones(batch_size, 2)
+            scale_factor = torch.ones(batch_size, 2, device=device, dtype=dtype)
         self.scale_factor = scale_factor
 
         self.shear = shear

@@ -38,7 +38,7 @@ class TestWarpAffine3d:
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
-        output = proj.warp_affine3d(input, P_hat, out_shape)
+        output = proj.warp_affine3d(input, P_hat, out_shape, flags='nearest')
         assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):

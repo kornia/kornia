@@ -39,9 +39,6 @@ from kornia.enhance.normalize import (
     Normalize,
     Denormalize
 )
-from .container import (
-    VideoSequential
-)
 
 __all__ = [
     "AugmentationBase2D",
@@ -75,5 +72,4 @@ __all__ = [
     "RandomCrop3D",
     "CenterCrop3D",
     "RandomEqualize3D",
-    "VideoSequential"
 ]
