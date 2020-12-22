@@ -9,7 +9,7 @@ from kornia.augmentation import ColorJitter
 
 
 class VideoSequential(nn.Sequential):
-    r"""VideoSequential for processing video data (B, C, T, H, W).
+    r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
     By default, `VideoSequential` enabled `same_on_frame` to make sure the same augmentations happen
@@ -18,7 +18,7 @@ class VideoSequential(nn.Sequential):
 
     Args:
         *args (_AugmentationBase): a list of augmentation module.
-        data_format (str): only BCTHW and BTCHW are supported.
+        data_format (str): only BCTHW and BTCHW are supported. Default: BTCHW.
         same_on_frame (bool): apply the same transformation across the channel per frame. Default: True.
 
     Example:
@@ -29,6 +29,7 @@ class VideoSequential(nn.Sequential):
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ... data_format="BCTHW",
         ... same_on_frame=True)
         >>> output = aug_list(input)
         >>> (output[0, :, 0] == output[0, :, 1]).all()
@@ -43,6 +44,7 @@ class VideoSequential(nn.Sequential):
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
+        ... data_format="BCTHW",
         ... same_on_frame=False)
         >>> output = aug_list(input)
         >>> output.shape
@@ -51,7 +53,7 @@ class VideoSequential(nn.Sequential):
         tensor(False)
     """
 
-    def __init__(self, *args: _AugmentationBase, data_format="BCTHW", same_on_frame: bool = True) -> None:
+    def __init__(self, *args: _AugmentationBase, data_format="BTCHW", same_on_frame: bool = True) -> None:
         super(VideoSequential, self).__init__(*args)
         self.same_on_frame = same_on_frame
         for aug in args:
