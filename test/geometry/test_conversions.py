@@ -549,7 +549,7 @@ def test_angle_axis_to_rotation_matrix(batch_size, device, dtype):
 
     rotation_matrix_eye = torch.matmul(
         rotation_matrix, rotation_matrix.transpose(1, 2))
-    assert_allclose(rotation_matrix_eye, eye_batch)
+    assert_allclose(rotation_matrix_eye, eye_batch, atol=1e-4, rtol=1e-4)
 
     # evaluate function gradient
     angle_axis = tensor_to_gradcheck_var(angle_axis)  # to var

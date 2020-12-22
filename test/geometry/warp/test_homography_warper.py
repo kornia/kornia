@@ -51,7 +51,7 @@ class TestHomographyWarper:
         res = torch.tensor([[[4.0, 0.0, 3.0],
                              [0.0, 1 / 3, -2 / 3],
                              [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        assert_allclose(norm_homo, res)
+        assert_allclose(norm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):
@@ -102,13 +102,13 @@ class TestHomographyWarper:
 
         # check the corners
         assert_allclose(
-            patch_src[..., 0, 0], patch_dst[..., 0, 0])
+            patch_src[..., 0, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., 0, -1], patch_dst[..., 0, -1])
+            patch_src[..., 0, -1], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., -1, 0], patch_dst[..., -1, 0])
+            patch_src[..., -1, 0], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., -1, -1], patch_dst[..., -1, -1])
+            patch_src[..., -1, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("shape", [
         (4, 5), (2, 6), (4, 3), (5, 7), ])
@@ -123,7 +123,7 @@ class TestHomographyWarper:
         # instantiate warper and from source to destination
         warper = kornia.HomographyWarper(height, width, align_corners=True)
         patch_dst = warper(patch_src, dst_homo_src)
-        assert_allclose(patch_src[..., 1:], patch_dst[..., :-1])
+        assert_allclose(patch_src[..., 1:], patch_dst[..., :-1], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 3, 5), (2, 2, 4, 3), (3, 1, 2, 3), ])
@@ -145,13 +145,13 @@ class TestHomographyWarper:
 
         # check the corners
         assert_allclose(
-            patch_src[..., 0, 0], patch_dst[..., 0, -1])
+            patch_src[..., 0, 0], patch_dst[..., 0, -1], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., 0, -1], patch_dst[..., -1, -1])
+            patch_src[..., 0, -1], patch_dst[..., -1, -1], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., -1, 0], patch_dst[..., 0, 0])
+            patch_src[..., -1, 0], patch_dst[..., 0, 0], atol=1e-4, rtol=1e-4)
         assert_allclose(
-            patch_src[..., -1, -1], patch_dst[..., -1, 0])
+            patch_src[..., -1, -1], patch_dst[..., -1, 0], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_homography_warper(self, batch_size, device, dtype):
@@ -196,7 +196,7 @@ class TestHomographyWarper:
                 patch_dst, torch.inverse(dst_homo_src_i), (height, width), align_corners=True)
 
             assert_allclose(
-                patch_dst_to_src, patch_dst_to_src_functional)
+                patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [
         (1, 1, 7, 5), (2, 3, 8, 5), (1, 1, 7, 16), ])
@@ -251,7 +251,7 @@ class TestHomographyWarper:
                 patch_src, dst_homo_src_i, (height, width), align_corners=align_corners,
                 normalized_coordinates=normalized_coordinates)
 
-            assert_allclose(patch_dst, patch_dst_jit)
+            assert_allclose(patch_dst, patch_dst_jit, atol=1e-4, rtol=1e-4)
 
 
 class TestHomographyNormalTransform:
