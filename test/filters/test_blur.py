@@ -32,7 +32,9 @@ class TestBoxBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size)
-        assert_allclose(actual.sum(), torch.tensor(35.).to(actual))
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual.sum(), torch.tensor(35.).to(actual), rtol=tol_val, atol=tol_val)
 
     # TODO(dmytro): normalized does not make any effect
     def test_kernel_3x3_nonormalize(self, device, dtype):
@@ -46,7 +48,9 @@ class TestBoxBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size, normalized=False)
-        assert_allclose(actual.sum(), torch.tensor(35.).to(actual))
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual.sum(), torch.tensor(35.).to(actual), rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5(self, device, dtype):
         inp = torch.tensor([[[
@@ -61,7 +65,9 @@ class TestBoxBlur:
         expected = inp.sum((1, 2, 3)) / torch.mul(*kernel_size)
 
         actual = kornia.filters.box_blur(inp, kernel_size)
-        assert_allclose(actual[:, 0, 2, 2], expected)
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5_batch(self, device, dtype):
         batch_size = 3
@@ -77,7 +83,9 @@ class TestBoxBlur:
         expected = inp.sum((1, 2, 3)) / torch.mul(*kernel_size)
 
         actual = kornia.filters.box_blur(inp, kernel_size)
-        assert_allclose(actual[:, 0, 2, 2], expected)
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual[:, 0, 2, 2], expected, rtol=tol_val, atol=tol_val)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

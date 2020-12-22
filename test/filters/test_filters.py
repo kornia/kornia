@@ -82,7 +82,9 @@ class TestFilter2D:
         ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
 
         actual = kornia.filter2D(input, kernel, normalized=True)
-        assert_allclose(actual, expected)
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
@@ -286,7 +288,9 @@ class TestFilter3D:
         expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3D(input, kernel, normalized=True)
-        assert_allclose(actual, expected)
+
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
