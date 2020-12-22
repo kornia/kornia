@@ -5,10 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters.kernels import normalize_kernel2d
-import kornia.testing as testing
 
 
-def compute_padding(kernel_size: List[int]) -> List[int]:
+def _compute_padding(kernel_size: List[int]) -> List[int]:
     """Computes padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
@@ -17,7 +16,7 @@ def compute_padding(kernel_size: List[int]) -> List[int]:
 
     # for even kernels we need to do asymetric padding :(
 
-    out_padding = []
+    out_padding = 2 * len(kernel_size) * [0]
 
     for i in range(len(kernel_size)):
         computed_tmp = computed[-(i + 1)]
@@ -25,8 +24,8 @@ def compute_padding(kernel_size: List[int]) -> List[int]:
             padding = computed_tmp - 1
         else:
             padding = computed_tmp
-        out_padding.append(padding)
-        out_padding.append(computed_tmp)
+        out_padding[2 * i + 0] = padding
+        out_padding[2 * i + 1] = computed_tmp
     return out_padding
 
 
@@ -69,8 +68,13 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
     """
-    testing.check_is_tensor(input)
-    testing.check_is_tensor(kernel)
+    if not isinstance(input, torch.Tensor):
+        raise TypeError("Input border_type is not torch.Tensor. Got {}"
+                        .format(type(input)))
+
+    if not isinstance(kernel, torch.Tensor):
+        raise TypeError("Input border_type is not torch.Tensor. Got {}"
+                        .format(type(kernel)))
 
     if not isinstance(border_type, str):
         raise TypeError("Input border_type is not string. Got {}"
@@ -95,7 +99,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # pad the input tensor
     height, width = tmp_kernel.shape[-2:]
-    padding_shape: List[int] = compute_padding([height, width])
+    padding_shape: List[int] = _compute_padding([height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
@@ -104,6 +108,7 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
 
     # convolve the tensor with the kernel.
     output = F.conv2d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+
     return output.view(b, c, h, w)
 
 
@@ -169,8 +174,13 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
                    [0., 5., 5., 5., 0.],
                    [0., 0., 0., 0., 0.]]]]])
     """
-    testing.check_is_tensor(input)
-    testing.check_is_tensor(kernel)
+    if not isinstance(input, torch.Tensor):
+        raise TypeError("Input border_type is not torch.Tensor. Got {}"
+                        .format(type(input)))
+
+    if not isinstance(kernel, torch.Tensor):
+        raise TypeError("Input border_type is not torch.Tensor. Got {}"
+                        .format(type(kernel)))
 
     if not isinstance(border_type, str):
         raise TypeError("Input border_type is not string. Got {}"
@@ -197,7 +207,7 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
 
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
-    padding_shape: List[int] = compute_padding([depth, height, width])
+    padding_shape: List[int] = _compute_padding([depth, height, width])
     input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
@@ -206,4 +216,5 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
 
     # convolve the tensor with the kernel.
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+
     return output.view(b, c, d, h, w)
