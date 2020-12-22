@@ -658,10 +658,12 @@ def normalize_pixel_coordinates(
                          "Got {}".format(pixel_coordinates.shape))
     # compute normalization factor
     hw: torch.Tensor = torch.stack([
-        torch.tensor(width), torch.tensor(height)
-    ]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+        torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
+        torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+    ])
 
-    factor: torch.Tensor = torch.tensor(2.) / (hw - 1).clamp(eps)
+    factor: torch.Tensor = torch.tensor(
+        2., device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (hw - 1).clamp(eps)
 
     return factor * pixel_coordinates - 1
 

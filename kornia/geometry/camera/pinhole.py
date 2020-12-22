@@ -291,9 +291,11 @@ class PinholeCamera:
             tx,
             ty,
             tz,
-            batch_size=1):
+            batch_size=1,
+            device: Optional[torch.device] = None,
+            dtype: Optional[torch.dtype] = None):
         # create the camera matrix
-        intrinsics = torch.zeros(batch_size, 4, 4)
+        intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx
         intrinsics[..., 1, 1] += fy
         intrinsics[..., 0, 2] += cx
@@ -301,14 +303,14 @@ class PinholeCamera:
         intrinsics[..., 2, 2] += 1.0
         intrinsics[..., 3, 3] += 1.0
         # create the pose matrix
-        extrinsics = torch.eye(4).repeat(batch_size, 1, 1)
+        extrinsics = torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
         # create image hegith and width
-        height_tmp = torch.zeros(batch_size)
+        height_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
         height_tmp[..., 0] += height
-        width_tmp = torch.zeros(batch_size)
+        width_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
         width_tmp[..., 0] += width
         return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
