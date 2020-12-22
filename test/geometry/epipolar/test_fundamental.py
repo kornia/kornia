@@ -73,7 +73,7 @@ class TestNormalizeTransformation:
         ]], device=device, dtype=dtype)
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_allclose(trans_norm, trans_expected)
+        assert_allclose(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_check_corner_case(self, device, dtype):
         trans = torch.tensor([[
@@ -85,7 +85,7 @@ class TestNormalizeTransformation:
         trans_expected = trans.clone()
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_allclose(trans_norm, trans_expected)
+        assert_allclose(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         trans = torch.rand(2, 3, 3,
@@ -261,7 +261,7 @@ class TestFundamentlFromEssential:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_allclose(F_mat_norm, F_hat_norm)
+        assert_allclose(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -311,7 +311,7 @@ class TestFundamentalFromProjections:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_allclose(F_mat_norm, F_hat_norm)
+        assert_allclose(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         P1 = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)

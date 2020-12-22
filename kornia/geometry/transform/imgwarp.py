@@ -342,6 +342,9 @@ def get_rotation_matrix2d(
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Got center {}, angle {} and scale {}"
                          .format(center.shape, angle.shape, scale.shape))
+    if not (center.device == angle.device == scale.device) or not (center.dtype == angle.dtype == scale.dtype):
+        raise ValueError("Inputs must have same device Got center ({}, {}), angle ({}, {}) and scale ({}, {})"
+                         .format(center.device, center.dtype, angle.device, angle.dtype, scale.device, scale.dtype))
     # convert angle and apply scale
     rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
     scaling_matrix: torch.Tensor = torch.zeros(
@@ -358,7 +361,7 @@ def get_rotation_matrix2d(
 
     # create output tensor
     batch_size: int = center.shape[0]
-    one = torch.tensor(1.).to(center.device)
+    one = torch.tensor(1., device=center.device, dtype=center.dtype)
     M: torch.Tensor = torch.zeros(
         batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0:2, 0:2] = scaled_rotation

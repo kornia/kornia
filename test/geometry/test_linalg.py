@@ -8,9 +8,9 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-def identity_matrix(batch_size):
+def identity_matrix(batch_size, device, dtype):
     r"""Creates a batched homogeneous identity matrix"""
-    return torch.eye(4).repeat(batch_size, 1, 1)  # Nx4x4
+    return torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)  # Nx4x4
 
 
 def euler_angles_to_rotation_matrix(x, y, z):
@@ -48,13 +48,12 @@ class TestTransformPoints:
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points(
-            self, device, batch_size, num_points, num_dims):
+            self, batch_size, num_points, num_dims, device, dtype):
         # generate input data
         eye_size = num_dims + 1
-        points_src = torch.rand(batch_size, num_points, num_dims)
-        points_src = points_src.to(device)
+        points_src = torch.rand(batch_size, num_points, num_dims, device=device, dtype=dtype)
 
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
         dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
@@ -65,69 +64,69 @@ class TestTransformPoints:
         points_dst_to_src = kornia.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
-        assert_allclose(points_src, points_dst_to_src)
+        assert_allclose(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = num_dims + 1
-        points_src = torch.rand(batch_size, num_points, num_dims).to(device)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device)
+        points_src = torch.rand(batch_size, num_points, num_dims, device=device, dtype=dtype)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
         assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(transform, points):
             return kornia.transform_points(transform, points)
 
-        points = torch.ones(1, 2, 2, device=device)
+        points = torch.ones(1, 2, 2, device=device, dtype=dtype)
         transform = kornia.eye_like(3, points)
         op = kornia.transform_points
         op_script = torch.jit.script(op)
         actual = op_script(transform, points)
         expected = op(transform, points)
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_trace(self, device):
+    def test_jit_trace(self, device, dtype):
         @torch.jit.script
         def op_script(transform, points):
             return kornia.transform_points(transform, points)
 
-        points = torch.ones(1, 2, 2).to(device)
+        points = torch.ones(1, 2, 2, device=device, dtype=dtype)
         transform = torch.eye(3)[None].to(device)
         op_script_trace = torch.jit.trace(op_script, (transform, points,))
         actual = op_script_trace(transform, points)
         expected = kornia.transform_points(transform, points)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestTransformBoxes:
 
-    def test_transform_boxes(self, device):
+    def test_transform_boxes(self, device, dtype):
 
-        boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]]).to(device)
+        boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
 
-        expected = torch.tensor([372.7360, 103.0150, 114.6880, 410.5225]).to(device)
+        expected = torch.tensor([372.7360, 103.0150, 114.6880, 410.5225], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
-                                   [0., 0., 1.]]]).to(device)
+                                   [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_transform_multiple_boxes(self, device):
+    def test_transform_multiple_boxes(self, device, dtype):
 
         boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225],
                               [1.0240, 80.5547, 512.0000, 512.0000],
                               [165.2053, 262.1440, 510.6347, 508.9280],
-                              [119.8080, 144.2067, 257.0240, 410.1292]]).to(device)
+                              [119.8080, 144.2067, 257.0240, 410.1292]], device=device, dtype=dtype)
 
         boxes = boxes.repeat(2, 1, 1)  # 2 x 4 x 4 two images 4 boxes each
 
@@ -139,7 +138,7 @@ class TestTransformBoxes:
                                  [[139.2640, 103.0150, 397.3120, 410.5225],
                                   [1.0240, 80.5547, 512.0000, 512.0000],
                                   [165.2053, 262.1440, 510.6347, 508.9280],
-                                  [119.8080, 144.2067, 257.0240, 410.1292]]]).to(device)
+                                  [119.8080, 144.2067, 257.0240, 410.1292]]], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
@@ -147,40 +146,40 @@ class TestTransformBoxes:
 
                                   [[1., 0., 0.],
                                    [0., 1., 0.],
-                                   [0., 0., 1.]]]).to(device)
+                                   [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes)
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_transform_boxes_wh(self, device):
+    def test_transform_boxes_wh(self, device, dtype):
 
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075],
                               [1.0240, 80.5547, 510.9760, 431.4453],
                               [165.2053, 262.1440, 345.4293, 246.7840],
-                              [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
+                              [119.8080, 144.2067, 137.2160, 265.9225]], device=device, dtype=dtype)
 
         expected = torch.tensor([[372.7360, 103.0150, -258.0480, 307.5075],
                                  [510.9760, 80.5547, -510.9760, 431.4453],
                                  [346.7947, 262.1440, -345.4293, 246.7840],
-                                 [392.1920, 144.2067, -137.2160, 265.9225]]).to(device)
+                                 [392.1920, 144.2067, -137.2160, 265.9225]], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
-                                   [0., 0., 1.]]]).to(device)
+                                   [0., 0., 1.]]], device=device, dtype=dtype)
 
         out = kornia.transform_boxes(trans_mat, boxes, mode='xywh')
-        assert_allclose(out, expected)
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
 
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075],
                               [1.0240, 80.5547, 510.9760, 431.4453],
                               [165.2053, 262.1440, 345.4293, 246.7840],
-                              [119.8080, 144.2067, 137.2160, 265.9225]]).to(device)
+                              [119.8080, 144.2067, 137.2160, 265.9225]], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
-                                   [0., 0., 1.]]]).to(device)
+                                   [0., 0., 1.]]], device=device, dtype=dtype)
 
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
@@ -188,48 +187,48 @@ class TestTransformBoxes:
         assert gradcheck(kornia.transform_boxes, (trans_mat, boxes), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(transform, boxes):
             return kornia.transform_boxes(transform, boxes)
 
-        boxes = torch.tensor([139.2640, 103.0150, 258.0480, 307.5075]).to(device)
+        boxes = torch.tensor([139.2640, 103.0150, 258.0480, 307.5075], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
-                                   [0., 0., 1.]]]).to(device)
+                                   [0., 0., 1.]]], device=device, dtype=dtype)
 
         actual = op_script(trans_mat, boxes)
         expected = kornia.transform_points(trans_mat, boxes)
 
-        assert_allclose(actual, expected)
+        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
 class TestComposeTransforms:
 
-    def test_translation_4x4(self, device):
+    def test_translation_4x4(self, device, dtype):
         offset = 10
-        trans_01 = identity_matrix(batch_size=1)[0].to(device)
-        trans_12 = identity_matrix(batch_size=1)[0].to(device)
+        trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
+        trans_12 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_translation_Bx4x4(self, device, batch_size):
+    def test_translation_Bx4x4(self, batch_size, device, dtype):
         offset = 10
-        trans_01 = identity_matrix(batch_size)
-        trans_12 = identity_matrix(batch_size)
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
+        trans_12 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
         trans_02 = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02, trans_12)
+        assert_allclose(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, device, batch_size):
-        trans_01 = identity_matrix(batch_size).to(device)
-        trans_12 = identity_matrix(batch_size).to(device)
+    def test_gradcheck(self, batch_size, device, dtype):
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
+        trans_12 = identity_matrix(batch_size, device=device, dtype=dtype)
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
@@ -239,43 +238,43 @@ class TestComposeTransforms:
 
 class TestInverseTransformation:
 
-    def test_translation_4x4(self, device):
+    def test_translation_4x4(self, device, dtype):
         offset = 10
-        trans_01 = identity_matrix(batch_size=1)[0].to(device)
+        trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_translation_Bx4x4(self, device, batch_size):
+    def test_translation_Bx4x4(self, batch_size, device, dtype):
         offset = 10
-        trans_01 = identity_matrix(batch_size).to(device)
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_rotation_translation_Bx4x4(self, device, batch_size):
+    def test_rotation_translation_Bx4x4(self, batch_size, device, dtype):
         offset = 10
         x, y, z = 0, 0, kornia.pi
-        ones = torch.ones(batch_size).to(device)
+        ones = torch.ones(batch_size, device=device, dtype=dtype)
         rmat_01 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
-        trans_01 = identity_matrix(batch_size).to(device)
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
         trans_01[..., :3, :3] = rmat_01[..., :3, :3]
 
         trans_10 = kornia.inverse_transformation(trans_01)
         trans_01_hat = kornia.inverse_transformation(trans_10)
-        assert_allclose(trans_01, trans_01_hat)
+        assert_allclose(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, device, batch_size):
-        trans_01 = identity_matrix(batch_size).to(device)
+    def test_gradcheck(self, batch_size, device, dtype):
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         assert gradcheck(kornia.inverse_transformation, (trans_01,),
                          raise_exception=True)
@@ -283,36 +282,36 @@ class TestInverseTransformation:
 
 class TestRelativeTransformation:
 
-    def test_translation_4x4(self, device):
+    def test_translation_4x4(self, device, dtype):
         offset = 10.
-        trans_01 = identity_matrix(batch_size=1)[0].to(device)
-        trans_02 = identity_matrix(batch_size=1)[0].to(device)
+        trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
+        trans_02 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_rotation_translation_Bx4x4(self, device, batch_size):
+    def test_rotation_translation_Bx4x4(self, batch_size, device, dtype):
         offset = 10.
         x, y, z = 0., 0., kornia.pi
-        ones = torch.ones(batch_size).to(device)
+        ones = torch.ones(batch_size, device=device, dtype=dtype)
         rmat_02 = euler_angles_to_rotation_matrix(x * ones, y * ones, z * ones)
 
-        trans_01 = identity_matrix(batch_size).to(device)
-        trans_02 = identity_matrix(batch_size).to(device)
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
+        trans_02 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
         trans_12 = kornia.relative_transformation(trans_01, trans_02)
         trans_02_hat = kornia.compose_transformations(trans_01, trans_12)
-        assert_allclose(trans_02_hat, trans_02)
+        assert_allclose(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_gradcheck(self, device, batch_size):
-        trans_01 = identity_matrix(batch_size).to(device)
-        trans_02 = identity_matrix(batch_size).to(device)
+    def test_gradcheck(self, batch_size, device, dtype):
+        trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
+        trans_02 = identity_matrix(batch_size, device=device, dtype=dtype)
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
@@ -325,13 +324,12 @@ class TestTransformLAFs:
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     def test_transform_points(
-            self, batch_size, num_points, device):
+            self, batch_size, num_points, device, dtype):
         # generate input data
         eye_size = 3
-        lafs_src = torch.rand(batch_size, num_points, 2, 3).to(device)
+        lafs_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
 
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size)
-        dst_homo_src = dst_homo_src.to(device)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
 
         # transform the points from dst to ref
         lafs_dst = kornia.perspective_transform_lafs(dst_homo_src, lafs_src)
@@ -343,12 +341,12 @@ class TestTransformLAFs:
         # projected should be equal as initial
         assert_allclose(lafs_src, lafs_dst_to_src)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = 3
-        points_src = torch.rand(batch_size, num_points, 2, 3).to(device)
-        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device)
+        points_src = torch.rand(batch_size, num_points, 2, 3, device=device, dtype=dtype)
+        dst_homo_src = utils.create_random_homography(batch_size, eye_size).to(device=device, dtype=dtype)
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
