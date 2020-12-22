@@ -199,8 +199,11 @@ def transform_points(trans_01: torch.Tensor,
     """
     check_is_tensor(trans_01)
     check_is_tensor(points_1)
-    if not trans_01.device == points_1.device:
-        raise TypeError("Tensor must be in the same device")
+    if not (trans_01.device == points_1.device and trans_01.dtype == points_1.dtype):
+        raise TypeError(
+            "Tensor must be in the same device and dtype. "
+            f"Got trans_01 with ({trans_01.dtype}, {points_1.dtype}) and "
+            f"points_1 with ({points_1.dtype}, {points_1.dtype})")
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError("Input batch size must be the same for both tensors or 1")
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):

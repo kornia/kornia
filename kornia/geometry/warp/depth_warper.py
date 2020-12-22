@@ -95,9 +95,9 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x, y, invd):
-        point = torch.FloatTensor([[[x], [y], [1.0], [invd]]])
-        flow = torch.matmul(
-            self._dst_proj_src, point.to(self._dst_proj_src.device))
+        point = torch.tensor(
+            [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype)
+        flow = torch.matmul(self._dst_proj_src, point)
         z = 1. / flow[:, 2]
         x = (flow[:, 0] * z)
         y = (flow[:, 1] * z)
@@ -144,18 +144,18 @@ class DepthWarper(nn.Module):
         dtype: torch.dtype = depth_src.dtype
 
         # expand the base coordinate grid according to the input batch size
-        pixel_coords: torch.Tensor = self.grid.to(device).to(dtype).expand(
+        pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(
             batch_size, -1, -1, -1)  # BxHxWx3
 
         # reproject the pixel coordinates to the camera frame
         cam_coords_src: torch.Tensor = pixel2cam(
             depth_src,
-            self._pinhole_src.intrinsics_inverse().to(dtype),
+            self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype),
             pixel_coords)  # BxHxWx3
 
         # reproject the camera coordinates to the pixel
         pixel_coords_src: torch.Tensor = cam2pixel(
-            cam_coords_src, self._dst_proj_src.to(dtype))  # (B*N)xHxWx2
+            cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype))  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
         pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(

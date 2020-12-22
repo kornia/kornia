@@ -45,7 +45,7 @@ class TestFindHomographyDLT:
         H_noweights = find_homography_dlt(points1, points2, None)
         H_withweights = find_homography_dlt(points1, points2, weights)
         assert H_noweights.shape == (B, 3, 3) and H_withweights.shape == (B, 3, 3)
-        assert_allclose(H_noweights, H_withweights)
+        assert_allclose(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points(self, batch_size, device, dtype):
