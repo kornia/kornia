@@ -17,15 +17,15 @@ def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
     return input / (norm.unsqueeze(-1).unsqueeze(-1))
 
 
-def gaussian(window_size, sigma):
-    x = torch.arange(window_size).float() - window_size // 2
+def gaussian(window_size: int, sigma: float) -> torch.Tensor:
+    x = torch.arange(window_size) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp((-x.pow(2.0) / float(2 * sigma ** 2)))
+    gauss = torch.exp((-x.pow(2.0) / (2 * sigma ** 2)))
     return gauss / gauss.sum()
 
 
-def gaussian_discrete_erf(window_size, sigma):
+def gaussian_discrete_erf(window_size: int, sigma) -> torch.Tensor:
     r"""Discrete Gaussian by interpolating the error function. Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
