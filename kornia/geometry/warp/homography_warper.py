@@ -277,7 +277,10 @@ class HomographyWarper(nn.Module):
         return warped_patch
 
 
-def normal_transform_pixel(height: int, width: int, eps: float = 1e-14) -> torch.Tensor:
+def normal_transform_pixel(
+    height: int, width: int, eps: float = 1e-14,
+    device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
@@ -290,7 +293,7 @@ def normal_transform_pixel(height: int, width: int, eps: float = 1e-14) -> torch
     """
     tr_mat = torch.tensor([[1.0, 0.0, -1.0],
                            [0.0, 1.0, -1.0],
-                           [0.0, 0.0, 1.0]])  # 3x3
+                           [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
 
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0
@@ -302,7 +305,10 @@ def normal_transform_pixel(height: int, width: int, eps: float = 1e-14) -> torch
     return tr_mat.unsqueeze(0)  # 1x3x3
 
 
-def normal_transform_pixel3d(depth: int, height: int, width: int, eps: float = 1e-14) -> torch.Tensor:
+def normal_transform_pixel3d(
+    depth: int, height: int, width: int, eps: float = 1e-14,
+    device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
@@ -317,7 +323,7 @@ def normal_transform_pixel3d(depth: int, height: int, width: int, eps: float = 1
     tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
                            [0.0, 1.0, 0.0, -1.0],
                            [0.0, 0.0, 1.0, -1.0],
-                           [0.0, 0.0, 0.0, 1.0]])  # 4x4
+                           [0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 4x4
 
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0

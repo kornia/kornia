@@ -15,6 +15,7 @@ from .ycbcr import YcbcrToRgb, ycbcr_to_rgb
 from .yuv import RgbToYuv, YuvToRgb, rgb_to_yuv, yuv_to_rgb
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
 from .luv import RgbToLuv, LuvToRgb, rgb_to_luv, luv_to_rgb
+from .lab import RgbToLab, LabToRgb, rgb_to_lab, lab_to_rgb
 
 
 __all__ = [
@@ -33,6 +34,8 @@ __all__ = [
     "yuv_to_rgb",
     "rgb_to_xyz",
     "xyz_to_rgb",
+    "rgb_to_lab",
+    "lab_to_rgb",
     "RgbToGrayscale",
     "BgrToGrayscale",
     "BgrToRgb",
@@ -48,6 +51,10 @@ __all__ = [
     "YuvToRgb",
     "RgbToXyz",
     "XyzToRgb",
+
     "RgbToLuv",
+
     "LuvToRgb",
+    "LabToRgb",
+    "RgbToLab",
 ]

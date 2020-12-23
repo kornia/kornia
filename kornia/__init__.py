@@ -42,7 +42,9 @@ from kornia.color import (
     ycbcr_to_rgb,
     rgb_to_xyz,
     xyz_to_rgb,
+    rgb_to_lab,
     rgb_to_luv,
+    lab_to_rgb,
     luv_to_rgb,
 )
 from kornia.enhance import (

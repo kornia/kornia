@@ -71,5 +71,5 @@ __all__ = [
     "RandomAffine3D",
     "RandomCrop3D",
     "CenterCrop3D",
-    "RandomEqualize3D"
+    "RandomEqualize3D",
 ]
