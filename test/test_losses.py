@@ -10,9 +10,9 @@ from torch.testing import assert_allclose
 
 
 class TestFocalLoss:
-    def test_smoke_none(self, device):
+    def test_smoke_none(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -20,9 +20,9 @@ class TestFocalLoss:
             logits, labels, alpha=0.5, gamma=2.0, reduction="none"
         ).shape == (2, 3, 2)
 
-    def test_smoke_sum(self, device):
+    def test_smoke_sum(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -32,9 +32,9 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    def test_smoke_mean(self, device):
+    def test_smoke_mean(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -44,9 +44,9 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    def test_smoke_mean_flat(self, device):
+    def test_smoke_mean_flat(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes).to(device)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
         labels = torch.rand(2) * num_classes
         labels = labels.to(device).long()
         assert (
@@ -55,14 +55,10 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
-
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         alpha, gamma = 0.5, 2.0  # for focal loss
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -72,6 +68,34 @@ class TestFocalLoss:
             (logits, labels, alpha, gamma),
             raise_exception=True,
         )
+
+    def test_jit(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 2.0)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.focal_loss
+        op_script = torch.jit.script(op)
+
+        actual = op_script(logits, labels, *params)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
+    def test_module(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 2.0)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.focal_loss
+        op_module = kornia.losses.FocalLoss(*params)
+
+        actual = op_module(logits, labels)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
 
 
 class TestTverskyLoss:

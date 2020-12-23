@@ -17,11 +17,36 @@ def focal_loss(
         gamma: float = 2.0,
         reduction: str = 'none',
         eps: float = 1e-8) -> torch.Tensor:
-    r"""Function that computes Focal loss.
+    r"""Criterion that computes Focal loss.
 
-    See :class:`~kornia.losses.FocalLoss` for details.
+    According to :cite:`tsung2017focal`, the Focal loss is computed as follows:
+
+    .. math::
+
+        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
+
+    where:
+       - :math:`p_t` is the model's estimated probability for each class.
+
+    Args:
+        input (torch.Tensor): logits tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target (torch.Tensor): labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
+        alpha (float): Weighting factor :math:`\alpha \in [0, 1]`.
+        gamma (float, optional): Focusing parameter :math:`\gamma >= 0`. Default 2.
+        reduction (str, optional): Specifies the reduction to apply to the
+         output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
+         ‘mean’: the sum of the output will be divided by the number of elements
+         in the output, ‘sum’: the output will be summed. Default: ‘none’.
+        eps (float): Scalar to enforce numerical stabiliy. Default: 1e-6.
+
+    Example:
+        >>> N = 5  # num_classes
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
+        >>> output.backward()
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
@@ -73,7 +98,7 @@ def focal_loss(
 class FocalLoss(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to [1], the Focal loss is computed as follows:
+    According to :cite:`tsung2017focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -85,18 +110,19 @@ class FocalLoss(nn.Module):
 
     Arguments:
         alpha (float): Weighting factor :math:`\alpha \in [0, 1]`.
-        gamma (float): Focusing parameter :math:`\gamma >= 0`.
+        gamma (float, optional): Focusing parameter :math:`\gamma >= 0`. Default 2.
         reduction (str, optional): Specifies the reduction to apply to the
          output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
          ‘mean’: the sum of the output will be divided by the number of elements
          in the output, ‘sum’: the output will be summed. Default: ‘none’.
+        eps (float): Scalar to enforce numerical stabiliy. Default: 1e-8.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
         - Target: :math:`(N, *)` where each value is
           :math:`0 ≤ targets[i] ≤ C−1`.
 
-    Examples:
+    Example:
         >>> N = 5  # num_classes
         >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
         >>> loss = FocalLoss(**kwargs)
@@ -104,21 +130,15 @@ class FocalLoss(nn.Module):
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = loss(input, target)
         >>> output.backward()
-
-    References:
-        [1] https://arxiv.org/abs/1708.02002
     """
 
     def __init__(self, alpha: float, gamma: float = 2.0,
-                 reduction: str = 'none') -> None:
+                 reduction: str = 'none', eps: float = 1e-8) -> None:
         super(FocalLoss, self).__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: float = 1e-6
+        self.eps: float = eps
 
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
