@@ -49,7 +49,6 @@ class TestDilate(utils.BaseTester):
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype)
         assert gradcheck(morph.dilation, (input, kernel), raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         op = morph.dilation
         op_script = torch.jit.script(op)
