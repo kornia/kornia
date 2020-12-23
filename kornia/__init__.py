@@ -19,6 +19,7 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
+from kornia import morphology
 
 # Exposes package functional to top level
 
@@ -71,6 +72,8 @@ from kornia.feature import (
 )
 from kornia.filters import (
     get_gaussian_kernel1d,
+    get_gaussian_erf_kernel1d,
+    get_gaussian_discrete_kernel1d,
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
@@ -106,3 +109,11 @@ from kornia.utils import (
 
 from kornia.geometry import *
 from kornia.constants import *
+from kornia.morphology import (
+    dilation,
+    erosion,
+    open,
+    close,
+    top_hat,
+    black_hat
+)

@@ -19,6 +19,8 @@ Kernels
 -------
 
 .. autofunction:: get_gaussian_kernel1d
+.. autofunction:: get_gaussian_erf_kernel1d
+.. autofunction:: get_gaussian_discrete_kernel1d
 .. autofunction:: get_gaussian_kernel2d
 .. autofunction:: get_laplacian_kernel1d
 .. autofunction:: get_laplacian_kernel2d
