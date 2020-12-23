@@ -16,7 +16,7 @@ def tversky_loss(input: torch.Tensor,
                  eps: float = 1e-8) -> torch.Tensor:
     r"""Criterion that computes Tversky Coefficient loss.
 
-    According to cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
+    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
 
     .. math::
 
@@ -36,10 +36,14 @@ def tversky_loss(input: torch.Tensor,
 
     Args:
         input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
+        target (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+          is :math:`0 ≤ targets[i] ≤ C−1`.
         alpha (float): the first coefficient in the denominator.
         beta (float): the second coefficient in the denominator.
         eps (float, optional): scalar for numerical stability. Default: 1e-8.
+
+    Return:
+        torch.Tensor: the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -89,7 +93,7 @@ def tversky_loss(input: torch.Tensor,
 class TverskyLoss(nn.Module):
     r"""Criterion that computes Tversky Coefficient loss.
 
-    According to cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
+    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
 
     .. math::
 

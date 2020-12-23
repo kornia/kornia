@@ -19,7 +19,7 @@ def focal_loss(
         eps: float = 1e-8) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
-    According to cite:`lin2018focal`, the Focal loss is computed as follows:
+    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -37,7 +37,10 @@ def focal_loss(
          output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
          ‘mean’: the sum of the output will be divided by the number of elements
          in the output, ‘sum’: the output will be summed. Default: ‘none’.
-        eps (float): Scalar to enforce numerical stabiliy. Default: 1e-6.
+        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+
+    Return:
+        torch.Tensor: the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -98,7 +101,7 @@ def focal_loss(
 class FocalLoss(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to cite:`lin2018focal`, the Focal loss is computed as follows:
+    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -114,7 +117,7 @@ class FocalLoss(nn.Module):
          output: ‘none’ | ‘mean’ | ‘sum’. ‘none’: no reduction will be applied,
          ‘mean’: the sum of the output will be divided by the number of elements
          in the output, ‘sum’: the output will be summed. Default: ‘none’.
-        eps (float): Scalar to enforce numerical stabiliy. Default: 1e-8.
+        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
