@@ -99,35 +99,31 @@ class TestFocalLoss:
 
 
 class TestTverskyLoss:
-    def test_smoke(self, device):
+    def test_smoke(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
 
-    def test_all_zeros(self, device):
+    def test_all_zeros(self, device, dtype):
         num_classes = 3
-        logits = torch.zeros(2, num_classes, 1, 2).to(device)
+        logits = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         logits[:, 0] = 10.0
         logits[:, 1] = 1.0
         logits[:, 2] = 1.0
-        labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
+        labels = torch.zeros(2, 1, 2, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
-        assert pytest.approx(loss.item(), 0.0)
+        assert_allclose(loss, 0.0, atol=1e-3, rtol=1e-3)
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
-
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -137,6 +133,34 @@ class TestTverskyLoss:
             (logits, labels, alpha, beta),
             raise_exception=True,
         )
+
+    def test_jit(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 0.05)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.tversky_loss
+        op_script = torch.jit.script(op)
+
+        actual = op_script(logits, labels, *params)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
+    def test_module(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 0.5)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.tversky_loss
+        op_module = kornia.losses.TverskyLoss(*params)
+
+        actual = op_module(logits, labels)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
 
 
 class TestDiceLoss:

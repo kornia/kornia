@@ -19,13 +19,13 @@ def focal_loss(
         eps: float = 1e-8) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
-    According to :cite:`tsung2017focal`, the Focal loss is computed as follows:
+    According to cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    where:
+    Where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
@@ -98,17 +98,16 @@ def focal_loss(
 class FocalLoss(nn.Module):
     r"""Criterion that computes Focal loss.
 
-    According to :cite:`tsung2017focal`, the Focal loss is computed as follows:
+    According to cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    where:
+    Where:
        - :math:`p_t` is the model's estimated probability for each class.
 
-
-    Arguments:
+    Args:
         alpha (float): Weighting factor :math:`\alpha \in [0, 1]`.
         gamma (float, optional): Focusing parameter :math:`\gamma >= 0`. Default 2.
         reduction (str, optional): Specifies the reduction to apply to the
@@ -125,10 +124,10 @@ class FocalLoss(nn.Module):
     Example:
         >>> N = 5  # num_classes
         >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
-        >>> loss = FocalLoss(**kwargs)
+        >>> criterion = FocalLoss(**kwargs)
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = loss(input, target)
+        >>> output = criterion(input, target)
         >>> output.backward()
     """
 
