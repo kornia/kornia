@@ -20,10 +20,10 @@ class TestErode(utils.BaseTester):
 
     def test_value(self, device, dtype):
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
-                             device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
+                             device=device, dtype=dtype)[None, None, :, :]
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]],
-                                device=device, dtype=dtype).unsqueeze(0).unsqueeze(0)
+                                device=device, dtype=dtype)[None, None, :, :]
         assert_allclose(morph.erosion(input, kernel), expected)
 
     def test_exception(self, device, dtype):
