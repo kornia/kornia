@@ -26,7 +26,7 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = factor.repeat(2) * torch.tensor([-1, 1], device=factor.device, dtype=factor.dtype) + center
+        factor_bound = factor.repeat(2) * torch.tensor([-1., 1.], device=factor.device, dtype=factor.dtype) + center
         factor_bound = factor_bound.clamp(bounds[0], bounds[1])
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
