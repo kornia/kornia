@@ -1146,11 +1146,11 @@ class RandomSharpness(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         sharpness = cast(torch.Tensor, self.sharpness) if isinstance(self.sharpness, torch.Tensor) else \
             torch.tensor(self.sharpness, device=self.device, dtype=self.dtype)
-        if len(sharpness.size()) == 0:
-            bits = sharpness.repeat(2)
-            bits[1] = 8
-        elif not (len(sharpness.size()) == 1 and sharpness.size(0) == 2):
-            raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
+        if sharpness.dim() == 0:
+            sharpness = sharpness.repeat(2)
+            sharpness[0] = 0.
+        elif not (sharpness.dim() == 1 and sharpness.size(0) == 2):
+            raise ValueError(f"'sharpness' must be a scalar or a length 2 tensor. Got {sharpness}.")
         return rg.random_sharpness_generator(batch_shape[0], sharpness, self.same_on_batch,
                                              self.device, self.dtype)
 
