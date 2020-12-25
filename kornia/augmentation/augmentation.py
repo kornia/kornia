@@ -378,22 +378,15 @@ class RandomPerspective(AugmentationBase2D):
 
     def __init__(
         self, distortion_scale: Union[torch.Tensor, float] = 0.5,
-        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                 keepdim=keepdim)
-        self.distortion_scale = cast(torch.Tensor, distortion_scale) \
-            if isinstance(distortion_scale, torch.Tensor) else \
-                torch.tensor(distortion_scale, device=self.device, dtype=self.dtype)
-        self.resample: Resample
-        if interpolation is not None:
-            import warnings
-            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
-            self.resample = Resample.get(interpolation)
-        self.resample = Resample.get(resample)
+        self.distortion_scale = cast(torch.Tensor, distortion_scale) if isinstance(distortion_scale, torch.Tensor) \
+            else torch.tensor(distortion_scale, device=self.device, dtype=self.dtype)
+        self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -622,7 +615,7 @@ class RandomRotation(AugmentationBase2D):
         p (float): probability of applying the transformation. Default value is 0.5.
         degrees (sequence or float or tensor): range of degrees to select from. If degrees is a number the
           range of degrees to select from will be (-degrees, +degrees).
-        interpolation (int, str or kornia.Resample): Default: Resample.BILINEAR.
+        resample (int, str or kornia.Resample): Default: Resample.BILINEAR.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated.
@@ -659,7 +652,6 @@ class RandomRotation(AugmentationBase2D):
 
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float], List[float]],
-        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = True, p: float = 0.5,
         keepdim: bool = False
@@ -667,12 +659,7 @@ class RandomRotation(AugmentationBase2D):
         super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                              keepdim=keepdim)
         self.degrees = degrees
-        self.resample: Resample
-        if interpolation is not None:
-            import warnings
-            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
-            self.resample = Resample.get(interpolation)
-        self.resample = Resample.get(resample)
+        self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -757,7 +744,7 @@ class RandomCrop(AugmentationBase2D):
         self.pad_if_needed = pad_if_needed
         self.fill = fill
         self.padding_mode = padding_mode
-        self.resample = Resample.get(resample)
+        self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -854,7 +841,6 @@ class RandomResizedCrop(AugmentationBase2D):
     def __init__(
         self, size: Tuple[int, int], scale: Union[torch.Tensor, Tuple[float, float]] = (0.08, 1.0),
         ratio: Union[torch.Tensor, Tuple[float, float]] = (3. / 4., 4. / 3.),
-        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False, p: float = 1., keepdim: bool = False
@@ -865,12 +851,7 @@ class RandomResizedCrop(AugmentationBase2D):
         self.size = size
         self.scale = scale
         self.ratio = ratio
-        self.resample: Resample
-        if interpolation is not None:
-            import warnings
-            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
-            self.resample = Resample.get(interpolation)
-        self.resample = Resample.get(resample)
+        self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
@@ -1167,7 +1148,7 @@ class RandomSharpness(AugmentationBase2D):
             torch.tensor(self.bits, device=self.device, dtype=self.dtype)
         if len(sharpness.size()) == 0:
             bits = sharpness.repeat(2)
-            bits[1] = torch.tensor(8, device=sharpness.device, dtype=sharpness.dtype)
+            bits[1] = 8
         elif not (len(sharpness.size()) == 1 and sharpness.size(0) == 2):
             raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
         return rg.random_sharpness_generator(batch_shape[0], sharpness, self.same_on_batch,
