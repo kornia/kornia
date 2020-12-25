@@ -288,28 +288,10 @@ class RandomAffine3D(AugmentationBase3D):
     ) -> None:
         super(RandomAffine3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                              keepdim=keepdim)
-        self.degrees = _tuple_range_reader(degrees, 3)
-        self.shear: Optional[torch.Tensor] = None
-        if shears is not None:
-            self.shear = _tuple_range_reader(shears, 6)
-
-        # check translation range
-        self.translate: Optional[torch.Tensor] = None
-        if translate is not None:
-            self.translate = translate if isinstance(translate, torch.Tensor) else torch.tensor(translate)
-            _singular_range_check(self.translate, 'translate', bounds=(0, 1), mode='3d')
-
-        # check scale range
-        self.scale: Optional[torch.Tensor] = None
-        if scale is not None:
-            self.scale = scale if isinstance(scale, torch.Tensor) else torch.tensor(scale)
-            if self.scale.shape == torch.Size([2]):
-                self.scale = self.scale.unsqueeze(0).repeat(3, 1)
-            elif self.scale.shape != torch.Size([3, 2]):
-                raise ValueError("'scale' shall be either shape (2) or (3, 2). Got {self.scale}")
-            _singular_range_check(self.scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
-            _singular_range_check(self.scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
-            _singular_range_check(self.scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
+        self.degrees = degrees
+        self.shear: Optional[torch.Tensor] = shear
+        self.translate: Optional[torch.Tensor] = translate
+        self.scale: Optional[torch.Tensor] = scale
 
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -324,9 +306,33 @@ class RandomAffine3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        degrees = _tuple_range_reader(self.degrees, 3)
+        shear: Optional[torch.Tensor] = None
+        if self.shears is not None:
+            shear = _tuple_range_reader(self.shears, 6)
+
+        # check translation range
+        translate: Optional[torch.Tensor] = None
+        if self.translate is not None:
+            translate = self.translate if isinstance(self.translate, torch.Tensor) else \
+                torch.tensor(self.translate, device=self.device, dtype=self.dtype)
+            _singular_range_check(translate, 'translate', bounds=(0, 1), mode='3d')
+
+        # check scale range
+        scale: Optional[torch.Tensor] = None
+        if self.scale is not None:
+            scale = self.scale if isinstance(self.scale, torch.Tensor) else \
+                torch.tensor(self.scale, device=self.device, dtype=self.dtype)
+            if scale.shape == torch.Size([2]):
+                scale = scale.unsqueeze(0).repeat(3, 1)
+            elif scale.shape != torch.Size([3, 2]):
+                raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
+            _singular_range_check(scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
+            _singular_range_check(scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
+            _singular_range_check(scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
         return rg.random_affine_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.degrees,
-            self.translate, self.scale, self.shear, self.same_on_batch, self.device, self.dtype)
+            translate, scale, shear, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation3d(input, params)
@@ -396,19 +402,13 @@ class RandomRotation3D(AugmentationBase3D):
     def __init__(
         self, degrees: Union[torch.Tensor, float, Tuple[float, float, float],
                              Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
-        interpolation: Optional[Union[str, int, Resample]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
         align_corners: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomRotation3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                keepdim=keepdim)
-        self.degrees = _tuple_range_reader(degrees, 3)
-        if interpolation is not None:
-            import warnings
-            warnings.warn("interpolation is deprecated. Please use resample instead.", category=DeprecationWarning)
-            self.resample = Resample.get(interpolation)
-
+        self.degrees = degrees
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
@@ -421,7 +421,8 @@ class RandomRotation3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_rotation_generator3d(batch_shape[0], self.degrees, self.same_on_batch, self.device, self.dtype)
+        degrees = _tuple_range_reader(self.degrees, 3)
+        return rg.random_rotation_generator3d(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation3d(input, params)
@@ -501,12 +502,8 @@ class RandomMotionBlur3D(AugmentationBase3D):
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
-
-        self.angle: torch.Tensor = _tuple_range_reader(angle, 3)
-
-        direction = \
-            cast(torch.Tensor, direction) if isinstance(direction, torch.Tensor) else torch.tensor(direction)
-        self.direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
+        self.angle: torch.Tensor = angle
+        self.direction = direction
         self.border_type = BorderType.get(border_type)
         self.flags: Dict[str, torch.Tensor] = {
             "border_type": torch.tensor(self.border_type.value)
@@ -518,8 +515,12 @@ class RandomMotionBlur3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        angle: torch.Tensor = _tuple_range_reader(self.angle, 3)
+        direction = cast(torch.Tensor, self.direction) if isinstance(self.direction, torch.Tensor) \
+            else torch.tensor(self.direction, device=self.device, dtype=self.dtype)
+        direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
         return rg.random_motion_blur_generator3d(
-            batch_shape[0], self.kernel_size, self.angle, self.direction, self.same_on_batch, self.device, self.dtype)
+            batch_shape[0], self.kernel_size, angle, direction, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input)
@@ -804,8 +805,7 @@ class RandomPerspective3D(AugmentationBase3D):
     ) -> None:
         super(RandomPerspective3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                   keepdim=keepdim)
-        self.distortion_scale = cast(torch.Tensor, distortion_scale) \
-            if isinstance(distortion_scale, torch.Tensor) else torch.tensor(distortion_scale)
+        self.distortion_scale = distortion_scale
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
@@ -819,6 +819,9 @@ class RandomPerspective3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        distortion_scale = cast(torch.Tensor, self.distortion_scale) if isinstance(
+            self.distortion_scale, torch.Tensor) else torch.tensor(
+                self.distortion_scale, device=self.device, dtype=self.dtype)
         return rg.random_perspective_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1],
             self.distortion_scale, self.same_on_batch, self.device, self.dtype)
