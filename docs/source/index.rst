@@ -24,6 +24,7 @@ Kornia Documentation
    geometry
    losses
    utils
+   morphology
 
 .. toctree::
    :maxdepth: 2

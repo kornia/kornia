@@ -51,7 +51,7 @@ def marginal_pdf(values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor,
         raise ValueError("Input sigma must be a of the shape 1"
                          " Got {}".format(sigma.shape))
 
-    residuals = values - bins.unsqueeze(0).unsqueeze(0)
+    residuals = values - bins[None, None, :, :]
     kernel_values = torch.exp(-0.5 * (residuals / sigma).pow(2))
 
     pdf = torch.mean(kernel_values, dim=1)

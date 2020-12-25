@@ -19,6 +19,7 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
+from kornia import morphology
 
 # Exposes package functional to top level
 
@@ -112,3 +113,12 @@ from kornia.geometry import *
 from kornia.constants import *
 
 from kornia.testing import xla_is_available
+
+from kornia.morphology import (
+    dilation,
+    erosion,
+    open,
+    close,
+    top_hat,
+    black_hat
+)
