@@ -102,20 +102,19 @@ class TestRandomPerspective:
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        expected_output = torch.tensor([[[[0.0000000000, 0.0000000000, 0.0000000000, 0.0197417457, 0.0429493971],
-                                          [0.0000000000, 0.5632190704, 0.5321710110, 0.3676981330, 0.1430126727],
-                                          [0.0000000000, 0.3082636893, 0.4031507671, 0.1760708243, 0.0000000000],
-                                          [0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000]],
-
-                                         [[0.0000000000, 0.0000000000, 0.0000000000, 0.1189093292, 0.0585946590],
-                                          [0.0000000000, 0.7087295055, 0.5419756770, 0.3995491862, 0.0863459259],
-                                          [0.0000000000, 0.2694899142, 0.5981453061, 0.5887590051, 0.0000000000],
-                                          [0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000, 0.0000000000]]]],
+        expected_output = torch.tensor([[[[0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
+                                          [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
+                                          [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
+                                          [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+                                         [[0.0000, 0.0000, 0.0000, 0.1189, 0.0586],
+                                          [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
+                                          [0.0000, 0.2695, 0.5981, 0.5888, 0.0000],
+                                          [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]],
                                        device=device, dtype=x_data.dtype)
 
-        expected_transform = torch.tensor([[[1.0522739887, 0.3492536247, 0.3045728207],
-                                            [-0.1066057906, 1.0426188707, 0.5845923424],
-                                            [0.0350575559, 0.1213315651, 1.0000000000]]],
+        expected_transform = torch.tensor([[[1.0523, 0.3493, 0.3046],
+                                            [-0.1066, 1.0426, 0.5846],
+                                            [0.0351, 0.1213, 1.0000]]],
                                           device=device, dtype=x_data.dtype)
 
         out_perspective = kornia.augmentation.RandomPerspective(p=.99999999,  # step one the random state
@@ -125,8 +124,8 @@ class TestRandomPerspective:
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
-        assert_allclose(out_perspective[0], expected_output)
-        assert_allclose(out_perspective[1], expected_transform)
+        assert_allclose(out_perspective[0], expected_output, atol=1e-4, rtol=1e-4)
+        assert_allclose(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)

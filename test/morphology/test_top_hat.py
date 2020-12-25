@@ -10,13 +10,16 @@ class TestTopHat(utils.BaseTester):
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        assert morph.se_to_mask(kernel) is not None
+        assert morph.basic_operators._se_to_mask(kernel) is not None
 
-    def test_batch(self, device, dtype):
-        input = torch.rand(3, 2, 6, 10, device=device, dtype=dtype)
-        kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        test = morph.top_hat(input, kernel)
-        assert input.shape == test.shape == (3, 2, 6, 10)
+    @pytest.mark.parametrize(
+        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
+    @pytest.mark.parametrize(
+        "kernel", [(3, 3), (5, 5)])
+    def test_cardinality(self, device, dtype, shape, kernel):
+        img = torch.ones(shape, device=device, dtype=dtype)
+        krnl = torch.ones(kernel, device=device, dtype=dtype)
+        assert morph.top_hat(img, krnl).shape == shape
 
     def test_value(self, device, dtype):
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
@@ -44,12 +47,13 @@ class TestTopHat(utils.BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert morph.top_hat(input, test)
 
+    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
-        input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=dtype)
-        kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=dtype)
+        input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64)
+        kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64)
         assert gradcheck(morph.top_hat, (input, kernel), raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         op = morph.top_hat
         op_script = torch.jit.script(op)
@@ -61,3 +65,14 @@ class TestTopHat(utils.BaseTester):
         expected = op(input, kernel)
 
         assert_allclose(actual, expected)
+
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        B, C, H, W = 2, 3, 5, 5
+        Kx, Ky = 3, 3
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        krnl = torch.ones(Kx, Ky, device=device, dtype=dtype)
+        ops1 = morph.Dilate(krnl).to(device, dtype)
+        ops2 = morph.Erode(krnl).to(device, dtype)
+        fcn1 = morph.top_hat
+        assert_allclose((img - ops2(ops1(img))), fcn1(img, krnl))

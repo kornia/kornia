@@ -1,0 +1,29 @@
+name: test-docs
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    - cron: "0 4 * * *"
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup conda dependencies
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        auto-update-conda: true
+        python-version: 3.6
+    - name: Install dependencies
+      shell: bash -l {0}
+      run: |
+        conda install make -c conda-forge
+        pip install -r docs/requirements.txt
+        make install
+    - name: Build Documentation
+      shell: bash -l {0}
+      run: make build-docs

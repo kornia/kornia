@@ -177,10 +177,10 @@ def _nullspace(A):
 
 
 def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
-    r"""Get the projection matrices from the Fundamenal Matrix.
+    r"""Get the projection matrices from the Fundamental Matrix.
 
     Args:
-       F_mat (torch.Tensor): the fundamenal matrix with the shape :math:`(*, 3, 3)`.
+       F_mat (torch.Tensor): the fundamental matrix with the shape :math:`(*, 3, 3)`.
 
     Returns:
         torch.Tensor: The projection matrices with shape :math:`(*, 4, 4, 2)`.

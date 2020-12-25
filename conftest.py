@@ -3,6 +3,7 @@ from typing import Dict
 
 import pytest
 import torch
+import kornia
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -16,6 +17,9 @@ def get_test_devices() -> Dict[str, torch.device]:
     devices["cpu"] = torch.device("cpu")
     if torch.cuda.is_available():
         devices["cuda"] = torch.device("cuda:0")
+    if kornia.xla_is_available():
+        import torch_xla.core.xla_model as xm
+        devices["tpu"] = xm.xla_device()
     return devices
 
 
@@ -43,8 +47,6 @@ DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 
 @pytest.fixture()
 def device(device_name) -> torch.device:
-    if device_name not in TEST_DEVICES:
-        pytest.skip(f"Unsupported device type: {device_name}")
     return TEST_DEVICES[device_name]
 
 

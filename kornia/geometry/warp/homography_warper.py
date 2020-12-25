@@ -8,7 +8,6 @@ from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.geometry.linalg import transform_points
 from kornia.testing import check_is_tensor
 
-
 __all__ = [
     "HomographyWarper",
     "homography_warp",
@@ -94,7 +93,7 @@ def homography_warp(patch_src: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: False. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         normalized_coordinates (bool): Whether the homography assumes [-1, 1] normalized
                                        coordinates or not.
 
@@ -104,12 +103,12 @@ def homography_warp(patch_src: torch.Tensor,
     Example:
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
-        >>> output = kornia.homography_warp(input, homography, (32, 32))
+        >>> output = homography_warp(input, homography, (32, 32))
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError("Patch and homography must be on the same device. \
                          Got patch.device: {} src_H_dst.device: {}.".format(
-                        patch_src.device, src_homo_dst.device))
+            patch_src.device, src_homo_dst.device))
 
     height, width = dsize
     grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
@@ -150,12 +149,12 @@ def homography_warp3d(patch_src: torch.Tensor,
     Example:
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
-        >>> output = kornia.homography_warp(input, homography, (32, 32))
+        >>> output = homography_warp(input, homography, (32, 32))
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError("Patch and homography must be on the same device. \
                          Got patch.device: {} src_H_dst.device: {}.".format(
-                        patch_src.device, src_homo_dst.device))
+            patch_src.device, src_homo_dst.device))
 
     depth, height, width = dsize
     grid = create_meshgrid3d(depth, height, width, normalized_coordinates=normalized_coordinates,
@@ -247,7 +246,7 @@ class HomographyWarper(nn.Module):
         Example:
             >>> input = torch.rand(1, 3, 32, 32)
             >>> homography = torch.eye(3).view(1, 3, 3)
-            >>> warper = kornia.HomographyWarper(32, 32)
+            >>> warper = HomographyWarper(32, 32)
             >>> # without precomputing the warp
             >>> output = warper(input, homography)  # NxCxHxW
             >>> # precomputing the warp
@@ -263,48 +262,60 @@ class HomographyWarper(nn.Module):
         elif _warped_grid is not None:
             if not _warped_grid.device == patch_src.device:
                 raise TypeError("Patch and warped grid must be on the same device. \
-                                 Got patch.device: {} warped_grid.device: {}. Wheter \
+                                 Got patch.device: {} warped_grid.device: {}. Whether \
                                  recall precompute_warp_grid() with the correct device \
                                  for the homograhy or change the patch device.".format(
-                                patch_src.device, _warped_grid.device))
+                    patch_src.device, _warped_grid.device))
             warped_patch = F.grid_sample(
                 patch_src, _warped_grid, mode=self.mode, padding_mode=self.padding_mode,
                 align_corners=self.align_corners)
         else:
             raise RuntimeError("Unknown warping. If homographies are not provided \
-                                they must be presetted using the method: \
+                                they must be preset using the method: \
                                 precompute_warp_grid().")
 
         return warped_patch
 
 
-def normal_transform_pixel(height: int, width: int) -> torch.Tensor:
+def normal_transform_pixel(
+    height: int, width: int, eps: float = 1e-14,
+    device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
         height (int): image height.
         width (int): image width.
+        eps (float): epsilon to prevent divide-by-zero errors
 
     Returns:
         torch.Tensor: normalized transform with shape :math:`(1, 3, 3)`.
     """
     tr_mat = torch.tensor([[1.0, 0.0, -1.0],
                            [0.0, 1.0, -1.0],
-                           [0.0, 0.0, 1.0]])  # 3x3
+                           [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
 
-def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tensor:
+def normal_transform_pixel3d(
+    depth: int, height: int, width: int, eps: float = 1e-14,
+    device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
         depth (int): image depth.
         height (int): image height.
         width (int): image width.
+        eps (float): epsilon to prevent divide-by-zero errors
 
     Returns:
         Tensor: normalized transform with shape :math:`(1, 4, 4)`.
@@ -312,11 +323,16 @@ def normal_transform_pixel3d(depth: int, height: int, width: int) -> torch.Tenso
     tr_mat = torch.tensor([[1.0, 0.0, 0.0, -1.0],
                            [0.0, 1.0, 0.0, -1.0],
                            [0.0, 0.0, 1.0, -1.0],
-                           [0.0, 0.0, 0.0, 1.0]])  # 4x4
+                           [0.0, 0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 4x4
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / (width - 1.0)
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / (height - 1.0)
-    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / (depth - 1.0)
+    # prevent divide by zero bugs
+    width_denom: float = eps if width == 1 else width - 1.0
+    height_denom: float = eps if height == 1 else height - 1.0
+    depth_denom: float = eps if depth == 1 else depth - 1.0
+
+    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
+    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    tr_mat[2, 2] = tr_mat[2, 2] * 2.0 / depth_denom
 
     return tr_mat.unsqueeze(0)  # 1x4x4
 
@@ -326,7 +342,7 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destiantion to be
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
           normalized. :math:`(B, 3, 3)`
         dsize_src (tuple): size of the source image (height, width).
         dsize_dst (tuple): size of the destination image (height, width).
@@ -363,7 +379,7 @@ def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
-        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destiantion to be
+        dst_pix_trans_src_pix (torch.Tensor): homography/ies from source to destination to be
           normalized. :math:`(B, 4, 4)`
         dsize_src (tuple): size of the source image (depth, height, width).
         dsize_src (tuple): size of the destination image (depth, height, width).

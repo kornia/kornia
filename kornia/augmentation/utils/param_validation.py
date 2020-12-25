@@ -3,13 +3,21 @@ from typing import Tuple, Union, List, Optional, cast
 import torch
 
 
+def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
+    """Valid batch_size and same_on_batch params."""
+    assert type(batch_size) == int and batch_size >= 0, f"`batch_size` shall be a positive integer. Got {batch_size}."
+    if same_on_batch is not None:
+        assert type(same_on_batch) == bool, f"`same_on_batch` shall be boolean. Got {same_on_batch}."
+
+
 def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[float]], name: str,
                  center: float = 0., bounds: Tuple[float, float] = (0, float('inf')),
-                 check: Optional[str] = 'joint') -> torch.Tensor:
+                 check: Optional[str] = 'joint', device: torch.device = torch.device('cpu'),
+                 dtype: torch.dtype = torch.get_default_dtype()) -> torch.Tensor:
     r"""Check inputs and compute the corresponding factor bounds
     """
     if not isinstance(factor, (torch.Tensor)):
-        factor = torch.tensor(factor, dtype=torch.float32)
+        factor = torch.tensor(factor, device=device, dtype=dtype)
     factor_bound: torch.Tensor
 
     if factor.dim() == 0:
@@ -18,9 +26,10 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = torch.tensor([center - factor, center + factor], dtype=torch.float32).clamp(bounds[0], bounds[1])
+        factor_bound = torch.tensor(
+            [center - factor, center + factor], device=device, dtype=dtype).clamp(bounds[0], bounds[1])
     else:
-        factor_bound = factor.to(dtype=torch.float32)
+        factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
     if check is not None:
         if check == 'joint':
@@ -45,7 +54,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a float number or a tuple with length 2 whose values between {bounds}."
+            f"{name} should be a tensor with length 2 whose values between {bounds}. "
             f"Got {ranged_factor}.")
 
 
@@ -78,7 +87,7 @@ def _tuple_range_reader(
     target_size: int
 ) -> torch.Tensor:
     """
-    Given target_size, it will generate the correponding (target_size, 2) range tensor for element-wise params.
+    Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])

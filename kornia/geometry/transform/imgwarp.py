@@ -33,7 +33,7 @@ def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
                         dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
                         grid_mode: str, padding_mode: str,
                         align_corners: bool) -> torch.Tensor:
-    """Compute the transform in normalized cooridnates and perform the warping.
+    """Compute the transform in normalized coordinates and perform the warping.
     """
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         dst_pix_trans_src_pix, dsize_src, dsize_dst)
@@ -266,7 +266,7 @@ def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
-        >>> output = kornia.angle_to_rotation_matrix(input)  # Nx3x2x2
+        >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
     """
     ang_rad = deg2rad(angle)
     cos_a: torch.Tensor = torch.cos(ang_rad)
@@ -342,6 +342,9 @@ def get_rotation_matrix2d(
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Got center {}, angle {} and scale {}"
                          .format(center.shape, angle.shape, scale.shape))
+    if not (center.device == angle.device == scale.device) or not (center.dtype == angle.dtype == scale.dtype):
+        raise ValueError("Inputs must have same device Got center ({}, {}), angle ({}, {}) and scale ({}, {})"
+                         .format(center.device, center.dtype, angle.device, angle.dtype, scale.device, scale.dtype))
     # convert angle and apply scale
     rotation_matrix: torch.Tensor = angle_to_rotation_matrix(angle)
     scaling_matrix: torch.Tensor = torch.zeros(
@@ -358,7 +361,7 @@ def get_rotation_matrix2d(
 
     # create output tensor
     batch_size: int = center.shape[0]
-    one = torch.tensor(1.).to(center.device)
+    one = torch.tensor(1., device=center.device, dtype=center.dtype)
     M: torch.Tensor = torch.zeros(
         batch_size, 2, 3, device=center.device, dtype=center.dtype)
     M[..., 0:2, 0:2] = scaled_rotation
@@ -391,10 +394,11 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor,
         torch.Tensor: the warped tensor.
 
     Example:
-        >>> grid = kornia.utils.create_meshgrid(2, 2, False)  # 1x2x2x2
+        >>> from kornia.utils import create_meshgrid
+        >>> grid = create_meshgrid(2, 2, False)  # 1x2x2x2
         >>> grid += 1  # apply offset in both directions
         >>> input = torch.ones(1, 1, 2, 2)
-        >>> kornia.remap(input, grid[..., 0], grid[..., 1])   # 1x1x2x2
+        >>> remap(input, grid[..., 0], grid[..., 1], align_corners=True)   # 1x1x2x2
         tensor([[[[1., 0.],
                   [0., 0.]]]])
 
