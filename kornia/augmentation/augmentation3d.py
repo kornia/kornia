@@ -306,10 +306,10 @@ class RandomAffine3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = _tuple_range_reader(self.degrees, 3)
+        degrees = _tuple_range_reader(self.degrees, 3, self.device, self.dtype)
         shear: Optional[torch.Tensor] = None
         if self.shears is not None:
-            shear = _tuple_range_reader(self.shears, 6)
+            shear = _tuple_range_reader(self.shears, 6, self.device, self.dtype)
 
         # check translation range
         translate: Optional[torch.Tensor] = None
@@ -421,7 +421,7 @@ class RandomRotation3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = _tuple_range_reader(self.degrees, 3)
+        degrees = _tuple_range_reader(self.degrees, 3, self.device, self.dtype)
         return rg.random_rotation_generator3d(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -515,7 +515,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        angle: torch.Tensor = _tuple_range_reader(self.angle, 3)
+        angle: torch.Tensor = _tuple_range_reader(self.angle, 3, self.device, self.dtype)
         direction = cast(torch.Tensor, self.direction) if isinstance(self.direction, torch.Tensor) \
             else torch.tensor(self.direction, device=self.device, dtype=self.dtype)
         direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))

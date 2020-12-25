@@ -603,7 +603,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
 class TestRandomRotationAlternative(CommonTests):
     possible_params: Dict["str", Tuple] = {
         "degrees": (0., (-360., 360.), [0., 0.], torch.tensor((-180., 180))),
-        "interpolation": (0, Resample.BILINEAR.name, Resample.BILINEAR, None),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }

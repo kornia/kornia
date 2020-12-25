@@ -273,12 +273,14 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
                                            [0, 1, 0],
-                                           [0, 0, 1]])
+                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1)
 
 
 @_validate_input
@@ -312,9 +314,9 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
                                            [0, -1, h - 1],
-                                           [0, 0, 1]])
+                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1)
 
 
 @_validate_input
