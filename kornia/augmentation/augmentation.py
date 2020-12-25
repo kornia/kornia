@@ -1144,8 +1144,8 @@ class RandomSharpness(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        sharpness = cast(torch.Tensor, self.bits) if isinstance(self.bits, torch.Tensor) else \
-            torch.tensor(self.bits, device=self.device, dtype=self.dtype)
+        sharpness = cast(torch.Tensor, self.sharpness) if isinstance(self.sharpness, torch.Tensor) else \
+            torch.tensor(self.sharpness, device=self.device, dtype=self.dtype)
         if len(sharpness.size()) == 0:
             bits = sharpness.repeat(2)
             bits[1] = 8

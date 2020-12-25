@@ -289,9 +289,9 @@ class RandomAffine3D(AugmentationBase3D):
         super(RandomAffine3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                              keepdim=keepdim)
         self.degrees = degrees
-        self.shear: Optional[torch.Tensor] = shear
-        self.translate: Optional[torch.Tensor] = translate
-        self.scale: Optional[torch.Tensor] = scale
+        self.shears = shears
+        self.translate = translate
+        self.scale = scale
 
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -331,7 +331,7 @@ class RandomAffine3D(AugmentationBase3D):
             _singular_range_check(scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
         return rg.random_affine_generator3d(
-            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.degrees,
+            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], degrees,
             translate, scale, shear, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -502,7 +502,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         super(RandomMotionBlur3D, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1., keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
-        self.angle: torch.Tensor = angle
+        self.angle = angle
         self.direction = direction
         self.border_type = BorderType.get(border_type)
         self.flags: Dict[str, torch.Tensor] = {
@@ -824,7 +824,7 @@ class RandomPerspective3D(AugmentationBase3D):
                 self.distortion_scale, device=self.device, dtype=self.dtype)
         return rg.random_perspective_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1],
-            self.distortion_scale, self.same_on_batch, self.device, self.dtype)
+            distortion_scale, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation3d(input, params)
