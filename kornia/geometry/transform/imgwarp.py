@@ -474,7 +474,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
         sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
     Returns:
-        torch.Tensor: the affine transformation matrix :math:`(B, 2, 3)`.
+        torch.Tensor: the affine transformation matrix :math:`(B, 3, 3)`.
     """
     transform: torch.Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
