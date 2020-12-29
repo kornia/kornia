@@ -319,7 +319,7 @@ class RandomErasing(AugmentationBase2D):
                                             keepdim=keepdim)
         self.scale = scale
         self.ratio = ratio
-        self.value: float = value
+        self.value: float = float(value)
 
     def __repr__(self) -> str:
         repr = f"scale={self.scale}, ratio={self.ratio}, value={self.value}"
