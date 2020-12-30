@@ -898,6 +898,7 @@ class RandomMotionBlur(AugmentationBase2D):
             If Tuple[int, int], it will randomly generate the value from the range.
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+        resample (int, str or kornia.Resample): Default: Resample.NEAREST.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -909,6 +910,8 @@ class RandomMotionBlur(AugmentationBase2D):
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
+
+        Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -927,6 +930,7 @@ class RandomMotionBlur(AugmentationBase2D):
             angle: Union[torch.Tensor, float, Tuple[float, float]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            resample: Union[str, int, Resample] = Resample.NEAREST.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
@@ -936,8 +940,10 @@ class RandomMotionBlur(AugmentationBase2D):
         self.angle = angle
         self.direction = direction
         self.border_type = BorderType.get(border_type)
+        self.resample = Resample.get(resample)
         self.flags: Dict[str, torch.Tensor] = {
-            "border_type": torch.tensor(self.border_type.value)
+            "border_type": torch.tensor(self.border_type.value),
+            "interpolation": torch.tensor(self.resample.value)
         }
 
     def __repr__(self) -> str:

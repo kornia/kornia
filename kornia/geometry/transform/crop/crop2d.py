@@ -299,6 +299,9 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     Returns:
         torch.Tensor: the output mask tensor.
 
+    Note:
+        It is currently non-differentiable.
+
     Examples:
         >>> boxes = torch.tensor([[
         ...        [1., 1.],

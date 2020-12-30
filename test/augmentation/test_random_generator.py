@@ -544,7 +544,6 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
         res = random_crop_size_generator(
             batch_size=8, size=(100, 100),
             scale=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
@@ -559,7 +558,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [94, 98],
                 [87, 81],
                 [85, 93],
-                [83, 90]], device=device, dtype=torch.long)
+                [83, 90]], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -570,7 +569,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             ratio=torch.tensor([1., 1.], device=device, dtype=dtype),
             same_on_batch=False)
         expected = dict(
-            size=torch.tensor([[100, 100]], device=device, dtype=torch.long)
+            size=torch.tensor([[100, 100]], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -592,7 +591,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 [99, 95],
                 [99, 95],
                 [99, 95],
-                [99, 95]], device=device, dtype=torch.long),
+                [99, 95]], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -645,10 +644,10 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             batch_size=2, height=height, width=width, scale=scale,
             ratio=ratio, value=value, same_on_batch=False)
         expected = dict(
-            widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
-            heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
-            xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
-            ys=torch.tensor([6, 8], device=device, dtype=torch.int32),
+            widths=torch.tensor([100, 100], device=device, dtype=dtype),
+            heights=torch.tensor([0, 0], device=device, dtype=dtype),
+            xs=torch.tensor([0, 0], device=device, dtype=dtype),
+            ys=torch.tensor([6, 8], device=device, dtype=dtype),
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -668,10 +667,10 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             batch_size=2, height=height, width=width, scale=scale,
             ratio=ratio, value=value, same_on_batch=True)
         expected = dict(
-            widths=torch.tensor([100, 100], device=device, dtype=torch.int32),
-            heights=torch.tensor([0, 0], device=device, dtype=torch.int32),
-            xs=torch.tensor([0, 0], device=device, dtype=torch.int32),
-            ys=torch.tensor([10, 10], device=device, dtype=torch.int32),
+            widths=torch.tensor([100, 100], device=device, dtype=dtype),
+            heights=torch.tensor([0, 0], device=device, dtype=dtype),
+            xs=torch.tensor([0, 0], device=device, dtype=dtype),
+            ys=torch.tensor([10, 10], device=device, dtype=dtype),
             values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
@@ -1052,7 +1051,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 [[39, 1],
                  [38, 1],
                  [38, 0],
-                 [39, 0]]]], device=device, dtype=torch.long)
+                 [39, 0]]]], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
@@ -1075,7 +1074,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 [[114, 53],
                  [113, 53],
                  [113, 52],
-                 [114, 52]]]], device=device, dtype=torch.long)
+                 [114, 52]]]], device=device, dtype=dtype)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)

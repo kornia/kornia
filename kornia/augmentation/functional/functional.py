@@ -646,7 +646,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
             f"and ({params['xs'].size()}, {params['ys'].size()})"
         )
 
-    values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:])
+    values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 
     _, c, h, w = input.size()
 
@@ -789,8 +789,9 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
     angle = params['angle_factor']
     direction = params['direction_factor']
     border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
+    mode: str = cast(str, Resample(flags['interpolation'].item()).name.lower())
 
-    return motion_blur(input, kernel_size, angle, direction, border_type)
+    return motion_blur(input, kernel_size, angle, direction, border_type, mode)
 
 
 @_validate_input
