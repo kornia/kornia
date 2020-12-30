@@ -143,6 +143,14 @@ def binary_focal_loss_with_logits(
 
     returns:
         torch.tensor: loss
+
+    Examples:
+    >>> num_classes = 1
+    >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
+    >>> logits = torch.tensor([[[[6.325]]],[[[5.26]]],[[[87.49]]]])
+    >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
+    >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
+    tensor(4.6052)
     """
 
     if not isinstance(inp, torch.Tensor):
@@ -206,7 +214,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         - Target: :math:`(N, 1, *)`
 
     Examples:
-        >>> N = 5  # num_classes
+        >>> N = 1  # num_classes
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
         >>> loss = BinaryFocalLossWithLogits(**kwargs)
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
