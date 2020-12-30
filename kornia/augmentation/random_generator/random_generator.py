@@ -381,7 +381,7 @@ def random_crop_generator(
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
-    size = size.long()
+    size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1
@@ -392,25 +392,25 @@ def random_crop_generator(
 
     if batch_size == 0:
         return dict(
-            src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
-            dst=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
+            src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
         )
 
     if same_on_batch:
         # If same_on_batch, select the first then repeat.
-        x_start = _adapted_uniform((batch_size,), 0, x_diff[0].to(device=device, dtype=dtype), same_on_batch).long()
-        y_start = _adapted_uniform((batch_size,), 0, y_diff[0].to(device=device, dtype=dtype), same_on_batch).long()
+        x_start = _adapted_uniform((batch_size,), 0, x_diff[0].to(device=device, dtype=dtype), same_on_batch).floor()
+        y_start = _adapted_uniform((batch_size,), 0, y_diff[0].to(device=device, dtype=dtype), same_on_batch).floor()
     else:
-        x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).long()
-        y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).long()
+        x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).floor()
+        y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).floor()
     crop_src = bbox_generator(
-        x_start.view(-1), y_start.view(-1), size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
+        x_start.view(-1), y_start.view(-1), size[:, 1], size[:, 0]).to(device=_device, dtype=_dtype)
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
-            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
-            size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
+            torch.tensor([0] * batch_size, device=device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=device, dtype=_dtype),
+            size[:, 1], size[:, 0]).to(device=_device, dtype=_dtype)
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -420,7 +420,7 @@ def random_crop_generator(
             [resize_to[1] - 1, 0],
             [resize_to[1] - 1, resize_to[0] - 1],
             [0, resize_to[0] - 1],
-        ]], device=_device, dtype=torch.long).repeat(batch_size, 1, 1)
+        ]], device=_device, dtype=_dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -480,8 +480,8 @@ def random_crop_size_generator(
         (batch_size, 10), torch.log(ratio[0]), torch.log(ratio[1]), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
 
-    w = torch.sqrt(area * aspect_ratio).round().int()
-    h = torch.sqrt(area / aspect_ratio).round().int()
+    w = torch.sqrt(area * aspect_ratio).round().floor()
+    h = torch.sqrt(area / aspect_ratio).round().floor()
     # Element-wise w, h condition
     cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
 
@@ -503,8 +503,8 @@ def random_crop_size_generator(
         else:  # whole image
             h_ct = torch.tensor(size[0], device=device, dtype=dtype)
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
-        h_ct = h_ct.int()
-        w_ct = w_ct.int()
+        h_ct = h_ct.floor()
+        w_ct = w_ct.floor()
 
         h_out = h_out.where(cond_bool, h_ct)
         w_out = w_out.where(cond_bool, w_ct)

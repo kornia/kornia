@@ -198,47 +198,48 @@ class TestRandomMotionBlurBackward:
             assert (direction - aug.direction.data).sum() != 0
 
 
-# class TestRandomResizedCropBackward:
+class TestRandomResizedCropBackward:
 
-#     @pytest.mark.parametrize("scale", [[0.08, 1.], torch.tensor([0.08, 1.])])
-#     @pytest.mark.parametrize("ratio", [[3. / 4., 4. / 3.], torch.tensor([3. / 4., 4. / 3.])])
-#     @pytest.mark.parametrize("resample", ['bilinear', 'nearest'])
-#     @pytest.mark.parametrize("align_corners", [True, False])
-#     @pytest.mark.parametrize("return_transform", [True, False])
-#     @pytest.mark.parametrize("same_on_batch", [True, False])
-#     def test_param(self, scale, ratio, resample, align_corners, return_transform, same_on_batch, device, dtype):
+    @pytest.mark.skip("Param gen is probably breaking grads.")
+    @pytest.mark.parametrize("scale", [[0.08, 1.], torch.tensor([0.08, 1.])])
+    @pytest.mark.parametrize("ratio", [[3. / 4., 4. / 3.], torch.tensor([3. / 4., 4. / 3.])])
+    @pytest.mark.parametrize("resample", ['bilinear', 'nearest'])
+    @pytest.mark.parametrize("align_corners", [True, False])
+    @pytest.mark.parametrize("return_transform", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_param(self, scale, ratio, resample, align_corners, return_transform, same_on_batch, device, dtype):
 
-#         _scale = scale if isinstance(scale, (list, tuple)) else \
-#             nn.Parameter(scale.clone().to(device=device, dtype=dtype))
-#         _ratio = ratio if isinstance(ratio, (list, tuple)) else \
-#             nn.Parameter(ratio.clone().to(device=device, dtype=dtype))
+        _scale = scale if isinstance(scale, (list, tuple)) else \
+            nn.Parameter(scale.clone().to(device=device, dtype=dtype))
+        _ratio = ratio if isinstance(ratio, (list, tuple)) else \
+            nn.Parameter(ratio.clone().to(device=device, dtype=dtype))
 
-#         torch.manual_seed(0)
-#         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
-#         aug = RandomResizedCrop(
-#             (8, 8), _scale, _ratio, resample=resample, return_transform=return_transform,
-#             same_on_batch=same_on_batch, align_corners=align_corners)
+        torch.manual_seed(0)
+        input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
+        aug = RandomResizedCrop(
+            (8, 8), _scale, _ratio, resample=resample, return_transform=return_transform,
+            same_on_batch=same_on_batch, align_corners=align_corners)
 
-#         if return_transform:
-#             output, _ = aug(input)
-#         else:
-#             output = aug(input)
+        if return_transform:
+            output, _ = aug(input)
+        else:
+            output = aug(input)
 
-#         if len(list(aug.parameters())) != 0:
-#             mse = nn.MSELoss()
-#             opt = torch.optim.SGD(aug.parameters(), lr=0.1)
-#             loss = mse(output, torch.ones_like(output))
-#             loss.backward()
-#             opt.step()
+        if len(list(aug.parameters())) != 0:
+            mse = nn.MSELoss()
+            opt = torch.optim.SGD(aug.parameters(), lr=0.1)
+            loss = mse(output, torch.ones_like(output))
+            loss.backward()
+            opt.step()
 
-#         if not isinstance(scale, (list, tuple)):
-#             assert isinstance(aug.scale, torch.Tensor)
-#             # Assert if param not updated
-#             assert (scale - aug.scale.data).sum() != 0
-#         if not isinstance(ratio, (list, tuple)):
-#             assert isinstance(aug.ratio, torch.Tensor)
-#             # Assert if param not updated
-#             assert (ratio - aug.ratio.data).sum() != 0
+        if not isinstance(scale, (list, tuple)):
+            assert isinstance(aug.scale, torch.Tensor)
+            # Assert if param not updated
+            assert (scale - aug.scale.data).sum() != 0
+        if not isinstance(ratio, (list, tuple)):
+            assert isinstance(aug.ratio, torch.Tensor)
+            # Assert if param not updated
+            assert (ratio - aug.ratio.data).sum() != 0
 
 
 # class TestRandomErasingBackward:
