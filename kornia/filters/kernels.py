@@ -678,7 +678,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
     # kernel[:, kernel_size // 2, :] = direction[:, None].repeat(1, kernel_size) + m * torch.arange(0, kernel_size)
     k = torch.stack(
         [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    kernel = torch.nn.functional.pad(k[:, None], (0, 0, kernel_size // 2, kernel_size // 2, 0, 0))
+    kernel = torch.nn.functional.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
     assert kernel.shape == torch.Size([direction.size(0), *kernel_tuple])
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle

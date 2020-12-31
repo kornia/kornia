@@ -1,10 +1,10 @@
-from typing import Tuple, Union, List, cast, Optional
+from typing import Tuple, Union, List, Any, Optional
 
 import torch
 
 
-def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[torch.device, torch.dtype]:
-    """Check if all the input tensors are in the same device.
+def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
+    """Check if all the input are in the same device (only if when they are torch.Tensor).
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
 
@@ -15,7 +15,7 @@ def _extract_device_dtype(tensor_list: List[Optional[torch.Tensor]]) -> Tuple[to
     for tensor in tensor_list:
         if tensor is not None:
             if not isinstance(tensor, (torch.Tensor,)):
-                raise ValueError(f"Expected None or Tensor. Got {tensor}.")
+                continue
             _device = tensor.device
             _dtype = tensor.dtype
             if device is None and dtype is None:

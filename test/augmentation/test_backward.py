@@ -9,6 +9,7 @@ from kornia.augmentation import (
     RandomErasing,
     RandomRotation,
     RandomPerspective,
+    RandomSharpness,
     RandomCrop,
     RandomResizedCrop,
     RandomMotionBlur
@@ -196,6 +197,39 @@ class TestRandomMotionBlurBackward:
             assert isinstance(aug.direction, torch.Tensor)
             # Assert if param not updated
             assert (direction - aug.direction.data).sum() != 0
+
+
+class TestRandomSharpnessBackward:
+
+    @pytest.mark.parametrize("sharpness", [0.5, [0, 0.5], torch.tensor([0, 0.5])])
+    @pytest.mark.parametrize("return_transform", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_param(self, sharpness, return_transform, same_on_batch, device, dtype):
+
+        _sharpness = sharpness if isinstance(sharpness, (float, int, list, tuple)) else \
+            nn.Parameter(sharpness.clone().to(device=device, dtype=dtype))
+
+        torch.manual_seed(0)
+        input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
+        aug = RandomSharpness(
+            _sharpness, return_transform=return_transform, same_on_batch=same_on_batch)
+
+        if return_transform:
+            output, _ = aug(input)
+        else:
+            output = aug(input)
+
+        if len(list(aug.parameters())) != 0:
+            mse = nn.MSELoss()
+            opt = torch.optim.SGD(aug.parameters(), lr=0.1)
+            loss = mse(output, torch.ones_like(output))
+            loss.backward()
+            opt.step()
+
+        if not isinstance(sharpness, (float, int, list, tuple)):
+            assert isinstance(aug.sharpness, torch.Tensor)
+            # Assert if param not updated
+            assert (sharpness - aug.sharpness.data).sum() != 0
 
 
 class TestRandomResizedCropBackward:

@@ -185,6 +185,7 @@ class ColorJitter(AugmentationBase2D):
     ) -> None:
         super(ColorJitter, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                           keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([brightness, contrast, hue, saturation])
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
@@ -196,13 +197,13 @@ class ColorJitter(AugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         brightness: torch.Tensor = _range_bound(
-            self.brightness, 'brightness', center=1., bounds=(0, 2), device=self.device, dtype=self.dtype)
+            self.brightness, 'brightness', center=1., bounds=(0, 2), device=self._device, dtype=self._dtype)
         contrast: torch.Tensor = _range_bound(
-            self.contrast, 'contrast', center=1., device=self.device, dtype=self.dtype)
+            self.contrast, 'contrast', center=1., device=self._device, dtype=self._dtype)
         saturation: torch.Tensor = _range_bound(
-            self.saturation, 'saturation', center=1., device=self.device, dtype=self.dtype)
+            self.saturation, 'saturation', center=1., device=self._device, dtype=self._dtype)
         hue: torch.Tensor = _range_bound(
-            self.hue, 'hue', bounds=(-0.5, 0.5), device=self.device, dtype=self.dtype)
+            self.hue, 'hue', bounds=(-0.5, 0.5), device=self._device, dtype=self._dtype)
         return rg.random_color_jitter_generator(
             batch_shape[0], brightness, contrast, saturation, hue, self.same_on_batch,
             self.device, self.dtype)
@@ -317,6 +318,7 @@ class RandomErasing(AugmentationBase2D):
     ) -> None:
         super(RandomErasing, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                             keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([scale, ratio])
         self.scale = scale
         self.ratio = ratio
         self.value: float = float(value)
@@ -326,10 +328,8 @@ class RandomErasing(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        scale = cast(torch.Tensor, self.scale) if isinstance(self.scale, torch.Tensor) else \
-            torch.tensor(self.scale, device=self.device, dtype=self.dtype)
-        ratio = cast(torch.Tensor, self.ratio) if isinstance(self.ratio, torch.Tensor) else \
-            torch.tensor(self.ratio, device=self.device, dtype=self.dtype)
+        scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
+        ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
         return rg.random_rectangles_params_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], scale=scale, ratio=ratio,
             value=self.value, same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
@@ -384,8 +384,8 @@ class RandomPerspective(AugmentationBase2D):
     ) -> None:
         super(RandomPerspective, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                 keepdim=keepdim)
-        self.distortion_scale = cast(torch.Tensor, distortion_scale) if isinstance(distortion_scale, torch.Tensor) \
-            else torch.tensor(distortion_scale, device=self.device, dtype=self.dtype)
+        self._device, self._dtype = _extract_device_dtype([distortion_scale])
+        self.distortion_scale = distortion_scale
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
@@ -399,8 +399,9 @@ class RandomPerspective(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        distortion_scale = torch.as_tensor(self.distortion_scale, device=self._device, dtype=self._dtype)
         return rg.random_perspective_generator(
-            batch_shape[0], batch_shape[-2], batch_shape[-1], self.distortion_scale, self.same_on_batch,
+            batch_shape[0], batch_shape[-2], batch_shape[-1], distortion_scale, self.same_on_batch,
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -476,6 +477,7 @@ class RandomAffine(AugmentationBase2D):
     ) -> None:
         super(RandomAffine, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                            keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([degrees, translate, scale, shear])
         self.degrees = degrees
         self.translate = translate
         self.scale = scale
@@ -495,9 +497,8 @@ class RandomAffine(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = cast(torch.Tensor, self.degrees) if isinstance(self.degrees, torch.Tensor) else \
-            torch.tensor(self.degrees, device=self.device, dtype=self.dtype)
-        degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+        degrees = _range_bound(
+            self.degrees, 'degrees', 0, (-360, 360), device=self._device, dtype=self._dtype)
         translate: Optional[torch.Tensor] = None
         scale: Optional[torch.Tensor] = None
         shear: Optional[torch.Tensor] = None
@@ -505,8 +506,7 @@ class RandomAffine(AugmentationBase2D):
         if self.translate is not None:
             translate = _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular')
         if self.scale is not None:
-            scale = self.scale if isinstance(self.scale, torch.Tensor) else \
-                torch.tensor(self.scale, device=self.device, dtype=self.dtype)
+            scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
             if len(scale) == 2:
                 scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
             elif len(scale) == 4:
@@ -517,8 +517,7 @@ class RandomAffine(AugmentationBase2D):
             else:
                 raise ValueError("'scale' expected to be either 2 or 4 elements. Got {scale}")
         if self.shear is not None:
-            shear = self.shear if isinstance(self.shear, torch.Tensor) else \
-                torch.tensor(self.shear, device=self.device, dtype=self.dtype)
+            shear = torch.as_tensor(self.shear, device=self._device, dtype=self._dtype)
             shear = torch.stack([
                 _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
                 torch.tensor([0, 0], device=shear.device, dtype=shear.dtype) if shear.dim() == 0 or len(shear) == 2
@@ -658,6 +657,7 @@ class RandomRotation(AugmentationBase2D):
     ) -> None:
         super(RandomRotation, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                              keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([degrees])
         self.degrees = degrees
         self.resample: Resample = Resample.get(resample)
         self.align_corners = align_corners
@@ -671,9 +671,7 @@ class RandomRotation(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        degrees = cast(torch.Tensor, self.degrees) if isinstance(self.degrees, torch.Tensor) else \
-            torch.tensor(self.degrees, device=self.device, dtype=self.dtype)
-        degrees = _range_bound(degrees, 'degrees', 0, (-360, 360))
+        degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360), device=self._device, dtype=self._dtype)
         return rg.random_rotation_generator(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -848,6 +846,7 @@ class RandomResizedCrop(AugmentationBase2D):
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
             p=1., return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([scale, ratio])
         self.size = size
         self.scale = scale
         self.ratio = ratio
@@ -863,10 +862,8 @@ class RandomResizedCrop(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        scale = cast(torch.Tensor, self.scale) if isinstance(self.scale, torch.Tensor) else \
-            torch.tensor(self.scale, device=self.device, dtype=self.dtype)
-        ratio = cast(torch.Tensor, self.ratio) if isinstance(self.ratio, torch.Tensor) else \
-            torch.tensor(self.ratio, device=self.device, dtype=self.dtype)
+        scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
+        ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
         target_size: torch.Tensor = rg.random_crop_size_generator(
             batch_shape[0], self.size, scale, ratio, self.same_on_batch, self.device, self.dtype)['size']
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
@@ -936,6 +933,7 @@ class RandomMotionBlur(AugmentationBase2D):
         super(RandomMotionBlur, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                                keepdim=keepdim)
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
+        self._device, self._dtype = _extract_device_dtype([angle, direction])
 
         self.angle = angle
         self.direction = direction
@@ -952,13 +950,10 @@ class RandomMotionBlur(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        angle = cast(torch.Tensor, self.angle) if isinstance(self.angle, torch.Tensor) else \
-            torch.tensor(self.angle, device=self.device, dtype=self.dtype)
-        angle = _range_bound(angle, 'angle', center=0., bounds=(-360, 360))
-
-        direction = cast(torch.Tensor, self.direction) if isinstance(self.direction, torch.Tensor) else \
-            torch.tensor(self.direction, device=self.device, dtype=self.dtype)
-        direction = _range_bound(direction, 'direction', center=0., bounds=(-1, 1))
+        angle = _range_bound(
+            self.angle, 'angle', center=0., bounds=(-360, 360), device=self._device, dtype=self._dtype)
+        direction = _range_bound(
+            self.direction, 'direction', center=0., bounds=(-1, 1), device=self._device, dtype=self._dtype)
         return rg.random_motion_blur_generator(
             batch_shape[0], self.kernel_size, angle, direction, self.same_on_batch, self.device, self.dtype)
 
@@ -1013,6 +1008,7 @@ class RandomSolarize(AugmentationBase2D):
         same_on_batch: bool = False, return_transform: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomSolarize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch)
+        self._device, self._dtype = _extract_device_dtype([thresholds, additions])
         self.thresholds = thresholds
         self.additions = additions
 
@@ -1021,13 +1017,10 @@ class RandomSolarize(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        thresholds = cast(torch.Tensor, self.thresholds) if isinstance(self.thresholds, torch.Tensor) else \
-            torch.tensor(self.thresholds, device=self.device, dtype=self.dtype)
-        thresholds = _range_bound(thresholds, 'thresholds', center=0.5, bounds=(0., 1.))
-
-        additions = cast(torch.Tensor, self.additions) if isinstance(self.additions, torch.Tensor) else \
-            torch.tensor(self.additions, device=self.device, dtype=self.dtype)
-        additions = _range_bound(additions, 'additions', bounds=(-0.5, 0.5))
+        thresholds = _range_bound(
+            self.thresholds, 'thresholds', center=0.5, bounds=(0., 1.), device=self._device, dtype=self._dtype)
+        additions = _range_bound(
+            self.additions, 'additions', bounds=(-0.5, 0.5), device=self._device, dtype=self._dtype)
         return rg.random_solarize_generator(batch_shape[0], thresholds, additions, self.same_on_batch,
                                             self.device, self.dtype)
 
@@ -1080,19 +1073,18 @@ class RandomPosterize(AugmentationBase2D):
     ) -> None:
         super(RandomPosterize, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                               keepdim=keepdim)
-        self.bits = cast(torch.Tensor, bits) if isinstance(bits, torch.Tensor) else \
-            torch.tensor(bits, device=self.device, dtype=self.dtype)
+        self._device, self._dtype = _extract_device_dtype([bits])
+        self.bits = bits
 
     def __repr__(self) -> str:
         repr = f"(bits={self.bits}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        bits = cast(torch.Tensor, self.bits) if isinstance(self.bits, torch.Tensor) else \
-            torch.tensor(self.bits, device=self.device, dtype=self.dtype)
+        bits = torch.as_tensor(self.bits, device=self._device, dtype=self._dtype)
         if len(bits.size()) == 0:
             bits = bits.repeat(2)
-            bits[1] = torch.tensor(8, device=bits.device, dtype=bits.dtype)
+            bits[1] = 8
         elif not (len(bits.size()) == 1 and bits.size(0) == 2):
             raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
         return rg.random_posterize_generator(batch_shape[0], bits, self.same_on_batch, self.device, self.dtype)
@@ -1143,6 +1135,7 @@ class RandomSharpness(AugmentationBase2D):
     ) -> None:
         super(RandomSharpness, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
                                               keepdim=keepdim)
+        self._device, self._dtype = _extract_device_dtype([sharpness])
         self.sharpness = sharpness
 
     def __repr__(self) -> str:
@@ -1150,8 +1143,7 @@ class RandomSharpness(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        sharpness = cast(torch.Tensor, self.sharpness) if isinstance(self.sharpness, torch.Tensor) else \
-            torch.tensor(self.sharpness, device=self.device, dtype=self.dtype)
+        sharpness = torch.as_tensor(self.sharpness, device=self._device, dtype=self._dtype)
         if sharpness.dim() == 0:
             sharpness = sharpness.repeat(2)
             sharpness[0] = 0.
