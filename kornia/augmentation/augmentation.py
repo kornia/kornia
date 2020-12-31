@@ -518,7 +518,7 @@ class RandomAffine(AugmentationBase2D):
                                  device=self._device, dtype=self._dtype)
                 ])
             else:
-                raise ValueError("'scale' expected to be either 2 or 4 elements. Got {scale}")
+                raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {scale}")
         if self.shear is not None:
             shear = torch.as_tensor(self.shear, device=self._device, dtype=self._dtype)
             shear = torch.stack([
