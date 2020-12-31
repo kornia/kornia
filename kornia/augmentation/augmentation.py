@@ -12,7 +12,6 @@ from . import functional as F
 from . import random_generator as rg
 from .utils import (
     _range_bound,
-    _singular_range_check,
 )
 
 
@@ -504,24 +503,29 @@ class RandomAffine(AugmentationBase2D):
         shear: Optional[torch.Tensor] = None
 
         if self.translate is not None:
-            translate = _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular')
+            translate = _range_bound(
+                self.translate, 'translate', bounds=(0, 1), check='singular', device=self._device, dtype=self._dtype)
         if self.scale is not None:
             scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
             if len(scale) == 2:
-                scale = _range_bound(scale, 'scale', bounds=(0, float('inf')), check='singular')
+                scale = _range_bound(
+                    scale, 'scale', bounds=(0, float('inf')), check='singular', device=self._device, dtype=self._dtype)
             elif len(scale) == 4:
                 scale = torch.cat([
-                    _range_bound(scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
-                    _range_bound(scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular')
+                    _range_bound(scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular',
+                                 device=self._device, dtype=self._dtype),
+                    _range_bound(scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular',
+                                 device=self._device, dtype=self._dtype)
                 ])
             else:
                 raise ValueError("'scale' expected to be either 2 or 4 elements. Got {scale}")
         if self.shear is not None:
             shear = torch.as_tensor(self.shear, device=self._device, dtype=self._dtype)
             shear = torch.stack([
-                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-                torch.tensor([0, 0], device=shear.device, dtype=shear.dtype) if shear.dim() == 0 or len(shear) == 2
-                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+                _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360),
+                             device=self._device, dtype=self._dtype),
+                torch.tensor([0, 0], device=self._device, dtype=self._dtype) if shear.dim() == 0 or len(shear) == 2
+                else _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=self._device, dtype=self._dtype)
             ])
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], degrees, translate, scale, shear,

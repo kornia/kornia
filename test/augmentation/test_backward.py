@@ -276,45 +276,42 @@ class TestRandomResizedCropBackward:
             assert (ratio - aug.ratio.data).sum() != 0
 
 
-# class TestRandomErasingBackward:
+class TestRandomErasingBackward:
 
-#     @pytest.mark.parametrize("scale", [
-#         # [0.02, 0.33],
-#         torch.tensor([0.02, 0.33])])
-#     @pytest.mark.parametrize("ratio", [
-#         # [0.3, 3.3],
-#         torch.tensor([0.3, 3.3])])
-#     @pytest.mark.parametrize("value", [0.])
-#     @pytest.mark.parametrize("return_transform", [True, False])
-#     @pytest.mark.parametrize("same_on_batch", [True, False])
-#     def test_param(self, scale, ratio, value, return_transform, same_on_batch, device, dtype):
+    @pytest.mark.skip("Need differentiable indexing.")
+    @pytest.mark.parametrize("scale", [[0.02, 0.33], torch.tensor([0.02, 0.33])])
+    @pytest.mark.parametrize("ratio", [[0.3, 3.3], torch.tensor([0.3, 3.3])])
+    @pytest.mark.parametrize("value", [0.])
+    @pytest.mark.parametrize("return_transform", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    def test_param(self, scale, ratio, value, return_transform, same_on_batch, device, dtype):
 
-#         _scale = scale if isinstance(scale, (list, tuple)) else \
-#             nn.Parameter(scale.clone().to(device=device, dtype=dtype))
-#         _ratio = ratio if isinstance(ratio, (list, tuple)) else \
-#             nn.Parameter(ratio.clone().to(device=device, dtype=dtype))
+        _scale = scale if isinstance(scale, (list, tuple)) else \
+            nn.Parameter(scale.clone().to(device=device, dtype=dtype))
+        _ratio = ratio if isinstance(ratio, (list, tuple)) else \
+            nn.Parameter(ratio.clone().to(device=device, dtype=dtype))
 
-#         torch.manual_seed(0)
-#         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
-#         aug = RandomErasing(_scale, _ratio, value, return_transform, same_on_batch)
+        torch.manual_seed(0)
+        input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
+        aug = RandomErasing(_scale, _ratio, value, return_transform, same_on_batch)
 
-#         if return_transform:
-#             output, _ = aug(input)
-#         else:
-#             output = aug(input)
+        if return_transform:
+            output, _ = aug(input)
+        else:
+            output = aug(input)
 
-#         if len(list(aug.parameters())) != 0:
-#             mse = nn.MSELoss()
-#             opt = torch.optim.SGD(aug.parameters(), lr=0.1)
-#             loss = mse(output, torch.ones_like(output))
-#             loss.backward()
-#             opt.step()
+        if len(list(aug.parameters())) != 0:
+            mse = nn.MSELoss()
+            opt = torch.optim.SGD(aug.parameters(), lr=0.1)
+            loss = mse(output, torch.ones_like(output))
+            loss.backward()
+            opt.step()
 
-#         if not isinstance(scale, (list, tuple)):
-#             assert isinstance(aug.scale, torch.Tensor)
-#             # Assert if param not updated
-#             assert (scale - aug.scale.data).sum() != 0
-#         if not isinstance(ratio, (list, tuple)):
-#             assert isinstance(aug.ratio, torch.Tensor)
-#             # Assert if param not updated
-#             assert (ratio - aug.ratio.data).sum() != 0
+        if not isinstance(scale, (list, tuple)):
+            assert isinstance(aug.scale, torch.Tensor)
+            # Assert if param not updated
+            assert (scale - aug.scale.data).sum() != 0
+        if not isinstance(ratio, (list, tuple)):
+            assert isinstance(aug.ratio, torch.Tensor)
+            # Assert if param not updated
+            assert (ratio - aug.ratio.data).sum() != 0
