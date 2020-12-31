@@ -456,6 +456,8 @@ class RandomMotionBlur3D(AugmentationBase3D):
             If Tuple[int, int], it will randomly generate the value from the range.
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
+        resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
+            Default: Resample.BILINEAR.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -498,6 +500,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
+            resample: Union[str, int, Resample] = Resample.BILINEAR.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(
@@ -506,9 +509,11 @@ class RandomMotionBlur3D(AugmentationBase3D):
         self.kernel_size: Union[int, Tuple[int, int]] = kernel_size
         self.angle = angle
         self.direction = direction
+        self.resample = Resample.get(resample)
         self.border_type = BorderType.get(border_type)
         self.flags: Dict[str, torch.Tensor] = {
-            "border_type": torch.tensor(self.border_type.value)
+            "border_type": torch.tensor(self.border_type.value),
+            "interpolation": torch.tensor(self.resample.value),
         }
 
     def __repr__(self) -> str:

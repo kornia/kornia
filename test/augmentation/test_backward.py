@@ -99,7 +99,7 @@ class TestRandomAffineBackward:
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomAffine(
             _degrees, _translate, _scale, _shear, resample, align_corners=align_corners,
-            return_transform=return_transform, same_on_batch=same_on_batch)
+            return_transform=return_transform, same_on_batch=same_on_batch, p=1.)
 
         if return_transform:
             output, _ = aug(input)
@@ -122,6 +122,33 @@ class TestRandomAffineBackward:
                 assert (degrees - aug.degrees.data).sum() == 0
             else:
                 assert (degrees - aug.degrees.data).sum() != 0
+        if not isinstance(translate, (int, float, list, tuple)):
+            assert isinstance(aug.translate, torch.Tensor)
+            # Assert if param not updated
+            if resample == 'nearest':
+                # grid_sample will return grad = 0 for resample nearest
+                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
+                assert (translate - aug.translate.data).sum() == 0
+            else:
+                assert (translate - aug.translate.data).sum() != 0
+        if not isinstance(scale, (int, float, list, tuple)):
+            assert isinstance(aug.scale, torch.Tensor)
+            # Assert if param not updated
+            if resample == 'nearest':
+                # grid_sample will return grad = 0 for resample nearest
+                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
+                assert (scale - aug.scale.data).sum() == 0
+            else:
+                assert (scale - aug.scale.data).sum() != 0
+        if not isinstance(shear, (int, float, list, tuple)):
+            assert isinstance(aug.shear, torch.Tensor)
+            # Assert if param not updated
+            if resample == 'nearest':
+                # grid_sample will return grad = 0 for resample nearest
+                # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
+                assert (shear - aug.shear.data).sum() == 0
+            else:
+                assert (shear - aug.shear.data).sum() != 0
 
 
 class TestRandomRotationBackward:
@@ -181,7 +208,7 @@ class TestRandomPerspectiveBackward:
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomPerspective(
             _distortion_scale, resample=resample, return_transform=return_transform,
-            same_on_batch=same_on_batch, align_corners=align_corners)
+            same_on_batch=same_on_batch, align_corners=align_corners, p=1.)
 
         if return_transform:
             output, _ = aug(input)

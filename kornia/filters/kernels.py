@@ -689,7 +689,7 @@ def get_motion_kernel2d(kernel_size: int, angle: Union[torch.Tensor, float],
 
 
 def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float, float, float]],
-                        direction: Union[torch.Tensor, float] = 0.) -> torch.Tensor:
+                        direction: Union[torch.Tensor, float] = 0., mode: str = 'nearest') -> torch.Tensor:
     r"""Return 3D motion blur filter.
 
     Args:
@@ -701,6 +701,8 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
+        mode (str): interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
+            Default: ``'nearest'``.
 
     Returns:
         torch.Tensor: the motion blur kernel.
@@ -767,11 +769,16 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
-    kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
+    # kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
+    #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
+    k = torch.stack(
         [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
+    kernel = torch.nn.functional.pad(
+        k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0])
+    assert kernel.shape == torch.Size([direction.size(0), *kernel_tuple])
     kernel = kernel.unsqueeze(1)
     # rotate (counterclockwise) kernel by given angle
-    kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode='nearest', align_corners=True)
+    kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)
     kernel = kernel[:, 0]
     kernel = kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
 
