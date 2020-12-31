@@ -457,7 +457,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         border_type (int, str or kornia.BorderType): the padding mode to be applied before convolving.
             CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
         resample (int, str or kornia.Resample): resample mode from "nearest" (0) or "bilinear" (1).
-            Default: Resample.BILINEAR.
+            Default: Resample.NEAREST.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
 
@@ -500,7 +500,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
                          Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]],
             direction: Union[torch.Tensor, float, Tuple[float, float]],
             border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
-            resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+            resample: Union[str, int, Resample] = Resample.NEAREST.name,
             return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super(RandomMotionBlur3D, self).__init__(

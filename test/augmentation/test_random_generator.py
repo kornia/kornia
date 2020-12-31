@@ -430,7 +430,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             batch_size=batch_size, input_size=input_size,
             size=size,
             resize_to=resize_to,
-            same_on_batch=same_on_batch)
+            same_on_batch=same_on_batch, device=device, dtype=dtype)
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
         ((-300, 300), (200, 200), (100, 100)),
@@ -448,7 +448,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
+        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         res = random_crop_generator(
             batch_size=2, input_size=(100, 100),
             size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
@@ -462,7 +462,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 [[19, 29],
                  [98, 29],
                  [98, 98],
-                 [19, 98]]], device=device, dtype=torch.long),
+                 [19, 98]]], device=device, dtype=dtype),
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -471,7 +471,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 [[0, 0],
                  [199, 0],
                  [199, 199],
-                 [0, 199]]], device=device, dtype=torch.long),
+                 [0, 199]]], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
@@ -479,7 +479,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        degrees = torch.tensor([10, 20])
+        degrees = torch.tensor([10, 20], device=device, dtype=dtype)
         res = random_crop_generator(
             batch_size=2, input_size=(100, 100),
             size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
@@ -493,7 +493,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 [[36, 46],
                  [115, 46],
                  [115, 115],
-                 [36, 115]]], device=device, dtype=torch.long),
+                 [36, 115]]], device=device, dtype=dtype),
             dst=torch.tensor([
                 [[0, 0],
                  [199, 0],
@@ -502,7 +502,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 [[0, 0],
                  [199, 0],
                  [199, 199],
-                 [0, 199]]], device=device, dtype=torch.long),
+                 [0, 199]]], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])

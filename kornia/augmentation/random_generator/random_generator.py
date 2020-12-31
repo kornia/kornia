@@ -375,9 +375,9 @@ def random_crop_generator(
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
     if not isinstance(size, torch.Tensor):
-        size = torch.tensor(size, device=device, dtype=dtype).repeat(batch_size, 1)
+        size = torch.tensor(size, device=_device, dtype=_dtype).repeat(batch_size, 1)
     else:
-        size = size.to(device=device, dtype=dtype)
+        size = size.to(device=_device, dtype=_dtype)
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
@@ -404,13 +404,17 @@ def random_crop_generator(
         x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).floor()
         y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).floor()
     crop_src = bbox_generator(
-        x_start.view(-1), y_start.view(-1), size[:, 1], size[:, 0]).to(device=_device, dtype=_dtype)
+        x_start.view(-1).to(device=_device, dtype=_dtype),
+        y_start.view(-1).to(device=_device, dtype=_dtype),
+        size[:, 1].to(device=_device, dtype=_dtype),
+        size[:, 0].to(device=_device, dtype=_dtype))
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size, device=device, dtype=_dtype),
-            torch.tensor([0] * batch_size, device=device, dtype=_dtype),
-            size[:, 1], size[:, 0]).to(device=_device, dtype=_dtype)
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            size[:, 1].to(device=_device, dtype=_dtype),
+            size[:, 0].to(device=_device, dtype=_dtype))
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -1004,8 +1008,8 @@ def random_cutmix_generator(
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
     cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
-    cut_height = (cutmix_rate * height).floor()
-    cut_width = (cutmix_rate * width).floor()
+    cut_height = (cutmix_rate * height).floor().to(device=device, dtype=_dtype)
+    cut_width = (cutmix_rate * width).floor().to(device=device, dtype=_dtype)
     _gen_shape = (1,)
 
     if same_on_batch:
