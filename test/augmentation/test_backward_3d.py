@@ -89,14 +89,14 @@ class TestRandomAffine3DBackward:
             else:
                 assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() != 0
         if not isinstance(shear, (int, float, list, tuple)):
-            assert isinstance(aug.shear, torch.Tensor)
+            assert isinstance(aug.shears, torch.Tensor)
             # Assert if param not updated
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (shear.to(device=device, dtype=dtype) - aug.shear.data).sum() == 0
+                assert (shear.to(device=device, dtype=dtype) - aug.shears.data).sum() == 0
             else:
-                assert (shear.to(device=device, dtype=dtype) - aug.shear.data).sum() != 0
+                assert (shear.to(device=device, dtype=dtype) - aug.shears.data).sum() != 0
 
 
 class TestRandomRotation3DBackward:
