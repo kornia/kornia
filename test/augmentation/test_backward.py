@@ -56,19 +56,19 @@ class TestColorJitterBackward:
         if not isinstance(brightness, (int, float)):
             assert isinstance(aug.brightness, torch.Tensor)
             # Assert if param not updated
-            assert (brightness - aug.brightness.data).sum() != 0
+            assert (brightness.to(device=device, dtype=dtype) - aug.brightness.data).sum() != 0
         if not isinstance(contrast, (int, float)):
             assert isinstance(aug.contrast, torch.Tensor)
             # Assert if param not updated
-            assert (contrast - aug.contrast.data).sum() != 0
+            assert (contrast.to(device=device, dtype=dtype) - aug.contrast.data).sum() != 0
         if not isinstance(saturation, (int, float)):
             assert isinstance(aug.saturation, torch.Tensor)
             # Assert if param not updated
-            assert (saturation - aug.saturation.data).sum() != 0
+            assert (saturation.to(device=device, dtype=dtype) - aug.saturation.data).sum() != 0
         if not isinstance(hue, (int, float)):
             assert isinstance(aug.hue, torch.Tensor)
             # Assert if param not updated
-            assert (hue - aug.hue.data).sum() != 0
+            assert (hue.to(device=device, dtype=dtype) - aug.hue.data).sum() != 0
 
 
 class TestRandomAffineBackward:
@@ -119,36 +119,36 @@ class TestRandomAffineBackward:
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (degrees - aug.degrees.data).sum() == 0
+                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() == 0
             else:
-                assert (degrees - aug.degrees.data).sum() != 0
+                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() != 0
         if not isinstance(translate, (int, float, list, tuple)):
             assert isinstance(aug.translate, torch.Tensor)
             # Assert if param not updated
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (translate - aug.translate.data).sum() == 0
+                assert (translate.to(device=device, dtype=dtype) - aug.translate.data).sum() == 0
             else:
-                assert (translate - aug.translate.data).sum() != 0
+                assert (translate.to(device=device, dtype=dtype) - aug.translate.data).sum() != 0
         if not isinstance(scale, (int, float, list, tuple)):
             assert isinstance(aug.scale, torch.Tensor)
             # Assert if param not updated
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (scale - aug.scale.data).sum() == 0
+                assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() == 0
             else:
-                assert (scale - aug.scale.data).sum() != 0
+                assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() != 0
         if not isinstance(shear, (int, float, list, tuple)):
             assert isinstance(aug.shear, torch.Tensor)
             # Assert if param not updated
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (shear - aug.shear.data).sum() == 0
+                assert (shear.to(device=device, dtype=dtype) - aug.shear.data).sum() == 0
             else:
-                assert (shear - aug.shear.data).sum() != 0
+                assert (shear.to(device=device, dtype=dtype) - aug.shear.data).sum() != 0
 
 
 class TestRandomRotationBackward:
@@ -187,9 +187,9 @@ class TestRandomRotationBackward:
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (degrees - aug.degrees.data).sum() == 0
+                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() == 0
             else:
-                assert (degrees - aug.degrees.data).sum() != 0
+                assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() != 0
 
 
 class TestRandomPerspectiveBackward:
@@ -228,9 +228,9 @@ class TestRandomPerspectiveBackward:
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (distortion_scale - aug.distortion_scale.data).sum() == 0
+                assert (distortion_scale.to(device=device, dtype=dtype) - aug.distortion_scale.data).sum() == 0
             else:
-                assert (distortion_scale - aug.distortion_scale.data).sum() != 0
+                assert (distortion_scale.to(device=device, dtype=dtype) - aug.distortion_scale.data).sum() != 0
 
 
 class TestRandomMotionBlurBackward:
@@ -270,14 +270,14 @@ class TestRandomMotionBlurBackward:
             if resample == 'nearest':
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
-                assert (angle - aug.angle.data).sum() == 0
+                assert (angle.to(device=device, dtype=dtype) - aug.angle.data).sum() == 0
             else:
                 # Assert if param not updated
-                assert (angle - aug.angle.data).sum() != 0
+                assert (angle.to(device=device, dtype=dtype) - aug.angle.data).sum() != 0
         if not isinstance(direction, (list, tuple)):
             assert isinstance(aug.direction, torch.Tensor)
             # Assert if param not updated
-            assert (direction - aug.direction.data).sum() != 0
+            assert (direction.to(device=device, dtype=dtype) - aug.direction.data).sum() != 0
 
 
 class TestRandomSharpnessBackward:
@@ -310,7 +310,7 @@ class TestRandomSharpnessBackward:
         if not isinstance(sharpness, (float, int, list, tuple)):
             assert isinstance(aug.sharpness, torch.Tensor)
             # Assert if param not updated
-            assert (sharpness - aug.sharpness.data).sum() != 0
+            assert (sharpness.to(device=device, dtype=dtype) - aug.sharpness.data).sum() != 0
 
 
 class TestRandomResizedCropBackward:
@@ -350,11 +350,11 @@ class TestRandomResizedCropBackward:
         if not isinstance(scale, (list, tuple)):
             assert isinstance(aug.scale, torch.Tensor)
             # Assert if param not updated
-            assert (scale - aug.scale.data).sum() != 0
+            assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() != 0
         if not isinstance(ratio, (list, tuple)):
             assert isinstance(aug.ratio, torch.Tensor)
             # Assert if param not updated
-            assert (ratio - aug.ratio.data).sum() != 0
+            assert (ratio.to(device=device, dtype=dtype) - aug.ratio.data).sum() != 0
 
 
 class TestRandomErasingBackward:
@@ -391,8 +391,8 @@ class TestRandomErasingBackward:
         if not isinstance(scale, (list, tuple)):
             assert isinstance(aug.scale, torch.Tensor)
             # Assert if param not updated
-            assert (scale - aug.scale.data).sum() != 0
+            assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() != 0
         if not isinstance(ratio, (list, tuple)):
             assert isinstance(aug.ratio, torch.Tensor)
             # Assert if param not updated
-            assert (ratio - aug.ratio.data).sum() != 0
+            assert (ratio.to(device=device, dtype=dtype) - aug.ratio.data).sum() != 0
