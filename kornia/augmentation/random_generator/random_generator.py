@@ -344,36 +344,38 @@ def random_crop_generator(
         >>> _ = torch.manual_seed(0)
         >>> crop_size = torch.tensor([[25, 28], [27, 29], [26, 28]])
         >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
-        {'src': tensor([[[ 1,  0],
-                 [28,  0],
-                 [28, 24],
-                 [ 1, 24]],
+        {'src': tensor([[[ 1.,  0.],
+                 [28.,  0.],
+                 [28., 24.],
+                 [ 1., 24.]],
         <BLANKLINE>
-                [[ 1,  1],
-                 [29,  1],
-                 [29, 27],
-                 [ 1, 27]],
+                [[ 1.,  1.],
+                 [29.,  1.],
+                 [29., 27.],
+                 [ 1., 27.]],
         <BLANKLINE>
-                [[ 0,  3],
-                 [27,  3],
-                 [27, 28],
-                 [ 0, 28]]]), 'dst': tensor([[[ 0,  0],
-                 [27,  0],
-                 [27, 24],
-                 [ 0, 24]],
+                [[ 0.,  3.],
+                 [27.,  3.],
+                 [27., 28.],
+                 [ 0., 28.]]]), 'dst': tensor([[[ 0.,  0.],
+                 [27.,  0.],
+                 [27., 24.],
+                 [ 0., 24.]],
         <BLANKLINE>
-                [[ 0,  0],
-                 [28,  0],
-                 [28, 26],
-                 [ 0, 26]],
+                [[ 0.,  0.],
+                 [28.,  0.],
+                 [28., 26.],
+                 [ 0., 26.]],
         <BLANKLINE>
-                [[ 0,  0],
-                 [27,  0],
-                 [27, 25],
-                 [ 0, 25]]])}
+                [[ 0.,  0.],
+                 [27.,  0.],
+                 [27., 25.],
+                 [ 0., 25.]]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
+    # Use float point instead
+    _dtype = _dtype if _dtype in [torch.float16, torch.float32, torch.float64] else dtype
     if not isinstance(size, torch.Tensor):
         size = torch.tensor(size, device=_device, dtype=_dtype).repeat(batch_size, 1)
     else:
@@ -460,9 +462,9 @@ def random_crop_size_generator(
     Examples:
         >>> _ = torch.manual_seed(42)
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[29, 29],
-                [27, 28],
-                [26, 29]])}
+        {'size': tensor([[29., 29.],
+                [27., 28.],
+                [26., 29.]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
@@ -952,36 +954,36 @@ def random_cutmix_generator(
         >>> rng = torch.manual_seed(0)
         >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
-                [1, 2, 0]]), 'crop_src': tensor([[[[ 35,  25],
-                  [208,  25],
-                  [208, 198],
-                  [ 35, 198]],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 35.,  25.],
+                  [208.,  25.],
+                  [208., 198.],
+                  [ 35., 198.]],
         <BLANKLINE>
-                 [[156, 137],
-                  [155, 137],
-                  [155, 136],
-                  [156, 136]],
+                 [[156., 137.],
+                  [155., 137.],
+                  [155., 136.],
+                  [156., 136.]],
         <BLANKLINE>
-                 [[  3,  12],
-                  [210,  12],
-                  [210, 219],
-                  [  3, 219]]],
+                 [[  3.,  12.],
+                  [210.,  12.],
+                  [210., 219.],
+                  [  3., 219.]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 83, 125],
-                  [177, 125],
-                  [177, 219],
-                  [ 83, 219]],
+                [[[ 83., 125.],
+                  [177., 125.],
+                  [177., 219.],
+                  [ 83., 219.]],
         <BLANKLINE>
-                 [[ 54,   8],
-                  [205,   8],
-                  [205, 159],
-                  [ 54, 159]],
+                 [[ 54.,   8.],
+                  [205.,   8.],
+                  [205., 159.],
+                  [ 54., 159.]],
         <BLANKLINE>
-                 [[ 97,  70],
-                  [ 96,  70],
-                  [ 96,  69],
-                  [ 97,  69]]]])}
+                 [[ 97.,  70.],
+                  [ 96.,  70.],
+                  [ 96.,  69.],
+                  [ 97.,  69.]]]])}
     """
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     beta = torch.as_tensor(1. if beta is None else beta, device=device, dtype=dtype)

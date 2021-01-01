@@ -372,30 +372,30 @@ def random_crop_generator3d(
 
     if same_on_batch:
         # If same_on_batch, select the first then repeat.
-        x_start = _adapted_uniform((batch_size,), 0, x_diff[0], same_on_batch)
-        y_start = _adapted_uniform((batch_size,), 0, y_diff[0], same_on_batch)
-        z_start = _adapted_uniform((batch_size,), 0, z_diff[0], same_on_batch)
+        x_start = _adapted_uniform((batch_size,), 0, x_diff[0], same_on_batch).floor()
+        y_start = _adapted_uniform((batch_size,), 0, y_diff[0], same_on_batch).floor()
+        z_start = _adapted_uniform((batch_size,), 0, z_diff[0], same_on_batch).floor()
     else:
-        x_start = _adapted_uniform((1,), 0, x_diff, same_on_batch)
-        y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch)
-        z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch)
+        x_start = _adapted_uniform((1,), 0, x_diff, same_on_batch).floor()
+        y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).floor()
+        z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch).floor()
 
     crop_src = bbox_generator3d(
-        x_start.view(-1),
-        y_start.view(-1),
-        z_start.view(-1),
-        size[:, 2] - 1,
-        size[:, 1] - 1,
-        size[:, 0] - 1).long()
+        x_start.to(device=_device, dtype=_dtype).view(-1),
+        y_start.to(device=_device, dtype=_dtype).view(-1),
+        z_start.to(device=_device, dtype=_dtype).view(-1),
+        size[:, 2].to(device=_device, dtype=_dtype) - 1,
+        size[:, 1].to(device=_device, dtype=_dtype) - 1,
+        size[:, 0].to(device=_device, dtype=_dtype) - 1)
 
     if resize_to is None:
         crop_dst = bbox_generator3d(
-            torch.tensor([0] * batch_size, device=device, dtype=dtype),
-            torch.tensor([0] * batch_size, device=device, dtype=dtype),
-            torch.tensor([0] * batch_size, device=device, dtype=dtype),
-            size[:, 2] - 1,
-            size[:, 1] - 1,
-            size[:, 0] - 1).long()
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            size[:, 2].to(device=_device, dtype=_dtype) - 1,
+            size[:, 1].to(device=_device, dtype=_dtype) - 1,
+            size[:, 0].to(device=_device, dtype=_dtype) - 1)
     else:
         assert len(resize_to) == 3 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and isinstance(resize_to[2], (int,)) and resize_to[0] > 0 and resize_to[1] > 0 and resize_to[2] > 0, \
@@ -409,7 +409,7 @@ def random_crop_generator3d(
             [resize_to[-1] - 1, 0, resize_to[-3] - 1],
             [resize_to[-1] - 1, resize_to[-2] - 1, resize_to[-3] - 1],
             [0, resize_to[-2] - 1, resize_to[-3] - 1],
-        ]], device=device, dtype=torch.long).repeat(batch_size, 1, 1)
+        ]], device=_device, dtype=_dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src.to(device=_device),
                 dst=crop_dst.to(device=_device))
