@@ -427,7 +427,7 @@ class Resize(nn.Module):
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
-        self.align_corners = _parse_align_corners(align_corners, Resample.get(interpolation), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get(interpolation), old_default=False)
         self.side = side
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
@@ -498,7 +498,7 @@ class Affine(nn.Module):
 
         self.shear = shear
         self.center = center
-        self.align_corners = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         if self.shear is None:
@@ -560,7 +560,7 @@ class Rescale(nn.Module):
         super().__init__()
         self.factor: Union[float, Tuple[float, float]] = factor
         self.interpolation: str = interpolation
-        self.align_corners = _parse_align_corners(align_corners, Resample.get(interpolation), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get(interpolation), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
@@ -587,7 +587,7 @@ class Rotate(nn.Module):
         super(Rotate, self).__init__()
         self.angle: torch.Tensor = angle
         self.center: Union[None, torch.Tensor] = center
-        self.align_corners = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return rotate(input, self.angle, self.center, align_corners=self.align_corners)
@@ -609,7 +609,7 @@ class Translate(nn.Module):
     def __init__(self, translation: torch.Tensor, align_corners: Optional[bool] = False) -> None:
         super(Translate, self).__init__()
         self.translation: torch.Tensor = translation
-        self.align_corners = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return translate(input, self.translation, self.align_corners)
@@ -638,7 +638,7 @@ class Scale(nn.Module):
         super(Scale, self).__init__()
         self.scale_factor: torch.Tensor = scale_factor
         self.center: Union[None, torch.Tensor] = center
-        self.align_corners = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return scale(input, self.scale_factor, self.center, self.align_corners)
@@ -662,7 +662,7 @@ class Shear(nn.Module):
                  align_corners: Optional[bool] = False) -> None:
         super(Shear, self).__init__()
         self.shear: torch.Tensor = shear
-        self.align_corners = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
+        self.align_corners: Optional[bool] = _parse_align_corners(align_corners, Resample.get("bilinear"), old_default=False)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return shear(input, self.shear, self.align_corners)
