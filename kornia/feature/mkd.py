@@ -154,9 +154,9 @@ class VonMisesKernel(nn.Module):
     Examples::
         >>> oris = torch.rand(23, 1, 32, 32)
         >>> vm = kornia.feature.mkd.VonMisesKernel(patch_size=32,
-                                                   coeffs=[0.14343168,
-                                                           0.268285,
-                                                           0.21979234])
+        ...                                        coeffs=[0.14343168,
+        ...                                                0.268285,
+        ...                                                0.21979234])
         >>> emb = vm(oris) # 23x7x32x32
     """
 
@@ -224,7 +224,7 @@ class EmbedGradients(nn.Module):
     Examples::
         >>> grads = torch.rand(23, 2, 32, 32)
         >>> emb_grads = kornia.feature.mkd.EmbedGradients(patch_size=32,
-                                                          relative=False)
+        ...                                               relative=False)
         >>> emb = emb_grads(grads) # 23x7x32x32
     """
 
@@ -323,10 +323,10 @@ class ExplicitSpacialEncoding(nn.Module):
     Examples::
         >>> emb_ori = torch.rand(23, 7, 32, 32)
         >>> ese = kornia.feature.mkd.ExplicitSpacialEncoding(kerneltype='polar',
-                                                             fmap_size=32,
-                                                             in_dims=7,
-                                                             do_gmask=True,
-                                                             do_l2=True)
+        ...                                                  fmap_size=32,
+        ...                                                  in_dims=7,
+        ...                                                  do_gmask=True,
+        ...                                                  do_l2=True)
         >>> desc = ese(emb_ori) # 23x175x32x32
     """
 
@@ -428,11 +428,11 @@ class Whitening(nn.Module):
     Examples::
         >>> descs = torch.rand(23, 238)
         >>> whitening = kornia.feature.mkd.Whitening(xform='pcawt',
-                                                     whitening_model,
-                                                     in_dims,
-                                                     output_dims=128,
-                                                     keval=40,
-                                                     t=0.7)
+        ...                                          whitening_model,
+        ...                                          in_dims,
+        ...                                          output_dims=128,
+        ...                                          keval=40,
+        ...                                          t=0.7)
         >>> wdescs = whitening(descs) # 23x128
     """
 
@@ -540,10 +540,10 @@ class MKDDescriptor(nn.Module):
     Examples::
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> mkd = kornia.feature.mkd.MKDDescriptor(patch_size=32,
-                                         kerneltype='concat',
-                                         whitening='pcawt',
-                                         training_set='liberty',
-                                         output_dims=128)
+        ...                              kerneltype='concat',
+        ...                              whitening='pcawt',
+        ...                              training_set='liberty',
+        ...                              output_dims=128)
         >>> desc = mkd(patches) # 23x128
     """
 
