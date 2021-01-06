@@ -391,8 +391,9 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     angle = params['angle_factor']
     direction = params['direction_factor']
     border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
+    mode: str = cast(str, Resample(flags['interpolation'].item()).name.lower())
 
-    return motion_blur3d(input, kernel_size, angle, direction, border_type)
+    return motion_blur3d(input, kernel_size, angle, direction, border_type, mode)
 
 
 def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:

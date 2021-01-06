@@ -299,6 +299,9 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     Returns:
         torch.Tensor: the output mask tensor.
 
+    Note:
+        It is currently non-differentiable.
+
     Examples:
         >>> boxes = torch.tensor([[
         ...        [1., 1.],
@@ -314,7 +317,11 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
     """
     validate_bboxes(boxes)
-    mask = torch.zeros((len(boxes), height, width))
+    # zero padding the surroudings
+    mask = torch.zeros((len(boxes), height + 2, width + 2))
+    # push all points one pixel off
+    # in order to zero-out the fully filled rows or columns
+    boxes += 1
 
     mask_out = []
     # TODO: Looking for a vectorized way
@@ -323,6 +330,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
         m = m.unsqueeze(dim=0)
         m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
+        m_out = m_out[1:-1, 1:-1]
         mask_out.append(m_out)
 
     return torch.stack(mask_out, dim=0).float()
