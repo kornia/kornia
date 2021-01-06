@@ -60,7 +60,7 @@ class MKDGradients(nn.Module):
         - Output: (B, 2, patch_size, patch_size)
     Examples::
         >>> patches = torch.rand(23, 1, 32, 32)
-        >>> gradient = MKDGradients(patch_size=32)
+        >>> gradient = MKDGradients()
         >>> g = gradient(patches) # 23x2x32x32
     """
 
@@ -381,9 +381,12 @@ class Whitening(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> descs = torch.rand(23, 238)
+        >>> whitening_model = {'mean': torch.rand(238),
+        ...                    'eigvecs': torch.eye(238),
+        ...                    'eigvals': torch.ones(238)}
         >>> whitening = Whitening(xform='pcawt',
-        ...                       whitening_model,
-        ...                       in_dims,
+        ...                       whitening_model=whitening_model,
+        ...                       in_dims=238,
         ...                       output_dims=128,
         ...                       keval=40,
         ...                       t=0.7)
