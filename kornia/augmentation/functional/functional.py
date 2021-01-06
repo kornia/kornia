@@ -10,6 +10,7 @@ from kornia.geometry import (
     warp_perspective,
     rotate,
     crop_by_boxes,
+    bbox_generator,
     warp_affine,
     hflip,
     vflip,
@@ -273,12 +274,14 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     Returns:
         torch.Tensor: The applied transformation matrix :math: `(*, 3, 3)`
     """
+    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
                                            [0, 1, 0],
-                                           [0, 0, 1]])
+                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1)
 
 
 @_validate_input
@@ -312,9 +315,9 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
                                            [0, -1, h - 1],
-                                           [0, 0, 1]])
+                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1)
 
 
 @_validate_input
@@ -643,22 +646,13 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
             f"and ({params['xs'].size()}, {params['ys'].size()})"
         )
 
-    mask = torch.zeros(input.size()).type_as(input)
-    values = torch.zeros(input.size()).type_as(input)
+    values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 
-    widths = params['widths']
-    heights = params['heights']
-    xs = params['xs']
-    ys = params['ys']
-    vs = params['values']
-    for i_elem in range(input.size()[0]):
-        h = widths[i_elem].item()
-        w = heights[i_elem].item()
-        y = ys[i_elem].item()
-        x = xs[i_elem].item()
-        v = vs[i_elem].item()
-        mask[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = 1.
-        values[i_elem, :, int(y):int(y + w), int(x):int(x + h)] = v
+    _, c, h, w = input.size()
+
+    bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
+    mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
+    mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
     transformed = torch.where(mask == 1., values, input)
     return transformed
 
@@ -795,8 +789,9 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
     angle = params['angle_factor']
     direction = params['direction_factor']
     border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
+    mode: str = cast(str, Resample(flags['interpolation'].item()).name.lower())
 
-    return motion_blur(input, kernel_size, angle, direction, border_type)
+    return motion_blur(input, kernel_size, angle, direction, border_type, mode)
 
 
 @_validate_input

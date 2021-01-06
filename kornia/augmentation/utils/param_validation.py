@@ -26,8 +26,8 @@ def _range_bound(factor: Union[torch.Tensor, float, Tuple[float, float], List[fl
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = torch.tensor(
-            [center - factor, center + factor], device=device, dtype=dtype).clamp(bounds[0], bounds[1])
+        factor_bound = factor.repeat(2) * torch.tensor([-1., 1.], device=factor.device, dtype=factor.dtype) + center
+        factor_bound = factor_bound.clamp(bounds[0], bounds[1])
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
 
@@ -84,7 +84,9 @@ def _singular_range_check(ranged_factor: torch.Tensor, name: str, bounds: Option
 
 def _tuple_range_reader(
     input_range: Union[torch.Tensor, float, tuple],
-    target_size: int
+    target_size: int,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None
 ) -> torch.Tensor:
     """
     Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
@@ -101,42 +103,43 @@ def _tuple_range_reader(
         if isinstance(input_range, (float, int)):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = torch.tensor([-input_range, input_range]).repeat(target_shape[0], 1).to(torch.float32)
+            input_range_tmp = torch.tensor(
+                [-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
 
-        elif isinstance(input_range, (tuple)) and len(input_range) == 2 \
+        elif isinstance(input_range, (tuple, list)) and len(input_range) == 2 \
                 and isinstance(input_range[0], (float, int)) and isinstance(input_range[1], (float, int)):
-            input_range_tmp = torch.tensor(input_range).repeat(target_shape[0], 1).to(torch.float32)
+            input_range_tmp = torch.tensor(
+                input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
 
-        elif isinstance(input_range, (tuple)) and len(input_range) == target_shape[0] \
+        elif isinstance(input_range, (tuple, list)) and len(input_range) == target_shape[0] \
                 and all([isinstance(x, (float, int)) for x in input_range]):
-            input_range_tmp = torch.tensor([(-s, s) for s in input_range]).to(torch.float32)
+            input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
 
-        elif isinstance(input_range, (tuple)) and len(input_range) == target_shape[0] \
-                and all([isinstance(x, (tuple)) for x in input_range]):
-            input_range_tmp = torch.tensor(input_range).to(torch.float32)
+        elif isinstance(input_range, (tuple, list)) and len(input_range) == target_shape[0] \
+                and all([isinstance(x, (tuple, list)) for x in input_range]):
+            input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
 
         else:
             raise TypeError(
-                "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of"
+                "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
                 f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}.")
 
     else:
         # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
         input_range = cast(torch.Tensor, input_range)
-        if len(input_range.shape) == 0:
+        if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = torch.tensor([-input_range, input_range], dtype=torch.float32).repeat(target_shape[0], 1)
-
-        elif len(input_range.shape) == 1 and len(input_range) == 1:
-            input_range_tmp = torch.tensor([-input_range[0], input_range[0]], dtype=torch.float32).repeat(
-                target_shape[0], 1)
+            input_range_tmp = input_range.repeat(2) * torch.tensor(
+                [-1., 1.], device=input_range.device, dtype=input_range.dtype)
+            input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
 
         elif len(input_range.shape) == 1 and len(input_range) == 2:
             input_range_tmp = input_range.repeat(target_shape[0], 1)
 
         elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
-            input_range_tmp = torch.tensor([(-s, s) for s in input_range], dtype=torch.float32)
+            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * torch.tensor(
+                [-1, 1], device=input_range.device, dtype=input_range.dtype)
 
         elif input_range.shape == target_shape:
             input_range_tmp = input_range
