@@ -303,7 +303,7 @@ class RandomAffine3D(AugmentationBase3D):
         )
 
     def __repr__(self) -> str:
-        repr = (f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shear}, "
+        repr = (f"(degrees={self.degrees}, translate={self.translate}, scale={self.scale}, shear={self.shears}, "
                 f"resample={self.resample.name}, align_corners={self.align_corners}")
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
