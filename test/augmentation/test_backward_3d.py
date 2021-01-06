@@ -64,7 +64,7 @@ class TestRandomAffine3DBackward:
         if not isinstance(degrees, (int, float, list, tuple)):
             assert isinstance(aug.degrees, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.degrees.is_cuda:
+            if resample == 'nearest' and aug.degrees.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.degrees._grad == 0.):
@@ -76,7 +76,7 @@ class TestRandomAffine3DBackward:
         if not isinstance(translate, (int, float, list, tuple)):
             assert isinstance(aug.translate, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.translate.is_cuda:
+            if resample == 'nearest' and aug.translate.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.translate._grad == 0.):
@@ -88,7 +88,7 @@ class TestRandomAffine3DBackward:
         if not isinstance(scale, (int, float, list, tuple)):
             assert isinstance(aug.scale, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.scale.is_cuda:
+            if resample == 'nearest' and aug.scale.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.scale._grad == 0.):
@@ -100,7 +100,7 @@ class TestRandomAffine3DBackward:
         if not isinstance(shear, (int, float, list, tuple)):
             assert isinstance(aug.shears, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.shears.is_cuda:
+            if resample == 'nearest' and aug.shears.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.shears._grad == 0.):
@@ -147,7 +147,7 @@ class TestRandomRotation3DBackward:
         if not isinstance(degrees, (int, float, list, tuple)):
             assert isinstance(aug.degrees, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.degrees.is_cuda:
+            if resample == 'nearest' and aug.degrees.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.degrees._grad == 0.):
@@ -191,7 +191,7 @@ class TestRandomPerspective3DBackward:
         if not isinstance(distortion_scale, (float, int)):
             assert isinstance(aug.distortion_scale, torch.Tensor)
             # Assert if param not updated
-            if resample =='nearest' and aug.distortion_scale.is_cuda:
+            if resample == 'nearest' and aug.distortion_scale.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.distortion_scale._grad == 0.):
@@ -237,7 +237,7 @@ class TestRandomMotionBlur3DBackward:
 
         if not isinstance(angle, (float, int, list, tuple)):
             assert isinstance(aug.angle, torch.Tensor)
-            if resample =='nearest' and aug.angle.is_cuda:
+            if resample == 'nearest' and aug.angle.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
             elif resample == 'nearest' or torch.all(aug.angle._grad == 0.):
