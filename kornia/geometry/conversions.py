@@ -84,8 +84,8 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
-        >>> phi = kornia.pi * torch.rand(1, 3, 3)
-        >>> x, y = kornia.pol2cart(rho, phi)
+        >>> phi = torch.rand(1, 3, 3)
+        >>> x, y = pol2cart(rho, phi)
     """
     if not (isinstance(rho, torch.Tensor) & isinstance(phi, torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(
@@ -109,7 +109,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Example:
         >>> x = torch.rand(1, 3, 3)
         >>> y = torch.rand(1, 3, 3)
-        >>> rho, phi = kornia.cart2pol(x, y)
+        >>> rho, phi = cart2pol(x, y)
     """
     if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(

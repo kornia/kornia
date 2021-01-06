@@ -381,9 +381,9 @@ class Whitening(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> descs = torch.rand(23, 238)
-        >>> whitening_model = {'mean': torch.rand(238),
-        ...                    'eigvecs': torch.eye(238),
-        ...                    'eigvals': torch.ones(238)}
+        >>> whitening_model = {'pca': {'mean': torch.zeros(238),
+        ...                            'eigvecs': torch.eye(238),
+        ...                            'eigvals': torch.ones(238)}}
         >>> whitening = Whitening(xform='pcawt',
         ...                       whitening_model=whitening_model,
         ...                       in_dims=238,
