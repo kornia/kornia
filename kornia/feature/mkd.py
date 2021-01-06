@@ -56,7 +56,7 @@ def mkd_spatial_gradient(input: torch.Tensor, kernel: torch.Tensor) -> torch.Ten
 
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
-        >>> kernel = torch.rand(3, 3)
+        >>> kernel = torch.rand(2, 3, 3)
         >>> output = mkd_spatial_gradient(input, kernel)  # 1x3x2x4x4
     """
     if not isinstance(input, torch.Tensor):
