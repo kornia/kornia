@@ -4,6 +4,7 @@ import kornia.testing as utils  # test utils
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 from kornia.feature.mkd import *
+from kornia.constants import pi
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])
@@ -46,9 +47,10 @@ class TestMKDGradients:
         patch[0, 0, :, 3:] = 0
         gradients = MKDGradients().to(device)
         out = gradients(patch)
-        expected = torch.Tensor([0, 0, 1., 1., 0, 0]).to(device)
-        expected_mags = expected.unsqueeze(0).repeat(6, 1)
-        expected_oris = expected_mags * 0
+        expected_mags_1 = torch.Tensor([0, 0, 1., 1., 0, 0]).to(device)
+        expected_mags = expected_mags_1.unsqueeze(0).repeat(6, 1)
+        expected_oris_1 = torch.Tensor([-pi, -pi, 0, 0, -pi, -pi]).to(device)
+        expected_oris = expected_oris_1.unsqueeze(0).repeat(6, 1)
         assert_allclose(out[0, 0, :, :], expected_mags, atol=1e-3, rtol=1e-3)
         assert_allclose(out[0, 1, :, :], expected_oris, atol=1e-3, rtol=1e-3)
 

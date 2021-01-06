@@ -69,9 +69,8 @@ class MKDGradients(nn.Module):
         self.eps = 1e-8
 
         # Modify 'diff' gradient.
-        grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
-        grad_fn.kernel = -1 * grad_fn.kernel
-        self.grad = grad_fn
+        self.grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
+        self.grad = lambda x: -self.grad_fn(x)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(x):
@@ -80,12 +79,10 @@ class MKDGradients(nn.Module):
         if not len(x.shape) == 4:
             raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
                              .format(x.shape))
-        grads_xy = self.grad(x)[:, 0, :, :, :]
-        gx = grads_xy[:, 0, :, :].unsqueeze(1)
-        gy = grads_xy[:, 1, :, :].unsqueeze(1)
-        mags = torch.sqrt(torch.pow(gx, 2) + torch.pow(gy, 2) + self.eps)
-        oris = torch.atan2(gy, gx)
-        y = torch.cat([mags, oris], dim=1)
+        grads_xy = self.grad(x)
+        gx = grads_xy[:, :, 0, :, :]
+        gy = grads_xy[:, :, 1, :, :]
+        y = torch.cat(cart2pol(gx, gy, self.eps), dim=1)
         return y
 
     def __repr__(self) -> str:

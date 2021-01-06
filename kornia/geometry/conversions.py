@@ -96,7 +96,7 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
     return x, y
 
 
-def cart2pol(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
@@ -115,7 +115,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         raise TypeError("Input type is not a torch.Tensor. Got {}, {}".format(
             type(x), type(y)))
 
-    rho = torch.sqrt(x**2 + y**2)
+    rho = torch.sqrt(x**2 + y**2 + eps)
     phi = torch.atan2(y, x)
     return rho, phi
 
