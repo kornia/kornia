@@ -83,18 +83,19 @@ class RandomMixUp(MixAugmentationBase):
     def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
                  same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False) -> None:
         super(RandomMixUp, self).__init__(p=1., p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        if lambda_val is None:
-            self.lambda_val = torch.tensor([0, 1.])
-        else:
-            self.lambda_val = \
-                cast(torch.Tensor, lambda_val) if isinstance(lambda_val, torch.Tensor) else torch.tensor(lambda_val)
+        self.lambda_val = lambda_val
 
     def __repr__(self) -> str:
         repr = f"lambda_val={self.lambda_val}"
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return rg.random_mixup_generator(batch_shape[0], self.p, self.lambda_val, same_on_batch=self.same_on_batch)
+        if self.lambda_val is None:
+            lambda_val = torch.tensor([0., 1.], device=self.device, dtype=self.dtype)
+        else:
+            lambda_val = cast(torch.Tensor, self.lambda_val) if isinstance(self.lambda_val, torch.Tensor) else \
+                torch.tensor(self.lambda_val, device=self.device, dtype=self.dtype)
+        return rg.random_mixup_generator(batch_shape[0], self.p, lambda_val, same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
                         params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
@@ -186,24 +187,27 @@ class RandomCutMix(MixAugmentationBase):
         self.height = height
         self.width = width
         self.num_mix = num_mix
-        if beta is None:
-            self.beta = torch.tensor(1.)
-        else:
-            self.beta = cast(torch.Tensor, beta) if isinstance(beta, torch.Tensor) else torch.tensor(beta)
-        if cut_size is None:
-            self.cut_size = torch.tensor([0., 1.])
-        else:
-            self.cut_size = \
-                cast(torch.Tensor, cut_size) if isinstance(cut_size, torch.Tensor) else torch.tensor(cut_size)
+        self.beta = beta
+        self.cut_size = cut_size
 
     def __repr__(self) -> str:
-        repr = f"num_mix={self.num_mix}, beta={self.beta}, cut_size={self.cut_size}, "
-        f"height={self.height}, width={self.width}"
+        repr = (f"num_mix={self.num_mix}, beta={self.beta}, cut_size={self.cut_size}, "
+                f"height={self.height}, width={self.width}")
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        if self.beta is None:
+            beta = torch.tensor(1., device=self.device, dtype=self.dtype)
+        else:
+            beta = cast(torch.Tensor, self.beta) if isinstance(self.beta, torch.Tensor) else \
+                torch.tensor(self.beta, device=self.device, dtype=self.dtype)
+        if self.cut_size is None:
+            cut_size = torch.tensor([0., 1.], device=self.device, dtype=self.dtype)
+        else:
+            cut_size = cast(torch.Tensor, self.cut_size) if isinstance(self.cut_size, torch.Tensor) else \
+                torch.tensor(self.cut_size, device=self.device, dtype=self.dtype)
         return rg.random_cutmix_generator(batch_shape[0], width=self.width, height=self.height, p=self.p,
-                                          cut_size=self.cut_size, num_mix=self.num_mix, beta=self.beta,
+                                          cut_size=cut_size, num_mix=self.num_mix, beta=beta,
                                           same_on_batch=self.same_on_batch)
 
     def apply_transform(self, input: torch.Tensor, label: torch.Tensor,  # type: ignore
