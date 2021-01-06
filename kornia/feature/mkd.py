@@ -117,8 +117,6 @@ class MKDGradients(nn.Module):
 
         # Modify 'diff' gradient.
         self.kernel = -1 * get_spatial_gradient_kernel2d(mode='diff', order=1)
-        # grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
-        # grad_fn.kernel = -1 * grad_fn.kernel
         self.grad = mkd_spatial_gradient
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -573,7 +571,7 @@ class MKDDescriptor(nn.Module):
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
         relative_orientations = {'polar': True, 'cart': False}
-        self.feats = {'polar': None, 'cart': None}
+        self.feats = {}
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
                                                 relative=relative_orientations[parametrization])
