@@ -58,8 +58,6 @@ def mkd_spatial_gradient(input: torch.Tensor, kernel: torch.Tensor) -> torch.Ten
         >>> input = torch.rand(1, 3, 4, 4)
         >>> kernel = torch.rand(3, 3)
         >>> output = mkd_spatial_gradient(input, kernel)  # 1x3x2x4x4
-        >>> output.shape
-        torch.Size([1, 3, 2, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -427,9 +425,9 @@ class Whitening(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> descs = torch.rand(23, 238)
-        >>> whitening_model = {'mean': torch.rand(238),
-        ...                    'eigvecs': torch.eye(238),
-        ...                    'eigvals': torch.ones(238)}
+        >>> whitening_model = {'pca': {'mean': torch.zeros(238),
+        ...                            'eigvecs': torch.eye(238),
+        ...                            'eigvals': torch.ones(238)}}
         >>> whitening = Whitening(xform='pcawt',
         ...                       whitening_model=whitening_model,
         ...                       in_dims=238,
