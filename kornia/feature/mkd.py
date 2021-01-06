@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.utils import create_meshgrid
 from kornia.geometry.conversions import cart2pol
-from kornia.filters import SpatialGradient, GaussianBlur2d
+from kornia.filters import GaussianBlur2d, get_spatial_gradient_kernel2d, SpatialGradient
 
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
@@ -44,6 +44,53 @@ def get_kron_order(d1: int, d2: int) -> torch.Tensor:
     return kron_order
 
 
+def mkd_spatial_gradient(input: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Computes the first order image derivative in both x and y using a custom kernel.
+
+    Args:
+        input (torch.Tensor): input image tensor with shape :math:`(B, C, H, W)`.
+        kernel (torch.Tensor): kernel tensor with shape :math:`(H1, W1)`.
+
+    Return:
+        torch.Tensor: the derivatives of the input feature map. with shape :math:`(B, C, 2, H, W)`.
+
+    Examples:
+        >>> input = torch.rand(1, 3, 4, 4)
+        >>> kernel = torch.rand(3, 3)
+        >>> output = mkd_spatial_gradient(input, kernel)  # 1x3x2x4x4
+        >>> output.shape
+        torch.Size([1, 3, 2, 4, 4])
+    """
+    if not isinstance(input, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}"
+                        .format(type(input)))
+
+    if not len(input.shape) == 4:
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
+                         .format(input.shape))
+
+    # prepare kernel
+    b, c, h, w = input.shape
+    tmp_kernel: torch.Tensor = kernel.to(input).detach()
+    tmp_kernel = tmp_kernel.unsqueeze(1).unsqueeze(1)
+
+    # convolve input tensor with sobel kernel
+    kernel_flip: torch.Tensor = tmp_kernel.flip(-3)
+
+    # Pad with "replicate for spatial dims, but with zeros for channel
+    spatial_pad = [
+        kernel.size(1) // 2,
+        kernel.size(1) // 2,
+        kernel.size(2) // 2,
+        kernel.size(2) // 2
+    ]
+    out_channels: int = 2
+    padded_inp: torch.Tensor = F.pad(
+        input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')[:, :, None]
+
+    return F.conv3d(padded_inp, kernel_flip, padding=0).view(b, c, out_channels, h, w)
+
+
 class MKDGradients(nn.Module):
     r"""
     Module, which computes gradients of given patches,
@@ -69,9 +116,10 @@ class MKDGradients(nn.Module):
         self.eps = 1e-8
 
         # Modify 'diff' gradient.
-        grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
-        grad_fn.kernel = -1 * grad_fn.kernel
-        self.grad = grad_fn
+        self.kernel = -1 * get_spatial_gradient_kernel2d(mode='diff', order=1)
+        # grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
+        # grad_fn.kernel = -1 * grad_fn.kernel
+        self.grad = mkd_spatial_gradient
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if not torch.is_tensor(x):
@@ -80,7 +128,7 @@ class MKDGradients(nn.Module):
         if not len(x.shape) == 4:
             raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
                              .format(x.shape))
-        grads_xy = self.grad(x)[:, 0, :, :, :]
+        grads_xy = self.grad(x, self.kernel)[:, 0, :, :, :]
         gx = grads_xy[:, 0, :, :].unsqueeze(1)
         gy = grads_xy[:, 1, :, :].unsqueeze(1)
         mags = torch.sqrt(torch.pow(gx, 2) + torch.pow(gy, 2) + self.eps)
