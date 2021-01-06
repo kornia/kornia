@@ -107,7 +107,7 @@ class MKDGradients(nn.Module):
         - Output: (B, 2, patch_size, patch_size)
     Examples::
         >>> patches = torch.rand(23, 1, 32, 32)
-        >>> gradient = kornia.feature.mkd.MKDGradients(patch_size=32)
+        >>> gradient = MKDGradients(patch_size=32)
         >>> g = gradient(patches) # 23x2x32x32
     """
 
@@ -153,10 +153,10 @@ class VonMisesKernel(nn.Module):
         - Output: (B, d, patch_size, patch_size)
     Examples::
         >>> oris = torch.rand(23, 1, 32, 32)
-        >>> vm = kornia.feature.mkd.VonMisesKernel(patch_size=32,
-        ...                                        coeffs=[0.14343168,
-        ...                                                0.268285,
-        ...                                                0.21979234])
+        >>> vm = VonMisesKernel(patch_size=32,
+        ...                     coeffs=[0.14343168,
+        ...                             0.268285,
+        ...                             0.21979234])
         >>> emb = vm(oris) # 23x7x32x32
     """
 
@@ -223,8 +223,8 @@ class EmbedGradients(nn.Module):
         - Output: (B, 7, patch_size, patch_size)
     Examples::
         >>> grads = torch.rand(23, 2, 32, 32)
-        >>> emb_grads = kornia.feature.mkd.EmbedGradients(patch_size=32,
-        ...                                               relative=False)
+        >>> emb_grads = EmbedGradients(patch_size=32,
+        ...                            relative=False)
         >>> emb = emb_grads(grads) # 23x7x32x32
     """
 
@@ -322,11 +322,11 @@ class ExplicitSpacialEncoding(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> emb_ori = torch.rand(23, 7, 32, 32)
-        >>> ese = kornia.feature.mkd.ExplicitSpacialEncoding(kerneltype='polar',
-        ...                                                  fmap_size=32,
-        ...                                                  in_dims=7,
-        ...                                                  do_gmask=True,
-        ...                                                  do_l2=True)
+        >>> ese = ExplicitSpacialEncoding(kerneltype='polar',
+        ...                               fmap_size=32,
+        ...                               in_dims=7,
+        ...                               do_gmask=True,
+        ...                               do_l2=True)
         >>> desc = ese(emb_ori) # 23x175x32x32
     """
 
@@ -427,12 +427,12 @@ class Whitening(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> descs = torch.rand(23, 238)
-        >>> whitening = kornia.feature.mkd.Whitening(xform='pcawt',
-        ...                                          whitening_model,
-        ...                                          in_dims,
-        ...                                          output_dims=128,
-        ...                                          keval=40,
-        ...                                          t=0.7)
+        >>> whitening = Whitening(xform='pcawt',
+        ...                       whitening_model,
+        ...                       in_dims,
+        ...                       output_dims=128,
+        ...                       keval=40,
+        ...                       t=0.7)
         >>> wdescs = whitening(descs) # 23x128
     """
 
@@ -539,11 +539,11 @@ class MKDDescriptor(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> patches = torch.rand(23, 1, 32, 32)
-        >>> mkd = kornia.feature.mkd.MKDDescriptor(patch_size=32,
-        ...                              kerneltype='concat',
-        ...                              whitening='pcawt',
-        ...                              training_set='liberty',
-        ...                              output_dims=128)
+        >>> mkd = MKDDescriptor(patch_size=32,
+        ...                     kerneltype='concat',
+        ...                     whitening='pcawt',
+        ...                     training_set='liberty',
+        ...                     output_dims=128)
         >>> desc = mkd(patches) # 23x128
     """
 
