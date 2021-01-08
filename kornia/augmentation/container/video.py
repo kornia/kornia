@@ -82,7 +82,8 @@ class VideoSequential(nn.Sequential):
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
-        return torch.stack([param] * frame_num).T.reshape(-1, *list(param.shape[1:]))  # type: ignore
+        repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
+        return repeated.reshape(-1, *list(param.shape[1:]))  # type: ignore
 
     def _input_shape_convert_in(self, input: torch.Tensor) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
@@ -93,8 +94,8 @@ class VideoSequential(nn.Sequential):
             pass
         return input
 
-    def _input_shape_convert_back(self, input: torch.Tensor, original_shape: torch.Size) -> torch.Tensor:
-        input = input.view(*original_shape)
+    def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
+        input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
         if self.data_format == "BTCHW":
@@ -124,8 +125,8 @@ class VideoSequential(nn.Sequential):
             input = aug(input, params=param)
 
         if isinstance(input, (tuple, list)):
-            input[0] = self._input_shape_convert_back(input[0], _original_shape)
+            input[0] = self._input_shape_convert_back(input[0], frame_num)
         else:
-            input = self._input_shape_convert_back(input, _original_shape)
+            input = self._input_shape_convert_back(input, frame_num)
 
         return input

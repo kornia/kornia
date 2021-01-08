@@ -983,3 +983,11 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
             labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))
 
     return out_inputs, torch.stack(out_labels, dim=0)
+
+
+def apply_normalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    return (input - params['mean']) / params['std']
+
+
+def apply_denormalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    return (input * params['std']) + params['mean']

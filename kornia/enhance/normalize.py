@@ -8,8 +8,10 @@ import torch.nn as nn
 
 __all__ = [
     "normalize",
+    "normalize3d",
     "normalize_min_max",
     "denormalize",
+    "denormalize3d",
     "Normalize",
     "Denormalize",
 ]
@@ -127,6 +129,73 @@ def normalize(
     return out
 
 
+def normalize3d(
+    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
+) -> torch.Tensor:
+    r"""Normalize a tensor volume with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        data (torch.Tensor): Image tensor of size :math:`(*, C, D, H, W)`.
+        mean (Union[torch.Tensor, float]): Mean for each channel.
+        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, D, H, W)`.
+
+    Examples:
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> out = normalize(x, 0.0, 255.)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> mean = torch.zeros(1, 4)
+        >>> std = 255. * torch.ones(1, 4)
+        >>> out = normalize(x, mean, std)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+    """
+    if isinstance(mean, float):
+        mean = torch.tensor([mean])  # prevent 0 sized tensors
+
+    if isinstance(std, float):
+        std = torch.tensor([std])  # prevent 0 sized tensors
+
+    if not isinstance(data, torch.Tensor):
+        raise TypeError("data should be a tensor. Got {}".format(type(data)))
+
+    if not isinstance(mean, torch.Tensor):
+        raise TypeError("mean should be a tensor or a float. Got {}".format(type(mean)))
+
+    if not isinstance(std, torch.Tensor):
+        raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
+
+    # Allow broadcast on channel dimension
+    if mean.shape and mean.shape[0] != 1:
+        if mean.shape[0] != data.shape[-4] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError("mean length and number of channels do not match")
+
+    # Allow broadcast on channel dimension
+    if std.shape and std.shape[0] != 1:
+        if std.shape[0] != data.shape[-4] and std.shape[:2] != data.shape[:2]:
+            raise ValueError("std length and number of channels do not match")
+
+    if mean.shape:
+        mean = mean[..., :, None, None, None].to(data.device)
+
+    if std.shape:
+        std = std[..., :, None, None, None].to(data.device)
+
+    out: torch.Tensor = (data - mean) / std
+
+    return out
+
+
 class Denormalize(nn.Module):
     r"""Denormalize a tensor image with mean and standard deviation.
 
@@ -233,6 +302,73 @@ def denormalize(
         mean = mean[..., :, None, None].to(data.device)
     if std.shape:
         std = std[..., :, None, None].to(data.device)
+
+    out: torch.Tensor = (data * std) + mean
+
+    return out
+
+
+def denormalize3d(
+    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
+) -> torch.Tensor:
+    r"""Denormalize a tensor volume with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        input (torch.Tensor): Volume tensor of size :math:`(*, C, D, H, W)`.
+        mean (Union[torch.Tensor, float]): Mean for each channel.
+        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, D, H, W)`.
+
+    Examples:
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> out = denormalize(x, 0.0, 255.)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> mean = torch.zeros(1, 4)
+        >>> std = 255. * torch.ones(1, 4)
+        >>> out = denormalize(x, mean, std)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+    """
+
+    if isinstance(mean, float):
+        mean = torch.tensor([mean])  # prevent 0 sized tensors
+
+    if isinstance(std, float):
+        std = torch.tensor([std])  # prevent 0 sized tensors
+
+    if not isinstance(data, torch.Tensor):
+        raise TypeError("data should be a tensor. Got {}".format(type(data)))
+
+    if not isinstance(mean, torch.Tensor):
+        raise TypeError("mean should be a tensor or a float. Got {}".format(type(mean)))
+
+    if not isinstance(std, torch.Tensor):
+        raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
+
+    # Allow broadcast on channel dimension
+    if mean.shape and mean.shape[0] != 1:
+        if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
+            raise ValueError("mean length and number of channels do not match")
+
+    # Allow broadcast on channel dimension
+    if std.shape and std.shape[0] != 1:
+        if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
+            raise ValueError("std length and number of channels do not match")
+
+    if mean.shape:
+        mean = mean[..., :, None, None, None].to(data.device)
+    if std.shape:
+        std = std[..., :, None, None, None].to(data.device)
 
     out: torch.Tensor = (data * std) + mean
 

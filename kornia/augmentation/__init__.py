@@ -19,7 +19,9 @@ from .augmentation import (
     RandomPosterize,
     RandomSharpness,
     RandomEqualize,
-    RandomMotionBlur
+    RandomMotionBlur,
+    Normalize,
+    Denormalize,
 )
 from .augmentation3d import (
     RandomHorizontalFlip3D,
@@ -31,15 +33,13 @@ from .augmentation3d import (
     RandomCrop3D,
     CenterCrop3D,
     RandomEqualize3D,
-    RandomPerspective3D
+    RandomPerspective3D,
+    Normalize3D,
+    Denormalize3D,
 )
 from .mix_augmentation import (
     RandomMixUp,
     RandomCutMix
-)
-from kornia.enhance.normalize import (
-    Normalize,
-    Denormalize
 )
 from .container import (
     VideoSequential
@@ -69,6 +69,8 @@ __all__ = [
     "RandomMixUp",
     "RandomCutMix",
     "AugmentationBase3D",
+    "Normalize3D",
+    "Denormalize3D",
     "RandomDepthicalFlip3D",
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",

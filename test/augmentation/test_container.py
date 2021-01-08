@@ -15,6 +15,33 @@ class TestVideoSequential:
             input = torch.randn(*shape, device=device, dtype=dtype)
             output = aug_list(input)
 
+    @pytest.mark.parametrize('augmentation', [
+        K.RandomAffine(360, p=1.),
+        K.CenterCrop((3, 3), p=1.),
+        K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
+        K.RandomCrop((5, 5), p=1.),
+        K.RandomErasing(p=1.),
+        K.RandomGrayscale(p=1.),
+        K.RandomHorizontalFlip(p=1.),
+        K.RandomVerticalFlip(p=1.),
+        K.RandomPerspective(p=1.),
+        K.RandomResizedCrop((5, 5), p=1.),
+        K.RandomRotation(360., p=1.),
+        K.RandomSolarize(p=1.),
+        K.RandomPosterize(p=1.),
+        K.RandomSharpness(p=1.),
+        K.RandomEqualize(p=1.),
+        K.RandomMotionBlur(3, 35., 0.5, p=1.),
+        K.Normalize(torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]), p=1.),
+        K.Denormalize(torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]), p=1.),
+    ])
+    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    def test_augmentation(self, augmentation, data_format, device, dtype):
+        input = torch.randint(255, (1, 3, 3, 5, 6), device=device, dtype=dtype).repeat(2, 1, 1, 1, 1) / 255.
+        torch.manual_seed(21)
+        aug_list = K.VideoSequential(augmentation, data_format=data_format, same_on_frame=True)
+        output = aug_list(input)
+
     @pytest.mark.parametrize('augmentations', [
         [
             K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=.5),

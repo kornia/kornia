@@ -838,6 +838,100 @@ class RandomPerspective3D(AugmentationBase3D):
         return F.apply_perspective3d(input, params, self.flags)
 
 
+class Normalize3D(AugmentationBase3D):
+    r"""Normalize tensor volumes with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Examples:
+
+        >>> norm = Normalize3D(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> out = norm(x)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+    """
+    def __init__(
+        self, mean: torch.Tensor, std: torch.Tensor,
+        return_transform: bool = False, p: float = 1., keepdim: bool = False
+    ) -> None:
+        super(Normalize3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
+                                          keepdim=keepdim)
+        self.mean = mean
+        self.std = std
+
+    def __repr__(self) -> str:
+        repr = f"mean={self.mean}, std={self.std}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_normalize(
+            input, {'mean': self.mean[..., None, None, None], 'std': self.std[..., None, None, None]})
+
+
+class Denormalize3D(AugmentationBase3D):
+    r"""Denormalize tensor volumes with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Examples:
+
+        >>> norm = Denormalize3D(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> x = torch.rand(1, 4, 3, 3, 3)
+        >>> out = norm(x)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3, 3])
+    """
+    def __init__(
+        self, mean: torch.Tensor, std: torch.Tensor,
+        return_transform: bool = False, p: float = 1., keepdim: bool = False
+    ) -> None:
+        super(Denormalize3D, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
+                                            keepdim=keepdim)
+        self.mean = mean
+        self.std = std
+
+    def __repr__(self) -> str:
+        repr = f"mean={self.mean}, std={self.std}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.apply_denormalize(
+            input, {'mean': self.mean[..., None, None, None], 'std': self.std[..., None, None, None]})
+
+
 class RandomEqualize3D(AugmentationBase3D):
     r"""Apply random equalization to 3D volumes (5D tensor).
 
