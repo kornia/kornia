@@ -118,7 +118,7 @@ class TestTverskyLoss:
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
-        assert_allclose(loss, 0.0, atol=1e-3, rtol=1e-3)
+        assert_allclose(loss, torch.zeros_like(loss), atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         num_classes = 3
@@ -183,7 +183,7 @@ class TestDiceLoss:
 
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
-        assert_allclose(loss, 0.0, rtol=1e-3, atol=1e-3)
+        assert_allclose(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device, dtype):
         num_classes = 3
@@ -250,32 +250,36 @@ class TestDepthSmoothnessLoss:
 
 class TestSSIMLoss:
 
-    def test_ssim_equal_none(self, device):
+    def test_ssim_equal_none(self, device, dtype):
         # input data
-        img1 = torch.rand(1, 1, 10, 16).to(device)
-        img2 = torch.rand(1, 1, 10, 16).to(device)
+        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
 
         ssim1 = kornia.ssim(img1, img1, window_size=5, reduction="none")
         ssim2 = kornia.ssim(img2, img2, window_size=5, reduction="none")
 
-        assert_allclose(ssim1, torch.zeros_like(img1))
-        assert_allclose(ssim2, torch.zeros_like(img2))
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
+        assert_allclose(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_ssim(self, device, batch_shape, window_size, reduction_type):
+    def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
         # input data
-        img = torch.rand(batch_shape).to(device)
+        img = torch.rand(batch_shape, device=device, dtype=dtype)
 
         ssim = kornia.losses.SSIM(window_size, reduction_type)
-        assert_allclose(ssim(img, img).item(), 0.0)
+        loss = ssim(img, img)
 
-    def test_gradcheck(self, device):
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+
+    def test_gradcheck(self, device, dtype):
         # input data
         window_size = 3
-        img1 = torch.rand(1, 1, 10, 16).to(device)
-        img2 = torch.rand(1, 1, 10, 16).to(device)
+        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
 
         # evaluate function gradient
         img1 = utils.tensor_to_gradcheck_var(img1)  # to var
@@ -366,20 +370,20 @@ class TestDivergenceLoss:
         assert gradcheck(kornia.losses.js_div_loss_2d, (input, target),
                          raise_exception=True)
 
-    def test_jit_trace_kl(self, device, dtype):
+    def test_jit_kl(self, device, dtype):
         input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.kl_div_loss_2d
-        op_jit = torch.jit.trace(op, args)
+        op_jit = torch.jit.script(op, args)
         assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
-    def test_jit_trace_js(self, device, dtype):
+    def test_jit_js(self, device, dtype):
         input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.js_div_loss_2d
-        op_jit = torch.jit.trace(op, args)
+        op_jit = torch.jit.script(op, args)
         assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
 
