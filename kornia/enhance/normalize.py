@@ -149,14 +149,14 @@ def normalize3d(
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3, 3)
-        >>> out = normalize(x, 0.0, 255.)
+        >>> out = normalize3d(x, 0.0, 255.)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
 
         >>> x = torch.rand(1, 4, 3, 3, 3)
         >>> mean = torch.zeros(1, 4)
         >>> std = 255. * torch.ones(1, 4)
-        >>> out = normalize(x, mean, std)
+        >>> out = normalize3d(x, mean, std)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
     """
@@ -328,14 +328,14 @@ def denormalize3d(
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3, 3)
-        >>> out = denormalize(x, 0.0, 255.)
+        >>> out = denormalize3d(x, 0.0, 255.)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
 
         >>> x = torch.rand(1, 4, 3, 3, 3)
         >>> mean = torch.zeros(1, 4)
         >>> std = 255. * torch.ones(1, 4)
-        >>> out = denormalize(x, mean, std)
+        >>> out = denormalize3d(x, mean, std)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
     """
