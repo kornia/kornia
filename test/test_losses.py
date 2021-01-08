@@ -221,24 +221,34 @@ class TestDiceLoss:
 
 class TestDepthSmoothnessLoss:
     @pytest.mark.parametrize("data_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_smoke(self, device, data_shape):
-        image = torch.rand(data_shape).to(device)
-        depth = torch.rand(data_shape).to(device)
+    def test_smoke(self, device, dtype, data_shape):
+        image = torch.rand(data_shape, device=device, dtype=dtype)
+        depth = torch.rand(data_shape, device=device, dtype=dtype)
 
         criterion = kornia.losses.InverseDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
-    # TODO: implement me
-    def test_1(self, device):
-        pass
+    def test_jit(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
+        op = kornia.losses.inverse_depth_smoothness_loss
+        op_script = torch.jit.script(op)
 
-    def test_gradcheck(self, device):
-        image = torch.rand(1, 1, 10, 16).to(device)
-        depth = torch.rand(1, 1, 10, 16).to(device)
+        assert_allclose(op(image, depth), op_script(image, depth))
+
+    def test_module(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+
+        op = kornia.losses.inverse_depth_smoothness_loss
+        op_module = kornia.losses.InverseDepthSmoothnessLoss()
+
+        assert_allclose(op(image, depth), op_module(image, depth))
+
+    def test_gradcheck(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
         assert gradcheck(
