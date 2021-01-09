@@ -6,7 +6,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestTopHat(utils.BaseTester):
+class TestTopHat():
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
@@ -65,14 +65,3 @@ class TestTopHat(utils.BaseTester):
         expected = op(input, kernel)
 
         assert_allclose(actual, expected)
-
-    @pytest.mark.nn
-    def test_module(self, device, dtype):
-        B, C, H, W = 2, 3, 5, 5
-        Kx, Ky = 3, 3
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        krnl = torch.ones(Kx, Ky, device=device, dtype=dtype)
-        ops1 = morph.Dilate(krnl).to(device, dtype)
-        ops2 = morph.Erode(krnl).to(device, dtype)
-        fcn1 = morph.top_hat
-        assert_allclose((img - ops2(ops1(img))), fcn1(img, krnl))

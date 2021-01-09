@@ -2,6 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Tuple, Union
 
 
 # _se_to_mask
@@ -15,23 +16,6 @@ def _se_to_mask(se: torch.Tensor) -> torch.Tensor:
         x = i // se_h
         out[i, 0, x, y] = (se_flat[i] >= 0).float()
     return out
-
-
-# dilation
-class Dilate(nn.Module):
-
-    def __init__(self, se: torch.Tensor) -> None:
-        super().__init__()
-        self.se = se - 1
-        self.se_h, self.se_w = se.shape
-        self.pad = (self.se_h // 2, self.se_w // 2)
-        self.kernel = _se_to_mask(self.se)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        output = input.view(input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
-        output = (F.conv2d(output, self.kernel, padding=self.pad) + self.se.view(1, -1, 1, 1)).max(dim=1)[0]
-
-        return output.view(*input.shape)
 
 
 def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
@@ -73,27 +57,22 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return Dilate(kernel)(tensor)
+    # prepare kernel
+    se_d = kernel - 1
+    kernel_d = _se_to_mask(se_d)
+
+    # pad
+    se_h, se_w = kernel.shape
+    pad_d = (se_h // 2, se_w // 2)
+
+    output = tensor.view(tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
+    output = (F.conv2d(output, kernel_d, padding=pad_d) + se_d.view(1, -1, 1, 1)).max(dim=1)[0]
+    shape = tensor.shape
+
+    return output.view(shape)
 
 
 # erosion
-class Erode(nn.Module):
-
-    def __init__(self, se: torch.Tensor) -> None:
-        super().__init__()
-        self.se = se - 1
-        self.se_h, self.se_w = se.shape
-        self.pad = (self.se_h // 2, self.se_w // 2, self.se_h // 2, self.se_w // 2)
-        self.kernel = _se_to_mask(self.se)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        output = input.view(input.shape[0] * input.shape[1], 1, input.shape[2], input.shape[3])
-        output = F.pad(output, self.pad, mode='constant', value=1)
-        output = (F.conv2d(output, self.kernel) - self.se.view(1, -1, 1, 1)).min(dim=1)[0]
-
-        return output.view(*input.shape)
-
-
 def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     r"""
@@ -134,4 +113,17 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return Erode(kernel)(tensor)
+    # prepare kernel
+    se_e = kernel - 1
+    kernel_e = _se_to_mask(se_e)
+
+    # pad
+    se_h, se_w = kernel.shape
+    pad_e = (se_h // 2, se_w // 2, se_h // 2, se_w // 2)
+
+    output = tensor.view(tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
+    output = F.pad(output, pad_e, mode='constant', value=1.)
+    output = (F.conv2d(output, kernel_e) - se_e.view(1, -1, 1, 1)).min(dim=1)[0]
+    shape = tensor.shape
+
+    return output.view(shape)
