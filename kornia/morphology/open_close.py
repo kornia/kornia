@@ -2,7 +2,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import kornia.morphology as morph
+from kornia.morphology.basic_operators import dilation, erosion
 
 
 # open
@@ -46,7 +46,7 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return morph.dilation(morph.erosion(tensor, kernel), kernel)
+    return dilation(erosion(tensor, kernel), kernel)
 
 
 # close
@@ -90,4 +90,4 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return morph.erosion(morph.dilation(tensor, kernel), kernel)
+    return erosion(dilation(tensor, kernel), kernel)
