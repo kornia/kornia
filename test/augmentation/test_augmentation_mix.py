@@ -16,7 +16,7 @@ class TestRandomMixUp:
 
     def test_smoke(self, device, dtype):
         f = RandomMixUp()
-        repr = "RandomMixUp(lambda_val=tensor([0., 1.]), p=1.0, p_batch=1.0, same_on_batch=False)"
+        repr = "RandomMixUp(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):
@@ -107,7 +107,8 @@ class TestRandomCutMix:
 
     def test_smoke(self, device, dtype):
         f = RandomCutMix(width=3, height=3)
-        repr = "RandomCutMix(num_mix=1, beta=1.0, cut_size=tensor([0., 1.]), , p=1.0, p_batch=1.0, same_on_batch=False)"
+        repr = ("RandomCutMix(num_mix=1, beta=None, cut_size=None, height=3, width=3, p=1.0, "
+                "p_batch=1.0, same_on_batch=False)")
         assert str(f) == repr
 
     def test_random_mixup_p1(self, device, dtype):

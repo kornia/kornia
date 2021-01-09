@@ -6,6 +6,8 @@ from typing import Tuple, Optional
 import kornia
 from kornia.geometry.epipolar import normalize_points
 
+from kornia.utils import _extract_device_dtype
+
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
@@ -27,6 +29,8 @@ def find_homography_dlt(
     assert points1.shape == points2.shape, points1.shape
     assert len(points1.shape) >= 1 and points1.shape[-1] == 2, points1.shape
     assert points1.shape[1] >= 4, points1.shape
+
+    device, dtype = _extract_device_dtype([points1, points2])
 
     eps: float = 1e-8
     points1_norm, transform1 = normalize_points(points1)
@@ -54,7 +58,7 @@ def find_homography_dlt(
         U, S, V = torch.svd(A)
     except:
         warnings.warn('SVD did not converge', RuntimeWarning)
-        return torch.empty((points1_norm.size(0), 3, 3), device=points1.device)
+        return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)
     H = transform2.inverse() @ (H @ transform1)
