@@ -5,6 +5,7 @@ from .base import (
 from .augmentation import (
     CenterCrop,
     ColorJitter,
+    GaussianBlur,
     RandomAffine,
     RandomCrop,
     RandomErasing,
@@ -45,6 +46,7 @@ __all__ = [
     "AugmentationBase2D",
     "CenterCrop",
     "ColorJitter",
+    "GaussianBlur",
     "Normalize",
     "Denormalize",
     "RandomAffine",
