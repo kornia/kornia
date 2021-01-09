@@ -47,7 +47,7 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return morph.Dilate(kernel)(tensor) - morph.Erode(kernel)(tensor)
+    return morph.dilation(tensor, kernel) - morph.erosion(tensor, kernel)
 
 
 # top_hat
