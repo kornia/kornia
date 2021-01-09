@@ -1,6 +1,7 @@
 import pytest
 import torch
-import kornia.morphology as morph
+from kornia.morphology.basic_operators import _se_to_mask
+from kornia.morphology.morphology import gradient
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -10,7 +11,7 @@ class TestGradient():
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        assert morph.basic_operators._se_to_mask(kernel) is not None
+        assert _se_to_mask(kernel) is not None
 
     @pytest.mark.parametrize(
         "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
@@ -19,7 +20,7 @@ class TestGradient():
     def test_cardinality(self, device, dtype, shape, kernel):
         img = torch.ones(shape, device=device, dtype=dtype)
         krnl = torch.ones(kernel, device=device, dtype=dtype)
-        assert morph.gradient(img, krnl).shape == shape
+        assert gradient(img, krnl).shape == shape
 
     def test_value(self, device, dtype):
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
@@ -27,35 +28,35 @@ class TestGradient():
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0.5, 0.7, 0.7], [0.4, 0.7, 0.6], [0.5, 0.7, 0.7]],
                                 device=device, dtype=dtype)[None, None, :, :]
-        assert_allclose(morph.gradient(input, kernel), expected)
+        assert_allclose(gradient(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert morph.gradient([0.], kernel)
+            assert gradient([0.], kernel)
 
         with pytest.raises(TypeError):
-            assert morph.gradient(input, [0.])
+            assert gradient(input, [0.])
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
-            assert morph.gradient(test, kernel)
+            assert gradient(test, kernel)
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
-            assert morph.gradient(input, test)
+            assert gradient(input, test)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64)
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64)
-        assert gradcheck(morph.gradient, (input, kernel), raise_exception=True)
+        assert gradcheck(gradient, (input, kernel), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
-        op = morph.gradient
+        op = gradient
         op_script = torch.jit.script(op)
 
         input = torch.rand(1, 2, 7, 7, device=device, dtype=dtype)

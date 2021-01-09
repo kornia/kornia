@@ -2,7 +2,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import kornia.morphology as morph
+from kornia.morphology.basic_operators import dilation, erosion
+from kornia.morphology.open_close import open, close
 
 
 # morphological gradient
@@ -47,7 +48,7 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return morph.dilation(tensor, kernel) - morph.erosion(tensor, kernel)
+    return dilation(tensor, kernel) - erosion(tensor, kernel)
 
 
 # top_hat
@@ -95,7 +96,7 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return tensor - morph.open(tensor, kernel)
+    return tensor - open(tensor, kernel)
 
 
 # black_hat
@@ -143,4 +144,4 @@ def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
             kernel.dim()))
 
-    return morph.close(tensor, kernel) - tensor
+    return close(tensor, kernel) - tensor
