@@ -113,12 +113,3 @@ from kornia.geometry import *
 from kornia.constants import *
 
 from kornia.testing import xla_is_available
-
-from kornia.morphology import (
-    dilation,
-    erosion,
-    open,
-    close,
-    top_hat,
-    black_hat
-)
