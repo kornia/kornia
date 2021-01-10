@@ -107,7 +107,8 @@ def motion_blur(
     kernel_size: int,
     angle: Union[float, torch.Tensor],
     direction: Union[float, torch.Tensor],
-    border_type: str = 'constant'
+    border_type: str = 'constant',
+    mode: str = 'nearest'
 ) -> torch.Tensor:
     r"""Perform motion blur on 2D images (4D tensor).
 
@@ -123,6 +124,8 @@ def motion_blur(
             If tensor, it must be :math:`(B,)`.
         border_type (str): the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+        mode (str): interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
+            Default: ``'nearest'``
 
     Return:
         torch.Tensor: the blurred image with shape :math:`(B, C, H, W)`.
@@ -139,7 +142,7 @@ def motion_blur(
         False
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
-    kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction)
+    kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return kornia.filter2D(input, kernel, border_type)
 
 
@@ -148,7 +151,8 @@ def motion_blur3d(
     kernel_size: int,
     angle: Union[Tuple[float, float, float], torch.Tensor],
     direction: Union[float, torch.Tensor],
-    border_type: str = 'constant'
+    border_type: str = 'constant',
+    mode: str = 'nearest'
 ) -> torch.Tensor:
     r"""Perform motion blur on 3D volumes (5D tensor).
 
@@ -164,6 +168,8 @@ def motion_blur3d(
             If tensor, it must be :math:`(B,)`.
         border_type (str): the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
+        mode (str): interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
+            Default: ``'nearest'``
 
     Return:
         torch.Tensor: the blurred image with shape :math:`(B, C, D, H, W)`.
@@ -180,5 +186,5 @@ def motion_blur3d(
         False
     """
     assert border_type in ["constant", "reflect", "replicate", "circular"]
-    kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction)
+    kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return kornia.filter3D(input, kernel, border_type)

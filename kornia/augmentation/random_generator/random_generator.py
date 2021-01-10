@@ -344,44 +344,46 @@ def random_crop_generator(
         >>> _ = torch.manual_seed(0)
         >>> crop_size = torch.tensor([[25, 28], [27, 29], [26, 28]])
         >>> random_crop_generator(3, (30, 30), size=crop_size, same_on_batch=False)
-        {'src': tensor([[[ 1,  0],
-                 [28,  0],
-                 [28, 24],
-                 [ 1, 24]],
+        {'src': tensor([[[ 1.,  0.],
+                 [28.,  0.],
+                 [28., 24.],
+                 [ 1., 24.]],
         <BLANKLINE>
-                [[ 1,  1],
-                 [29,  1],
-                 [29, 27],
-                 [ 1, 27]],
+                [[ 1.,  1.],
+                 [29.,  1.],
+                 [29., 27.],
+                 [ 1., 27.]],
         <BLANKLINE>
-                [[ 0,  3],
-                 [27,  3],
-                 [27, 28],
-                 [ 0, 28]]]), 'dst': tensor([[[ 0,  0],
-                 [27,  0],
-                 [27, 24],
-                 [ 0, 24]],
+                [[ 0.,  3.],
+                 [27.,  3.],
+                 [27., 28.],
+                 [ 0., 28.]]]), 'dst': tensor([[[ 0.,  0.],
+                 [27.,  0.],
+                 [27., 24.],
+                 [ 0., 24.]],
         <BLANKLINE>
-                [[ 0,  0],
-                 [28,  0],
-                 [28, 26],
-                 [ 0, 26]],
+                [[ 0.,  0.],
+                 [28.,  0.],
+                 [28., 26.],
+                 [ 0., 26.]],
         <BLANKLINE>
-                [[ 0,  0],
-                 [27,  0],
-                 [27, 25],
-                 [ 0, 25]]])}
+                [[ 0.,  0.],
+                 [27.,  0.],
+                 [27., 25.],
+                 [ 0., 25.]]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
+    # Use float point instead
+    _dtype = _dtype if _dtype in [torch.float16, torch.float32, torch.float64] else dtype
     if not isinstance(size, torch.Tensor):
-        size = torch.tensor(size, device=device, dtype=dtype).repeat(batch_size, 1)
+        size = torch.tensor(size, device=_device, dtype=_dtype).repeat(batch_size, 1)
     else:
-        size = size.to(device=device, dtype=dtype)
+        size = size.to(device=_device, dtype=_dtype)
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
-    size = size.long()
+    size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1
@@ -392,25 +394,29 @@ def random_crop_generator(
 
     if batch_size == 0:
         return dict(
-            src=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
-            dst=torch.zeros([0, 4, 2], device=_device, dtype=torch.long),
+            src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
         )
 
     if same_on_batch:
         # If same_on_batch, select the first then repeat.
-        x_start = _adapted_uniform((batch_size,), 0, x_diff[0].to(device=device, dtype=dtype), same_on_batch).long()
-        y_start = _adapted_uniform((batch_size,), 0, y_diff[0].to(device=device, dtype=dtype), same_on_batch).long()
+        x_start = _adapted_uniform((batch_size,), 0, x_diff[0].to(device=device, dtype=dtype), same_on_batch).floor()
+        y_start = _adapted_uniform((batch_size,), 0, y_diff[0].to(device=device, dtype=dtype), same_on_batch).floor()
     else:
-        x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).long()
-        y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).long()
+        x_start = _adapted_uniform((1,), 0, x_diff.to(device=device, dtype=dtype), same_on_batch).floor()
+        y_start = _adapted_uniform((1,), 0, y_diff.to(device=device, dtype=dtype), same_on_batch).floor()
     crop_src = bbox_generator(
-        x_start.view(-1), y_start.view(-1), size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
+        x_start.view(-1).to(device=_device, dtype=_dtype),
+        y_start.view(-1).to(device=_device, dtype=_dtype),
+        size[:, 1].to(device=_device, dtype=_dtype),
+        size[:, 0].to(device=_device, dtype=_dtype))
 
     if resize_to is None:
         crop_dst = bbox_generator(
-            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
-            torch.tensor([0] * batch_size, device=device, dtype=torch.long),
-            size[:, 1], size[:, 0]).to(device=_device, dtype=torch.long)
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            size[:, 1].to(device=_device, dtype=_dtype),
+            size[:, 0].to(device=_device, dtype=_dtype))
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -420,7 +426,7 @@ def random_crop_generator(
             [resize_to[1] - 1, 0],
             [resize_to[1] - 1, resize_to[0] - 1],
             [0, resize_to[0] - 1],
-        ]], device=_device, dtype=torch.long).repeat(batch_size, 1, 1)
+        ]], device=_device, dtype=_dtype).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src,
                 dst=crop_dst)
@@ -456,9 +462,9 @@ def random_crop_size_generator(
     Examples:
         >>> _ = torch.manual_seed(42)
         >>> random_crop_size_generator(3, (30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
-        {'size': tensor([[29, 29],
-                [27, 28],
-                [26, 29]])}
+        {'size': tensor([[29., 29.],
+                [27., 28.],
+                [26., 29.]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(scale, "scale")
@@ -480,8 +486,8 @@ def random_crop_size_generator(
         (batch_size, 10), torch.log(ratio[0]), torch.log(ratio[1]), same_on_batch)
     aspect_ratio = torch.exp(log_ratio)
 
-    w = torch.sqrt(area * aspect_ratio).round().int()
-    h = torch.sqrt(area / aspect_ratio).round().int()
+    w = torch.sqrt(area * aspect_ratio).round().floor()
+    h = torch.sqrt(area / aspect_ratio).round().floor()
     # Element-wise w, h condition
     cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
 
@@ -503,13 +509,13 @@ def random_crop_size_generator(
         else:  # whole image
             h_ct = torch.tensor(size[0], device=device, dtype=dtype)
             w_ct = torch.tensor(size[1], device=device, dtype=dtype)
-        h_ct = h_ct.int()
-        w_ct = w_ct.int()
+        h_ct = h_ct.floor()
+        w_ct = w_ct.floor()
 
         h_out = h_out.where(cond_bool, h_ct)
         w_out = w_out.where(cond_bool, w_ct)
 
-    return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=torch.long))
+    return dict(size=torch.stack([h_out, w_out], dim=1).to(device=_device, dtype=_dtype))
 
 
 def random_rectangles_params_generator(
@@ -559,6 +565,7 @@ def random_rectangles_params_generator(
     images_area = height * width
     target_areas = _adapted_uniform((batch_size,), scale[0].to(device=device, dtype=dtype),
                                     scale[1].to(device=device, dtype=dtype), same_on_batch) * images_area
+
     if ratio[0] < 1. and ratio[1] > 1.:
         aspect_ratios1 = _adapted_uniform((batch_size,), ratio[0].to(device=device, dtype=dtype), 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size,), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
@@ -597,10 +604,10 @@ def random_rectangles_params_generator(
     xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
     ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
 
-    return dict(widths=widths.to(device=_device, dtype=torch.int32),
-                heights=heights.to(device=_device, dtype=torch.int32),
-                xs=xs.to(device=_device, dtype=torch.int32),
-                ys=ys.to(device=_device, dtype=torch.int32),
+    return dict(widths=widths.floor().to(device=_device, dtype=_dtype),
+                heights=heights.floor().to(device=_device, dtype=_dtype),
+                xs=xs.floor().to(device=_device, dtype=_dtype),
+                ys=ys.floor().to(device=_device, dtype=_dtype),
                 values=torch.tensor([value] * batch_size, device=_device, dtype=_dtype))
 
 
@@ -947,36 +954,36 @@ def random_cutmix_generator(
         >>> rng = torch.manual_seed(0)
         >>> random_cutmix_generator(3, 224, 224, p=0.5, num_mix=2)
         {'mix_pairs': tensor([[2, 0, 1],
-                [1, 2, 0]]), 'crop_src': tensor([[[[ 35,  25],
-                  [208,  25],
-                  [208, 198],
-                  [ 35, 198]],
+                [1, 2, 0]]), 'crop_src': tensor([[[[ 35.,  25.],
+                  [208.,  25.],
+                  [208., 198.],
+                  [ 35., 198.]],
         <BLANKLINE>
-                 [[156, 137],
-                  [155, 137],
-                  [155, 136],
-                  [156, 136]],
+                 [[156., 137.],
+                  [155., 137.],
+                  [155., 136.],
+                  [156., 136.]],
         <BLANKLINE>
-                 [[  3,  12],
-                  [210,  12],
-                  [210, 219],
-                  [  3, 219]]],
+                 [[  3.,  12.],
+                  [210.,  12.],
+                  [210., 219.],
+                  [  3., 219.]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 83, 125],
-                  [177, 125],
-                  [177, 219],
-                  [ 83, 219]],
+                [[[ 83., 125.],
+                  [177., 125.],
+                  [177., 219.],
+                  [ 83., 219.]],
         <BLANKLINE>
-                 [[ 54,   8],
-                  [205,   8],
-                  [205, 159],
-                  [ 54, 159]],
+                 [[ 54.,   8.],
+                  [205.,   8.],
+                  [205., 159.],
+                  [ 54., 159.]],
         <BLANKLINE>
-                 [[ 97,  70],
-                  [ 96,  70],
-                  [ 96,  69],
-                  [ 97,  69]]]])}
+                 [[ 97.,  70.],
+                  [ 96.,  70.],
+                  [ 96.,  69.],
+                  [ 97.,  69.]]]])}
     """
     _device, _dtype = _extract_device_dtype([beta, cut_size])
     beta = torch.as_tensor(1. if beta is None else beta, device=device, dtype=dtype)
@@ -1003,8 +1010,8 @@ def random_cutmix_generator(
     cutmix_betas = torch.min(torch.max(cutmix_betas, cut_size[0]), cut_size[1])
     cutmix_rate = torch.sqrt(1. - cutmix_betas) * batch_probs
 
-    cut_height = (cutmix_rate * height).long()
-    cut_width = (cutmix_rate * width).long()
+    cut_height = (cutmix_rate * height).floor().to(device=device, dtype=_dtype)
+    cut_width = (cutmix_rate * width).floor().to(device=device, dtype=_dtype)
     _gen_shape = (1,)
 
     if same_on_batch:
@@ -1015,10 +1022,12 @@ def random_cutmix_generator(
     # Reserve at least 1 pixel for cropping.
     x_start = _adapted_uniform(
         _gen_shape, torch.zeros_like(cut_width, device=device, dtype=dtype),
-        (width - cut_width - 1).to(device=device, dtype=dtype), same_on_batch).to(device=device, dtype=torch.long)
+        (width - cut_width - 1).to(device=device, dtype=dtype), same_on_batch
+    ).floor().to(device=device, dtype=_dtype)
     y_start = _adapted_uniform(
         _gen_shape, torch.zeros_like(cut_height, device=device, dtype=dtype),
-        (height - cut_height - 1).to(device=device, dtype=dtype), same_on_batch).to(device=device, dtype=torch.long)
+        (height - cut_height - 1).to(device=device, dtype=dtype), same_on_batch
+    ).floor().to(device=device, dtype=_dtype)
 
     crop_src = bbox_generator(x_start.squeeze(), y_start.squeeze(), cut_width, cut_height)
 
@@ -1027,5 +1036,5 @@ def random_cutmix_generator(
 
     return dict(
         mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
-        crop_src=crop_src.to(device=_device, dtype=torch.long)
+        crop_src=crop_src.floor().to(device=_device, dtype=_dtype)
     )

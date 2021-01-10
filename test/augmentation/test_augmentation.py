@@ -14,6 +14,7 @@ from kornia.constants import pi, Resample
 from kornia.augmentation import (
     CenterCrop,
     ColorJitter,
+    GaussianBlur,
     RandomHorizontalFlip,
     RandomVerticalFlip,
     RandomErasing,
@@ -603,7 +604,6 @@ class TestRandomVerticalFlipAlternative(CommonTests):
 class TestRandomRotationAlternative(CommonTests):
     possible_params: Dict["str", Tuple] = {
         "degrees": (0., (-360., 360.), [0., 0.], torch.tensor((-180., 180))),
-        "interpolation": (0, Resample.BILINEAR.name, Resample.BILINEAR, None),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }
@@ -2273,3 +2273,14 @@ class TestRandomEqualize:
         batch = torch.stack([image] * bs)
 
         return batch.to(device, dtype)
+
+
+class TestGaussianBlur:
+
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self):
+        f = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
+        repr = "GaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
+        assert str(f) == repr
