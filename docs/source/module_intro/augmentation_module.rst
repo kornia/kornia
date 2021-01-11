@@ -1,5 +1,5 @@
-Differentiable Data Augmentation
-================================
+Differentiable Data Augmentation (DDA)
+======================================
 
 Kornia DDA module leverages differentiable computer vision solutions from Kornia, with an aim of integrating data augmentation (DA) pipelines and strategies to existing PyTorch components (e.g. autograd for differentiability, optim for optimization).
 
@@ -157,7 +157,13 @@ From left to right: the original input, augmented image and gradient-updated ima
 Customization
 -------------
 
-Kornia provides useful 2D and 3D augmentation base classes for an easier customization of your new augmenatation ideas. In general, all augmentations shall inherit from either ``AugmentationBase2D``, ``AugmentationBase3D`` or ``AugmentationBaseMix``. Those base classes would handle 1) forward/backward operations, 2) which images to apply the augmentation in a batch, 3) the device and dtype for random numbers, 4) if to compute the transformation matrices. You shall only need to implement 4 intuitive functions:
+Kornia provides useful 2D and 3D augmentation base classes for an easier customization of your new augmenatation ideas. In general, all augmentations shall inherit from either ``AugmentationBase2D``, ``AugmentationBase3D`` or ``AugmentationBaseMix``. Those base classes would handle:
+    1) forward/backward operations.
+    2) which images to apply the augmentation in a batch.
+    3) the device and dtype for random numbers
+    4) if to compute the transformation matrices.
+
+You shall only need to implement 4 intuitive functions:
 
     a. **__init__**: To define the learnable or static parameters.
     b. **generate_parameters**: The function to generate the augmentation parameters, that returns a dict with {key: tensor} paradigm.  Note that the random states are **NOT** reproducible across devices.

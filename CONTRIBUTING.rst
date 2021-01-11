@@ -87,9 +87,9 @@ This section provides general guidance for developing code for the project. The 
 
 - Use meaningful names for variables, functions and classes.
 
-- Write docstring for the new functions you ma
+- Write docstring for the new functions you made.
     - We use Google Style Docstring, see [`Tutorial <https://google.github.io/styleguide/pyguide.html>`_] [`Example <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`_].
-    - We would also add doctests for each non-private function. For details, you may refer to [`here <https://docs.python.org/3/library/doctest.html>`_].
+    - We implement doctests for each non-private function. For details, you may refer to [`here <https://docs.python.org/3/library/doctest.html>`_].
 
 - Write small incremental changes:
 
@@ -125,7 +125,7 @@ This section provides general guidance for developing code for the project. The 
                  #  test the functionality using jit modules
                  pass
 
-  - Tests should cover different devices (CPU and CUDA) and different input batch size. It is required to have ``device`` and ``dtype`` signatures for all the testing cases. See an example:
+  - Tests should cover different devices (CPU, GPU and TPU) and different input batch size. It is required to have ``device`` and ``dtype`` signatures for all the testing cases. See an example:
 
   .. code:: python
 
