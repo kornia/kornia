@@ -89,9 +89,9 @@ class TestBinaryFocalLossWithLogits:
 
 
 class TestFocalLoss:
-    def test_smoke_none(self, device):
+    def test_smoke_none(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -99,9 +99,9 @@ class TestFocalLoss:
             logits, labels, alpha=0.5, gamma=2.0, reduction="none"
         ).shape == (2, 3, 2)
 
-    def test_smoke_sum(self, device):
+    def test_smoke_sum(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -111,9 +111,9 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    def test_smoke_mean(self, device):
+    def test_smoke_mean(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -123,9 +123,9 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    def test_smoke_mean_flat(self, device):
+    def test_smoke_mean_flat(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes).to(device)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
         labels = torch.rand(2) * num_classes
         labels = labels.to(device).long()
         assert (
@@ -134,14 +134,10 @@ class TestFocalLoss:
             ).shape == ()
         )
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
-
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         alpha, gamma = 0.5, 2.0  # for focal loss
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -152,37 +148,61 @@ class TestFocalLoss:
             raise_exception=True,
         )
 
+    def test_jit(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 2.0)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.focal_loss
+        op_script = torch.jit.script(op)
+
+        actual = op_script(logits, labels, *params)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
+    def test_module(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 2.0)
+        logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+        labels = torch.rand(2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.focal_loss
+        op_module = kornia.losses.FocalLoss(*params)
+
+        actual = op_module(logits, labels)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
 
 class TestTverskyLoss:
-    def test_smoke(self, device):
+    def test_smoke(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
-        loss = criterion(logits, labels)
+        assert criterion(logits, labels) is not None
 
-    def test_all_zeros(self, device):
+    def test_all_zeros(self, device, dtype):
         num_classes = 3
-        logits = torch.zeros(2, num_classes, 1, 2).to(device)
+        logits = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         logits[:, 0] = 10.0
         logits[:, 1] = 1.0
         logits[:, 2] = 1.0
-        labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
+        labels = torch.zeros(2, 1, 2, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
         loss = criterion(logits, labels)
-        assert pytest.approx(loss.item(), 0.0)
+        assert_allclose(loss, torch.zeros_like(loss), atol=1e-3, rtol=1e-3)
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
-
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -193,36 +213,60 @@ class TestTverskyLoss:
             raise_exception=True,
         )
 
+    def test_jit(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 0.05)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.tversky_loss
+        op_script = torch.jit.script(op)
+
+        actual = op_script(logits, labels, *params)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
+    def test_module(self, device, dtype):
+        num_classes = 3
+        params = (0.5, 0.5)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 3, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.tversky_loss
+        op_module = kornia.losses.TverskyLoss(*params)
+
+        actual = op_module(logits, labels)
+        expected = op(logits, labels, *params)
+        assert_allclose(actual, expected)
+
 
 class TestDiceLoss:
-    def test_smoke(self, device):
+    def test_smoke(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
         criterion = kornia.losses.DiceLoss()
-        loss = criterion(logits, labels)
+        assert criterion(logits, labels) is not None
 
-    def test_all_zeros(self, device):
+    def test_all_zeros(self, device, dtype):
         num_classes = 3
-        logits = torch.zeros(2, num_classes, 1, 2).to(device)
+        logits = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         logits[:, 0] = 10.0
         logits[:, 1] = 1.0
         logits[:, 2] = 1.0
-        labels = torch.zeros(2, 1, 2, dtype=torch.int64).to(device)
+        labels = torch.zeros(2, 1, 2, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.DiceLoss()
         loss = criterion(logits, labels)
-        assert pytest.approx(loss.item(), 0.0)
+        assert_allclose(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
-
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2).to(device)
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
@@ -231,27 +275,59 @@ class TestDiceLoss:
             kornia.losses.dice_loss, (logits, labels), raise_exception=True
         )
 
+    def test_jit(self, device, dtype):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.dice_loss
+        op_script = torch.jit.script(op)
+
+        assert_allclose(op(logits, labels), op_script(logits, labels))
+
+    def test_module(self, device, dtype):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 1, 2, device=device, dtype=dtype)
+        labels = torch.rand(2, 1, 2) * num_classes
+        labels = labels.to(device).long()
+
+        op = kornia.losses.dice_loss
+        op_module = kornia.losses.DiceLoss()
+
+        assert_allclose(op(logits, labels), op_module(logits, labels))
+
 
 class TestDepthSmoothnessLoss:
     @pytest.mark.parametrize("data_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_smoke(self, device, data_shape):
-        image = torch.rand(data_shape).to(device)
-        depth = torch.rand(data_shape).to(device)
+    def test_smoke(self, device, dtype, data_shape):
+        image = torch.rand(data_shape, device=device, dtype=dtype)
+        depth = torch.rand(data_shape, device=device, dtype=dtype)
 
         criterion = kornia.losses.InverseDepthSmoothnessLoss()
         loss = criterion(depth, image)
 
-    # TODO: implement me
-    def test_1(self, device):
-        pass
+    def test_jit(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
 
-    # TODO: implement me
-    def test_jit(self, device):
-        pass
+        op = kornia.losses.inverse_depth_smoothness_loss
+        op_script = torch.jit.script(op)
 
-    def test_gradcheck(self, device):
-        image = torch.rand(1, 1, 10, 16).to(device)
-        depth = torch.rand(1, 1, 10, 16).to(device)
+        assert_allclose(op(image, depth), op_script(image, depth))
+
+    def test_module(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+
+        op = kornia.losses.inverse_depth_smoothness_loss
+        op_module = kornia.losses.InverseDepthSmoothnessLoss()
+
+        assert_allclose(op(image, depth), op_module(image, depth))
+
+    def test_gradcheck(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        depth = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         depth = utils.tensor_to_gradcheck_var(depth)  # to var
         image = utils.tensor_to_gradcheck_var(image)  # to var
         assert gradcheck(
@@ -263,32 +339,36 @@ class TestDepthSmoothnessLoss:
 
 class TestSSIMLoss:
 
-    def test_ssim_equal_none(self, device):
+    def test_ssim_equal_none(self, device, dtype):
         # input data
-        img1 = torch.rand(1, 1, 10, 16).to(device)
-        img2 = torch.rand(1, 1, 10, 16).to(device)
+        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
 
         ssim1 = kornia.ssim(img1, img1, window_size=5, reduction="none")
         ssim2 = kornia.ssim(img2, img2, window_size=5, reduction="none")
 
-        assert_allclose(ssim1, torch.zeros_like(img1))
-        assert_allclose(ssim2, torch.zeros_like(img2))
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
+        assert_allclose(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    def test_ssim(self, device, batch_shape, window_size, reduction_type):
+    def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
         # input data
-        img = torch.rand(batch_shape).to(device)
+        img = torch.rand(batch_shape, device=device, dtype=dtype)
 
         ssim = kornia.losses.SSIM(window_size, reduction_type)
-        assert_allclose(ssim(img, img).item(), 0.0)
+        loss = ssim(img, img)
 
-    def test_gradcheck(self, device):
+        tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
+        assert_allclose(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+
+    def test_gradcheck(self, device, dtype):
         # input data
         window_size = 3
-        img1 = torch.rand(1, 1, 10, 16).to(device)
-        img2 = torch.rand(1, 1, 10, 16).to(device)
+        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
 
         # evaluate function gradient
         img1 = utils.tensor_to_gradcheck_var(img1)  # to var
@@ -379,20 +459,20 @@ class TestDivergenceLoss:
         assert gradcheck(kornia.losses.js_div_loss_2d, (input, target),
                          raise_exception=True)
 
-    def test_jit_trace_kl(self, device, dtype):
+    def test_jit_kl(self, device, dtype):
         input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.kl_div_loss_2d
-        op_jit = torch.jit.trace(op, args)
+        op_jit = torch.jit.script(op, args)
         assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
-    def test_jit_trace_js(self, device, dtype):
+    def test_jit_js(self, device, dtype):
         input = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         target = torch.randn((2, 4, 10, 16), dtype=dtype, device=device)
         args = (input, target)
         op = kornia.losses.js_div_loss_2d
-        op_jit = torch.jit.trace(op, args)
+        op_jit = torch.jit.script(op, args)
         assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
 
