@@ -986,8 +986,8 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
 
 
 def apply_normalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    return (input - params['mean']) / params['std']
+    return (input - params['mean'].to(input)) / params['std'].to(input)
 
 
 def apply_denormalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    return (input * params['std']) + params['mean']
+    return (input * params['std'].to(input)) + params['mean'].to(input)
