@@ -22,7 +22,9 @@ from kornia.augmentation import (
     RandomGrayscale,
     RandomRotation,
     RandomCrop,
-    RandomResizedCrop
+    RandomResizedCrop,
+    Normalize,
+    Denormalize
 )
 
 
@@ -2284,3 +2286,119 @@ class TestGaussianBlur:
         f = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
         repr = "GaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
+
+
+class TestNormalize:
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self, device, dtype):
+        f = Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]))
+        repr = ("Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
+                "same_on_batch=False, return_transform=False)")
+        assert str(f) == repr
+
+    def test_random_normalize(self, device, dtype):
+        f = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)
+        f1 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0., return_transform=True)
+        f2 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1.)
+        f3 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0.)
+
+        inputs = torch.arange(0., 16., step=1, device=device, dtype=dtype).reshape(1, 4, 4)
+
+        expected = (inputs - 1) * 2
+
+        identity = kornia.eye_like(3, expected)
+
+        assert_allclose(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+
+    def test_batch_random_normalize(self, device, dtype):
+        f = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)
+        f1 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0., return_transform=True)
+        f2 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1.)
+        f3 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0.)
+
+        inputs = torch.arange(0., 16. * 2, step=1, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+
+        expected = (inputs - 1) * 2
+
+        identity = kornia.eye_like(3, expected)
+
+        assert_allclose(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(
+            Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1.), (input,), raise_exception=True)
+
+
+class TestDenormalize:
+    # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
+    # return values such a torch.Tensor variable.
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    def test_smoke(self, device, dtype):
+        f = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]))
+        repr = ("Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, "
+                "same_on_batch=False, return_transform=False)")
+        assert str(f) == repr
+
+    def test_random_denormalize(self, device, dtype):
+        f = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)
+        f1 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0., return_transform=True)
+        f2 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1.)
+        f3 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0.)
+
+        inputs = torch.arange(0., 16., step=1, device=device, dtype=dtype).reshape(1, 4, 4)
+
+        expected = inputs / 2 + 1
+
+        identity = kornia.eye_like(3, expected)
+
+        assert_allclose(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+
+    def test_batch_random_denormalize(self, device, dtype):
+        f = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)
+        f1 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0., return_transform=True)
+        f2 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1.)
+        f3 = Denormalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0.)
+
+        inputs = torch.arange(0., 16. * 2, step=1, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+
+        expected = inputs / 2 + 1
+
+        identity = kornia.eye_like(3, expected)
+
+        assert_allclose(f(inputs)[0], expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[0], inputs, rtol=1e-4, atol=1e-4)
+        assert_allclose(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
+        assert_allclose(f2(inputs), expected, rtol=1e-4, atol=1e-4)
+        assert_allclose(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+
+        torch.manual_seed(0)  # for random reproductibility
+
+        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        assert gradcheck(
+            Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1.), (input,), raise_exception=True)

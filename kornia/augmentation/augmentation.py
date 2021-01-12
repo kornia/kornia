@@ -5,7 +5,6 @@ from torch.functional import Tensor
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.enhance.normalize import normalize, denormalize
 from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation import AugmentationBase2D
 from kornia.filters import GaussianBlur2d

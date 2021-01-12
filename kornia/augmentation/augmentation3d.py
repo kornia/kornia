@@ -878,7 +878,7 @@ class Normalize3D(AugmentationBase3D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return F.compute_intensity_transformation3d(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_normalize(
@@ -925,7 +925,7 @@ class Denormalize3D(AugmentationBase3D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return F.compute_intensity_transformation3d(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_denormalize(
