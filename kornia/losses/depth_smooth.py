@@ -19,15 +19,31 @@ def _gradient_y(img: torch.Tensor) -> torch.Tensor:
 def inverse_depth_smoothness_loss(
         idepth: torch.Tensor,
         image: torch.Tensor) -> torch.Tensor:
-    r"""Computes image-aware inverse depth smoothness loss.
+    r"""Criterion that computes image-aware inverse depth smoothness loss.
 
-    See :class:`~kornia.losses.InverseDepthSmoothnessLoss` for details.
+    .. math::
+
+        \text{loss} = \left | \partial_x d_{ij} \right | e^{-\left \|
+        \partial_x I_{ij} \right \|} + \left |
+        \partial_y d_{ij} \right | e^{-\left \| \partial_y I_{ij} \right \|}
+
+    Args:
+        idepth (torch.Tensor): tensor with the inverse depth with shape :math:`(N, 1, H, W)`.
+        image (torch.Tensor): tensor with the input image with shape :math:`(N, 3, H, W)`.
+
+    Return:
+        torch.Tensor: a scalar with the computed loss.
+
+    Examples:
+        >>> idepth = torch.rand(1, 1, 4, 5)
+        >>> image = torch.rand(1, 3, 4, 5)
+        >>> loss = inverse_depth_smoothness_loss(idepth, image)
     """
-    if not torch.is_tensor(idepth):
+    if not isinstance(idepth, torch.Tensor):
         raise TypeError("Input idepth type is not a torch.Tensor. Got {}"
                         .format(type(idepth)))
 
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input image type is not a torch.Tensor. Got {}"
                         .format(type(image)))
 
@@ -68,6 +84,7 @@ def inverse_depth_smoothness_loss(
     # apply image weights to depth
     smoothness_x: torch.Tensor = torch.abs(idepth_dx * weights_x)
     smoothness_y: torch.Tensor = torch.abs(idepth_dy * weights_y)
+
     return torch.mean(smoothness_x) + torch.mean(smoothness_y)
 
 
@@ -80,14 +97,12 @@ class InverseDepthSmoothnessLoss(nn.Module):
         \partial_x I_{ij} \right \|} + \left |
         \partial_y d_{ij} \right | e^{-\left \| \partial_y I_{ij} \right \|}
 
-
     Shape:
         - Inverse Depth: :math:`(N, 1, H, W)`
         - Image: :math:`(N, 3, H, W)`
         - Output: scalar
 
-    Examples::
-
+    Examples:
         >>> idepth = torch.rand(1, 1, 4, 5)
         >>> image = torch.rand(1, 3, 4, 5)
         >>> smooth = InverseDepthSmoothnessLoss()
@@ -97,5 +112,5 @@ class InverseDepthSmoothnessLoss(nn.Module):
     def __init__(self) -> None:
         super(InverseDepthSmoothnessLoss, self).__init__()
 
-    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:  # type:ignore
+    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
         return inverse_depth_smoothness_loss(idepth, image)
