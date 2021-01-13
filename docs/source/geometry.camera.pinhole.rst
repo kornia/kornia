@@ -46,8 +46,8 @@ where:
 
 The camera rotation and translation are expressed in terms of Euclidean coordinate frame, also known as the *world coordinates system*. This terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]`, or also called as the extrinsics parameters matrix. It is used to describe the camera pose around a static scene and translates the coordinates of a 3D point :math:`(X,Y,Z)` to a coordinate system respect to the camera.
 
-The `PinHoleCamera` class :math: expects the *intrinsics parameters matrix* and the *extrensics parameters matrix*
-to  be of shape `(B, 4, 4)` such that the *intrinsics parameters matrix* has the following format:
+The :class:`PinholeCamera` expects the *intrinsics parameters matrix* and the *extrensics parameters matrix*
+to  be of shape `(B, 4, 4)` such that each *intrinsics parameters matrix* has the following format:
 
 .. math::
     \begin{bmatrix}
@@ -57,7 +57,7 @@ to  be of shape `(B, 4, 4)` such that the *intrinsics parameters matrix* has the
     0 & 0 & 0 & 1
     \end{bmatrix}
 
-And the *extrensics parameters matrix* has the following format:
+And each *extrensics parameters matrix* has the following format:
 
 .. math::
     \begin{bmatrix}
