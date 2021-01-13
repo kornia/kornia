@@ -525,7 +525,7 @@ class MKDDescriptor(nn.Module):
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
         relative_orientations = {'polar': True, 'cart': False}
-        self.feats = {'polar': None, 'cart': None}
+        self.feats = {}
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
                                                 relative=relative_orientations[parametrization])
