@@ -102,6 +102,7 @@ def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> Tuple[torch
     Args:
         rho (torch.Tensor): Tensor of arbitrary shape.
         phi (torch.Tensor): Tensor of same arbitrary shape.
+        eps (float): To avoid division by zero. Default is 1e-8
 
     Returns:
         torch.Tensor, torch.Tensor: Tensor with same shape as input.

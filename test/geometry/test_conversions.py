@@ -381,7 +381,7 @@ class TestPolCartConversions:
 
         # convert pol/cart
         x_pol2cart, y_pol2cart = kornia.pol2cart(rho, phi)
-        rho_pol2cart, phi_pol2cart = kornia.cart2pol(x_pol2cart, y_pol2cart)
+        rho_pol2cart, phi_pol2cart = kornia.cart2pol(x_pol2cart, y_pol2cart, 0)
 
         assert_allclose(rho, rho_pol2cart)
         assert_allclose(phi, phi_pol2cart)
@@ -399,7 +399,7 @@ class TestPolCartConversions:
         y = y.to(device)
 
         # convert cart/pol
-        rho_cart2pol, phi_cart2pol = kornia.cart2pol(x, y)
+        rho_cart2pol, phi_cart2pol = kornia.cart2pol(x, y, 0)
         x_cart2pol, y_cart2pol = kornia.pol2cart(rho_cart2pol, phi_cart2pol)
 
         assert_allclose(x, x_cart2pol)
