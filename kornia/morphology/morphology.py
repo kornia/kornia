@@ -1,36 +1,30 @@
-# Libraries
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from kornia.morphology.basic_operators import dilation, erosion
 from kornia.morphology.open_close import open, close
 
 
 # morphological gradient
 def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the morphological gradient of an image.
 
-    r"""
+    That means, (dilation - erosion) applying the same kernel in each channel.
+    The kernel must have 2 dimensions, each one defined by an odd number.
 
-        Returns the morphological gradient of an image,
-        (that means, dilation - erosion) applying the same kernel in each channel.
-        The kernel must have 2 dimensions, each one defined by an odd number.
+    Args:
+       tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
-        Args
+    Returns:
+       torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
-           tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-           kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
-
-        Returns:
-
-           torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
-
-        Example:
-
-            >>> tensor = torch.rand(1, 3, 5, 5)
-            >>> kernel = torch.ones(3, 3)
-            >>> gradient_img = gradient(tensor, kernel)
-
-        """
+    Example:
+        >>> tensor = torch.rand(1, 3, 5, 5)
+        >>> kernel = torch.ones(3, 3)
+        >>> gradient_img = gradient(tensor, kernel)
+    """
 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -53,32 +47,25 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
 # top_hat
 def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the top hat tranformation of an image.
 
-    r"""
+    That means, (image - opened_image) applying the same kernel in each channel.
+    The kernel must have 2 dimensions, each one defined by an odd number.
 
-        Returns the top hat tranformation of an image,
-        (that means, image - opened_image) applying the same kernel in each channel.
+    See :class:`~kornia.morphology.open` for details.
 
-        The kernel must have 2 dimensions, each one defined by an odd number.
+    Args:
+       tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
-        See :class:`~kornia.morphology.open` for details.
+    Returns:
+       torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
 
-        Args
-
-           tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-           kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
-
-        Returns:
-
-           torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
-
-        Example:
-
-            >>> tensor = torch.rand(1, 3, 5, 5)
-            >>> kernel = torch.ones(3, 3)
-            >>> top_hat_img = top_hat(tensor, kernel)
-
-        """
+    Example:
+        >>> tensor = torch.rand(1, 3, 5, 5)
+        >>> kernel = torch.ones(3, 3)
+        >>> top_hat_img = top_hat(tensor, kernel)
+    """
 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -101,32 +88,25 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
 # black_hat
 def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the black hat tranformation of an image.
 
-    r"""
+    That means, (closed_image - image) applying the same kernel in each channel.
+    The kernel must have 2 dimensions, each one defined by an odd number.
 
-        Returns the black hat tranformation of an image,
-        (that means, closed_image - image) applying the same kernel in each channel.
+    See :class:`~kornia.morphology.close` for details.
 
-        The kernel must have 2 dimensions, each one defined by an odd number.
+    Args:
+       tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
-        See :class:`~kornia.morphology.close` for details.
+    Returns:
+       torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
 
-        Args
-
-           tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-           kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
-
-        Returns:
-
-           torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
-
-        Example:
-
-            >>> tensor = torch.rand(1, 3, 5, 5)
-            >>> kernel = torch.ones(3, 3)
-            >>> black_hat_img = black_hat(tensor, kernel)
-
-        """
+    Example:
+        >>> tensor = torch.rand(1, 3, 5, 5)
+        >>> kernel = torch.ones(3, 3)
+        >>> black_hat_img = black_hat(tensor, kernel)
+    """
 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(

@@ -1,8 +1,8 @@
-# Libraries
+from typing import Tuple, Union
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Union
 
 
 # _se_to_mask
@@ -19,27 +19,21 @@ def _se_to_mask(se: torch.Tensor) -> torch.Tensor:
 
 
 def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the dilated image applying the same kernel in each channel.
 
-    r"""
-
-    Returns the dilated image applying the same kernel in each channel.
     The kernel must have 2 dimensions, each one defined by an odd number.
 
-    Args
-
+    Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
        kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
     Returns:
-
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
     Example:
-
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> dilated_img = dilation(tensor, kernel)
-
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -74,27 +68,21 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
 # erosion
 def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the eroded image applying the same kernel in each channel.
 
-    r"""
-
-    Returns the eroded image applying the same kernel in each channel.
     The kernel must have 2 dimensions, each one defined by an odd number.
 
-    Args
-
+    Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
        kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
     Returns:
-
        torch.Tensor: Eroded image with shape :math:`(B, C, H, W)`.
 
     Example:
-
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(5, 5)
         >>> output = erosion(tensor, kernel)
-
     """
 
     if not isinstance(tensor, torch.Tensor):
