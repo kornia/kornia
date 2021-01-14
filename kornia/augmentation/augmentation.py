@@ -9,6 +9,7 @@ from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation import AugmentationBase2D
 from kornia.filters import GaussianBlur2d
 from kornia.utils import _extract_device_dtype
+from kornia.enhance.normalize import normalize, denormalize
 
 from . import functional as F
 from . import random_generator as rg
@@ -920,14 +921,13 @@ class Normalize(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict(mean=self.mean, std=self.std)
+        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.apply_normalize(
-            input, {'mean': self.mean[..., None, None], 'std': self.std[..., None, None]})
+        return normalize(input, self.mean, self.std)
 
 
 class Denormalize(AugmentationBase2D):
@@ -973,8 +973,7 @@ class Denormalize(AugmentationBase2D):
         return F.compute_intensity_transformation(input)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.apply_denormalize(
-            input, {'mean': self.mean[..., None, None], 'std': self.std[..., None, None]})
+        return denormalize(input, self.mean, self.std)
 
 
 class RandomMotionBlur(AugmentationBase2D):
