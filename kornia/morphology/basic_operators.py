@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import torch
 import torch.nn as nn
@@ -52,18 +52,18 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             kernel.dim()))
 
     # prepare kernel
-    se_d = kernel - 1
-    kernel_d = _se_to_mask(se_d)
+    se_d: torch.Tensor = kernel - 1.
+    kernel_d: torch.Tensor = _se_to_mask(se_d)
 
     # pad
     se_h, se_w = kernel.shape
-    pad_d = (se_h // 2, se_w // 2)
+    pad_d: List[int] = [se_h // 2, se_w // 2]
 
-    output = tensor.view(tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
+    output: torch.Tensor = tensor.view(
+        tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
     output = (F.conv2d(output, kernel_d, padding=pad_d) + se_d.view(1, -1, 1, 1)).max(dim=1)[0]
-    shape = tensor.shape
 
-    return output.view(shape)
+    return output.view_as(tensor)
 
 
 # erosion
@@ -102,16 +102,16 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
             kernel.dim()))
 
     # prepare kernel
-    se_e = kernel - 1
-    kernel_e = _se_to_mask(se_e)
+    se_e: torch.Tensor = kernel - 1.
+    kernel_e: torch.Tensor = _se_to_mask(se_e)
 
     # pad
     se_h, se_w = kernel.shape
-    pad_e = (se_h // 2, se_w // 2, se_h // 2, se_w // 2)
+    pad_e: List[int] = [se_h // 2, se_w // 2, se_h // 2, se_w // 2]
 
-    output = tensor.view(tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
+    output: torch.Tensor = tensor.view(
+        tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
     output = F.pad(output, pad_e, mode='constant', value=1.)
     output = (F.conv2d(output, kernel_e) - se_e.view(1, -1, 1, 1)).min(dim=1)[0]
-    shape = tensor.shape
 
-    return output.view(shape)
+    return output.view_as(tensor)
