@@ -86,7 +86,7 @@ class TestLAFAffNetShapeEstimator:
         ori = LAFAffNetShapeEstimator(False).to(device).eval()
         out = ori(laf, inp)
         assert out.shape == laf.shape
-        
+
     def test_pretrained(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -111,7 +111,7 @@ class TestLAFAffNetShapeEstimator:
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[20., 0., 16.], [0., 20., 16.]]]], device=device)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[40.8758, 0., 16.], [-0.3824,  9.7857, 16.]]]], device=device)
+        expected = torch.tensor([[[[40.8758, 0., 16.], [-0.3824, 9.7857, 16.]]]], device=device)
         assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip("jacobian not well computed")
