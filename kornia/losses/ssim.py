@@ -5,12 +5,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.filters import get_gaussian_kernel2d, filter2D
-    
+
 
 def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
          max_val: float = 1.0, eps: float = 1e-12) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
-    
+
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
     The index can be described as:
@@ -40,7 +40,7 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5
-    """    
+    """
     if not isinstance(img1, torch.Tensor):
         raise TypeError("Input img1 type is not a torch.Tensor. Got {}"
                         .format(type(img1)))
@@ -48,10 +48,10 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     if not isinstance(img2, torch.Tensor):
         raise TypeError("Input img2 type is not a torch.Tensor. Got {}"
                         .format(type(img2)))
-                        
+
     if not isinstance(max_val, float):
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
-                        
+
     if not len(img1.shape) == 4:
         raise ValueError("Invalid img1 shape, we expect BxCxHxW. Got: {}"
                          .format(img1.shape))
@@ -68,11 +68,11 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     kernel: torch.Tensor = (
         get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
     )
-    
+
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
-    
+
     # compute local mean per channel
     mu1: torch.Tensor = filter2D(img1, kernel)
     mu2: torch.Tensor = filter2D(img2, kernel)
@@ -85,7 +85,7 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     sigma1_sq = filter2D(img1 * img1, kernel) - mu1_sq
     sigma2_sq = filter2D(img2 * img2, kernel) - mu2_sq
     sigma12 = filter2D(img1 * img2, kernel) - mu1_mu2
-    
+
     # compute the similarity index map
     num: torch.Tensor = (2. * mu1_mu2 + C1) * (2. * sigma12 + C2)
     den: torch.Tensor = (
@@ -98,13 +98,13 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
 def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
               max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean') -> torch.Tensor:
     r"""Function that computes a loss based on the SSIM measurement.
-    
+
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 
     .. math::
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
-      
+
     See :meth:`~kornia.losses.ssim` for details about SSIM.
 
     Args:
@@ -143,7 +143,7 @@ def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
 
 class SSIM(nn.Module):
     r"""Creates a module that computes the Structural Similarity (SSIM) index between two images.
-    
+
     Measures the (SSIM) index between each element in the input `x` and target `y`.
 
     The index can be described as:
@@ -174,7 +174,8 @@ class SSIM(nn.Module):
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim = SSIM(5)
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5
-    """  
+    """
+
     def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12) -> None:
         super(SSIM, self).__init__()
         self.window_size: int = window_size
@@ -187,13 +188,13 @@ class SSIM(nn.Module):
 
 class SSIMLoss(nn.Module):
     r"""Creates a criterion that computes a loss based on the SSIM measurement.
-    
+
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 
     .. math::
 
       \text{loss}(x, y) = \frac{1 - \text{SSIM}(x, y)}{2}
-      
+
     See :meth:`~kornia.losses.ssim_loss` for details about SSIM.
 
     Args:
@@ -213,7 +214,8 @@ class SSIMLoss(nn.Module):
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> criterion = SSIMLoss(5)
         >>> loss = criterion(input1, input2)
-    """  
+    """
+
     def __init__(self, window_size: int, max_val: float = 1.0,
                  eps: float = 1e-12, reduction: str = 'mean') -> None:
         super(SSIMLoss, self).__init__()
