@@ -478,16 +478,16 @@ class TestDivergenceLoss:
 
 class TestTotalVariation:
     # Total variation of constant vectors is 0
-    @pytest.mark.parametrize('input,expected', [
+    @pytest.mark.parametrize('input, expected', [
         (torch.ones(3, 4, 5), torch.zeros(())),
         (2 * torch.ones(2, 3, 4, 5), torch.zeros(2)),
     ])
-    def test_tv_on_constant(self, device, input, expected):
-        actual = kornia.losses.total_variation(input.to(device))
-        assert_allclose(actual, expected.to(device))
+    def test_tv_on_constant(self, device, dtype, input, expected):
+        actual = kornia.losses.total_variation(input.to(device, dtype))
+        assert_allclose(actual, expected.to(device, dtype))
 
     # Total variation for 3D tensors
-    @pytest.mark.parametrize('input,expected', [
+    @pytest.mark.parametrize('input, expected', [
         (torch.tensor([[[0.11747694, 0.5717714, 0.89223915, 0.2929412, 0.63556224],
                         [0.5371079, 0.13416398, 0.7782737, 0.21392655, 0.1757018],
                         [0.62360305, 0.8563448, 0.25304103, 0.68539226, 0.6956515],
@@ -505,11 +505,12 @@ class TestTotalVariation:
         (torch.tensor([[[0.09094203, 0.32630223, 0.8066123],
                         [0.10921168, 0.09534764, 0.48588026]]]), torch.tensor(1.6900232)),
     ])
-    def test_tv_on_3d(self, device, input, expected):
-        assert_allclose(kornia.losses.total_variation(input.to(device)), expected.to(device))
+    def test_tv_on_3d(self, device, dtype, input, expected):
+        actual = kornia.losses.total_variation(input.to(device, dtype))
+        assert_allclose(actual, expected.to(device,dtype))
 
     # Total variation for 4D tensors
-    @pytest.mark.parametrize('input,expected', [
+    @pytest.mark.parametrize('input, expected', [
         (torch.tensor([[[[0.8756, 0.0920],
                          [0.8034, 0.3107]],
                         [[0.3069, 0.2981],
@@ -529,26 +530,49 @@ class TestTotalVariation:
                        [[[0.5078, 0.5703, 0.9110],
                          [0.4765, 0.8401, 0.2754]]]]), torch.tensor([1.9565653, 2.5786452, 2.2681699])),
     ])
-    def test_tv_on_4d(self, device, input, expected):
-        assert_allclose(kornia.losses.total_variation(input.to(device)), expected.to(device))
+    def test_tv_on_4d(self, device, dtype, input, expected):
+        actual = kornia.losses.total_variation(input.to(device, dtype))
+        assert_allclose(actual, expected.to(device,dtype))
 
     # Expect ValueError to be raised when tensors of ndim != 3 or 4 are passed
     @pytest.mark.parametrize('input', [
         torch.rand(2, 3, 4, 5, 3),
         torch.rand(3, 1),
     ])
-    def test_tv_on_invalid_dims(self, device, input):
+    def test_tv_on_invalid_dims(self, device, dtype, input):
         with pytest.raises(ValueError) as ex_info:
-            kornia.losses.total_variation(input.to(device))
+            kornia.losses.total_variation(input.to(device, dtype))
 
     # Expect TypeError to be raised when non-torch tensors are passed
     @pytest.mark.parametrize('input', [
         1,
         [1, 2],
     ])
-    def test_tv_on_invalid_types(self, input):
+    def test_tv_on_invalid_types(self, device, dtype, input):
         with pytest.raises(TypeError) as ex_info:
             kornia.losses.total_variation(input)
+    
+    def test_jit(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+
+        op = kornia.losses.total_variation
+        op_script = torch.jit.script(op)
+
+        assert_allclose(op(image), op_script(image))
+
+    def test_module(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+
+        op = kornia.losses.total_variation
+        op_module = kornia.losses.TotalVariation()
+
+        assert_allclose(op(image), op_module(image))
+
+    def test_gradcheck(self, device, dtype):
+        image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        image = utils.tensor_to_gradcheck_var(image)  # to var
+        assert gradcheck(kornia.losses.total_variation, (image,),
+            raise_exception=True)
 
 
 class TestPSNRLoss:
