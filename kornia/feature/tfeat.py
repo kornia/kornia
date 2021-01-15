@@ -16,7 +16,7 @@ class TFeat(nn.Module):
 
     This is based on the original code from paper "Learning local feature descriptors
     with triplets and shallow convolutional neural networks".
-    See :cite:`TFeat2017` for more details
+    See :cite:`TFeat2016` for more details
 
     Args:
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
