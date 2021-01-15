@@ -14,6 +14,7 @@ Reconstruction
 Semantic Segmentation
 ---------------------
 
+.. autofunction:: binary_focal_loss_with_logits
 .. autofunction:: focal_loss
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
@@ -34,3 +35,4 @@ Module
 .. autoclass:: InverseDepthSmoothnessLoss
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
+.. autoclass:: BinaryFocalLossWithLogits
