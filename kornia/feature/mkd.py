@@ -511,23 +511,25 @@ class MKDDescriptor(nn.Module):
                  output_dims: int = 128) -> None:
         super().__init__()
 
-        self.patch_size = patch_size
-        self.kernel_type = kernel_type
-        self.whitening = whitening
-        self.training_set = training_set
+        self.patch_size: int = patch_size
+        self.kernel_type: str = kernel_type
+        self.whitening: str = whitening
+        self.training_set: str = training_set
 
         self.sigma = 1.4 * (patch_size / 64)
         self.smoothing = GaussianBlur2d((5, 5),
                                         (self.sigma, self.sigma),
                                         'replicate')
         self.gradients = MKDGradients()
-
-        self.parametrizations = ['polar', 'cart'] if self.kernel_type == 'concat' else [self.kernel_type]
+        # This stupid thing needed for jitting...
+        polar_s: str = 'polar'
+        cart_s: str = 'cart'
+        self.parametrizations = [polar_s, cart_s] if self.kernel_type == 'concat' else [self.kernel_type]
 
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
-        relative_orientations = {'polar': True, 'cart': False}
-        self.feats = {}
+        relative_orientations = {polar_s: True, cart_s: False}
+        feats = nn.ModuleDict()
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
                                                 relative=relative_orientations[parametrization])
@@ -535,9 +537,9 @@ class MKDDescriptor(nn.Module):
                                                        fmap_size=patch_size,
                                                        in_dims=gradient_embedding.kernel.d)
 
-            self.feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
+            feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
             self.odims += spatial_encoding.odims
-
+        self.feats = nn.ModuleDict(feats)
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
 

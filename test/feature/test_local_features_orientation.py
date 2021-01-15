@@ -75,6 +75,15 @@ class TestPatchDominantGradientOrientation:
         assert gradcheck(ori, (patches, ),
                          raise_exception=True)
 
+    @pytest.mark.jit
+    @pytest.mark.skip(" Compiled functions can't take variable number")
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 13, 13
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        model = PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval())
+        assert_allclose(model(patches), model_jit(patches))
+
 
 class TestLAFOrienter:
     def test_shape(self, device):
