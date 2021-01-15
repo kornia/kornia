@@ -193,14 +193,14 @@ class LAFOrienter(nn.Module):
     def __init__(self,
                  patch_size: int = 32,
                  num_angular_bins: int = 36,
-                 angle_detector: Optional[nn.Module] = None):
+                 angle_detector: Optional[nn.Module] = None): # type: ignore
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         if angle_detector is None:
-            self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
+            self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins) # type: ignore
         else:
-            self.angle_detector = angle_detector
+            self.angle_detector = angle_detector # type: ignore
         return
 
     def __repr__(self):
