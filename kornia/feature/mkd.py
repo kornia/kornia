@@ -3,6 +3,7 @@ from typing import Union, Tuple, Dict, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from kornia.constants import pi
 from kornia.utils import create_meshgrid
 from kornia.geometry.conversions import cart2pol
@@ -223,13 +224,13 @@ class EmbedGradients(nn.Module):
             ', ' + 'relative=' + str(self.relative) + ')'
 
 
-def spatial_kernel_embedding(kerneltype, grids: dict) -> torch.Tensor:
+def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
     """Compute embeddings for cartesian and polar parametrizations. """
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
-    if kerneltype == 'cart':
+    if kernel_type == 'cart':
         coeffs_ = 'xy'
         params_ = ['x', 'y']
-    elif kerneltype == 'polar':
+    elif kernel_type == 'polar':
         coeffs_ = 'rhophi'
         params_ = ['phi', 'rho']
 
@@ -260,7 +261,7 @@ class ExplicitSpacialEncoding(nn.Module):
     """
     Module that computes explicit cartesian or polar embedding.
     Args:
-        kerneltype: (str) Parametrization of kernel.
+        kernel_type: (str) Parametrization of kernel.
                      'polar', 'cart' ('polar' is default)
         fmap_size: (int) Input feature map size in pixels (32 is default)
         in_dims: (int) Dimensionality of input feature map (7 is default)
@@ -273,7 +274,7 @@ class ExplicitSpacialEncoding(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
     Examples::
         >>> emb_ori = torch.rand(23, 7, 32, 32)
-        >>> ese = ExplicitSpacialEncoding(kerneltype='polar',
+        >>> ese = ExplicitSpacialEncoding(kernel_type='polar',
         ...                               fmap_size=32,
         ...                               in_dims=7,
         ...                               do_gmask=True,
@@ -282,17 +283,17 @@ class ExplicitSpacialEncoding(nn.Module):
     """
 
     def __init__(self,
-                 kerneltype: str = 'polar',
+                 kernel_type: str = 'polar',
                  fmap_size: int = 32,
                  in_dims: int = 7,
                  do_gmask: bool = True,
                  do_l2: bool = True) -> None:
         super().__init__()
 
-        if kerneltype not in ['polar', 'cart']:
-            raise NotImplementedError(f'{kerneltype} is not valid, use polar or cart).')
+        if kernel_type not in ['polar', 'cart']:
+            raise NotImplementedError(f'{kernel_type} is not valid, use polar or cart).')
 
-        self.kerneltype = kerneltype
+        self.kernel_type = kernel_type
         self.fmap_size = fmap_size
         self.in_dims = in_dims
         self.do_gmask = do_gmask
@@ -301,7 +302,7 @@ class ExplicitSpacialEncoding(nn.Module):
         self.gmask = None
 
         # Precompute embedding.
-        emb = spatial_kernel_embedding(self.kerneltype, self.grid)
+        emb = spatial_kernel_embedding(self.kernel_type, self.grid)
 
         # Gaussian mask.
         if self.do_gmask:
@@ -347,7 +348,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
-            '(' + 'kerneltype=' + str(self.kerneltype) +\
+            '(' + 'kernel_type=' + str(self.kernel_type) +\
             ', ' + 'fmap_size=' + str(self.fmap_size) +\
             ', ' + 'in_dims=' + str(self.in_dims) +\
             ', ' + 'out_dims=' + str(self.out_dims) +\
@@ -471,30 +472,32 @@ class Whitening(nn.Module):
 
 
 class MKDDescriptor(nn.Module):
-    """
-    Module that computes Multiple Kernel local descriptors.
+    r"""Module that computes Multiple Kernel local descriptors.
 
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.
 
     Args:
-        patch_size: (int) Input patch size in pixels (32 is default)
-        kerneltype: (str) Parametrization of kernel
-                     'concat', 'cart', 'polar' ('concat' is default)
+        patch_size: (int) Input patch size in pixels (32 is default).
+        kernel_type: (str) Parametrization of kernel
+                     'concat', 'cart', 'polar' ('concat' is default).
         whitening: (str) Whitening transform to apply
-                     None, 'lw', 'pca', 'pcawt', 'pcaws' ('pcawt' is default)
+                     None, 'lw', 'pca', 'pcawt', 'pcaws' ('pcawt' is default).
         training_set: (str) Set that model was trained on
-                    'liberty', 'notredame', 'yosemite' ('liberty' is default)
-        output_dims: (int) Dimensionality reduction (128 is default)
+                    'liberty', 'notredame', 'yosemite' ('liberty' is default).
+        output_dims: (int) Dimensionality reduction (128 is default).
+
     Returns:
-        Tensor: Explicit cartesian or polar embedding
+        torch.Tensor: Explicit cartesian or polar embedding.
+
     Shape:
-        - Input: (B, in_dims, fmap_size, fmap_size)
-        - Output: (B, out_dims, fmap_size, fmap_size)
-    Examples::
+        - Input: :math:`(B, in_dims, fmap_size, fmap_size)`.
+        - Output: :math:`(B, out_dims, fmap_size, fmap_size)`,
+
+    Examples:
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> mkd = MKDDescriptor(patch_size=32,
-        ...                     kerneltype='concat',
+        ...                     kernel_type='concat',
         ...                     whitening='pcawt',
         ...                     training_set='liberty',
         ...                     output_dims=128)
@@ -503,14 +506,14 @@ class MKDDescriptor(nn.Module):
 
     def __init__(self,
                  patch_size: int = 32,
-                 kerneltype: str = 'concat',
+                 kernel_type: str = 'concat',
                  whitening: str = 'pcawt',
                  training_set: str = 'liberty',
                  output_dims: int = 128) -> None:
         super().__init__()
 
         self.patch_size = patch_size
-        self.kerneltype = kerneltype
+        self.kernel_type = kernel_type
         self.whitening = whitening
         self.training_set = training_set
 
@@ -520,7 +523,7 @@ class MKDDescriptor(nn.Module):
                                         'replicate')
         self.gradients = MKDGradients()
 
-        self.parametrizations = ['polar', 'cart'] if self.kerneltype == 'concat' else [self.kerneltype]
+        self.parametrizations = ['polar', 'cart'] if self.kernel_type == 'concat' else [self.kernel_type]
 
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
@@ -529,7 +532,7 @@ class MKDDescriptor(nn.Module):
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
                                                 relative=relative_orientations[parametrization])
-            spatial_encoding = ExplicitSpacialEncoding(kerneltype=parametrization,
+            spatial_encoding = ExplicitSpacialEncoding(kernel_type=parametrization,
                                                        fmap_size=patch_size,
                                                        in_dims=gradient_embedding.kernel.d)
 
@@ -542,7 +545,7 @@ class MKDDescriptor(nn.Module):
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
             whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.kerneltype], map_location=lambda storage, loc: storage
+                urls[self.kernel_type], map_location=lambda storage, loc: storage
             )
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(whitening,
@@ -583,15 +586,15 @@ class MKDDescriptor(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ +\
             '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'kerneltype=' + str(self.kerneltype) +\
+            ', ' + 'kernel_type=' + str(self.kernel_type) +\
             ', ' + 'whitening=' + str(self.whitening) +\
             ', ' + 'training_set=' + str(self.training_set) +\
             ', ' + 'output_dims=' + str(self.output_dims) + ')'
 
 
-def load_whitening_model(kerneltype: str, training_set: str) -> Dict:
+def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
     whitening_models = torch.hub.load_state_dict_from_url(
-        urls[kerneltype], map_location=lambda storage, loc: storage
+        urls[kernel_type], map_location=lambda storage, loc: storage
     )
     whitening_model = whitening_models[training_set]
     return whitening_model
@@ -602,23 +605,23 @@ class SimpleKD(nn.Module):
 
     def __init__(self,
                  patch_size: int = 32,
-                 kerneltype: str = 'polar',  # 'cart' 'polar'
+                 kernel_type: str = 'polar',  # 'cart' 'polar'
                  whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
                  training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
                  output_dims: int = 128) -> None:
         super().__init__()
 
-        relative = kerneltype == 'polar'
+        relative = kernel_type == 'polar'
         sigma = 1.4 * (patch_size / 64)
 
         # Sequence of modules.
         smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')
         gradients = MKDGradients()
         ori = EmbedGradients(patch_size=patch_size, relative=relative)
-        ese = ExplicitSpacialEncoding(kerneltype=kerneltype,
+        ese = ExplicitSpacialEncoding(kernel_type=kernel_type,
                                       fmap_size=patch_size, in_dims=ori.kernel.d)
         wh = Whitening(whitening,
-                       load_whitening_model(kerneltype, training_set),
+                       load_whitening_model(kernel_type, training_set),
                        in_dims=ese.odims,
                        output_dims=output_dims)
 
