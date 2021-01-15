@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -10,6 +10,9 @@ from kornia.constants import pi
 from kornia.feature import (extract_patches_from_pyramid, make_upright,
                             normalize_laf, raise_error_if_laf_is_not_valid)
 from kornia.geometry import rad2deg, angle_to_rotation_matrix
+
+urls: Dict[str, str] = dict()
+urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
 
 
 class PassLAF(nn.Module):
@@ -60,7 +63,7 @@ class PatchDominantGradientOrientation(nn.Module):
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            patch: (torch.Tensor) shape [Bx1] """
+            patch: (torch.Tensor) shape [B] """
         if not torch.is_tensor(patch):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patch)))
@@ -100,28 +103,110 @@ class PatchDominantGradientOrientation(nn.Module):
         return angle
 
 
+class OriNet(nn.Module):
+    """Network, which estimates the canonical orientation of the given 32x32 patches, in radians.
+    Zero angle points towards right.
+    This is based on the original code from paper "Repeatability Is Not Enough:
+    Learning Discriminative Affine Regions via Discriminability"".
+    See :cite:`AffNet2018` for more details.
+
+    Args:
+        pretrained: (bool) Download and set pretrained weights to the model. Default: false.
+        eps: (float) to avoid division by zero in atan2. Default: 1e-6.
+
+    Returns:
+        torch.Tensor: Angle in radians.
+
+    Shape:
+        - Input: (B, 1, 32, 32)
+        - Output: (B)
+
+    Examples:
+        >>> input = torch.rand(16, 1, 32, 32)
+        >>> orinet = OriNet()
+        >>> angle = orinet(input) # 16
+    """
+    def __init__(self, pretrained: bool = False, eps: float = 1e-8):
+        super(OriNet, self).__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Dropout(0.25),
+            nn.Conv2d(64, 2, kernel_size=8, stride=1, padding=1, bias=True),
+            nn.Tanh(),
+            nn.AdaptiveAvgPool2d(1)
+        )
+        self.eps = eps
+        # use torch.hub to load pretrained model
+        if pretrained:
+            pretrained_dict = torch.hub.load_state_dict_from_url(
+                urls['orinet'], map_location=lambda storage, loc: storage
+            )
+            self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+        return
+
+    @staticmethod
+    def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+        "Utility function that normalizes the input by batch."""
+        sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
+        # WARNING: we need to .detach() input, otherwise the gradients produced by
+        # the patches extractor with F.grid_sample are very noisy, making the detector
+        # training totally unstable.
+        return (x - mp.detach()) / (sp.detach() + eps)
+
+    def forward(self, patch: torch.Tensor) -> torch.Tensor:  # type: ignore
+        """Args:
+            patch: (torch.Tensor) shape [Bx1xHxW]
+        Returns:
+            patch: (torch.Tensor) shape [B] """
+        xy = self.features(self._normalize_input(patch)).view(-1, 2)
+        angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
+        return angle
+
+
 class LAFOrienter(nn.Module):
     """Module, which extracts patches using input images and local affine frames (LAFs),
-    then runs :class:`~kornia.feature.PatchDominantGradientOrientation`
-    on patches and then rotates the LAFs by the estimated angles
+    then runs :class:`~kornia.feature.PatchDominantGradientOrientation` or 
+    :class:`~kornia.feature.OriNet` on patches and then rotates the LAFs by the estimated angles
 
     Args:
             patch_size: int, default = 32
-            num_angular_bins: int, default is 36"""
+            num_angular_bins: int, default is 36
+            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None """ # noqa pylint: disable
 
     def __init__(self,
                  patch_size: int = 32,
-                 num_angular_bins: int = 36):
+                 num_angular_bins: int = 36,
+                 angle_detector: Optional[nn.Module] = None):
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
-        self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
+        if angle_detector is None:
+            self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
+        else:
+            self.angle_detector = angle_detector
         return
 
     def __repr__(self):
         return self.__class__.__name__ + '('\
             'patch_size=' + str(self.patch_size) + ', ' + \
-            'num_ang_bins=' + str(self.num_ang_bins) + ')'
+            'angle_detector=' + str(self.angle_detector) + ')'
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
         """

@@ -83,3 +83,6 @@ Module
    :members: forward
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
+.. autoclass:: OriNet
+   :members: forward
+
