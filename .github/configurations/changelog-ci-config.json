@@ -1,0 +1,25 @@
+{
+    "header_prefix": "Version:",
+    "commit_changelog": false,
+    "comment_changelog": true,
+    "pull_request_title_regex": "^(?i:release)",
+    "version_regex": "v?([0-9]{1,2})+[.]+([0-9]{1,2})+[.]+([0-9]{1,2})\\s\\(\\d{1,2}-\\d{1,2}-\\d{4}\\)",
+    "group_config": [
+      {
+        "title": "Bug Fixes",
+        "labels": ["bug", "bugfix"]
+      },
+      {
+        "title": "Code Improvements",
+        "labels": ["improvements", "enhancement"]
+      },
+      {
+        "title": "New Features",
+        "labels": ["feature", "feature request"]
+      },
+      {
+        "title": "Documentation Updates",
+        "labels": ["docs", "documentation", "doc"]
+      }
+    ]
+}

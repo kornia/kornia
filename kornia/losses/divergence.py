@@ -5,19 +5,19 @@ import torch
 import torch.nn.functional as F
 
 
-def _kl_div_2d(p, q):
+def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # D_KL(P || Q)
     batch, chans, height, width = p.shape
     unsummed_kl = F.kl_div(
-        q.view(batch * chans, height * width).log(),
-        p.view(batch * chans, height * width),
+        q.reshape(batch * chans, height * width).log(),
+        p.reshape(batch * chans, height * width),
         reduction='none',
     )
     kl_values = unsummed_kl.sum(-1).view(batch, chans)
     return kl_values
 
 
-def _js_div_2d(p, q):
+def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # JSD(P || Q)
     m = 0.5 * (p + q)
     return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
@@ -25,11 +25,10 @@ def _js_div_2d(p, q):
 # TODO: add this to the main module
 
 
-def _reduce_loss(losses, reduction):
+def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
     if reduction == 'none':
         return losses
-    else:
-        return torch.mean(losses) if reduction == 'mean' else torch.sum(losses)
+    return torch.mean(losses) if reduction == 'mean' else torch.sum(losses)
 
 
 def js_div_loss_2d(

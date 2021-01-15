@@ -1,52 +1,25 @@
+import math
+
 import torch
 import torch.nn as nn
-from kornia.constants import pi
 
 
-class HsvToRgb(nn.Module):
-    r"""Convert image from HSV to Rgb
-    The image data is assumed to be in the range of (0, 1).
+def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
+    r"""Convert an image from RGB to HSV.
 
-    args:
-        image (torch.Tensor): HSV image to be converted to RGB.
-
-    returns:
-        torch.tensor: RGB version of the image.
-
-    shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
-
-    Examples::
-
-        >>> import torch
-        >>> import kornia
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.HsvToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
-
-    """
-
-    def __init__(self) -> None:
-        super(HsvToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
-        return hsv_to_rgb(image)
-
-
-def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an HSV image to RGB
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        input (torch.Tensor): HSV Image to be converted to RGB.
-
+        image (torch.Tensor): RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
 
     Returns:
-        torch.Tensor: RGB version of the image.
-    """
+        torch.Tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
 
-    if not torch.is_tensor(image):
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb_to_hsv(input)  # 2x3x4x5
+    """
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
@@ -54,7 +27,68 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    h: torch.Tensor = image[..., 0, :, :] / (2 * pi.to(image.device))
+    # The first or last occurance is not guarenteed before 1.6.0
+    # https://github.com/pytorch/pytorch/issues/20414
+    maxc, _ = image.max(-3)
+    maxc_mask = image == maxc.unsqueeze(-3)
+    _, max_indices = ((maxc_mask.cumsum(-3) == 1) & maxc_mask).max(-3)
+    minc: torch.Tensor = image.min(-3)[0]
+
+    v: torch.Tensor = maxc  # brightness
+
+    deltac: torch.Tensor = maxc - minc
+    s: torch.Tensor = deltac / (v + 1e-31)
+
+    # avoid division by zero
+    deltac = torch.where(
+        deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
+
+    maxc_tmp = maxc.unsqueeze(-3) - image
+    rc: torch.Tensor = maxc_tmp[..., 0, :, :]
+    gc: torch.Tensor = maxc_tmp[..., 1, :, :]
+    bc: torch.Tensor = maxc_tmp[..., 2, :, :]
+
+    h = torch.stack([
+        bc - gc,
+        2.0 * deltac + rc - bc,
+        4.0 * deltac + gc - rc,
+    ], dim=-3)
+
+    h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
+    h = h.squeeze(-3)
+    h = h / deltac
+
+    h = (h / 6.0) % 1.0
+
+    h = 2 * math.pi * h
+
+    return torch.stack([h, s, v], dim=-3)
+
+
+def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
+    r"""Convert an image from HSV to RGB.
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        image (torch.Tensor): HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+
+    Returns:
+        torch.Tensor: RGB version of the image with shape of :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = hsv_to_rgb(input)  # 2x3x4x5
+    """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
+                         .format(image.shape))
+
+    h: torch.Tensor = image[..., 0, :, :] / (2 * math.pi)
     s: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
 
@@ -65,99 +99,63 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     q: torch.Tensor = v * (one - f * s)
     t: torch.Tensor = v * (one - (one - f) * s)
 
-    out: torch.Tensor = torch.stack([hi, hi, hi], dim=-3)
-
-    out[out == 0] = torch.stack((v, t, p), dim=-3)[out == 0]
-    out[out == 1] = torch.stack((q, v, p), dim=-3)[out == 1]
-    out[out == 2] = torch.stack((p, v, t), dim=-3)[out == 2]
-    out[out == 3] = torch.stack((p, q, v), dim=-3)[out == 3]
-    out[out == 4] = torch.stack((t, p, v), dim=-3)[out == 4]
-    out[out == 5] = torch.stack((v, p, q), dim=-3)[out == 5]
+    hi = hi.long()
+    indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
+    out = torch.stack((
+        v, q, p, p, t, v,
+        t, v, v, q, p, p,
+        p, p, t, v, v, q,
+    ), dim=-3)
+    out = torch.gather(out, -3, indices)
 
     return out
 
 
 class RgbToHsv(nn.Module):
-    r"""Convert image from RGB to HSV.
+    r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
 
-    args:
-        image (torch.Tensor): RGB image to be converted to HSV.
-
-    returns:
+    Returns:
         torch.tensor: HSV version of the image.
 
-    shape:
+    Shape:
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples::
-
-        >>> import torch
-        >>> import kornia
+    Example:
         >>> input = torch.rand(2, 3, 4, 5)
-        >>> hsv = kornia.color.RgbToHsv()
+        >>> hsv = RgbToHsv()
         >>> output = hsv(input)  # 2x3x4x5
-
     """
 
     def __init__(self) -> None:
         super(RgbToHsv, self).__init__()
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_hsv(image)
 
 
-def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
-    r"""Convert an RGB image to HSV.
+class HsvToRgb(nn.Module):
+    r"""Convert an image from HSV to RGB.
 
-    Args:
-        input (torch.Tensor): RGB Image to be converted to HSV.
+    The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        torch.Tensor: HSV version of the image.
+        torch.Tensor: RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = HsvToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
     """
 
-    if not torch.is_tensor(image):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+    def __init__(self) -> None:
+        super(HsvToRgb, self).__init__()
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
-
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
-
-    maxc: torch.Tensor = image.max(-3)[0]
-    minc: torch.Tensor = image.min(-3)[0]
-
-    v: torch.Tensor = maxc  # brightness
-
-    deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / v
-
-    s[torch.isnan(s)] = 0.
-
-    # avoid division by zero
-    deltac = torch.where(
-        deltac == 0, torch.ones_like(deltac), deltac)
-
-    rc: torch.Tensor = (maxc - r) / deltac
-    gc: torch.Tensor = (maxc - g) / deltac
-    bc: torch.Tensor = (maxc - b) / deltac
-
-    maxg: torch.Tensor = g == maxc
-    maxr: torch.Tensor = r == maxc
-
-    h: torch.Tensor = 4.0 + gc - rc
-    h[maxg] = 2.0 + rc[maxg] - bc[maxg]
-    h[maxr] = bc[maxr] - gc[maxr]
-    h[minc == maxc] = 0.0
-
-    h = (h / 6.0) % 1.0
-
-    h = 2 * pi.to(image.device) * h
-    return torch.stack([h, s, v], dim=-3)
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return hsv_to_rgb(image)

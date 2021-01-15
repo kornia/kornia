@@ -5,20 +5,20 @@ kornia.augmentation
 
 The classes in this section perform various data augmentation operations.
 
-Kornia provides Torchvision-like augmentation APIs while may not reproduce Torchvision, because Kornia is a library aligns to OpenCV functionalities, not PIL. Besides, pure floating computation is used in Kornia which gaurentees a better precision without any float -> uint8 conversions. To be specified, the different functions are:
+Kornia provides Torchvision-like augmentation APIs while may not reproduce Torchvision, because Kornia is a library aligns to OpenCV functionalities, not PIL. Besides, pure floating computation is used in Kornia which guarantees a better precision without any float -> uint8 conversions. To be specified, the different functions are:
 
 - AdjustContrast
 - AdjustBrightness
 
-For detailed comparision, please checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
+For detailed comparison, please checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
 
 Containers
 ----------
 
-This is the base class for creating a new transform. The user only needs to overrive: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
+This is the base class for creating a new transform. The user only needs to override: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
 
 
-.. autoclass:: AugmentationBase
+.. autoclass:: AugmentationBase2D
 
    .. automethod:: generate_parameters
    .. automethod:: compute_transformation
@@ -37,9 +37,9 @@ Create your own transformation:
    import torch
    import kornia as K
 
-   from kornia.augmentation import AugmentationBase
+   from kornia.augmentation import AugmentationBase2D
 
-   class MyRandomTransform(AugmentationBase):
+   class MyRandomTransform(AugmentationBase2D):
       def __init__(self, return_transform: bool = False) -> None:
          super(MyRandomTransform, self).__init__(return_transform)
 
@@ -70,8 +70,8 @@ Create your own transformation:
 	 output = K.warp_affine(input, transform, (H, W))
          return (output, transform)
 
-Module
-------
+Module API
+----------
 
 Kornia augmentation implementations can be easily used in a TorchVision style using `nn.Sequential`.
 
@@ -130,6 +130,11 @@ Example for semantic segmentation using low-level randomness control:
 	 mask = self.jit(mask, jit_params)
 	 return input, mask
 
+Transforms2D
+------------
+
+Set of operators to perform data augmentation on 2D image tensors.
+
 .. autoclass:: CenterCrop
 .. autoclass:: ColorJitter
 .. autoclass:: Denormalize
@@ -148,16 +153,28 @@ Example for semantic segmentation using low-level randomness control:
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomEqualize
+.. autoclass:: RandomMixUp
+.. autoclass:: RandomCutMix
+
+Transforms3D
+------------
+
+Set of operators to perform data augmentation on 3D image tensors and volumetric data.
+
 .. autoclass:: RandomDepthicalFlip3D
 .. autoclass:: RandomHorizontalFlip3D
 .. autoclass:: RandomVerticalFlip3D
 .. autoclass:: RandomRotation3D
 .. autoclass:: RandomAffine3D
+.. autoclass:: RandomCrop3D
+.. autoclass:: CenterCrop3D
+.. autoclass:: RandomMotionBlur3D
+.. autoclass:: RandomEqualize3D
 
 Functional
 ----------
 
-.. automodule:: kornia.augmentation.functional
+.. automodule:: kornia.augmentation.functional.functional
     :members:
-.. automodule:: kornia.augmentation.functional3d
+.. automodule:: kornia.augmentation.functional.functional3d
     :members:

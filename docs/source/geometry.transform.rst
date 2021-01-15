@@ -6,16 +6,26 @@ kornia.geometry.transform
 The functions in this section perform various geometrical transformations of 2D images.
 
 .. autofunction:: warp_perspective
+.. autofunction:: warp_perspective3d
 .. autofunction:: warp_affine
-.. autofunction:: warp_projective
+.. autofunction:: warp_affine3d
 .. autofunction:: get_perspective_transform
+.. autofunction:: get_perspective_transform3d
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
+.. autofunction:: get_shear_matrix2d
+.. autofunction:: get_shear_matrix3d
+.. autofunction:: get_affine_matrix2d
+.. autofunction:: get_affine_matrix3d
 .. autofunction:: remap
 .. autofunction:: invert_affine_transform
 .. autofunction:: projection_from_Rt
+.. autofunction:: crop_by_boxes
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
+.. autofunction:: bbox_to_mask
+.. autofunction:: infer_box_shape
+.. autofunction:: validate_bboxes
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
@@ -29,6 +39,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: vflip
 .. autofunction:: rot180
 .. autofunction:: resize
+.. autofunction:: rescale
 
 .. autoclass:: Rotate
 .. autoclass:: Translate
@@ -41,3 +52,5 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autoclass:: Vflip
 .. autoclass:: Rot180
 .. autoclass:: Resize
+.. autoclass:: Rescale
+.. autoclass:: Affine

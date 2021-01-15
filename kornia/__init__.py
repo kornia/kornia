@@ -19,6 +19,7 @@ from kornia import geometry
 from kornia import jit
 from kornia import losses
 from kornia import utils
+from kornia import morphology
 
 # Exposes package functional to top level
 
@@ -42,11 +43,14 @@ from kornia.color import (
     ycbcr_to_rgb,
     rgb_to_xyz,
     xyz_to_rgb,
+    rgb_to_lab,
     rgb_to_luv,
+    lab_to_rgb,
     luv_to_rgb,
 )
 from kornia.enhance import (
     normalize,
+    normalize_min_max,
     denormalize,
     zca_mean,
     zca_whiten,
@@ -66,10 +70,13 @@ from kornia.feature import (
     harris_response,
     hessian_response,
     gftt_response,
-    SIFTDescriptor
+    SIFTDescriptor,
+    MKDDescriptor
 )
 from kornia.filters import (
     get_gaussian_kernel1d,
+    get_gaussian_erf_kernel1d,
+    get_gaussian_discrete_kernel1d,
     get_gaussian_kernel2d,
     get_laplacian_kernel1d,
     get_laplacian_kernel2d,
@@ -104,4 +111,6 @@ from kornia.utils import (
 )
 
 from kornia.geometry import *
-from kornia.constants import pi
+from kornia.constants import *
+
+from kornia.testing import xla_is_available

@@ -13,93 +13,24 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 """
 
 
-class RgbToLuv(nn.Module):
-    r"""Converts an image from RGB to Luv
+def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    r"""Converts a RGB image to Luv.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
     color is computed using the D65 illuminant and Observer 2.
 
-    args:
-        image (torch.Tensor): RGB image to be converted to Luv.
-
-    returns:
-        torch.Tensor: Luv version of the image.
-
-    shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
-
-    Examples:
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> luv = kornia.color.RgbToLuv()
-        >>> output = luv(input)  # 2x3x4x5
-
-    Reference:
-        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-        [2] https://www.easyrgb.com/en/math.php
-
-        [3] http://www.poynton.com/ColorFAQ.html
-    """
-
-    def __init__(self) -> None:
-
-        super(RgbToLuv, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
-
-        return rgb_to_luv(image)
-
-
-class LuvToRgb(nn.Module):
-    r"""Converts an image from Luv to RGB
-
-    args:
-        image (torch.Tensor): Luv image to be converted to RGB.
-
-    returns:
-        torch.Tensor: RGB version of the image.
-
-    shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 3, H, W)`
-
-    Examples:
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> rgb = kornia.color.LuvToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
-
-    References:
-        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-        [2] https://www.easyrgb.com/en/math.php
-
-        [3] http://www.poynton.com/ColorFAQ.html
-    """
-
-    def __init__(self) -> None:
-
-        super(LuvToRgb, self).__init__()
-
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # type: ignore
-
-        return luv_to_rgb(image)
-
-
-def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    r"""Converts a RGB image to Luv.
-
-    See :class:`~kornia.color.RgbToLuv` for details.
-
     Args:
-        image (torch.Tensor): RGB image
-        eps (float): for numerically stability when dividing. Default: 1e-8.
+        image (torch.Tensor): RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
+        eps (float): for numerically stability when dividing. Default: 1e-12.
 
     Returns:
-        torch.Tensor : Luv image
-    """
+        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
 
-    if not torch.is_tensor(image):
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb_to_luv(input)  # 2x3x4x5
+    """
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
@@ -116,7 +47,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     gs: torch.Tensor = torch.where(g > 0.04045, torch.pow(((g + 0.055) / 1.055), 2.4), g / 12.92)
     bs: torch.Tensor = torch.where(b > 0.04045, torch.pow(((b + 0.055) / 1.055), 2.4), b / 12.92)
 
-    image_s = torch.stack((rs, gs, bs), dim=-3)
+    image_s = torch.stack([rs, gs, bs], dim=-3)
 
     xyz_im: torch.Tensor = rgb_to_xyz(image_s)
 
@@ -139,7 +70,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     u: torch.Tensor = 13 * L * (u_p - u_w)
     v: torch.Tensor = 13 * L * (v_p - v_w)
 
-    out = torch.stack((L, u, v), dim=-3)
+    out = torch.stack([L, u, v], dim=-3)
 
     return out
 
@@ -147,16 +78,18 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     r"""Converts a Luv image to RGB.
 
-    See :class:`~kornia.color.LuvToRgb` for details.
-
     Args:
-        image (torch.Tensor): Luv image
-        eps (float): for numerically stability when dividing. Default: 1e-8.
+        image (torch.Tensor): Luv image to be converted to RGB with shape :math:`(*, 3, H, W)`.
+        eps (float): for numerically stability when dividing. Default: 1e-12.
 
     Returns:
-        torch.Tensor : RGB image
+        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = luv_to_rgb(input)  # 2x3x4x5
     """
-    if not torch.is_tensor(image):
+    if not isinstance(image, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
             type(image)))
 
@@ -167,10 +100,12 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     L: torch.Tensor = image[..., 0, :, :]
     u: torch.Tensor = image[..., 1, :, :]
     v: torch.Tensor = image[..., 2, :, :]
+
     # Convert from Luv to XYZ
     y: torch.Tensor = torch.where(L > 7.999625,
                                   torch.pow((L + 16) / 116, 3.0),
                                   L / 903.3)
+
     # Compute white point
     xyz_ref_white: Tuple[float, float, float] = (0.95047, 1., 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
@@ -183,9 +118,10 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     z: torch.Tensor = ((a - 4) * c - 15 * a * d * y) / (12 * d + eps)
     x: torch.Tensor = -(c / (d + eps) + 3. * z)
 
-    xyz_im: torch.Tensor = torch.stack((x, y, z), -3)
+    xyz_im: torch.Tensor = torch.stack([x, y, z], -3)
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
+
     # Convert from sRGB to RGB Linear
     rs: torch.Tensor = rgbs_im[..., 0, :, :]
     gs: torch.Tensor = rgbs_im[..., 1, :, :]
@@ -195,6 +131,69 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     g: torch.Tensor = torch.where(gs > 0.0031308, 1.055 * torch.pow(gs, 1 / 2.4) - 0.055, 12.92 * gs)
     b: torch.Tensor = torch.where(bs > 0.0031308, 1.055 * torch.pow(bs, 1 / 2.4) - 0.055, 12.92 * bs)
 
-    rgb_im: torch.Tensor = torch.stack((r, g, b), dim=-3)
+    rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
 
     return rgb_im
+
+
+class RgbToLuv(nn.Module):
+    r"""Converts an image from RGB to Luv.
+
+    The image data is assumed to be in the range of :math:`[0, 1]`. Luv
+    color is computed using the D65 illuminant and Observer 2.
+
+    Returns:
+        torch.Tensor: Luv version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Examples:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> luv = RgbToLuv()
+        >>> output = luv(input)  # 2x3x4x5
+
+    Reference:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
+        [2] https://www.easyrgb.com/en/math.php
+
+        [3] http://www.poynton.com/ColorFAQ.html
+    """
+
+    def __init__(self) -> None:
+        super(RgbToLuv, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return rgb_to_luv(image)
+
+
+class LuvToRgb(nn.Module):
+    r"""Converts an image from Luv to RGB.
+
+    Returns:
+        torch.Tensor: RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Examples:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = LuvToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
+
+    References:
+        [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
+        [2] https://www.easyrgb.com/en/math.php
+
+        [3] http://www.poynton.com/ColorFAQ.html
+    """
+
+    def __init__(self) -> None:
+        super(LuvToRgb, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return luv_to_rgb(image)

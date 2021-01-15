@@ -2,12 +2,39 @@ import torch
 import torch.nn as nn
 
 
+__all__ = [
+    "add_weighted",
+    "AddWeighted",
+]
+
+
 def add_weighted(src1: torch.Tensor, alpha: float,
                  src2: torch.Tensor, beta: float,
                  gamma: float) -> torch.Tensor:
-    r"""Blend two Tensors.
+    r"""Calculates the weighted sum of two Tensors.
 
-    See :class:`~kornia.color.AddWeighted` for details.
+    The function calculates the weighted sum of two Tensors as follows:
+
+    .. math::
+        out = src1 * alpha + src2 * beta + gamma
+
+    Args:
+        src1 (torch.Tensor): Tensor of shape :math:`(B, C, H, W)`.
+        alpha (float): weight of the src1 elements.
+        src2 (torch.Tensor): Tensor of same size and channel number as src1 :math:`(B, C, H, W)`.
+        beta (float): weight of the src2 elements.
+        gamma (float): scalar added to each sum.
+
+    Returns:
+        torch.Tensor: Weighted Tensor of shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input1 = torch.rand(1, 1, 5, 5)
+        >>> input2 = torch.rand(1, 1, 5, 5)
+        >>> output = add_weighted(input1, 0.5, input2, 0.5, 1.0)
+        >>> output.shape
+        torch.Size([1, 1, 5, 5])
+
     """
     if not isinstance(src1, torch.Tensor):
         raise TypeError("src1 should be a tensor. Got {}".format(type(src1)))
@@ -36,14 +63,22 @@ class AddWeighted(nn.Module):
         out = src1 * alpha + src2 * beta + gamma
 
     Args:
-        src1 (torch.Tensor): Tensor.
         alpha (float): weight of the src1 elements.
-        src2 (torch.Tensor): Tensor of same size and channel number as src1.
         beta (float): weight of the src2 elements.
         gamma (float): scalar added to each sum.
 
-    Returns:
-        torch.Tensor: Weighted Tensor.
+    Shape:
+        - Input1: Tensor of shape :math:`(B, C, H, W)`.
+        - Input2: Tensor of shape :math:`(B, C, H, W)`.
+        - Output: Weighted tensor of shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input1 = torch.rand(1, 1, 5, 5)
+        >>> input2 = torch.rand(1, 1, 5, 5)
+        >>> output = AddWeighted(0.5, 0.5, 1.0)(input1, input2)
+        >>> output.shape
+        torch.Size([1, 1, 5, 5])
+
     """
 
     def __init__(self, alpha: float, beta: float, gamma: float) -> None:

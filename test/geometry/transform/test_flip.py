@@ -9,43 +9,43 @@ from torch.autograd import gradcheck
 
 
 class TestVflip:
-    def smoke_test(self, device):
+    def smoke_test(self, device, dtype):
         f = kornia.Vflip()
         repr = "Vflip()"
         assert str(f) == repr
 
-    def test_vflip(self, device):
+    def test_vflip(self, device, dtype):
 
         f = kornia.Vflip()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor([[0., 1., 1.],
                                  [0., 0., 0.],
-                                 [0., 0., 0.]]).to(device)  # 3 x 3
+                                 [0., 0., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         assert (f(input) == expected).all()
 
-    def test_batch_vflip(self, device):
+    def test_batch_vflip(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
-        input = input.repeat(2, 1, 1).to(device)  # 2 x 3 x 3
+        input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         f = kornia.Vflip()
         expected = torch.tensor([[[0., 1., 1.],
                                   [0., 0., 0.],
-                                  [0., 0., 0.]]]).to(device)  # 1 x 3 x 3
+                                  [0., 0., 0.]]], device=device, dtype=dtype)  # 1 x 3 x 3
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
         assert (f(input) == expected).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
@@ -53,7 +53,7 @@ class TestVflip:
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         # Build jit trace
         op_trace = torch.jit.trace(op_script, (input, ))
@@ -61,13 +61,13 @@ class TestVflip:
         # Create new inputs
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [5., 5., 0.]]).to(device)  # 3 x 3
+                              [5., 5., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         expected = torch.tensor([[[5., 5., 0.],
                                   [0., 0., 0.],
-                                  [0., 0., 0.]]]).to(device)  # 3 x 3
+                                  [0., 0., 0.]]], device=device, dtype=dtype)  # 3 x 3
 
         expected = expected.repeat(2, 1, 1)
 
@@ -75,11 +75,11 @@ class TestVflip:
 
         assert_allclose(actual, expected)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -88,43 +88,43 @@ class TestVflip:
 
 class TestHflip:
 
-    def smoke_test(self, device):
+    def smoke_test(self, device, dtype):
         f = kornia.Hflip()
         repr = "Hflip()"
         assert str(f) == repr
 
-    def test_hflip(self, device):
+    def test_hflip(self, device, dtype):
 
         f = kornia.Hflip()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor([[0., 0., 0.],
                                  [0., 0., 0.],
-                                 [1., 1., 0.]]).to(device)  # 3 x 3
+                                 [1., 1., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         assert (f(input) == expected).all()
 
-    def test_batch_hflip(self, device):
+    def test_batch_hflip(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 1 x 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 1 x 3 x 3
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         f = kornia.Hflip()
         expected = torch.tensor([[[0., 0., 0.],
                                   [0., 0., 0.],
-                                  [1., 1., 0.]]]).to(device)  # 3 x 3
+                                  [1., 1., 0.]]], device=device, dtype=dtype)  # 3 x 3
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
         assert (f(input) == expected).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
@@ -132,7 +132,7 @@ class TestHflip:
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         # Build jit trace
         op_trace = torch.jit.trace(op_script, (input, ))
@@ -140,13 +140,13 @@ class TestHflip:
         # Create new inputs
         input = torch.tensor([[0., 0., 0.],
                               [5., 5., 0.],
-                              [0., 0., 0.]]).to(device)  # 3 x 3
+                              [0., 0., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         expected = torch.tensor([[[0., 0., 0.],
                                   [0., 5., 5.],
-                                  [0., 0., 0.]]]).to(device)  # 3 x 3
+                                  [0., 0., 0.]]], device=device, dtype=dtype)  # 3 x 3
 
         expected = expected.repeat(2, 1, 1)
 
@@ -154,11 +154,11 @@ class TestHflip:
 
         assert_allclose(actual, expected)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 
@@ -167,43 +167,43 @@ class TestHflip:
 
 class TestRot180:
 
-    def smoke_test(self, device):
+    def smoke_test(self, device, dtype):
         f = kornia.Rot180()
         repr = "Rot180()"
         assert str(f) == repr
 
-    def test_rot180(self, device):
+    def test_rot180(self, device, dtype):
 
         f = kornia.Rot180()
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         expected = torch.tensor([[1., 1., 0.],
                                  [0., 0., 0.],
-                                 [0., 0., 0.]]).to(device)  # 3 x 3
+                                 [0., 0., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         assert (f(input) == expected).all()
 
-    def test_batch_rot180(self, device):
+    def test_batch_rot180(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         f = kornia.Rot180()
         expected = torch.tensor([[1., 1., 0.],
                                  [0., 0., 0.],
-                                 [0., 0., 0.]]).to(device)  # 1 x 3 x 3
+                                 [0., 0., 0.]], device=device, dtype=dtype)  # 1 x 3 x 3
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
         assert (f(input) == expected).all()
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
+    def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> torch.Tensor:
 
@@ -211,7 +211,7 @@ class TestRot180:
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         # Build jit trace
         op_trace = torch.jit.trace(op_script, (input, ))
@@ -219,13 +219,13 @@ class TestRot180:
         # Create new inputs
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [5., 5., 0.]]).to(device)  # 3 x 3
+                              [5., 5., 0.]], device=device, dtype=dtype)  # 3 x 3
 
         input = input.repeat(2, 1, 1)  # 2 x 3 x 3
 
         expected = torch.tensor([[[0., 5., 5.],
                                   [0., 0., 0.],
-                                  [0., 0., 0.]]]).to(device)  # 3 x 3
+                                  [0., 0., 0.]]], device=device, dtype=dtype)  # 3 x 3
 
         expected = expected.repeat(2, 1, 1)
 
@@ -233,11 +233,11 @@ class TestRot180:
 
         assert_allclose(actual, expected)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
-                              [0., 1., 1.]]).to(device)  # 3 x 3
+                              [0., 1., 1.]], device=device, dtype=dtype)  # 3 x 3
 
         input = utils.tensor_to_gradcheck_var(input)  # to var
 

@@ -11,5 +11,3 @@ Module
 
 .. autoclass:: ExtractTensorPatches
 .. autoclass:: MaxBlurPool2d
-
-.. bibliography:: references.bib

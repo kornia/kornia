@@ -1,7 +1,11 @@
+from .base import (
+    AugmentationBase2D,
+    AugmentationBase3D
+)
 from .augmentation import (
-    AugmentationBase,
     CenterCrop,
     ColorJitter,
+    GaussianBlur,
     RandomAffine,
     RandomCrop,
     RandomErasing,
@@ -18,12 +22,20 @@ from .augmentation import (
     RandomMotionBlur
 )
 from .augmentation3d import (
-    AugmentationBase3D,
     RandomHorizontalFlip3D,
     RandomVerticalFlip3D,
     RandomDepthicalFlip3D,
     RandomRotation3D,
-    RandomAffine3D
+    RandomAffine3D,
+    RandomMotionBlur3D,
+    RandomCrop3D,
+    CenterCrop3D,
+    RandomEqualize3D,
+    RandomPerspective3D
+)
+from .mix_augmentation import (
+    RandomMixUp,
+    RandomCutMix
 )
 from kornia.enhance.normalize import (
     Normalize,
@@ -31,9 +43,10 @@ from kornia.enhance.normalize import (
 )
 
 __all__ = [
-    "AugmentationBase",
+    "AugmentationBase2D",
     "CenterCrop",
     "ColorJitter",
+    "GaussianBlur",
     "Normalize",
     "Denormalize",
     "RandomAffine",
@@ -50,10 +63,17 @@ __all__ = [
     "RandomSharpness",
     "RandomEqualize",
     "RandomMotionBlur",
+    "RandomMixUp",
+    "RandomCutMix",
     "AugmentationBase3D",
     "RandomDepthicalFlip3D",
     "RandomVerticalFlip3D",
     "RandomHorizontalFlip3D",
     "RandomRotation3D",
-    "RandomAffine3D"
+    "RandomMotionBlur3D",
+    "RandomAffine3D",
+    "RandomPerspective3D",
+    "RandomCrop3D",
+    "CenterCrop3D",
+    "RandomEqualize3D",
 ]

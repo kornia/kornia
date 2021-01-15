@@ -23,6 +23,7 @@ Kornia Documentation
    filters
    geometry
    losses
+   morphology
    utils
 
 .. toctree::
@@ -39,3 +40,5 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+.. bibliography:: references.bib

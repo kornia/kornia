@@ -4,19 +4,55 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.utils import one_hot
+from kornia.utils.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 
-def tversky_loss(input: torch.Tensor, target: torch.Tensor,
-                 alpha: float, beta: float, eps: float = 1e-8) -> torch.Tensor:
-    r"""Function that computes Tversky loss.
+def tversky_loss(input: torch.Tensor,
+                 target: torch.Tensor,
+                 alpha: float, beta: float,
+                 eps: float = 1e-8) -> torch.Tensor:
+    r"""Criterion that computes Tversky Coefficient loss.
 
-    See :class:`~kornia.losses.TverskyLoss` for details.
+    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
+
+    .. math::
+
+        \text{S}(P, G, \alpha; \beta) =
+          \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
+
+    Where:
+       - :math:`P` and :math:`G` are the predicted and ground truth binary
+         labels.
+       - :math:`\alpha` and :math:`\beta` control the magnitude of the
+         penalties for FPs and FNs, respectively.
+
+    Note:
+       - :math:`\alpha = \beta = 0.5` => dice coeff
+       - :math:`\alpha = \beta = 1` => tanimoto coeff
+       - :math:`\alpha + \beta = 1` => F beta coeff
+
+    Args:
+        input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        target (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+          is :math:`0 ≤ targets[i] ≤ C−1`.
+        alpha (float): the first coefficient in the denominator.
+        beta (float): the second coefficient in the denominator.
+        eps (float, optional): scalar for numerical stability. Default: 1e-8.
+
+    Return:
+        torch.Tensor: the computed loss.
+
+    Example:
+        >>> N = 5  # num_classes
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = tversky_loss(input, target, alpha=0.5, beta=0.5)
+        >>> output.backward()
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
@@ -50,29 +86,35 @@ def tversky_loss(input: torch.Tensor, target: torch.Tensor,
     numerator = intersection
     denominator = intersection + alpha * fps + beta * fns
     tversky_loss = numerator / (denominator + eps)
+
     return torch.mean(-tversky_loss + 1.)
 
 
 class TverskyLoss(nn.Module):
-    r"""Criterion that computes Tversky Coeficient loss.
+    r"""Criterion that computes Tversky Coefficient loss.
 
-    According to [1], we compute the Tversky Coefficient as follows:
+    According to :cite:`salehi2017tversky`, we compute the Tversky Coefficient as follows:
 
     .. math::
 
         \text{S}(P, G, \alpha; \beta) =
           \frac{|PG|}{|PG| + \alpha |P \setminus G| + \beta |G \setminus P|}
 
-    where:
+    Where:
        - :math:`P` and :math:`G` are the predicted and ground truth binary
          labels.
        - :math:`\alpha` and :math:`\beta` control the magnitude of the
          penalties for FPs and FNs, respectively.
 
-    Notes:
+    Note:
        - :math:`\alpha = \beta = 0.5` => dice coeff
        - :math:`\alpha = \beta = 1` => tanimoto coeff
        - :math:`\alpha + \beta = 1` => F beta coeff
+
+    Args:
+        alpha (float): the first coefficient in the denominator.
+        beta (float): the second coefficient in the denominator.
+        eps (float, optional): scalar for numerical stability. Default: 1e-8.
 
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
@@ -81,14 +123,11 @@ class TverskyLoss(nn.Module):
 
     Examples:
         >>> N = 5  # num_classes
-        >>> loss = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        >>> criterion = TverskyLoss(alpha=0.5, beta=0.5)
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = loss(input, target)
+        >>> output = criterion(input, target)
         >>> output.backward()
-
-    References:
-        [1]: https://arxiv.org/abs/1706.05721
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
@@ -97,8 +136,5 @@ class TverskyLoss(nn.Module):
         self.beta: float = beta
         self.eps: float = eps
 
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return tversky_loss(input, target, self.alpha, self.beta, self.eps)

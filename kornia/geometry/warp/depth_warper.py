@@ -3,8 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry.linalg import transform_points
-from kornia.geometry.linalg import relative_transformation
+from kornia.geometry.linalg import transform_points, inverse_transformation, compose_transformations
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.geometry.camera import PinholeCamera
@@ -36,7 +35,7 @@ class DepthWarper(nn.Module):
         padding_mode (str): padding mode for outside grid values
            'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool): interpolation flag. Default: True. See
-        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
+          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
     def __init__(self,
@@ -69,7 +68,7 @@ class DepthWarper(nn.Module):
 
     def compute_projection_matrix(
             self, pinhole_src: PinholeCamera) -> 'DepthWarper':
-        r"""Computes the projection matrix from the source to destinaion frame.
+        r"""Computes the projection matrix from the source to destination frame.
         """
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError("Member self._pinhole_dst expected to be of class "
@@ -80,8 +79,10 @@ class DepthWarper(nn.Module):
                             "PinholeCamera. Got {}".format(type(pinhole_src)))
         # compute the relative pose between the non reference and the reference
         # camera frames.
-        dst_trans_src: torch.Tensor = relative_transformation(
-            pinhole_src.extrinsics, self._pinhole_dst.extrinsics)
+        dst_trans_src: torch.Tensor = compose_transformations(
+            self._pinhole_dst.extrinsics,
+            inverse_transformation(pinhole_src.extrinsics),
+        )
 
         # compute the projection matrix between the non reference cameras and
         # the reference.
@@ -94,9 +95,9 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x, y, invd):
-        point = torch.FloatTensor([[[x], [y], [1.0], [invd]]])
-        flow = torch.matmul(
-            self._dst_proj_src, point.to(self._dst_proj_src.device))
+        point = torch.tensor(
+            [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype)
+        flow = torch.matmul(self._dst_proj_src, point)
         z = 1. / flow[:, 2]
         x = (flow[:, 0] * z)
         y = (flow[:, 1] * z)
@@ -143,18 +144,18 @@ class DepthWarper(nn.Module):
         dtype: torch.dtype = depth_src.dtype
 
         # expand the base coordinate grid according to the input batch size
-        pixel_coords: torch.Tensor = self.grid.to(device).to(dtype).expand(
+        pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(
             batch_size, -1, -1, -1)  # BxHxWx3
 
         # reproject the pixel coordinates to the camera frame
         cam_coords_src: torch.Tensor = pixel2cam(
             depth_src,
-            self._pinhole_src.intrinsics_inverse().to(dtype),
+            self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype),
             pixel_coords)  # BxHxWx3
 
         # reproject the camera coordinates to the pixel
         pixel_coords_src: torch.Tensor = cam2pixel(
-            cam_coords_src, self._dst_proj_src.to(dtype))  # (B*N)xHxWx2
+            cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype))  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
         pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(
@@ -182,11 +183,13 @@ class DepthWarper(nn.Module):
 
         Example:
             >>> # pinholes camera models
-            >>> pinhole_dst = kornia.PinholeCamera(...)
-            >>> pinhole_src = kornia.PinholeCamera(...)
+            >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+            ... torch.tensor([32]), torch.tensor([32]))
+            >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+            ... torch.tensor([32]), torch.tensor([32]))
             >>> # create the depth warper, compute the projection matrix
-            >>> warper = kornia.DepthWarper(pinhole_dst, height, width)
-            >>> warper.compute_projection_matrix(pinhole_src)
+            >>> warper = DepthWarper(pinhole_dst, 32, 32)
+            >>> _ = warper.compute_projection_matrix(pinhole_src)
             >>> # warp the destionation frame to reference by depth
             >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
@@ -212,13 +215,14 @@ def depth_warp(pinhole_dst: PinholeCamera,
 
     Example:
         >>> # pinholes camera models
-        >>> pinhole_dst = kornia.PinholeCamera(...)
-        >>> pinhole_src = kornia.PinholeCamera(...)
+        >>> pinhole_dst = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+        ... torch.tensor([32]), torch.tensor([32]))
+        >>> pinhole_src = PinholeCamera(torch.randn(1, 4, 4), torch.randn(1, 4, 4),
+        ... torch.tensor([32]), torch.tensor([32]))
         >>> # warp the destionation frame to reference by depth
         >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
         >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
-        >>> image_src = kornia.depth_warp(pinhole_dst, pinhole_src,
-        >>>     depth_src, image_dst, height, width)  # NxCxHxW
+        >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
     """
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     warper.compute_projection_matrix(pinhole_src)

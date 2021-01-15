@@ -23,7 +23,7 @@ class SOSNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
-        >>> sosnet = kornia.feature.SOSNet()
+        >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
 
@@ -62,7 +62,7 @@ class SOSNet(nn.Module):
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 urls['lib'], map_location=lambda storage, loc: storage
             )
-            self.load_state_dict(pretrained_dict['state_dict'], strict=True)
+            self.load_state_dict(pretrained_dict, strict=True)
 
         return
 

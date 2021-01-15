@@ -14,3 +14,4 @@ kornia.geometry.warp
 .. autofunction:: warp_grid
 .. autofunction:: normalize_homography
 .. autofunction:: normal_transform_pixel
+.. autofunction:: normal_transform_pixel3d

@@ -13,6 +13,7 @@ The functions in this section perform normalisations and intensity transformatio
 .. autofunction:: add_weighted
 
 .. autofunction:: normalize
+.. autofunction:: normalize_min_max
 .. autofunction:: denormalize
 .. autofunction:: zca_mean
 .. autofunction:: zca_whiten
@@ -20,6 +21,11 @@ The functions in this section perform normalisations and intensity transformatio
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
+
+.. autofunction:: solarize
+.. autofunction:: posterize
+.. autofunction:: sharpness
+.. autofunction:: equalize
 
 Modules
 -------
