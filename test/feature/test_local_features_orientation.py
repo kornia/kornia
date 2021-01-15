@@ -115,6 +115,14 @@ class TestOriNet:
         ori = OriNet().to(device=device, dtype=patches.dtype)
         assert gradcheck(ori, (patches, ), raise_exception=True)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 32, 32
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        tfeat = OriNet(True).to(patches.device, patches.dtype).eval()
+        tfeat_jit = torch.jit.script(OriNet(True).to(patches.device, patches.dtype).eval())
+        assert_allclose(tfeat_jit(patches), tfeat(patches))
+
 
 class TestLAFOrienter:
     def test_shape(self, device):

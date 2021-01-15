@@ -123,3 +123,13 @@ class TestLAFAffNetShapeEstimator:
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
         assert gradcheck(LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype), (laf, patches),
                          raise_exception=True, rtol=1e-3, atol=1e-3, nondet_tol=1e-4)
+
+    @pytest.mark.jit
+    @pytest.mark.skip("Laf type is not a torch.Tensor????")
+    def test_jit(self, device, dtype):
+        B, C, H, W = 1, 1, 32, 32
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        laf = torch.tensor([[[[8., 0., 16.], [0., 8., 16.]]]], device=device)
+        laf_estimator = LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype).eval()
+        laf_estimator_jit = torch.jit.script(LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype).eval())
+        assert_allclose(laf_estimator(laf, patches), laf_estimator_jit(laf, patches))
