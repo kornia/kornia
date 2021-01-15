@@ -5,7 +5,7 @@ from torch.nn.functional import mse_loss as mse
 
 def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Creates a function that calculates the PSNR between 2 images.
-    
+
     PSNR is Peek Signal to Noise Ratio, which is similar to mean squared error.
     Given an m x n image, the PSNR is:
 
@@ -40,7 +40,7 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Expected torch.Tensor but got {type(target)}.")
-    
+
     if not isinstance(target, torch.Tensor):
         raise TypeError(f"Expected torch.Tensor but got {type(input)}.")
 
@@ -48,13 +48,13 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
         raise TypeError(f"Expected tensors of equal shapes, but got {input.shape} and {target.shape}")
 
     return 10. * torch.log10(max_val ** 2 / mse(input, target, reduction='mean'))
-    
+
 
 def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Function that computes the PSNR loss.
-    
+
     The loss is computed as follows:
-    
+
      .. math::
 
         \text{loss} = -\text{psnr(x, y)}
@@ -78,18 +78,17 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     return -1. * psnr(input, target, max_val)
 
 
-
 class PSNRLoss(nn.Module):
     r"""Creates a criterion that calculates the PSNR loss.
 
     The loss is computed as follows:
-    
+
      .. math::
 
         \text{loss} = -\text{psnr(x, y)}
 
     See :meth:`~kornia.losses.psnr` for details abut PSNR.
-    
+
     Shape:
         - Input: arbitrary dimensional tensor :math:`(*)`.
         - Target: arbitrary dimensional tensor :math:`(*)` same shape as input.

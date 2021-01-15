@@ -154,14 +154,14 @@ def binary_focal_loss_with_logits(
         reduction: str = 'none',
         eps: float = 1e-8) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
-    
+
     .. math::
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
     where:
        - :math:`p_t` is the model's estimated probability for each class.
-       
+
     Args:
         input (torch.Tensor): input data tensor with shape :math:`(N, 1, *)`.
         target (torch.Tensor): the target tensor with shape :math:`(N, 1, *)`.

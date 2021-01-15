@@ -510,7 +510,7 @@ class TestTotalVariation:
     ])
     def test_tv_on_3d(self, device, dtype, input, expected):
         actual = kornia.losses.total_variation(input.to(device, dtype))
-        assert_allclose(actual, expected.to(device,dtype))
+        assert_allclose(actual, expected.to(device, dtype))
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize('input, expected', [
@@ -554,7 +554,7 @@ class TestTotalVariation:
     def test_tv_on_invalid_types(self, device, dtype, input):
         with pytest.raises(TypeError) as ex_info:
             kornia.losses.total_variation(input)
-    
+
     def test_jit(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
 
@@ -575,7 +575,7 @@ class TestTotalVariation:
         image = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         image = utils.tensor_to_gradcheck_var(image)  # to var
         assert gradcheck(kornia.losses.total_variation, (image,),
-            raise_exception=True)
+                         raise_exception=True)
 
 
 class TestPSNRLoss:
@@ -601,40 +601,39 @@ class TestPSNRLoss:
         criterion = kornia.losses.PSNRLoss(1.0).to(device, dtype)
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
-        
+
     def test_metric(self, device, dtype):
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr(input, 1.2 * input, 2.)
         assert_allclose(actual, expected)
-        
+
     def test_loss(self, device, dtype):
         input = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(-20.0, device=device, dtype=dtype)
         actual = kornia.losses.psnr_loss(input, 1.2 * input, 2.)
         assert_allclose(actual, expected)
 
-
     def test_jit(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        
+
         args = (input, target, 1.)
-        
+
         op = kornia.losses.psnr_loss
         op_script = torch.jit.script(op)
-        
+
         assert_allclose(op(*args), op_script(*args))
 
     def test_module(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        
+
         args = (input, target, 1.)
-        
+
         op = kornia.losses.psnr_loss
         op_module = kornia.losses.PSNRLoss(1.)
-        
+
         assert_allclose(op(*args), op_module(input, target))
 
     def test_gradcheck(self, device, dtype):

@@ -46,7 +46,7 @@ def js_div_loss_2d(
           will be applied, `mean`: the sum of the output will be divided by
           the number of elements in the output, `sum`: the output will be
           summed. Default: `mean`.
-    
+
     Examples:
         >>> input = torch.full((1, 1, 2, 4), 0.125)
         >>> loss = js_div_loss_2d(input, input)
@@ -71,7 +71,7 @@ def kl_div_loss_2d(
           will be applied, `mean`: the sum of the output will be divided by
           the number of elements in the output, `sum`: the output will be
           summed. Default: `mean`.
-              
+
     Examples:
         >>> input = torch.full((1, 1, 2, 4), 0.125)
         >>> loss = js_div_loss_2d(input, input)

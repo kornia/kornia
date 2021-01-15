@@ -4,10 +4,10 @@ import torch.nn as nn
 
 def total_variation(img: torch.Tensor) -> torch.Tensor:
     r"""Function that computes Total Variation according to [1].
-    
+
     Args:
         img (torch.Tensor): the input image with shape :math:`(N, C, H, W)` or :math:`(C, H, W)`.
-    
+
     Return:
         torch.Tensor: a scalar with the computer loss.
 
@@ -28,13 +28,13 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]
-    
+
     reduce_axes = (-3, -2, -1)
     res1 = pixel_dif1.abs().sum(dim=reduce_axes)
     res2 = pixel_dif2.abs().sum(dim=reduce_axes)
-    
+
     return res1 + res2
-    
+
 
 class TotalVariation(nn.Module):
     r"""Computes the Total Variation according to [1].
