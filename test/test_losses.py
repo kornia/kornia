@@ -579,54 +579,67 @@ class TestTotalVariation:
 
 
 class TestPSNRLoss:
-    def test_smoke(self, device):
-        input = torch.rand(2, 3, 3, 2).to(device)
-        target = torch.rand(2, 3, 3, 2).to(device)
+    def test_smoke(self, device, dtype):
+        input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
 
         criterion = kornia.losses.PSNRLoss(1.0)
         loss = criterion(input, target)
 
-        assert loss.shape == tuple()
+        assert loss is not None
 
-    def test_same_input(self, device):
-        input = torch.rand(2, 3, 3, 2).to(device)
-        target = input.clone()
-
-        criterion = kornia.losses.PSNRLoss(1.0)
-        loss = criterion(input, target)
-
-        assert_allclose(loss, torch.tensor(float('inf')).to(device))
-
-    def test_type(self):
+    def test_type(self, device, dtype):
         # Expecting an exception
         # since we pass integers instead of torch tensors
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0).to(device, dtype)
         with pytest.raises(Exception) as e:
             criterion(1, 2)
 
-    def test_shape(self):
+    def test_shape(self, device, dtype):
         # Expecting an exception
         # since we pass tensors of different shapes
-        criterion = kornia.losses.PSNRLoss(1.0)
+        criterion = kornia.losses.PSNRLoss(1.0).to(device, dtype)
         with pytest.raises(Exception) as e:
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+        
+    def test_metric(self, device, dtype):
+        input = torch.ones(1, device=device, dtype=dtype)
+        expected = torch.tensor(20.0, device=device, dtype=dtype)
+        actual = kornia.losses.psnr(input, 1.2 * input, 2.)
+        assert_allclose(actual, expected)
+        
+    def test_loss(self, device, dtype):
+        input = torch.ones(1, device=device, dtype=dtype)
+        expected = torch.tensor(-20.0, device=device, dtype=dtype)
+        actual = kornia.losses.psnr_loss(input, 1.2 * input, 2.)
+        assert_allclose(actual, expected)
 
-    def test_simple(self, device):
-        assert_allclose(
-            kornia.losses.psnr_loss(
-                torch.ones(1).to(device),
-                1.2 * torch.ones(1).to(device),
-                2),
-            torch.tensor(20.0).to(device))
 
-    @pytest.mark.skip(reason="TODO: implement me")
-    def test_jit(self):
-        pass
+    def test_jit(self, device, dtype):
+        input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        
+        args = (input, target, 1.)
+        
+        op = kornia.losses.psnr_loss
+        op_script = torch.jit.script(op)
+        
+        assert_allclose(op(*args), op_script(*args))
 
-    def test_gradcheck(self, device):
-        input = torch.rand(2, 3, 3, 2).to(device)
-        target = torch.rand(2, 3, 3, 2).to(device)
+    def test_module(self, device, dtype):
+        input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        
+        args = (input, target, 1.)
+        
+        op = kornia.losses.psnr_loss
+        op_module = kornia.losses.PSNRLoss(1.)
+        
+        assert_allclose(op(*args), op_module(input, target))
 
+    def test_gradcheck(self, device, dtype):
+        input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         target = utils.tensor_to_gradcheck_var(target)  # to var
         assert gradcheck(

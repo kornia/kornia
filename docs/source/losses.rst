@@ -7,6 +7,7 @@ Reconstruction
 --------------
 
 .. autofunction:: ssim
+.. autofunction:: psnr
 .. autofunction:: psnr_loss
 .. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
