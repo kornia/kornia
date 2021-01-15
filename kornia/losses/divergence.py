@@ -38,18 +38,20 @@ def js_div_loss_2d(
 ):
     r"""Calculates the Jensen-Shannon divergence loss between heatmaps.
 
-    Arguments:
-        input (torch.Tensor): the input tensor.
-        target (torch.Tensor): the target tensor.
+    Args:
+        input (torch.Tensor): the input tensor with shape :math:`(B, N, H, W)`.
+        target (torch.Tensor): the target tensor with shape :math:`(B, N, H, W)`.
         reduction (string, optional): Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed. Default: ``'mean'``.
-
-    Shape:
-        - Input: :math:`(B, N, H, W)`
-        - Target: :math:`(B, N, H, W)`, same shape as the input
+          output: `none` | `mean` | `sum`. `none`: no reduction
+          will be applied, `mean`: the sum of the output will be divided by
+          the number of elements in the output, `sum`: the output will be
+          summed. Default: `mean`.
+    
+    Examples:
+        >>> input = torch.full((1, 1, 2, 4), 0.125)
+        >>> loss = js_div_loss_2d(input, input)
+        >>> loss.item()
+        0.0
     """
     return _reduce_loss(_js_div_2d(target, input), reduction)
 
@@ -61,17 +63,19 @@ def kl_div_loss_2d(
 ):
     r"""Calculates the Kullback-Leibler divergence loss between heatmaps.
 
-    Arguments:
-        input (torch.Tensor): the input tensor.
-        target (torch.Tensor): the target tensor.
+    Args:
+        input (torch.Tensor): the input tensor with shape :math:`(B, N, H, W)`.
+        target (torch.Tensor): the target tensor with shape :math:`(B, N, H, W)`.
         reduction (string, optional): Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed. Default: ``'mean'``.
-
-    Shape:
-        - Input: :math:`(B, N, H, W)`
-        - Target: :math:`(B, N, H, W)`, same shape as the input
+          output: `none` | `mean` | `sum`. `none`: no reduction
+          will be applied, `mean`: the sum of the output will be divided by
+          the number of elements in the output, `sum`: the output will be
+          summed. Default: `mean`.
+              
+    Examples:
+        >>> input = torch.full((1, 1, 2, 4), 0.125)
+        >>> loss = js_div_loss_2d(input, input)
+        >>> loss.item()
+        0.0
     """
     return _reduce_loss(_kl_div_2d(target, input), reduction)
