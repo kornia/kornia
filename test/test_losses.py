@@ -338,14 +338,13 @@ class TestDepthSmoothnessLoss:
 
 
 class TestSSIMLoss:
-
     def test_ssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
         img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
 
-        ssim1 = kornia.ssim(img1, img1, window_size=5, reduction="none")
-        ssim2 = kornia.ssim(img2, img2, window_size=5, reduction="none")
+        ssim1 = kornia.losses.ssim_loss(img1, img1, window_size=5, reduction="none")
+        ssim2 = kornia.losses.ssim_loss(img2, img2, window_size=5, reduction="none")
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_allclose(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
@@ -358,11 +357,34 @@ class TestSSIMLoss:
         # input data
         img = torch.rand(batch_shape, device=device, dtype=dtype)
 
-        ssim = kornia.losses.SSIM(window_size, reduction_type)
-        loss = ssim(img, img)
+        loss = kornia.losses.ssim_loss(
+            img, img, window_size, reduction=reduction_type)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_allclose(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+    
+    def test_jit(self, device, dtype):
+        img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        
+        args = (img1, img2, 5, 1.0, 1e-6, 'mean')
+
+        op = kornia.losses.ssim_loss
+        op_script = torch.jit.script(op)
+
+        assert_allclose(op(*args), op_script(*args))
+
+    def test_module(self, device, dtype):
+        img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        
+        args = (img1, img2, 5, 1.0, 1e-12, 'mean')
+        
+        op = kornia.losses.ssim_loss
+        op_module = kornia.losses.SSIMLoss(*args[2:])
+
+        assert_allclose(op(*args), op_module(*args[:2]))
+
 
     def test_gradcheck(self, device, dtype):
         # input data
@@ -373,7 +395,7 @@ class TestSSIMLoss:
         # evaluate function gradient
         img1 = utils.tensor_to_gradcheck_var(img1)  # to var
         img2 = utils.tensor_to_gradcheck_var(img2, requires_grad=False)  # to var
-        assert gradcheck(kornia.ssim, (img1, img2, window_size), raise_exception=True)
+        assert gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True)
 
 
 class TestDivergenceLoss:

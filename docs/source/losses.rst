@@ -7,6 +7,7 @@ Reconstruction
 --------------
 
 .. autofunction:: ssim
+.. autofunction:: ssim_loss
 .. autofunction:: psnr
 .. autofunction:: psnr_loss
 .. autofunction:: total_variation
@@ -33,6 +34,7 @@ Module
 .. autoclass:: TverskyLoss
 .. autoclass:: FocalLoss
 .. autoclass:: SSIM
+.. autoclass:: SSIMLoss
 .. autoclass:: InverseDepthSmoothnessLoss
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss

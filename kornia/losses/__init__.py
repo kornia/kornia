@@ -1,4 +1,4 @@
-from .ssim import SSIM, ssim
+from .ssim import SSIM, ssim, SSIMLoss, ssim_loss
 from .dice import DiceLoss, dice_loss
 from .tversky import TverskyLoss, tversky_loss
 from .focal import FocalLoss, focal_loss, BinaryFocalLossWithLogits, binary_focal_loss_with_logits
