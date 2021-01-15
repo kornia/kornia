@@ -85,4 +85,7 @@ Module
    :members: forward
 .. autoclass:: OriNet
    :members: forward
+.. autoclass:: LAFAffNetShapeEstimator
+   :members: forward
+
 

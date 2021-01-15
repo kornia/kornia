@@ -37,7 +37,7 @@ from .hardnet import HardNet
 from .tfeat import TFeat
 from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
-from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
+from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator, LAFAffNetShapeEstimator
 from .orientation import LAFOrienter, PatchDominantGradientOrientation, OriNet
 from .matching import match_nn, match_mnn, match_snn, match_smnn
 
@@ -73,6 +73,7 @@ __all__ = [
     "HardNet",
     "TFeat",
     "OriNet",
+    "LAFAffNetShapeEstimator",
     "PassLAF",
     "ScaleSpaceDetector",
     "LAFAffineShapeEstimator",

@@ -77,3 +77,49 @@ class TestLAFAffineShapeEstimator:
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
         assert gradcheck(LAFAffineShapeEstimator(11).to(device), (laf, patches),
                          raise_exception=True, rtol=1e-3, atol=1e-3, nondet_tol=1e-4)
+
+
+class TestLAFAffNetShapeEstimator:
+    def test_shape(self, device):
+        inp = torch.rand(1, 1, 32, 32, device=device)
+        laf = torch.rand(1, 1, 2, 3, device=device)
+        ori = LAFAffNetShapeEstimator(False).to(device).eval()
+        out = ori(laf, inp)
+        assert out.shape == laf.shape
+        
+    def test_pretrained(self, device):
+        inp = torch.rand(1, 1, 32, 32, device=device)
+        laf = torch.rand(1, 1, 2, 3, device=device)
+        ori = LAFAffNetShapeEstimator(True).to(device).eval()
+        out = ori(laf, inp)
+        assert out.shape == laf.shape
+
+    def test_shape_batch(self, device):
+        inp = torch.rand(2, 1, 32, 32, device=device)
+        laf = torch.rand(2, 5, 2, 3, device=device)
+        ori = LAFAffNetShapeEstimator().to(device).eval()
+        out = ori(laf, inp)
+        assert out.shape == laf.shape
+
+    def test_print(self, device):
+        sift = LAFAffNetShapeEstimator()
+        sift.__repr__()
+
+    def test_toy(self, device):
+        aff = LAFAffNetShapeEstimator(True).to(device).eval()
+        inp = torch.zeros(1, 1, 32, 32, device=device)
+        inp[:, :, 15:-15, 9:-9] = 1
+        laf = torch.tensor([[[[20., 0., 16.], [0., 20., 16.]]]], device=device)
+        new_laf = aff(laf, inp)
+        expected = torch.tensor([[[[40.8758, 0., 16.], [-0.3824,  9.7857, 16.]]]], device=device)
+        assert_allclose(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.skip("jacobian not well computed")
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 1, 1, 35, 35
+        patches = torch.rand(batch_size, channels, height, width, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        laf = torch.tensor([[[[8., 0., 16.], [0., 8., 16.]]]], device=device)
+        laf = utils.tensor_to_gradcheck_var(laf)  # to var
+        assert gradcheck(LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype), (laf, patches),
+                         raise_exception=True, rtol=1e-3, atol=1e-3, nondet_tol=1e-4)
