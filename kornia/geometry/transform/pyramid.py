@@ -293,7 +293,7 @@ def build_pyramid(
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
+        - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
