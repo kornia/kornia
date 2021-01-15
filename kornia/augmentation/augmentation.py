@@ -1252,6 +1252,7 @@ class GaussianBlur(AugmentationBase2D):
                   [0.6329, 0.6732, 0.5634, 0.4037, 0.2049],
                   [0.8307, 0.6753, 0.7147, 0.5768, 0.7097]]]])
     """
+
     def __init__(self, kernel_size: Tuple[int, int],
                  sigma: Tuple[float, float],
                  border_type: str = 'reflect',
