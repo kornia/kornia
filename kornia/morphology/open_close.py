@@ -1,34 +1,28 @@
-# Libraries
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from kornia.morphology.basic_operators import dilation, erosion
 
 
 # open
 def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the opened image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
-    r"""
+    The kernel must have 2 dimensions, each one defined by an odd number.
 
-        Returns the opened image, (that means, erosion after a dilation) applying the same kernel in each channel.
-        The kernel must have 2 dimensions, each one defined by an odd number.
+    Args:
+       tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
-        Args
+    Returns:
+       torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
-           tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-           kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
-
-        Returns:
-
-           torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
-
-        Example:
-
-            >>> tensor = torch.rand(1, 3, 5, 5)
-            >>> kernel = torch.ones(3, 3)
-            >>> opened_img = open(tensor, kernel)
-
-        """
+    Example:
+        >>> tensor = torch.rand(1, 3, 5, 5)
+        >>> kernel = torch.ones(3, 3)
+        >>> opened_img = open(tensor, kernel)
+    """
 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
@@ -51,28 +45,22 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
 # close
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    r"""Returns the closed image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
-    r"""
+    The kernel must have 2 dimensions, each one defined by an odd number.
 
-        Returns the closed image, (that means, dilation after an erosion) applying the same kernel in each channel.
-        The kernel must have 2 dimensions, each one defined by an odd number.
+    Args:
+       tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
 
-        Args
+    Returns:
+       torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
 
-           tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-           kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
-
-        Returns:
-
-           torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
-
-        Example:
-
-            >>> tensor = torch.rand(1, 3, 5, 5)
-            >>> kernel = torch.ones(3, 3)
-            >>> closed_img = close(tensor, kernel)
-
-        """
+    Example:
+        >>> tensor = torch.rand(1, 3, 5, 5)
+        >>> kernel = torch.ones(3, 3)
+        >>> closed_img = close(tensor, kernel)
+    """
 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}".format(
