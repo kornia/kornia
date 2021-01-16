@@ -633,69 +633,116 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
     return torch.clamp(res, 0, 1)
 
 
-def _build_lut(histo, step):
-    # Compute the cumulative sum, shifting by step // 2
-    # and then normalization by step.
-    lut = (torch.cumsum(histo, 0) + (step // 2)) // step
-    # Shift lut, prepending with 0.
-    lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
-    # Clip the counts to be in range.  This is done
-    # in the C code for image.point.
-    return torch.clamp(lut, 0, 255)
+def _equalize_channels(
+    im: torch.Tensor,
+    bins: Optional[int] = None,
+    minimum: Optional[Union[float, int]] = None,
+    maximum: Optional[Union[float, int]] = None,
+    dtype=None,
+) -> torch.Tensor:
+    if im.is_floating_point() and bins is None:
+        raise ValueError(f"`bins` are required for floating point inputs")
+
+    # infer the bins from the dynamic range of an integer tensor
+    im_min = im.min() if minimum is None else minimum
+    im_max = im.max() if maximum is None else maximum
+    im_bins = im_max - im_min + 1 if bins is None else bins
+
+    # convert to floating point and build a histogram
+    if dtype is None and not im.is_floating_point():
+        im = im.to(torch.float)
+    elif dtype is not None:
+        im = im.to(dtype)
+
+    hist = torch.histc(im, bins=im_bins, min=im_min, max=im_max)
+
+    # start from zero and drop the last element so we have a 0.5 mean
+    hist = torch.cat([torch.zeros(1, dtype=hist.dtype, device=hist.device), hist[:-1]])
+
+    # build a lookup table normalized to [0, 1]
+    lut = torch.cumsum(hist, 0) / hist.sum()
+
+    # expand to match the input tensor dims to avoid reshaping
+    lut = lut.expand(*im.shape[:-1] + lut.shape)
+
+    # gather along the channel dimension
+    return torch.gather(lut, im.ndim - 1, im - im_min)
 
 
-# Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: torch.Tensor) -> torch.Tensor:
-    r"""Scale the data in the channel to implement equalize.
+def _equalize_batch(
+    im: torch.Tensor,
+    per_channel: bool = False,
+    per_image: bool = True,
+    bins: Optional[int] = None,
+    minimum: Optional[Union[float, int]] = None,
+    maximum: Optional[Union[float, int]] = None,
+    dtype=torch.float,
+) -> torch.Tensor:
+    r"""Equalize a channels last tensor to :math:`[0,1]`
 
     Args:
-        input (torch.Tensor): image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
+        input (torch.Tensor): tensor with shape :math:`(*, C)` or :math:`(B, *, C)`
+        per_channel (bool): apply normalization per channel, otherwise normalize across channels
+        per_image (bool): apply normalization per image, otherwise normalize across the batch
+        bins (int): the number of bins, this will be inferred from min/max for integer tensors
+        minimum (number): values lower than the minimum will be transformed to zero
+        maximum (number): values lower than the maximum will be transformed to one
+        dtype: the datatype of the result tensor
     Returns:
-        torch.Tensor: image tensor with the batch in the zero position.
+        torch.Tensor: a tensor
     """
-    min_ = im.min()
-    max_ = im.max()
-
-    if min_.item() < 0. and not torch.isclose(min_, torch.tensor(0., dtype=min_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}."
+    if per_image:
+        return torch.stack(
+            [
+                _equalize_batch(
+                    x,
+                    per_channel=per_channel,
+                    per_image=False,  # break recursion
+                    bins=bins,
+                    minimum=minimum,
+                    maximum=maximum,
+                    dtype=dtype,
+                )
+                for x in im
+            ]
         )
-    if max_.item() > 1. and not torch.isclose(max_, torch.tensor(1., dtype=max_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}."
+    elif per_channel:
+        return torch.cat(
+            [
+                _equalize_channels(
+                    im[..., c, None],  # select a single channel and preserve the index
+                    bins=bins,
+                    minimum=minimum,
+                    maximum=maximum,
+                    dtype=dtype,
+                )
+                for c in range(im.shape[-1])
+            ],
+            dim=-1,
         )
-
-    ndims = len(im.shape)
-    if ndims not in (2, 3):
-        raise TypeError(f"Input tensor must have 2 or 3 dimensions. Found {ndims}.")
-
-    im = im * 255
-    # Compute the histogram of the image channel.
-    histo = torch.histc(im, bins=256, min=0, max=255)
-    # For the purposes of computing the step, filter out the nonzeros.
-    nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-    step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255
-
-    # If step is zero, return the original image.  Otherwise, build
-    # lut from the full histogram and step and then index from it.
-    if step == 0:
-        result = im
     else:
-        # can't index using 2d index. Have to flatten and then reshape
-        result = torch.gather(_build_lut(histo, step), 0, im.flatten().long())
-        result = result.reshape_as(im)
+        return _equalize_channels(
+            im,
+            bins=bins,
+            minimum=minimum,
+            maximum=maximum,
+            dtype=dtype,
+        )
 
-    return result / 255.
 
-
-def equalize(input: torch.Tensor) -> torch.Tensor:
+def equalize(
+    input: torch.Tensor,
+    bins: Optional[int] = 256,
+    minimum: Optional[Union[float, int]] = 0.0,
+    maximum: Optional[Union[float, int]] = 1.0,
+) -> torch.Tensor:
     r"""Apply equalize on the input tensor.
-
-    Implements Equalize function from PIL using PyTorch ops based on uint8 format:
-    https://github.com/tensorflow/tpu/blob/5f71c12a020403f863434e96982a840578fdd127/models/official/efficientnet/autoaugment.py#L355
 
     Args:
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        bins (int): the number of bins to use for the histogram, if `None` this will be computed for integer tensors
+        minimum (float or int): the minimum value in the histogram, if `None` this will be derived for each image and channel
+        maximum (float or int): the maximum value in the histogram, if `None` this will be derived for each image and channel
 
     Returns:
         torch.Tensor: Sharpened image or images with shape as the input.
@@ -713,38 +760,34 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
                   [0.5185, 0.6977, 0.8000]]]])
     """
     input = _to_bchw(input)
-
-    res = []
-    for image in input:
-        # Assumes RGB for now.  Scales each channel independently
-        # and then stacks the result.
-        scaled_image = torch.stack([_scale_channel(image[i, :, :]) for i in range(len(image))])
-        res.append(scaled_image)
-    return torch.stack(res)
+    input = input.permute(0, 2, 3, 1)
+    input = _equalize_batch(input, bins=bins, minimum=minimum, maximum=maximum)
+    input = input.permute(0, 3, 1, 2)
+    return input
 
 
-def equalize3d(input: torch.Tensor) -> torch.Tensor:
+def equalize3d(
+    input: torch.Tensor,
+    bins=256,
+    minimum: Optional[Union[float, int]] = 0.0,
+    maximum: Optional[Union[float, int]] = 1.0,
+) -> torch.Tensor:
     r"""Equalizes the values for a 3D volumetric tensor.
-
-    Implements Equalize function for a sequence of images using PyTorch ops based on uint8 format:
-    https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L352
 
     Args:
         input (torch.Tensor): image tensor with shapes like :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)` to equalize.
+        bins (int): the number of bins to use when building the histogram
+        minimum (float or int): the minimum value in the histogram, if `None` this will be derived for each image and channel
+        maximum (float or int): the maximum value in the histogram, if `None` this will be derived for each image and channel
 
     Returns:
         torch.Tensor: Sharpened image or images with same shape as the input.
     """
     input = _to_bcdhw(input)
-
-    res = []
-    for volume in input:
-        # Assumes RGB for now.  Scales each channel independently
-        # and then stacks the result.
-        scaled_input = torch.stack([_scale_channel(volume[i, :, :, :]) for i in range(len(volume))])
-        res.append(scaled_input)
-
-    return torch.stack(res)
+    input = input.permute(0, 2, 3, 4, 1)
+    input = _equalize_batch(input, bins=bins, minimum=minimum, maximum=maximum)
+    input = input.permute(0, 3, 1, 2, 3)
+    return input
 
 
 class AdjustSaturation(nn.Module):
