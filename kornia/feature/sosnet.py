@@ -55,7 +55,7 @@ class SOSNet(nn.Module):
             nn.BatchNorm2d(128, affine=False),
         )
         self.desc_norm = nn.Sequential(
-            nn.LocalResponseNorm(256, alpha=256, beta=0.5, k=0)
+            nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0)
         )
         # load pretrained model
         if pretrained:

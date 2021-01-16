@@ -64,7 +64,7 @@ class PatchDominantGradientOrientation(nn.Module):
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
             torch.Tensor: angle shape [B] """
-        if not torch.is_tensor(patch):
+        if not isinstance(patch, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patch)))
         if not len(patch.shape) == 4:
@@ -218,7 +218,7 @@ class LAFOrienter(nn.Module):
             torch.Tensor: laf_out, shape [BxNx2x3] """
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
-        if not torch.is_tensor(img):
+        if not isinstance(img, torch.Tensor):
             raise TypeError("img type is not a torch.Tensor. Got {}"
                             .format(type(img)))
         if len(img.shape) != 4:

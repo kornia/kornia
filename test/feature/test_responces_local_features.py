@@ -249,7 +249,7 @@ class TestBlobHessian:
         assert gradcheck(kornia.feature.hessian_response, (img),
                          raise_exception=True, nondet_tol=1e-4)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
+    @pytest.mark.jit
     def test_jit(self, device):
         @torch.jit.script
         def op_script(input):

@@ -29,3 +29,11 @@ class TestSOSNet:
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
         assert gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4,
                          raise_exception=True, )
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 32, 32
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        model = SOSNet().to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(SOSNet().to(patches.device, patches.dtype).eval())
+        assert_allclose(model(patches), model_jit(patches))

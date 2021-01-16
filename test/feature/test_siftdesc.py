@@ -65,3 +65,12 @@ class TestSIFTDescriptor:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(sift_describe, (patches, 13),
                          raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.jit
+    @pytest.mark.skip("Compiled functions can't take variable number")
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 41, 41
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
+        assert_allclose(model(patches), model_jit(patches))
