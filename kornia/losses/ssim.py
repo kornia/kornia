@@ -130,7 +130,7 @@ def ssim_loss(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     ssim_map: torch.Tensor = ssim(img1, img2, window_size, max_val, eps)
 
     # compute and reduce the loss
-    loss = torch.clamp(1. - ssim_map, min=0, max=1) / 2.
+    loss = torch.clamp((1. - ssim_map) / 2, min=0, max=1)
 
     if reduction == "mean":
         loss = torch.mean(loss)
