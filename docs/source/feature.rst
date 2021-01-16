@@ -26,6 +26,7 @@ Descriptors
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
+.. autoclass:: TFeat
 .. autoclass:: SOSNet
 
 
@@ -82,3 +83,9 @@ Module
    :members: forward
 .. autoclass:: PatchDominantGradientOrientation
    :members: forward
+.. autoclass:: OriNet
+   :members: forward
+.. autoclass:: LAFAffNetShapeEstimator
+   :members: forward
+
+
