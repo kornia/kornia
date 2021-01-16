@@ -28,8 +28,8 @@ class Normalize(nn.Module):
         std (Union[torch.Tensor, float]): Standard deviations for each channel.
 
     Shape:
-        - Input: Image tensor of size :math:`(*, C, H, W)`.
-        - Output: Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        - Input: Image tensor of size :math:`(*, C, ...)`.
+        - Output: Normalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -71,12 +71,12 @@ def normalize(
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        data (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.
+        data (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
         mean (Union[torch.Tensor, float]): Mean for each channel.
         std (Union[torch.Tensor, float]): Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
+        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -91,11 +91,13 @@ def normalize(
         >>> out.shape
         torch.Size([1, 4, 3, 3])
     """
+    shape = data.shape
+
     if isinstance(mean, float):
-        mean = torch.tensor([mean])  # prevent 0 sized tensors
+        mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
     if isinstance(std, float):
-        std = torch.tensor([std])  # prevent 0 sized tensors
+        std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
     if not isinstance(data, torch.Tensor):
         raise TypeError("data should be a tensor. Got {}".format(type(data)))
@@ -109,22 +111,24 @@ def normalize(
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:
         if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-            raise ValueError("mean length and number of channels do not match")
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
     # Allow broadcast on channel dimension
     if std.shape and std.shape[0] != 1:
         if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-            raise ValueError("std length and number of channels do not match")
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+
+    mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
+    std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
     if mean.shape:
-        mean = mean[..., :, None, None].to(data.device)
-
+        mean = mean[..., :, None]
     if std.shape:
-        std = std[..., :, None, None].to(data.device)
+        std = std[..., :, None]
 
-    out: torch.Tensor = (data - mean) / std
+    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
 
-    return out
+    return out.view(shape)
 
 
 class Denormalize(nn.Module):
@@ -140,8 +144,8 @@ class Denormalize(nn.Module):
         std (Union[torch.Tensor, float]): Standard deviations for each channel.
 
     Shape:
-        - Input: Image tensor of size :math:`(*, C, H, W)`.
-        - Output: Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+        - Input: Image tensor of size :math:`(*, C, ...)`.
+        - Output: Denormalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -149,12 +153,12 @@ class Denormalize(nn.Module):
         >>> out.shape
         torch.Size([1, 4, 3, 3])
 
-        >>> x = torch.rand(1, 4, 3, 3)
+        >>> x = torch.rand(1, 4, 3, 3, 3)
         >>> mean = torch.zeros(1, 4)
         >>> std = 255. * torch.ones(1, 4)
         >>> out = Denormalize(mean, std)(x)
         >>> out.shape
-        torch.Size([1, 4, 3, 3])
+        torch.Size([1, 4, 3, 3, 3])
     """
 
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
@@ -183,12 +187,12 @@ def denormalize(
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        input (torch.Tensor): Image tensor of size :math:`(*, C, H, W)`.
+        input (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
         mean (Union[torch.Tensor, float]): Mean for each channel.
         std (Union[torch.Tensor, float]): Standard deviations for each channel.
 
     Return:
-        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -196,19 +200,20 @@ def denormalize(
         >>> out.shape
         torch.Size([1, 4, 3, 3])
 
-        >>> x = torch.rand(1, 4, 3, 3)
+        >>> x = torch.rand(1, 4, 3, 3, 3)
         >>> mean = torch.zeros(1, 4)
         >>> std = 255. * torch.ones(1, 4)
         >>> out = denormalize(x, mean, std)
         >>> out.shape
-        torch.Size([1, 4, 3, 3])
+        torch.Size([1, 4, 3, 3, 3])
     """
+    shape = data.shape
 
     if isinstance(mean, float):
-        mean = torch.tensor([mean])  # prevent 0 sized tensors
+        mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
     if isinstance(std, float):
-        std = torch.tensor([std])  # prevent 0 sized tensors
+        std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
     if not isinstance(data, torch.Tensor):
         raise TypeError("data should be a tensor. Got {}".format(type(data)))
@@ -222,21 +227,24 @@ def denormalize(
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:
         if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-            raise ValueError("mean length and number of channels do not match")
+            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
     # Allow broadcast on channel dimension
     if std.shape and std.shape[0] != 1:
         if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-            raise ValueError("std length and number of channels do not match")
+            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+
+    mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
+    std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
     if mean.shape:
-        mean = mean[..., :, None, None].to(data.device)
+        mean = mean[..., :, None]
     if std.shape:
-        std = std[..., :, None, None].to(data.device)
+        std = std[..., :, None]
 
-    out: torch.Tensor = (data * std) + mean
+    out: torch.Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
 
-    return out
+    return out.view(shape)
 
 
 def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1., eps: float = 1e-6) -> torch.Tensor:
@@ -250,13 +258,13 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1.,
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x (torch.Tensor): The image tensor to be normalised with shape :math:`(B, C, H, W)`.
+        x (torch.Tensor): The image tensor to be normalised with shape :math:`(B, C, ...)`.
         min_val (float): The minimum value for the new range. Default: 0.
         max_val (float): The maximum value for the new range. Default: 1.
         eps (float): Float number to avoid zero division. Default: 1e-6.
 
     Returns:
-        torch.Tensor: The normalised image tensor with same shape as input :math:`(B, C, H, W)`.
+        torch.Tensor: The normalised image tensor with same shape as input :math:`(B, C, ...)`.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
@@ -275,15 +283,16 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0., max_val: float = 1.,
     if not isinstance(max_val, float):
         raise TypeError(f"'b' should be a float. Got: {type(max_val)}.")
 
-    if len(x.shape) != 4:
-        raise ValueError(f"Input shape must be a 4d tensor. Got: {x.shape}.")
+    if len(x.shape) < 3:
+        raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
 
-    B, C, H, W = x.shape
+    shape = x.shape
+    B, C = shape[0], shape[1]
 
-    x_min: torch.Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1, 1)
-    x_max: torch.Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1, 1)
+    x_min: torch.Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1)
+    x_max: torch.Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1)
 
     x_out: torch.Tensor = (
-        (max_val - min_val) * (x - x_min) / (x_max - x_min + eps) + min_val
+        (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
     )
-    return x_out.expand_as(x)
+    return x_out.view(shape)

@@ -247,9 +247,6 @@ class TestNormalizeMinMax(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.normalize_min_max(0.)
 
-        with pytest.raises(ValueError):
-            assert kornia.normalize_min_max(x[0])
-
         with pytest.raises(TypeError):
             assert kornia.normalize_min_max(x, '', '')
 

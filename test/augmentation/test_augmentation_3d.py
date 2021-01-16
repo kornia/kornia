@@ -18,7 +18,7 @@ from kornia.augmentation import (
     RandomRotation3D,
     RandomCrop3D,
     CenterCrop3D,
-    RandomEqualize3D
+    RandomEqualize3D,
 )
 
 
