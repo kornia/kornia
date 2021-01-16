@@ -529,7 +529,7 @@ class MKDDescriptor(nn.Module):
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
         relative_orientations = {polar_s: True, cart_s: False}
-        feats = nn.ModuleDict()
+        self.feats = {}
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
                                                 relative=relative_orientations[parametrization])
@@ -537,9 +537,8 @@ class MKDDescriptor(nn.Module):
                                                        fmap_size=patch_size,
                                                        in_dims=gradient_embedding.kernel.d)
 
-            feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
+            self.feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
             self.odims += spatial_encoding.odims
-        self.feats = nn.ModuleDict(feats)
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
 
