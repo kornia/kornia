@@ -85,6 +85,54 @@ class TestPatchDominantGradientOrientation:
         assert_allclose(model(patches), model_jit(patches))
 
 
+class TestOriNet:
+    def test_shape(self, device):
+        inp = torch.rand(1, 1, 32, 32, device=device)
+        ori = OriNet().to(device=device, dtype=inp.dtype).eval()
+        ang = ori(inp)
+        assert ang.shape == torch.Size([1])
+
+    def test_pretrained(self, device):
+        inp = torch.rand(1, 1, 32, 32, device=device)
+        ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
+        ang = ori(inp)
+        assert ang.shape == torch.Size([1])
+
+    def test_shape_batch(self, device):
+        inp = torch.rand(2, 1, 32, 32, device=device)
+        ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
+        ang = ori(inp)
+        assert ang.shape == torch.Size([2])
+
+    def test_print(self, device):
+        sift = OriNet(32)
+        sift.__repr__()
+
+    def test_toy(self, device):
+        inp = torch.zeros(1, 1, 32, 32, device=device)
+        inp[:, :, :16, :] = 1
+        ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
+        ang = ori(inp)
+        expected = torch.tensor([70.58], device=device)
+        assert_allclose(kornia.rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
+
+    @pytest.mark.skip("jacobian not well computed")
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 2, 1, 32, 32
+        patches = torch.rand(batch_size, channels, height, width, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        ori = OriNet().to(device=device, dtype=patches.dtype)
+        assert gradcheck(ori, (patches, ), raise_exception=True)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 32, 32
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        tfeat = OriNet(True).to(patches.device, patches.dtype).eval()
+        tfeat_jit = torch.jit.script(OriNet(True).to(patches.device, patches.dtype).eval())
+        assert_allclose(tfeat_jit(patches), tfeat(patches))
+
+
 class TestLAFOrienter:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
