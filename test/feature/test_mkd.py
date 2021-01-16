@@ -66,6 +66,14 @@ class TestMKDGradients:
         assert gradcheck(grad_describe, (patches),
                          raise_exception=True, nondet_tol=1e-4)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 13, 13
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        model = MKDGradients().to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(MKDGradients().to(patches.device, patches.dtype).eval())
+        assert_allclose(model(patches), model_jit(patches))
+
 
 class TestVonMisesKernel:
     @ pytest.mark.parametrize("ps", [5, 13, 25])
@@ -128,6 +136,14 @@ class TestVonMisesKernel:
         assert gradcheck(vm_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 13, 13
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        model = VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()  # noqa
+        model_jit = torch.jit.script(VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
+
 
 class TestEmbedGradients:
 
@@ -174,6 +190,14 @@ class TestEmbedGradients:
             return emb_grads(patches.double())
         assert gradcheck(emb_grads_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 2, 13, 13
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        model = EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
 
 
 @pytest.mark.parametrize("kernel_type,d,ps", [('cart', 9, 9), ('polar', 25, 9),
@@ -249,6 +273,18 @@ class TestExplicitSpacialEncoding:
         assert gradcheck(explicit_spatial_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 2, 13, 13
+        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        model = ExplicitSpacialEncoding(kernel_type='cart',
+                                        fmap_size=W,
+                                        in_dims=2).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(ExplicitSpacialEncoding(kernel_type='cart',
+                                                             fmap_size=W,
+                                                             in_dims=2).to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
+
 
 class TestWhitening:
     @pytest.mark.parametrize("kernel_type,xform,output_dims", [
@@ -307,6 +343,18 @@ class TestWhitening:
         assert gradcheck(whitening_describe, (patches, in_dims),
                          raise_exception=True, nondet_tol=1e-4)
 
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        batch_size, in_dims = 1, 175
+        patches = torch.rand(batch_size, in_dims).to(device)
+        model = Whitening(xform='lw',
+                          whitening_model=None,
+                          in_dims=in_dims).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(Whitening(xform='lw',
+                                               whitening_model=None,
+                                               in_dims=in_dims).to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
+
 
 class TestMKDDescriptor:
     dims = {'cart': 63, 'polar': 175, 'concat': 238}
@@ -360,6 +408,7 @@ class TestMKDDescriptor:
         expected = torch.zeros_like(out_part).to(device)
         assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.skip("Just because")
     @pytest.mark.parametrize("whitening", [None, 'lw', 'pca'])
     def test_gradcheck(self, whitening, device):
         batch_size, channels, ps = 1, 1, 19
@@ -374,6 +423,20 @@ class TestMKDDescriptor:
             return mkd(patches.double())
         assert gradcheck(mkd_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        batch_size, channels, ps = 1, 1, 19
+        patches = torch.rand(batch_size, channels, ps, ps).to(device)
+        kt = 'concat'
+        wt = 'lw'
+        model = MKDDescriptor(patch_size=ps,
+                              kernel_type=kt,
+                              whitening=wt).to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(MKDDescriptor(patch_size=ps, kernel_type=kt,
+                                                   whitening=wt).to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
 
 
 class TestSimpleKD:
@@ -406,9 +469,17 @@ class TestSimpleKD:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
 
         def skd_describe(patches, patch_size=19):
-            skd = SimpleKD(patch_size=patch_size, kernel_type='polar',
+            skd = SimpleKD(patch_size=ps, kernel_type='polar',
                            whitening='lw').double()
             skd.to(device)
             return skd(patches.double())
         assert gradcheck(skd_describe, (patches, ps),
                          raise_exception=True, nondet_tol=1e-4)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        batch_size, channels, ps = 1, 1, 19
+        patches = torch.rand(batch_size, channels, ps, ps).to(device)
+        model =  SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()  # noqa
+        model_jit = torch.jit.script( SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval())  # noqa
+        assert_allclose(model(patches), model_jit(patches))
