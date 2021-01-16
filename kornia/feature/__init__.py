@@ -34,10 +34,11 @@ from .laf import (extract_patches_from_pyramid,
 from .siftdesc import SIFTDescriptor
 from .mkd import MKDDescriptor
 from .hardnet import HardNet
+from .tfeat import TFeat
 from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
-from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
-from .orientation import LAFOrienter, PatchDominantGradientOrientation
+from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator, LAFAffNetShapeEstimator
+from .orientation import LAFOrienter, PatchDominantGradientOrientation, OriNet
 from .matching import match_nn, match_mnn, match_snn, match_smnn
 
 
@@ -70,6 +71,9 @@ __all__ = [
     "SIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
+    "TFeat",
+    "OriNet",
+    "LAFAffNetShapeEstimator",
     "PassLAF",
     "ScaleSpaceDetector",
     "LAFAffineShapeEstimator",
