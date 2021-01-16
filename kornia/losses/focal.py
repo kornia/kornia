@@ -147,7 +147,7 @@ class FocalLoss(nn.Module):
 
 
 def binary_focal_loss_with_logits(
-        inp: torch.Tensor,
+        input: torch.Tensor,
         target: torch.Tensor,
         alpha: float = .25,
         gamma: float = 2.0,
@@ -155,44 +155,46 @@ def binary_focal_loss_with_logits(
         eps: float = 1e-8) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
-    args:
-        inp (torch.Tensor) : input data tensor
-        target (torch.Tensor): the target tensor
-        alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.  Default: 0.25.
-        gamma (float): Focusing parameter :math:`\gamma >= 0`.  Default: 2.0.
-        reduction (str, optional): Specifies the reduction to apply to the.  Default: 'none'.
+    .. math::
+
+        \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
+
+    where:
+       - :math:`p_t` is the model's estimated probability for each class.
+
+    Args:
+        input (torch.Tensor): input data tensor with shape :math:`(N, 1, *)`.
+        target (torch.Tensor): the target tensor with shape :math:`(N, 1, *)`.
+        alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`. Default: 0.25.
+        gamma (float): Focusing parameter :math:`\gamma >= 0`. Default: 2.0.
+        reduction (str, optional): Specifies the reduction to apply to the. Default: 'none'.
         eps (float): for numerically stability when dividing. Default: 1e-8.
 
-    returns:
-        torch.tensor: loss
+    Returns:
+        torch.tensor: the computed loss.
 
     Examples:
-    >>> num_classes = 1
-    >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-    >>> logits = torch.tensor([[[[6.325]]],[[[5.26]]],[[[87.49]]]])
-    >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
-    >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
-    tensor(4.6052)
+        >>> num_classes = 1
+        >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
+        >>> logits = torch.tensor([[[[6.325]]],[[[5.26]]],[[[87.49]]]])
+        >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
+        >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
+        tensor(4.6052)
     """
 
-    if not isinstance(inp, torch.Tensor):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(inp)))
+                        .format(type(input)))
 
-    if not len(inp.shape) >= 2:
+    if not len(input.shape) >= 2:
         raise ValueError("Invalid input shape, we expect BxCx*. Got: {}"
-                         .format(inp.shape))
+                         .format(input.shape))
 
-    if inp.size(0) != target.size(0):
+    if input.size(0) != target.size(0):
         raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'
-                         .format(inp.size(0), target.size(0)))
+                         .format(input.size(0), target.size(0)))
 
-    if not inp.device == target.device:
-        raise ValueError(
-            "input and target must be in the same device. Got: {} and {}".format(
-                inp.device, target.device))
-
-    probs = torch.sigmoid(inp)
+    probs = torch.sigmoid(input)
     target = target.unsqueeze(dim=1)
     loss_tmp = -alpha * torch.pow((1. - probs), gamma) * target * torch.log(probs + eps) \
                - (1 - alpha) * torch.pow(probs, gamma) * (1. - target) * torch.log(1. - probs + eps)
@@ -222,8 +224,7 @@ class BinaryFocalLossWithLogits(nn.Module):
     where:
        - :math:`p_t` is the model's estimated probability for each class.
 
-
-    Arguments:
+    Args:
         alpha (float): Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
         gamma (float): Focusing parameter :math:`\gamma >= 0`.
         reduction (str, optional): Specifies the reduction to apply to the
@@ -232,8 +233,8 @@ class BinaryFocalLossWithLogits(nn.Module):
          in the output, ‘sum’: the output will be summed. Default: ‘none’.
 
     Shape:
-        - Input: :math:`(N, 1, *)`
-        - Target: :math:`(N, 1, *)`
+        - Input: :math:`(N, 1, *)`.
+        - Target: :math:`(N, 1, *)`.
 
     Examples:
         >>> N = 1  # num_classes
@@ -253,8 +254,6 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.reduction: str = reduction
         self.eps: float = 1e-8
 
-    def forward(
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
-        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction, self.eps)
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return binary_focal_loss_with_logits(
+            input, target, self.alpha, self.gamma, self.reduction, self.eps)

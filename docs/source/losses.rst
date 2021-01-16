@@ -7,6 +7,8 @@ Reconstruction
 --------------
 
 .. autofunction:: ssim
+.. autofunction:: ssim_loss
+.. autofunction:: psnr
 .. autofunction:: psnr_loss
 .. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
@@ -14,6 +16,7 @@ Reconstruction
 Semantic Segmentation
 ---------------------
 
+.. autofunction:: binary_focal_loss_with_logits
 .. autofunction:: focal_loss
 .. autofunction:: dice_loss
 .. autofunction:: tversky_loss
@@ -31,6 +34,8 @@ Module
 .. autoclass:: TverskyLoss
 .. autoclass:: FocalLoss
 .. autoclass:: SSIM
+.. autoclass:: SSIMLoss
 .. autoclass:: InverseDepthSmoothnessLoss
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
+.. autoclass:: BinaryFocalLossWithLogits
