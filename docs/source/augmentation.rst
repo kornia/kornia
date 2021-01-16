@@ -161,6 +161,8 @@ Transforms3D
 
 Set of operators to perform data augmentation on 3D image tensors and volumetric data.
 
+.. autoclass:: Denormalize3D
+.. autoclass:: Normalize3D
 .. autoclass:: RandomDepthicalFlip3D
 .. autoclass:: RandomHorizontalFlip3D
 .. autoclass:: RandomVerticalFlip3D
