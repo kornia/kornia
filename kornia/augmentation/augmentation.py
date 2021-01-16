@@ -9,6 +9,7 @@ from kornia.constants import Resample, BorderType, SamplePadding
 from kornia.augmentation import AugmentationBase2D
 from kornia.filters import GaussianBlur2d
 from kornia.utils import _extract_device_dtype
+from kornia.enhance.normalize import normalize, denormalize
 
 from . import functional as F
 from . import random_generator as rg
@@ -881,6 +882,98 @@ class RandomResizedCrop(AugmentationBase2D):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.apply_crop(input, params, self.flags)
+
+
+class Normalize(AugmentationBase2D):
+    r"""Normalize tensor images with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Examples:
+
+        >>> norm = Normalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> x = torch.rand(1, 4, 3, 3)
+        >>> out = norm(x)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3])
+    """
+    def __init__(
+        self, mean: torch.Tensor, std: torch.Tensor,
+        return_transform: bool = False, p: float = 1., keepdim: bool = False
+    ) -> None:
+        super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
+                                        keepdim=keepdim)
+        self.mean = mean
+        self.std = std
+
+    def __repr__(self) -> str:
+        repr = f"mean={self.mean}, std={self.std}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return normalize(input, self.mean, self.std)
+
+
+class Denormalize(AugmentationBase2D):
+    r"""Denormalize tensor images with mean and standard deviation.
+
+    .. math::
+        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+
+    Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
+
+    Args:
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
+
+    Return:
+        torch.Tensor: Denormalised tensor with same size as input :math:`(*, C, H, W)`.
+
+    Examples:
+
+        >>> norm = Denormalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
+        >>> x = torch.rand(1, 4, 3, 3)
+        >>> out = norm(x)
+        >>> out.shape
+        torch.Size([1, 4, 3, 3])
+    """
+    def __init__(
+        self, mean: torch.Tensor, std: torch.Tensor,
+        return_transform: bool = False, p: float = 1., keepdim: bool = False
+    ) -> None:
+        super(Denormalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
+                                          keepdim=keepdim)
+        self.mean = mean
+        self.std = std
+
+    def __repr__(self) -> str:
+        repr = f"mean={self.mean}, std={self.std}"
+        return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return F.compute_intensity_transformation(input)
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return denormalize(input, self.mean, self.std)
 
 
 class RandomMotionBlur(AugmentationBase2D):
