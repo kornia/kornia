@@ -69,18 +69,17 @@ class MKDGradients(nn.Module):
         super().__init__()
         self.eps = 1e-8
 
-        # Modify 'diff' gradient.
-        self.grad_fn = SpatialGradient(mode='diff', order=1, normalized=False)
-        self.grad = lambda x: -self.grad_fn(x)
+        self.grad = SpatialGradient(mode='diff', order=1, normalized=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(x):
+        if not isinstance(x, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(x)))
         if not len(x.shape) == 4:
             raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
                              .format(x.shape))
-        grads_xy = self.grad(x)
+        # Modify 'diff' gradient. Before we had lambda function, but it is not jittable
+        grads_xy = -self.grad(x)
         gx = grads_xy[:, :, 0, :, :]
         gy = grads_xy[:, :, 1, :, :]
         y = torch.cat(cart2pol(gx, gy, self.eps), dim=1)
@@ -139,7 +138,7 @@ class VonMisesKernel(nn.Module):
         self.register_buffer('weights', weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(x):
+        if not isinstance(x, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(x)))
         if not len(x.shape) == 4:
@@ -205,7 +204,7 @@ class EmbedGradients(nn.Module):
         return mags
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(grads):
+        if not isinstance(grads, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(grads)))
         if not len(grads.shape) == 4:
@@ -333,7 +332,7 @@ class ExplicitSpacialEncoding(nn.Module):
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(x):
+        if not isinstance(x, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(x)))
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
@@ -453,7 +452,7 @@ class Whitening(nn.Module):
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(x):
+        if not isinstance(x, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(x)))
         if not len(x.shape) == 2:
@@ -512,22 +511,24 @@ class MKDDescriptor(nn.Module):
                  output_dims: int = 128) -> None:
         super().__init__()
 
-        self.patch_size = patch_size
-        self.kernel_type = kernel_type
-        self.whitening = whitening
-        self.training_set = training_set
+        self.patch_size: int = patch_size
+        self.kernel_type: str = kernel_type
+        self.whitening: str = whitening
+        self.training_set: str = training_set
 
         self.sigma = 1.4 * (patch_size / 64)
         self.smoothing = GaussianBlur2d((5, 5),
                                         (self.sigma, self.sigma),
                                         'replicate')
         self.gradients = MKDGradients()
-
-        self.parametrizations = ['polar', 'cart'] if self.kernel_type == 'concat' else [self.kernel_type]
+        # This stupid thing needed for jitting...
+        polar_s: str = 'polar'
+        cart_s: str = 'cart'
+        self.parametrizations = [polar_s, cart_s] if self.kernel_type == 'concat' else [self.kernel_type]
 
         # Initialize cartesian/polar embedding with absolute/relative gradients.
         self.odims: int = 0
-        relative_orientations = {'polar': True, 'cart': False}
+        relative_orientations = {polar_s: True, cart_s: False}
         self.feats = {}
         for parametrization in self.parametrizations:
             gradient_embedding = EmbedGradients(patch_size=patch_size,
@@ -538,7 +539,6 @@ class MKDDescriptor(nn.Module):
 
             self.feats[parametrization] = nn.Sequential(gradient_embedding, spatial_encoding)
             self.odims += spatial_encoding.odims
-
         # Compute true output_dims.
         self.output_dims: int = min(output_dims, self.odims)
 
@@ -555,7 +555,7 @@ class MKDDescriptor(nn.Module):
             self.odims = self.output_dims
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(patches):
+        if not isinstance(patches, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patches)))
         if not len(patches.shape) == 4:

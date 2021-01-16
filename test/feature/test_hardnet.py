@@ -29,3 +29,11 @@ class TestHardNet:
         hardnet = HardNet().to(patches.device, patches.dtype)
         assert gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4,
                          raise_exception=True, )
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 32, 32
+        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        model = HardNet().to(patches.device, patches.dtype).eval()
+        model_jit = torch.jit.script(HardNet().to(patches.device, patches.dtype).eval())
+        assert_allclose(model(patches), model_jit(patches))

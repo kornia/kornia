@@ -122,7 +122,7 @@ class SIFTDescriptor(nn.Module):
         return self.gk.detach()
 
     def forward(self, input):
-        if not torch.is_tensor(input):
+        if not isinstance(input, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(input)))
         if not len(input.shape) == 4:

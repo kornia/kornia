@@ -12,7 +12,7 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
         laf
     """
     laf_message: str = "Invalid laf shape, we expect BxNx2x3. Got: {}".format(laf.shape)
-    if not torch.is_tensor(laf):
+    if not isinstance(laf, torch.Tensor):
         raise TypeError("Laf type is not a torch.Tensor. Got {}"
                         .format(type(laf)))
     if len(laf.shape) != 4:
@@ -104,7 +104,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
     for var_name, var, req_shape in zip(names,
                                         [xy, scale, ori],
                                         [("B", "N", 2), ("B", "N", 1, 1), ("B", "N", 1)]):
-        if not torch.is_tensor(var):
+        if not isinstance(var, torch.Tensor):
             raise TypeError("{} type is not a torch.Tensor. Got {}"
                             .format(var_name, type(var)))
         if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
@@ -265,9 +265,9 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
                      torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
                      torch.ones(n_pts - 1, 1)], dim=1)
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
+    pts = torch.cat([torch.tensor([0., 0., 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
-    aux = torch.tensor([0, 0, 1.]).view(1, 1, 3).expand(B * N, 1, 3)
+    aux = torch.tensor([0., 0., 1.]).view(1, 1, 3).expand(B * N, 1, 3)
     HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
@@ -454,18 +454,19 @@ def extract_patches_from_pyramid(img: torch.Tensor,
     B, N, _, _ = laf.size()
     num, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    pyr_idx = (scale.log2() + 0.5).relu().long()
+    half: float = 0.5
+    pyr_idx = (scale.log2() + half).relu().long()
     cur_img = img
-    cur_pyr_level = int(0)
+    cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         num, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
-            scale_mask = (pyr_idx[i] == cur_pyr_level).bool().squeeze()
+            scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
             if (scale_mask.float().sum()) == 0:
                 continue
-            scale_mask = scale_mask.bool().view(-1)
+            scale_mask = (scale_mask > 0).view(-1)
             grid = generate_patch_grid_from_normalized_LAF(
                 cur_img[i:i + 1],
                 nlaf[i:i + 1, scale_mask, :, :],
