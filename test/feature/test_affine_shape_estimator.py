@@ -97,6 +97,7 @@ class TestLAFAffineShapeEstimator:
         tfeat_jit = torch.jit.script(LAFAffineShapeEstimator(W).to(inp.device, inp.dtype).eval())
         assert_allclose(tfeat_jit(laf, inp), tfeat(laf, inp))
 
+
 class TestLAFAffNetShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
