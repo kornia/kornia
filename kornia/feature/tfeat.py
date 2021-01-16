@@ -55,7 +55,7 @@ class TFeat(nn.Module):
             )
             self.load_state_dict(pretrained_dict, strict=True)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:   # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         x = self.features(input)
         x = x.view(x.size(0), -1)
         x = self.descr(x)

@@ -37,11 +37,11 @@ class PatchAffineShapeEstimator(nn.Module):
             'patch_size=' + str(self.patch_size) + ', ' + \
             'eps=' + str(self.eps) + ')'
 
-    def forward(self, patch: torch.Tensor) -> torch.Tensor:   # type: ignore
+    def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            ellipse_shape: 3d tensor, shape [Bx1x3] """
+            torch.Tensor: ellipse_shape shape [Bx1x3] """
         if not torch.is_tensor(patch):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(patch)))
@@ -96,14 +96,14 @@ class LAFAffineShapeEstimator(nn.Module):
             'patch_size=' + str(self.patch_size) + ', ' + \
             'affine_shape_detector=' + str(self.affine_shape_detector) + ')'
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
             laf: (torch.Tensor) shape [BxNx2x3]
             img: (torch.Tensor) shape [Bx1xHxW]
 
         Returns:
-            laf_out: (torch.Tensor) shape [BxNx2x3]"""
+            torch.Tensor: laf_out shape [BxNx2x3]"""
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):
@@ -184,14 +184,14 @@ class LAFAffNetShapeEstimator(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
             laf: (torch.Tensor) shape [BxNx2x3]
             img: (torch.Tensor) shape [Bx1xHxW]
 
         Returns:
-            laf_out: (torch.Tensor) shape [BxNx2x3]"""
+            torch.Tensor: laf_out shape [BxNx2x3]"""
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not torch.is_tensor(img):
