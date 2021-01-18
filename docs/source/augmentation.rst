@@ -12,8 +12,8 @@ Kornia provides Torchvision-like augmentation APIs while may not reproduce Torch
 
 For detailed comparison, please checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
 
-Containers
-----------
+Base Classes
+------------
 
 This is the base class for creating a new transform. The user only needs to override: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
 
