@@ -1,4 +1,4 @@
-from typing import Union, Tuple, Dict, List
+from typing import Union, Tuple, Dict, List, cast
 
 import torch
 import torch.nn as nn
@@ -141,10 +141,14 @@ class VonMisesKernel(nn.Module):
         if not isinstance(x, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(x)))
-        if not len(x.shape) == 4:
+
+        if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
                              .format(x.shape))
-        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
+
+        # TODO: unify the two lines below when pytorch 1.6 support is dropped
+        emb0: torch.Tensor = torch.jit.annotate(torch.Tensor, self.emb0)
+        emb0 = emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
@@ -310,7 +314,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
         # Store precomputed embedding.
         self.register_buffer('emb', emb.unsqueeze(0))
-        self.d_emb: int = self.emb.shape[1]
+        self.d_emb: int = emb.shape[0]
         self.out_dims: int = self.in_dims * self.d_emb
         self.odims: int = self.out_dims
 
@@ -328,7 +332,8 @@ class ExplicitSpacialEncoding(nn.Module):
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker. """
         kron = get_kron_order(self.in_dims, self.d_emb)
-        emb2 = torch.index_select(self.emb, 1, kron[:, 1])
+        _emb = torch.jit.annotate(torch.Tensor, self.emb)
+        emb2 = torch.index_select(_emb, 1, kron[:, 1])
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -338,7 +343,8 @@ class ExplicitSpacialEncoding(nn.Module):
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
             raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}"
                              .format(self.in_dims, x.shape))
-        emb1 = torch.index_select(x, 1, self.idx1)
+        idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
+        emb1 = torch.index_select(x, 1, idx1)
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
         if self.do_l2:
