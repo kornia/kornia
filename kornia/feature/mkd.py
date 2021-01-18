@@ -144,7 +144,7 @@ class VonMisesKernel(nn.Module):
         if not len(x.shape) == 4:
             raise ValueError("Invalid input shape, we expect Bx1xHxW. Got: {}"
                              .format(x.shape))
-        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)  # type: ignore
+        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
@@ -310,7 +310,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
         # Store precomputed embedding.
         self.register_buffer('emb', emb.unsqueeze(0))
-        self.d_emb: int = self.emb.shape[1]  # type: ignore
+        self.d_emb: int = self.emb.shape[1]
         self.out_dims: int = self.in_dims * self.d_emb
         self.odims: int = self.out_dims
 
@@ -328,7 +328,7 @@ class ExplicitSpacialEncoding(nn.Module):
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker. """
         kron = get_kron_order(self.in_dims, self.d_emb)
-        emb2 = torch.index_select(self.emb, 1, kron[:, 1])  # type: ignore
+        emb2 = torch.index_select(self.emb, 1, kron[:, 1])
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -338,7 +338,7 @@ class ExplicitSpacialEncoding(nn.Module):
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
             raise ValueError("Invalid input shape, we expect Bx{}xHxW. Got: {}"
                              .format(self.in_dims, x.shape))
-        emb1 = torch.index_select(x, 1, self.idx1)  # type: ignore
+        emb1 = torch.index_select(x, 1, self.idx1)
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
         if self.do_l2:
@@ -611,8 +611,8 @@ class SimpleKD(nn.Module):
                  output_dims: int = 128) -> None:
         super().__init__()
 
-        relative = kernel_type == 'polar'
-        sigma = 1.4 * (patch_size / 64)
+        relative: bool = kernel_type == 'polar'
+        sigma: float = 1.4 * (patch_size / 64)
 
         # Sequence of modules.
         smoothing = GaussianBlur2d((5, 5), (sigma, sigma), 'replicate')

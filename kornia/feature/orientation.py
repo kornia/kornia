@@ -18,7 +18,7 @@ urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/Ori
 class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator"""
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
             laf: torch.Tensor: 4d tensor
@@ -90,16 +90,16 @@ class PatchDominantGradientOrientation(nn.Module):
         wo1_big = o_big - bo0_big
         bo0_big = bo0_big % self.num_ang_bins
         bo1_big = (bo0_big + 1) % self.num_ang_bins
-        wo0_big = (1.0 - wo1_big) * mag  # type: ignore
+        wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
         ang_bins = []
         for i in range(0, self.num_ang_bins):
             ang_bins.append(F.adaptive_avg_pool2d((bo0_big == i).to(patch.dtype) * wo0_big +
                                                   (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)))
-        ang_bins = torch.cat(ang_bins, 1).view(-1, 1, self.num_ang_bins)   # type: ignore
-        ang_bins = self.angular_smooth(ang_bins)   # type: ignore
-        values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)  # type: ignore
-        angle = -((2. * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)  # type: ignore
+        ang_bins = torch.cat(ang_bins, 1).view(-1, 1, self.num_ang_bins)
+        ang_bins = self.angular_smooth(ang_bins)
+        values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)
+        angle = -((2. * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
         return angle
 
 
@@ -170,7 +170,7 @@ class OriNet(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, patch: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
@@ -193,14 +193,14 @@ class LAFOrienter(nn.Module):
     def __init__(self,
                  patch_size: int = 32,
                  num_angular_bins: int = 36,
-                 angle_detector: Optional[nn.Module] = None):  # type: ignore
+                 angle_detector: Optional[nn.Module] = None):
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         if angle_detector is None:
-            self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)  # type: ignore
+            self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
         else:
-            self.angle_detector = angle_detector  # type: ignore
+            self.angle_detector = angle_detector
         return
 
     def __repr__(self):
