@@ -198,9 +198,11 @@ class LAFOrienter(nn.Module):
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
-        self.angle_detector = angle_detector
+        self.angle_detector: nn.Module
         if angle_detector is None:
             self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
+        else:
+            self.angle_detector = angle_detector
         return
 
     def __repr__(self):
@@ -233,9 +235,7 @@ class LAFOrienter(nn.Module):
                                                                                    1,
                                                                                    self.patch_size,
                                                                                    self.patch_size)
-        # TODO(dmytro): what happens when angle detector is None ?
-        if self.angle_detector is not None:
-            angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
+        angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
         rotmat: torch.Tensor = angle_to_rotation_matrix(rad2deg(angles_radians)).view(B * N, 2, 2)
 
         laf_out: torch.Tensor = torch.cat([torch.bmm(make_upright(laf).view(B * N, 2, 3)[:, :2, :2], rotmat),
