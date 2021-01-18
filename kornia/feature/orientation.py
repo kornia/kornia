@@ -92,11 +92,12 @@ class PatchDominantGradientOrientation(nn.Module):
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
-        ang_bins = []
+        ang_bins_list = []
         for i in range(0, self.num_ang_bins):
-            ang_bins.append(F.adaptive_avg_pool2d((bo0_big == i).to(patch.dtype) * wo0_big +
-                                                  (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)))
-        ang_bins = torch.cat(ang_bins, 1).view(-1, 1, self.num_ang_bins)
+            ang_bins_i = F.adaptive_avg_pool2d((bo0_big == i).to(patch.dtype) * wo0_big +
+                                               (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1))
+            ang_bins_list.append(ang_bins_i)
+        ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
         ang_bins = self.angular_smooth(ang_bins)
         values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)
         angle = -((2. * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
@@ -197,10 +198,9 @@ class LAFOrienter(nn.Module):
         super(LAFOrienter, self).__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
+        self.angle_detector = angle_detector
         if angle_detector is None:
             self.angle_detector = PatchDominantGradientOrientation(self.patch_size, self.num_ang_bins)
-        else:
-            self.angle_detector = angle_detector
         return
 
     def __repr__(self):
@@ -233,7 +233,9 @@ class LAFOrienter(nn.Module):
                                                                                    1,
                                                                                    self.patch_size,
                                                                                    self.patch_size)
-        angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
+        # TODO(dmytro): what happens when angle detector is None ?
+        if self.angle_detector is not None:
+            angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
         rotmat: torch.Tensor = angle_to_rotation_matrix(rad2deg(angles_radians)).view(B * N, 2, 2)
 
         laf_out: torch.Tensor = torch.cat([torch.bmm(make_upright(laf).view(B * N, 2, 3)[:, :2, :2], rotmat),
