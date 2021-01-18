@@ -48,6 +48,10 @@ class TestElasticTransform:
     def test_valid_paramters(self, device, dtype, kernel_size, sigma, alpha):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
         noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
+        if isinstance(sigma, torch.Tensor):
+            sigma = sigma.to(device, dtype)
+        if isinstance(alpha, torch.Tensor):
+            alpha = alpha.to(device, dtype)
         assert elastic_transform2d(image, noise, kernel_size, sigma, alpha) is not None
 
     def test_values(self, device, dtype):
