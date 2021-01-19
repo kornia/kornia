@@ -2,6 +2,7 @@ from typing import Union, Tuple
 
 import pytest
 import torch
+from torch._C import dtype
 import torch.nn as nn
 
 from torch.testing import assert_allclose
@@ -197,40 +198,36 @@ class TestRandomVerticalFlip3D:
         repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
-    def test_random_vflip(self, device):
+    def test_random_vflip(self, device, dtype):
 
         f = RandomVerticalFlip3D(p=1.0, return_transform=True)
         f1 = RandomVerticalFlip3D(p=0., return_transform=True)
         f2 = RandomVerticalFlip3D(p=1.)
         f3 = RandomVerticalFlip3D(p=0.)
 
-        input = torch.tensor([[[0., 0., 0.],
-                               [0., 0., 0.],
-                               [0., 1., 1.]],
-                              [[0., 0., 0.],
-                               [0., 0., 0.],
-                               [0., 1., 1.]]])  # 2 x 3 x 3
-        input = input.to(device)
+        input = torch.tensor([[[[[0., 0., 0.],
+                                 [0., 0., 0.],
+                                 [0., 1., 1.]],
+                                [[0., 0., 0.],
+                                 [0., 0., 0.],
+                                 [0., 1., 1.]]]]], device=device, dtype=dtype)  # 1 x 1 x 2 x 3 x 3
 
-        expected = torch.tensor([[[0., 1., 1.],
-                                  [0., 0., 0.],
-                                  [0., 0., 0.]],
-                                 [[0., 1., 1.],
-                                  [0., 0., 0.],
-                                  [0., 0., 0.]]])  # 2 x 3 x 3
-        expected = expected.to(device)
+        expected = torch.tensor([[[[[0., 1., 1.],
+                                    [0., 0., 0.],
+                                    [0., 0., 0.]],
+                                   [[0., 1., 1.],
+                                    [0., 0., 0.],
+                                    [0., 0., 0.]]]]], device=device, dtype=dtype)  # 1 x 1 x 2 x 3 x 3
 
-        expected_transform = torch.tensor([[1., 0., 0., 0.],
-                                           [0., -1., 0., 2.],
-                                           [0., 0., 1., 0.],
-                                           [0., 0., 0., 1.]])  # 4 x 4
-        expected_transform = expected_transform.to(device)
+        expected_transform = torch.tensor([[[1., 0., 0., 0.],
+                                            [0., -1., 0., 2.],
+                                            [0., 0., 1., 0.],
+                                            [0., 0., 0., 1.]]], device=device, dtype=dtype)  # 4 x 4
 
-        identity = torch.tensor([[1., 0., 0., 0.],
-                                 [0., 1., 0., 0.],
-                                 [0., 0., 1., 0.],
-                                 [0., 0., 0., 1.]])  # 4 x 4
-        identity = identity.to(device)
+        identity = torch.tensor([[[1., 0., 0., 0.],
+                                  [0., 1., 0., 0.],
+                                  [0., 0., 1., 0.],
+                                  [0., 0., 0., 1.]]], device=device, dtype=dtype)  # 1 x 4 x 4
 
         assert_allclose(f(input)[0], expected)
         assert_allclose(f(input)[1], expected_transform)
@@ -306,9 +303,9 @@ class TestRandomVerticalFlip3D:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_allclose(f(input)[0], input.squeeze())
+        assert_allclose(f(input)[0], input)
         assert_allclose(f(input)[1], expected_transform_1)
-        assert_allclose(f1(input)[0], input.squeeze())
+        assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -357,41 +354,36 @@ class TestRandomDepthicalFlip3D:
         repr = "RandomDepthicalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=0.5)"
         assert str(f) == repr
 
-    def test_random_dflip(self, device):
+    def test_random_dflip(self, device, dtype):
 
         f = RandomDepthicalFlip3D(p=1.0, return_transform=True)
         f1 = RandomDepthicalFlip3D(p=0., return_transform=True)
         f2 = RandomDepthicalFlip3D(p=1.)
         f3 = RandomDepthicalFlip3D(p=0.)
 
-        input = torch.tensor([[[0., 0., 0., 0.],
-                               [0., 0., 0., 0.],
-                               [0., 0., 0., 1.]],
-                              [[0., 0., 0., 0.],
-                               [0., 0., 0., 0.],
-                               [0., 0., 0., 2.]]])  # 2 x 3 x 4
+        input = torch.tensor([[[[[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [0., 0., 0., 1.]],
+                                [[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [0., 0., 0., 2.]]]]], device=device, dtype=dtype)  # 2 x 3 x 4
 
-        input = input.to(device)
+        expected = torch.tensor([[[[[0., 0., 0., 0.],
+                                    [0., 0., 0., 0.],
+                                    [0., 0., 0., 2.]],
+                                   [[0., 0., 0., 0.],
+                                    [0., 0., 0., 0.],
+                                    [0., 0., 0., 1.]]]]], device=device, dtype=dtype)  # 2 x 3 x 4
 
-        expected = torch.tensor([[[0., 0., 0., 0.],
-                                  [0., 0., 0., 0.],
-                                  [0., 0., 0., 2.]],
-                                 [[0., 0., 0., 0.],
-                                  [0., 0., 0., 0.],
-                                  [0., 0., 0., 1.]]])  # 2 x 3 x 4
-        expected = expected.to(device)
+        expected_transform = torch.tensor([[[1., 0., 0., 0.],
+                                            [0., 1., 0., 0.],
+                                            [0., 0., -1., 1.],
+                                            [0., 0., 0., 1.]]], device=device, dtype=dtype)  # 4 x 4
 
-        expected_transform = torch.tensor([[1., 0., 0., 0.],
-                                           [0., 1., 0., 0.],
-                                           [0., 0., -1., 1.],
-                                           [0., 0., 0., 1.]])  # 4 x 4
-        expected_transform = expected_transform.to(device)
-
-        identity = torch.tensor([[1., 0., 0., 0.],
-                                 [0., 1., 0., 0.],
-                                 [0., 0., 1., 0.],
-                                 [0., 0., 0., 1.]])  # 4 x 4
-        identity = identity.to(device)
+        identity = torch.tensor([[[1., 0., 0., 0.],
+                                  [0., 1., 0., 0.],
+                                  [0., 0., 1., 0.],
+                                  [0., 0., 0., 1.]]], device=device, dtype=dtype)  # 4 x 4
 
         assert_allclose(f(input)[0], expected)
         assert_allclose(f(input)[1], expected_transform)
@@ -461,12 +453,12 @@ class TestRandomDepthicalFlip3D:
             RandomDepthicalFlip3D(p=1.0),
         )
 
-        input = torch.tensor([[[0., 0., 0., 0.],
-                               [0., 0., 0., 0.],
-                               [0., 0., 0., 1.]],
-                              [[0., 0., 0., 0.],
-                               [0., 0., 0., 0.],
-                               [0., 0., 0., 2.]]])  # 2 x 3 x 4
+        input = torch.tensor([[[[[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [0., 0., 0., 1.]],
+                                [[0., 0., 0., 0.],
+                                 [0., 0., 0., 0.],
+                                 [0., 0., 0., 2.]]]]])  # 2 x 3 x 4
         input = input.to(device)
 
         expected_transform = torch.tensor([[[1., 0., 0., 0.],
@@ -477,9 +469,9 @@ class TestRandomDepthicalFlip3D:
 
         expected_transform_1 = expected_transform @ expected_transform
 
-        assert_allclose(f(input)[0], input.squeeze())
+        assert_allclose(f(input)[0], input)
         assert_allclose(f(input)[1], expected_transform_1)
-        assert_allclose(f1(input)[0], input.squeeze())
+        assert_allclose(f1(input)[0], input)
         assert_allclose(f1(input)[1], expected_transform)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -928,7 +920,7 @@ class TestRandomEqualize3D:
 
         bs, channels, depth, height, width = 1, 3, 6, 10, 10
 
-        inputs3d = self.build_input(channels, depth, height, width, device=device, dtype=dtype).squeeze(dim=0)
+        inputs3d = self.build_input(channels, depth, height, width, bs, device=device, dtype=dtype)
 
         row_expected = torch.tensor([
             0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000
