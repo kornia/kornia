@@ -67,7 +67,7 @@ class PatchAffineShapeEstimator(nn.Module):
         bad_mask = ((ellipse_shape < self.eps).float().sum(dim=2, keepdim=True) >= 2).to(ellipse_shape.dtype)
         # We will replace degenerate shape with circular shapes.
         circular_shape = torch.tensor([1.0, 0., 1.0]).to(ellipse_shape.device).to(ellipse_shape.dtype).view(1, 1, 3)
-        ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask  # type: ignore
+        ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask
         # normalization
         ellipse_shape = ellipse_shape / ellipse_shape.max(dim=2, keepdim=True)[0]
         return ellipse_shape

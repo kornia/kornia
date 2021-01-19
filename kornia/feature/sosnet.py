@@ -66,7 +66,7 @@ class SOSNet(nn.Module):
 
         return
 
-    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:   # type: ignore
+    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr
