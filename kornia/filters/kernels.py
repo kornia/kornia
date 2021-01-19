@@ -18,7 +18,10 @@ def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
 
 
 def gaussian(window_size: int, sigma: float) -> torch.Tensor:
-    x = torch.arange(window_size) - window_size // 2
+    device, dtype = None, None
+    if isinstance(sigma, torch.Tensor):
+        device, dtype = sigma.device, sigma.dtype
+    x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
     gauss = torch.exp((-x.pow(2.0) / (2 * sigma ** 2)))

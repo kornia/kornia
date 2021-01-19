@@ -29,6 +29,7 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: pyrdown
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
+.. autofunction:: elastic_transform2d
 
 .. autofunction:: affine
 .. autofunction:: rotate

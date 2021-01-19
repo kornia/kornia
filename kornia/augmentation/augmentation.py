@@ -907,6 +907,7 @@ class Normalize(AugmentationBase2D):
         >>> out.shape
         torch.Size([1, 4, 3, 3])
     """
+
     def __init__(
         self, mean: torch.Tensor, std: torch.Tensor,
         return_transform: bool = False, p: float = 1., keepdim: bool = False
@@ -953,6 +954,7 @@ class Denormalize(AugmentationBase2D):
         >>> out.shape
         torch.Size([1, 4, 3, 3])
     """
+
     def __init__(
         self, mean: torch.Tensor, std: torch.Tensor,
         return_transform: bool = False, p: float = 1., keepdim: bool = False
