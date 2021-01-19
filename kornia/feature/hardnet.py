@@ -74,7 +74,7 @@ class HardNet(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:   # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)
