@@ -82,7 +82,8 @@ class LAFAffineShapeEstimator(nn.Module):
 
     Args:
             patch_size: int, default = 32
-            affine_shape_detector: nn.Module. Patch affine shape estimator, e.g. PatchAffineShapeEstimator. Default: None """ # noqa pylint: disable
+            affine_shape_detector: nn.Module. Patch affine shape estimator, e.g. PatchAffineShapeEstimator. Default: None """  # noqa pylint: disable
+
     def __init__(self,
                  patch_size: int = 32,
                  affine_shape_detector: Optional[nn.Module] = None) -> None:
@@ -140,6 +141,7 @@ class LAFAffNetShapeEstimator(nn.Module):
     Args:
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
     """
+
     def __init__(self, pretrained: bool = False):
         super(LAFAffNetShapeEstimator, self).__init__()
         self.features = nn.Sequential(

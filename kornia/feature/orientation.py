@@ -126,6 +126,7 @@ class OriNet(nn.Module):
         >>> orinet = OriNet()
         >>> angle = orinet(input) # 16
     """
+
     def __init__(self, pretrained: bool = False, eps: float = 1e-8):
         super(OriNet, self).__init__()
         self.features = nn.Sequential(
@@ -188,7 +189,7 @@ class LAFOrienter(nn.Module):
     Args:
             patch_size: int, default = 32
             num_angular_bins: int, default is 36
-            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None """ # noqa pylint: disable
+            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None """  # noqa pylint: disable
 
     def __init__(self,
                  patch_size: int = 32,
