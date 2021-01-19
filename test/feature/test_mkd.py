@@ -480,6 +480,6 @@ class TestSimpleKD:
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        model =  SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()  # noqa
-        model_jit = torch.jit.script( SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval())  # noqa
+        model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()  # noqa
+        model_jit = torch.jit.script(SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval())  # noqa
         assert_allclose(model(patches), model_jit(patches))
