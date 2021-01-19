@@ -10,6 +10,7 @@ Set of operators to perform data augmentation on 2D image tensors.
 
 .. autoclass:: CenterCrop
 .. autoclass:: ColorJitter
+.. autoclass:: GaussianBlur
 .. autoclass:: RandomAffine
 .. autoclass:: RandomCrop
 .. autoclass:: RandomErasing
