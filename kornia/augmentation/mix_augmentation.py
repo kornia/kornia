@@ -141,7 +141,7 @@ class RandomCutMix(MixAugmentationBase):
                    probabilities batch-wisely.
         num_mix (int): cut mix times. Default is 1.
         beta (float or torch.Tensor, optional): hyperparameter for generating cut size from beta distribution.
-            If None, it will be set to 1.
+            Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
         cut_size ((float, float) or torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
         same_on_batch (bool): apply the same transformation across the batch.

@@ -1,11 +1,7 @@
-from typing import Union, Tuple
-
 import torch
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     RandomMixUp,
     RandomCutMix
@@ -156,7 +152,8 @@ class TestRandomCutMix:
     def test_random_mixup_beta0(self, device, dtype):
         torch.manual_seed(76)
         # beta 0 => resample 0.5 area
-        f = RandomCutMix(beta=0., width=4, height=3, p=1.)
+        # beta cannot be 0 after torch 1.8.0
+        f = RandomCutMix(beta=1e-7, width=4, height=3, p=1.)
 
         input = torch.stack([
             torch.ones(1, 3, 4, device=device, dtype=dtype),
