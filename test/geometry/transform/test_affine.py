@@ -305,7 +305,7 @@ class TestScale:
             [0., 1., 1., 0.],
             [0., 1., 1., 0.],
             [0., 0., 0., 0.]
-        ]], device=device, dtype=dtype)
+        ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -324,7 +324,7 @@ class TestScale:
             [0., 1., 1., 0.],
             [0., 1., 1., 0.],
             [0., 0., 0., 0.]
-        ]], device=device, dtype=dtype)
+        ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -429,7 +429,7 @@ class TestShear:
             [0.75, 1., 1., 1.],
             [0.25, 1., 1., 1.],
             [0., 0.75, 1., 1.],
-            [0., 0.25, 1., 1.]]]], device=device, dtype=dtype)
+            [0., 0.25, 1., 1.]]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)

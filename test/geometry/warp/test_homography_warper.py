@@ -50,7 +50,7 @@ class TestHomographyWarper:
                                                 (height * 2, width // 2))
         res = torch.tensor([[[4.0, 0.0, 3.0],
                              [0.0, 1 / 3, -2 / 3],
-                             [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+                             [0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
         assert_allclose(norm_homo, res, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -359,7 +359,7 @@ class TestHomographyWarper3D:
         res = torch.tensor([[[4.0, 0.0, 0.0, 3.0],
                              [0.0, 0.4667, 0.0, -0.5333],
                              [0.0, 0.0, 3.0, 2.0],
-                             [0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+                             [0.0, 0.0, 0.0, 1.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1)
         assert_allclose(norm_homo, res, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
