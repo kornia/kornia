@@ -1638,7 +1638,8 @@ class TestRandomGrayscale:
                                    [0.1709944, 0.5133104, 0.7915002, 0.5745703, 0.1680204],
                                    [0.5279005, 0.6092287, 0.3034387, 0.5333768, 0.6064113],
                                    [0.3503858, 0.5720159, 0.7052018, 0.4558409, 0.3261529],
-                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]]], device=device, dtype=dtype)
+                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]]],
+                                device=device, dtype=dtype)
 
         img_gray = kornia.augmentation.RandomGrayscale(p=1.)(data)
         assert_allclose(img_gray, expected, atol=1e-4, rtol=1e-4)

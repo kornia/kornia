@@ -134,7 +134,8 @@ class TestSpatialSoftArgmax2d:
         std = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
 
         hm = kornia.geometry.dsnt.spatial_softmax2d(input)
-        assert_allclose(hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        assert_allclose(
+            hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
         pred = kornia.geometry.dsnt.spatial_expectation2d(hm)
         assert_allclose(
