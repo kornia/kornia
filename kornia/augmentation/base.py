@@ -79,16 +79,7 @@ class _BasicAugmentationBase(nn.Module):
         self.device = device
         self.dtype = dtype
 
-    def __selective_param_gen__(
-            self, batch_shape: torch.Size, to_apply: torch.Tensor) -> Dict[str, torch.Tensor]:
-        _params = self.generate_parameters(
-            torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
-        if _params is None:
-            _params = {}
-        _params['batch_prob'] = to_apply
-        return _params
-
-    def __forward_parameters__(
+    def __batch_prob_generator__(
             self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool) -> Dict[str, torch.Tensor]:
         batch_prob: torch.Tensor
         if p_batch == 1:
@@ -109,8 +100,16 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])
-        # selectively param gen
-        return self.__selective_param_gen__(batch_shape, batch_prob)
+        return batch_prob
+
+    def forward_parameters(self, batch_shape):
+        to_apply = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
+        _params = self.generate_parameters(
+            torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        if _params is None:
+            _params = {}
+        _params['batch_prob'] = to_apply
+        return _params
 
     def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor],
                    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -125,7 +124,7 @@ class _BasicAugmentationBase(nn.Module):
         in_tensor = self.transform_tensor(in_tensor)
         batch_shape = in_tensor.shape
         if params is None:
-            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
+            params = self.forward_parameters(batch_shape)
         self._params = params
 
         output = self.apply_func(input, self._params)
