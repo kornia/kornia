@@ -289,7 +289,7 @@ def angle_axis_to_rotation_matrix(angle_axis: torch.Tensor) -> torch.Tensor:
     # fill output matrix with masked values
     rotation_matrix[..., :3, :3] = \
         mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
-    return rotation_matrix  # Nx4x4
+    return rotation_matrix  # Nx3x3
 
 
 def rotation_matrix_to_angle_axis(
