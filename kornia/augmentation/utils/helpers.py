@@ -228,7 +228,8 @@ def _adapted_uniform(
     shape: Union[Tuple, torch.Size],
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
-    same_on_batch: bool = False
+    same_on_batch: bool = False,
+    epsilon: float = 1e-6
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -244,7 +245,9 @@ def _adapted_uniform(
     ])
     low = torch.as_tensor(low, device=device, dtype=dtype)
     high = torch.as_tensor(high, device=device, dtype=dtype)
-    dist = Uniform(low, high)
+    # validate_args=False to fix pytorch 1.7.1 error:
+    #     ValueError: Uniform is not defined when low>= high.
+    dist = Uniform(low, high, validate_args=False)
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 

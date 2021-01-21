@@ -253,7 +253,7 @@ class TestGetRotationMatrix3d:
             [1., 0., 0., 0.],
             [0., 1., 0., 0.],
             [0., 0., 1., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90x(self, device, dtype):
@@ -265,7 +265,7 @@ class TestGetRotationMatrix3d:
             [1., 0., 0., 0.],
             [0., 0., -1., 0.],
             [0., 1., 0., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90y(self, device, dtype):
@@ -277,7 +277,7 @@ class TestGetRotationMatrix3d:
             [0., 0., 1., 0.],
             [0., 1., 0., 0.],
             [-1., 0., 0., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90z(self, device, dtype):
@@ -289,7 +289,7 @@ class TestGetRotationMatrix3d:
             [0., -1., 0., 0.],
             [1., 0., 0., 0.],
             [0., 0., 1., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
