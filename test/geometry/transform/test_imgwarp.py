@@ -174,7 +174,7 @@ class TestWarpPerspective:
         expected = torch.tensor(
             [[[[0.2500, 0.9167, 1.5833],
                [2.1667, 5.1667, 6.5000],
-               [4.8333, 10.5000, 11.8333]]]], device=device, dtype=dtype)
+               [4.8333, 10.5000, 11.8333]]]], device=device, dtype=dtype).repeat(batch_size, channels, 1, 1)
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src,
@@ -339,7 +339,7 @@ class TestRemap:
             [1., 1., 1., 0.],
             [1., 1., 1., 0.],
             [0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
 
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False, device=device).to(dtype)
@@ -431,7 +431,7 @@ class TestInvertAffineTransform:
         expected = torch.tensor([[
             [0., -1., 0.],
             [1., 0., 0.],
-        ]], device=device, dtype=dtype)
+        ]], device=device, dtype=dtype).repeat(2, 1, 1)
         matrix = kornia.get_rotation_matrix2d(
             center, angle, scale).repeat(2, 1, 1)
         matrix_inv = kornia.invert_affine_transform(matrix)
