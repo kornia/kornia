@@ -1,10 +1,8 @@
-kornia.augmentation
-===================
-
 .. currentmodule:: kornia.augmentation
 
+
 Transforms2D
-------------
+============
 
 Set of operators to perform data augmentation on 2D image tensors.
 
@@ -28,8 +26,12 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomMixUp
 .. autoclass:: RandomCutMix
 
+.. automodule:: kornia.augmentation.functional.functional
+    :members:
+
+
 Transforms3D
-------------
+============
 
 Set of operators to perform data augmentation on 3D volumetric tensors.
 
@@ -43,18 +45,14 @@ Set of operators to perform data augmentation on 3D volumetric tensors.
 .. autoclass:: RandomMotionBlur3D
 .. autoclass:: RandomEqualize3D
 
+.. automodule:: kornia.augmentation.functional.functional3d
+    :members:
+
+
 Normalizations
---------------
+==============
 
 Normalization operations are shape-agnostic for both 2D and 3D tensors.
 
 .. autoclass:: Denormalize
 .. autoclass:: Normalize
-
-Functional
-----------
-
-.. automodule:: kornia.augmentation.functional.functional
-    :members:
-.. automodule:: kornia.augmentation.functional.functional3d
-    :members:
