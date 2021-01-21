@@ -112,7 +112,7 @@ class TestTransformBoxes:
 
         boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
 
-        expected = torch.tensor([372.7360, 103.0150, 114.6880, 410.5225], device=device, dtype=dtype)
+        expected = torch.tensor([[372.7360, 103.0150, 114.6880, 410.5225]], device=device, dtype=dtype)
 
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],

@@ -70,10 +70,10 @@ class TestDepthWarper:
 
         # check offset in x-axis
         assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0], atol=1e-4, rtol=1e-4)
+            grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
         assert_allclose(
-            grid_warped[..., -1, 1], grid_norm[..., -1, 1], rtol=1e-4, atol=1e-4)
+            grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
     def test_warp_grid_offset_x1y1_depth1(self, batch_size, device, dtype):
@@ -98,10 +98,10 @@ class TestDepthWarper:
 
         # check offset in x-axis
         assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0], atol=1e-4, rtol=1e-4)
+            grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
         assert_allclose(
-            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1], rtol=1e-4, atol=1e-4)
+            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2,))
     def test_warp_tensor_offset_x1y1(self, batch_size, device, dtype):
