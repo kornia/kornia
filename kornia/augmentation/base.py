@@ -223,7 +223,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         if return_transform is None:
             return_transform = self.return_transform
         if params is None:
-            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
+            params = self.forward_parameters(batch_shape)
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
@@ -386,7 +386,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
         in_tensor = self.transform_tensor(in_tensor)
         if params is None:
             batch_shape = in_tensor.shape
-            params = self.__forward_parameters__(batch_shape, self.p, self.p_batch, self.same_on_batch)
+            params = self.forward_parameters(batch_shape)
         self._params = params
 
         output = self.apply_func(in_tensor, label, self._params)
