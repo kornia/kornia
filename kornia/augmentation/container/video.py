@@ -116,7 +116,7 @@ class VideoSequential(nn.Sequential):
             batch_shape = input.shape
         for aug in self.children():
             aug = cast(_AugmentationBase, aug)
-            param = aug.__forward_parameters__(batch_shape, aug.p, aug.p_batch, aug.same_on_batch)
+            param = aug.forward_parameters(batch_shape)
             if self.same_on_frame:
                 for k, v in param.items():
                     # TODO: revise colorjitter order param in the future to align the standard.
