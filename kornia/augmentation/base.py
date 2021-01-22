@@ -80,7 +80,7 @@ class _BasicAugmentationBase(nn.Module):
         self.dtype = dtype
 
     def __batch_prob_generator__(
-            self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool) -> Dict[str, torch.Tensor]:
+            self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool) -> torch.Tensor:
         batch_prob: torch.Tensor
         if p_batch == 1:
             batch_prob = torch.tensor([True])

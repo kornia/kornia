@@ -3,7 +3,6 @@ from typing import List, Tuple, Union, cast
 import torch
 import torch.nn as nn
 
-import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
 from kornia.augmentation import ColorJitter
 
@@ -109,7 +108,6 @@ class VideoSequential(nn.Sequential):
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(input)
         input = self._input_shape_convert_in(input)
-        _original_shape = input.shape
         input = input.reshape(-1, *batch_shape[1:])
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
