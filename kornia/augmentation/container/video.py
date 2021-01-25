@@ -1,10 +1,10 @@
-from typing import List, Tuple, Union, cast
+from typing import Tuple, Union, cast
 
 import torch
 import torch.nn as nn
 
+import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
-from kornia.augmentation import ColorJitter
 
 
 class VideoSequential(nn.Sequential):
@@ -118,7 +118,7 @@ class VideoSequential(nn.Sequential):
             if self.same_on_frame:
                 for k, v in param.items():
                     # TODO: revise colorjitter order param in the future to align the standard.
-                    if not (k == "order" and isinstance(aug, ColorJitter)):
+                    if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
                         param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
             input = aug(input, params=param)
 
