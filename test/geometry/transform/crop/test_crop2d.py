@@ -219,7 +219,7 @@ class TestCenterCrop:
             [5., 6., 7., 8.],
             [9., 10., 11., 12.],
             [13., 14., 15., 16.],
-        ]]], device=device, dtype=dtype, rtol=1e-4, atol=1e-4)
+        ]]], device=device, dtype=dtype)
 
         height, width = 4, 2
         expected = torch.tensor([[[
@@ -229,7 +229,7 @@ class TestCenterCrop:
             [14., 15.],
         ]]], device=device, dtype=dtype)
 
-        out_crop = kornia.center_crop(inp, (4, 2))
+        out_crop = kornia.center_crop(inp, (height, width))
         assert_allclose(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_center_crop_h4_w2_batch(self, device, dtype):
