@@ -171,6 +171,41 @@ class TestScaleLAF:
         assert_allclose(model(laf, scale), model_jit(laf, scale))
 
 
+class TestSetLAFOri:
+    def test_shape_tensor(self, device):
+        inp = torch.ones(7, 3, 2, 3, device=device).float()
+        ori = torch.ones(7, 3, 1, 1, device=device).float()
+        assert kornia.feature.set_laf_orientation(inp, ori).shape == inp.shape
+
+    def test_ori(self, device):
+        inp = torch.tensor([[0., 5., 0.8], [-5., 0, -4.]], device=device).float()
+        inp = inp.view(1, 1, 2, 3)
+        ori = torch.zeros(1, 1, 1, 1, device=device).float()
+        out = kornia.feature.set_laf_orientation(inp, ori)
+        expected = torch.tensor([[[[5., 0., 0.8], [0., 5., -4.]]]], device=device).float()
+        assert_allclose(out, expected)
+
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 1, 2, 2, 3
+        laf = torch.rand(batch_size, channels, height, width, device=device)
+        ori = torch.rand(batch_size, channels, 1, 1, device=device)
+        ori = utils.tensor_to_gradcheck_var(ori)  # to var
+        laf = utils.tensor_to_gradcheck_var(laf)  # to var
+        assert gradcheck(kornia.feature.set_laf_orientation,
+                         (laf, ori),
+                         raise_exception=True, atol=1e-4)
+
+    @pytest.mark.jit
+    @pytest.mark.skip("Union")
+    def test_jit(self, device, dtype):
+        batch_size, channels, height, width = 1, 2, 2, 3
+        laf = torch.rand(batch_size, channels, height, width, device=device)
+        ori = torch.rand(batch_size, channels, 1, 1, device=device)
+        model = kornia.feature.set_laf_orientation
+        model_jit = torch.jit.script(kornia.feature.set_laf_orientation)
+        assert_allclose(model(laf, ori), model_jit(laf, ori))
+
+
 class TestMakeUpright:
     def test_shape(self, device):
         inp = torch.ones(5, 3, 2, 3, device=device)
