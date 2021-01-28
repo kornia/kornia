@@ -8,8 +8,9 @@ from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import SpatialGradient
 from kornia.constants import pi
 from kornia.feature import (extract_patches_from_pyramid, make_upright,
-                            normalize_laf, raise_error_if_laf_is_not_valid)
-from kornia.geometry import rad2deg, angle_to_rotation_matrix
+                            normalize_laf, raise_error_if_laf_is_not_valid,
+                            set_laf_orientation)
+from kornia.geometry import rad2deg
 
 urls: Dict[str, str] = dict()
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
@@ -237,8 +238,5 @@ class LAFOrienter(nn.Module):
                                                                                    self.patch_size,
                                                                                    self.patch_size)
         angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
-        rotmat: torch.Tensor = angle_to_rotation_matrix(rad2deg(angles_radians)).view(B * N, 2, 2)
-
-        laf_out: torch.Tensor = torch.cat([torch.bmm(make_upright(laf).view(B * N, 2, 3)[:, :2, :2], rotmat),
-                                           laf.view(B * N, 2, 3)[:, :2, 2:]], dim=2).view(B, N, 2, 3)
+        laf_out: torch.Tensor = set_laf_orientation(laf, rad2deg(angles_radians))
         return laf_out
