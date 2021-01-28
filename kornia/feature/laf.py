@@ -4,6 +4,8 @@ import math
 import torch
 import torch.nn.functional as F
 
+from kornia.geometry import angle_to_rotation_matrix
+
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
     """Auxilary function, which verifies that input is a torch.tensor of [BxNx2x3] shape
@@ -87,6 +89,30 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
     raise_error_if_laf_is_not_valid(LAF)
     angle_rad: torch.Tensor = torch.atan2(LAF[..., 0, 1], LAF[..., 0, 0])
     return kornia.rad2deg(angle_rad).unsqueeze(-1)
+
+
+def set_laf_orientation(LAF: torch.Tensor,
+                        angles_degrees: torch.Tensor) -> torch.Tensor:
+    """Changes the orientation of the LAFs.
+
+    Args:
+        LAF: (torch.Tensor): tensor [BxNx2x3].
+        angles: (torch.Tensor): tensor  BxNx1, in degrees .
+
+    Returns:
+        torch.Tensor: tensor  [BxNx2x3] .
+
+    Shape:
+        - Input: :math: `(B, N, 2, 3)`, `(B, N, 1)`
+        - Output: :math: `(B, N, 2, 3)`
+
+    """
+    raise_error_if_laf_is_not_valid(LAF)
+    B, N = LAF.shape[:2]
+    rotmat: torch.Tensor = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
+    laf_out: torch.Tensor = torch.cat([torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat),
+                                       LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2).view(B, N, 2, 3)
+    return laf_out
 
 
 def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.Tensor) -> torch.Tensor:
