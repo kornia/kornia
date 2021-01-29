@@ -4,13 +4,14 @@ import torch
 import torch.nn as nn
 
 
-def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
+def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
 
     Args:
         image (torch.Tensor): RGB Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
+        eps (float, optional): scalar to enforce numarical stability. Default: 1e-6.
 
     Returns:
         torch.Tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
@@ -37,7 +38,7 @@ def rgb_to_hsv(image: torch.Tensor) -> torch.Tensor:
     v: torch.Tensor = maxc  # brightness
 
     deltac: torch.Tensor = maxc - minc
-    s: torch.Tensor = deltac / (v + 1e-31)
+    s: torch.Tensor = deltac / (v + eps)
 
     # avoid division by zero
     deltac = torch.where(
@@ -115,6 +116,9 @@ class RgbToHsv(nn.Module):
     r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
+    
+    Args:
+        eps (float, optional): scalar to enforce numarical stability. Default: 1e-6.
 
     Returns:
         torch.tensor: HSV version of the image.
@@ -129,11 +133,12 @@ class RgbToHsv(nn.Module):
         >>> output = hsv(input)  # 2x3x4x5
     """
 
-    def __init__(self) -> None:
+    def __init__(self, eps: float = 1e-6) -> None:
         super(RgbToHsv, self).__init__()
+        self.eps = eps
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_hsv(image)
+        return rgb_to_hsv(image, self.eps)
 
 
 class HsvToRgb(nn.Module):
