@@ -116,7 +116,7 @@ class RgbToHsv(nn.Module):
     r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
-    
+
     Args:
         eps (float, optional): scalar to enforce numarical stability. Default: 1e-6.
 
