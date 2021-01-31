@@ -9,14 +9,19 @@ from kornia.geometry import (
     get_affine_matrix2d,
     warp_perspective,
     rotate,
-    crop_by_boxes,
+    crop_by_boxes as sampling_by_boxes,
     bbox_generator,
     warp_affine,
     hflip,
     vflip,
     deg2rad,
+    # bbox_to_mask,
+    infer_box_shape,
+    bbox_generator,
+)
+from kornia.geometry.transform.crop.crop2d_contrib import (
     bbox_to_mask,
-    infer_box_shape
+    crop_by_boxes
 )
 from kornia.color import rgb_to_grayscale
 from kornia.enhance import (
@@ -599,8 +604,30 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    return crop_by_boxes(
+    return sampling_by_boxes(
         input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
+
+
+@_validate_input
+def apply_crop_v2(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+    r"""Apply cropping by src bounding box.
+
+    Order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
+
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        params (Dict[str, torch.Tensor]):
+            - params['src']: The applied cropping src matrix :math: `(*, 4, 2)`.
+            - params['mask']: The applied source mask matrix :math: `(*, H, W)`. Optional.
+
+    Returns:
+        torch.Tensor: The cropped input.
+    """
+    return crop_by_boxes(
+        input,
+        params['src'],
+        params['mask'] if 'mask' in params else None
+    )
 
 
 @_validate_input
@@ -646,14 +673,18 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
             f"and ({params['xs'].size()}, {params['ys'].size()})"
         )
 
-    values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+    b, c, h, w = input.shape
 
-    _, c, h, w = input.size()
+    widths = params['widths']
+    heights = params['heights']
+    xs = params['xs']
+    ys = params['ys']
+    vs = params['values']
 
-    bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
-    mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
-    mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-    transformed = torch.where(mask == 1., values, input)
+    boxes = bbox_generator(xs, ys, widths, heights)
+    src_mask = torch.ones_like(b, 1, h, w, requires_grad=boxes.requires_grad)
+    mask = bbox_to_mask(boxes, src_mask)
+    transformed = input * (1 - mask) + mask * vs[..., None, None, None]
     return transformed
 
 
@@ -974,12 +1005,21 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
     for pair, crop in zip(params['mix_pairs'], params['crop_src']):
         input_permute = input.index_select(dim=0, index=pair.to(input.device))
         labels_permute = labels.index_select(dim=0, index=pair.to(labels.device))
-        w, h = infer_box_shape(crop)
+        h, w = infer_box_shape(crop)
         lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
         # compute mask to match input shape
-        mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+        src_mask = torch.ones_like(1, 1, height, width, requires_grad=boxes.requires_grad)
+        mask = bbox_to_mask(crop, src_mask).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
         out_inputs[mask] = input_permute[mask]
         out_labels.append(torch.stack([
             labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))
 
     return out_inputs, torch.stack(out_labels, dim=0)
+
+
+def apply_normalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    return (input - params['mean']) / params['std']
+
+
+def apply_denormalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    return (input * params['std']) + params['mean']
