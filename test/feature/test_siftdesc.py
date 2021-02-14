@@ -59,6 +59,7 @@ class TestSIFTDescriptor:
         expected = torch.tensor([[0, 0, 1., 0]], device=device)
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
+    @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
         patches = torch.rand(batch_size, channels, height, width, device=device)
