@@ -55,7 +55,7 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
             If None, it will not alter the input channel.
 
     Returns:
-        torch.Tensor: input tensor of the form :math:`(B, H, W, C)`.
+        torch.Tensor: input tensor of the form :math:`(B, C, H, W)`.
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
