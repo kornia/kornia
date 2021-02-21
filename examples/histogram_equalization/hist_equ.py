@@ -269,9 +269,10 @@ def compute_luts_optim(tiles_x_im: torch.Tensor, diff: bool = False) -> torch.Te
         histos = kornia.enhance.histogram(tiles, bins, torch.tensor(0.001)).squeeze()
         histos *= pixels
 
-    step: float = (pixels - 1) / 255
-    luts: torch.Tensor = (torch.cumsum(histos, 1) + (step // 2)) // step
-    luts = torch.cat([torch.zeros(luts.shape[0], 1, device=tiles_x_im.device), luts[..., :-1]], 1).clamp(0, 255)
+    # same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
+    lut_scale = 255 / pixels
+    luts = torch.cumsum(histos, 1) * lut_scale
+    luts = luts.clamp(0, 255).byte()
     luts = luts.view(([*tiles_x_im.shape[0:4]] + [256]))
     return luts
 
@@ -513,8 +514,8 @@ def main():
     time_tiles = time.time() - tic
     tic = time.time()
     for i in range(10):
-        #luts: torch.Tensor = compute_luts_optim(hist_tiles)  # B x GH x GW x C x B
-        luts: torch.Tensor = compute_luts(hist_tiles)  # B x GH x GW x C x B
+        luts: torch.Tensor = compute_luts_optim(hist_tiles)  # B x GH x GW x C x B
+        # luts: torch.Tensor = compute_luts(hist_tiles)  # B x GH x GW x C x B
         equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
     p1 = torch.cat(equalized_tiles.unbind(2), 4)
@@ -555,8 +556,8 @@ def main():
 #    plot_hist(lightness_equalized)
 
     # hist equalization in opencv
-    tic = time.time()
     ims = img.mul(255).clamp(0, 255).byte().cpu().numpy().squeeze()
+    tic = time.time()
     for i in range(10):
         equ0 = cv2.equalizeHist(ims[0])
         equ1 = cv2.equalizeHist(ims[1])
@@ -564,7 +565,6 @@ def main():
 #    plot_hist(torch.tensor([equ0, equ1]).float().div(255))
 #    plot_image(img_rgb, torch.tensor([equ0, equ1]).float().div(255))
 
-    tic = time.time()
     ims = img.mul(255).clamp(0, 255).byte().cpu().numpy()
     tic = time.time()
     for i in range(10):
