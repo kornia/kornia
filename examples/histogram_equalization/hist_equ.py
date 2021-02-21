@@ -352,7 +352,135 @@ def compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> t
     return tiles_equalized
 
 
-@profile
+def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
+    """Equalize the tiles.
+
+    Args:
+        interp_tiles (torch.Tensor): set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
+        luts (torch.Tensor): luts for each one of the original tiles. (B, GH, GW, C, 256)
+
+    Returns:
+        torch.Tensor: mapped luts (B, 2GH, 2GW, 4, C, 256)
+
+    """
+    num_imgs: int  # number of batched images
+    gh: int  # 2x the number of tiles used to compute the histograms
+    gw: int
+    c: int  # number of channels
+    th: int  # /2 the sizes of the tiles used to compute the histograms
+    tw: int
+    num_imgs, gh, gw, c, th, tw = interp_tiles.shape
+
+    # selection of luts to interpolate each patch
+    # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
+    # the tensor is init to -1 to denote non init hists
+    luts_x_interp_tiles: torch.Tensor = -torch.ones(
+        num_imgs, gh, gw, 4, c, luts.shape[-1], device=interp_tiles.device)  # B x GH x GW x 4 x C x B
+    for im in range(num_imgs):
+        for j in range(gh):
+            for i in range(gw):
+                # corner region
+                if (i == 0 or i == gw - 1) and (j == 0 or j == gh - 1):
+                    luts_x_interp_tiles[im, j, i, 0] = luts[im, j // 2, i // 2]
+                    #print(f'corner ({j},{i})')
+                    continue
+
+                # border region (h)
+                if i == 0 or i == gw - 1:
+                    luts_x_interp_tiles[im, j, i, 0] = luts[im, max(0, j // 2 + j % 2 - 1), i // 2]
+                    luts_x_interp_tiles[im, j, i, 1] = luts[im, j // 2 + j % 2, i // 2]
+                    continue
+
+                # border region (w)
+                if j == 0 or j == gh - 1:
+                    luts_x_interp_tiles[im, j, i, 0] = luts[im, j // 2, max(0, i // 2 + i % 2 - 1)]
+                    luts_x_interp_tiles[im, j, i, 1] = luts[im, j // 2, i // 2 + i % 2]
+                    continue
+
+                # internal region
+                luts_x_interp_tiles[im, j, i, 0] = luts[im, max(0, j // 2 + j % 2 - 1), max(0, i // 2 + i % 2 - 1)]
+                luts_x_interp_tiles[im, j, i, 1] = luts[im, max(0, j // 2 + j % 2 - 1), i // 2 + i % 2]
+                luts_x_interp_tiles[im, j, i, 2] = luts[im, j // 2 + j % 2, max(0, i // 2 + i % 2 - 1)]
+                luts_x_interp_tiles[im, j, i, 3] = luts[im, j // 2 + j % 2, i // 2 + i % 2]
+    return luts_x_interp_tiles
+
+
+def compute_equalized_tiles_opt(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
+    """Equalize the tiles.
+
+    Args:
+        interp_tiles (torch.Tensor): set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
+        luts (torch.Tensor): luts for each one of the original tiles. (B, GH, GW, C, 256)
+
+    Returns:
+        torch.Tensor: equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
+
+    """
+    mapped_luts: torch.Tensor = map_luts(interp_tiles, luts)  # Bx2GHx2GWx4xCx256
+
+    num_imgs: int  # number of batched images
+    gh: int  # 2x the number of tiles used to compute the histograms
+    gw: int
+    c: int  # number of channels
+    th: int  # /2 the sizes of the tiles used to compute the histograms
+    tw: int
+    num_imgs, gh, gw, c, th, tw = interp_tiles.shape
+
+    # equalize tiles
+    flatten_interp_tiles: torch.Tensor = (interp_tiles * 255).long().flatten(-2, -1)  # B x GH x GW x 4 x C x (THxTW)
+    flatten_interp_tiles = flatten_interp_tiles.unsqueeze(-3).expand(num_imgs, gh, gw, 4, c, th * tw)
+    preinterp_tiles_equalized = torch.gather(
+        mapped_luts, 5, flatten_interp_tiles).reshape(num_imgs, gh, gw, 4, c, th, tw)  # B x GH x GW x 4 x C x TH x TW
+
+    # interp tiles
+    tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles, dtype=torch.long)
+
+    # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
+    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2 * th - 1)[None].T.expand(2 * th, tw)
+    ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
+    iw = torch.arange(2 * tw - 1, -1, -1, device=interp_tiles.device).div(2 * tw - 1).expand(th, 2 * tw)
+    iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
+
+    # compute row and column interpolation weigths
+    tiw = iw.expand((gw - 2) // 2, 2, th, tw).reshape(gw - 2, 1, th, tw).unsqueeze(0)  # 1 x GW-2 x 1 x TH x TW
+    tih = ih.repeat((gh - 2) // 2, 1, 1, 1).unsqueeze(1)  # GH-2 x 1 x 1 x TH x TW
+
+    # internal regions
+    tl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 0]
+    tr = preinterp_tiles_equalized[:, 1:-1, 1:-1, 1]
+    bl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 2]
+    br = preinterp_tiles_equalized[:, 1:-1, 1:-1, 3]
+    t = tiw * (tl - tr) + tr
+    b = tiw * (bl - br) + br
+    tiles_equalized[:, 1:-1, 1:-1] = tih * (t - b) + b
+
+    # corner regions
+    tiles_equalized[:, 0, 0] = preinterp_tiles_equalized[:, 0, 0, 0]
+    tiles_equalized[:, gh - 1, 0] = preinterp_tiles_equalized[:, gh - 1, 0, 0]
+    tiles_equalized[:, 0, gw - 1] = preinterp_tiles_equalized[:, 0, gw - 1, 0]
+    tiles_equalized[:, gh - 1, gw - 1] = preinterp_tiles_equalized[:, gh - 1, gw - 1, 0]
+
+    # border region (h)
+    t = preinterp_tiles_equalized[:, 1:-1, 0, 0]
+    b = preinterp_tiles_equalized[:, 1:-1, 0, 1]
+    tiles_equalized[:, 1:-1, 0] = tih.squeeze(1) * (t - b) + b
+
+    t = preinterp_tiles_equalized[:, 1:-1, gh - 1, 0]
+    b = preinterp_tiles_equalized[:, 1:-1, gh - 1, 1]
+    tiles_equalized[:, 1:-1, gh - 1] = tih.squeeze(1) * (t - b) + b
+
+    # border region (w)
+    l = preinterp_tiles_equalized[:, 0, 1:-1, 0]
+    r = preinterp_tiles_equalized[:, 0, 1:-1, 1]
+    tiles_equalized[:, 0, 1:-1] = tiw * (l - r) + r
+
+    l = preinterp_tiles_equalized[:, gw - 1, 1:-1, 0]
+    r = preinterp_tiles_equalized[:, gw - 1, 1:-1, 1]
+    tiles_equalized[:, gw - 1, 1:-1] = tiw * (l - r) + r
+
+    return tiles_equalized
+
+
 def main():
     """Run the main function."""
     on_rgb: bool = False
@@ -366,7 +494,7 @@ def main():
         img_lab: torch.Tensor = kornia.rgb_to_lab(img_rgb)
         img = img_lab[..., 0, :, :].unsqueeze(-3) / 100  # L in lab is in range [0, 100]
     # plot_image(img_rgb)
-    gh = gw = 1
+    gh = gw = 8
     grid_size: Tuple = (gh, gw)
     hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW
     img_padded: torch.Tensor  # B x C x H' x W'
@@ -385,8 +513,9 @@ def main():
     time_tiles = time.time() - tic
     tic = time.time()
     for i in range(10):
-        luts: torch.Tensor = compute_luts_optim(hist_tiles)  # B x GH x GW x C x B
-        equalized_tiles: torch.Tensor = compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+        #luts: torch.Tensor = compute_luts_optim(hist_tiles)  # B x GH x GW x C x B
+        luts: torch.Tensor = compute_luts(hist_tiles)  # B x GH x GW x C x B
+        equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
     p1 = torch.cat(equalized_tiles.unbind(2), 4)
     p2 = torch.cat(p1.unbind(1), 2)
@@ -410,6 +539,7 @@ def main():
     h, w = img_rgb.shape[-2:]
     p2 = p2[..., :h, :w]
     time_kornia = time.time() - tic
+
 #    if on_rgb:
 #        plot_image(p2.div(255.))
 #    else:
@@ -424,7 +554,34 @@ def main():
 #    plot_image(img_rgb, lightness_equalized)
 #    plot_hist(lightness_equalized)
 
-    print(f'time_tiles: \t{time_tiles:.5f}\ntorch: \t{time_torch:.5f}\nkornia: \t{time_kornia:.5f}\nkornia he: \t{time_kornia_he:.5f}')
+    # hist equalization in opencv
+    tic = time.time()
+    ims = img.mul(255).clamp(0, 255).byte().cpu().numpy().squeeze()
+    for i in range(10):
+        equ0 = cv2.equalizeHist(ims[0])
+        equ1 = cv2.equalizeHist(ims[1])
+    time_opencv_he = time.time() - tic
+#    plot_hist(torch.tensor([equ0, equ1]).float().div(255))
+#    plot_image(img_rgb, torch.tensor([equ0, equ1]).float().div(255))
+
+    tic = time.time()
+    ims = img.mul(255).clamp(0, 255).byte().cpu().numpy()
+    tic = time.time()
+    for i in range(10):
+        # with this clip limit produces the "same" result as ahe
+        clahe = cv2.createCLAHE(clipLimit=2000, tileGridSize=(gh, gw))
+        res = np.zeros_like(ims)
+        for j in range(ims.shape[1]):
+            res[0, j] = clahe.apply(ims[0][j])
+            res[1, j] = clahe.apply(ims[1][j])
+    time_opencv_clahe = time.time() - tic
+#    if on_rgb:
+#        plot_image(torch.tensor(res).float().div(255))
+#    else:
+#        plot_hist(torch.tensor(res).float().div(255))
+#        plot_image(img_rgb, torch.tensor(res).float().div(255))
+
+    print(f'time_tiles: \t{time_tiles:.5f}\nkorna ahe opt: \t{time_torch:.5f}\nkornia ahe: \t{time_kornia:.5f}\nkornia he: \t{time_kornia_he:.5f}\nopencv he: \t{time_opencv_he:.5f}\nopencv clahe: \t{time_opencv_clahe:.5f}')
 
 
 if __name__ == "__main__":
