@@ -588,7 +588,8 @@ def _get_new_mask(in_progress_mask: torch.Tensor,
                 (new_positions[:, 2] >= D))
     new_positions_to_try = new_positions[~bad_idxs]
     new_positions_to_try_idxs = torch.split(new_positions_to_try, 1, dim=1)
-    new_nms_mask.masked_fill_(new_positions_to_try_idxs, 1)
+    new_nms_mask[new_positions_to_try_idxs] = 1
+    #new_nms_mask.masked_fill_(new_positions_to_try_idxs, 1)
     return new_nms_mask
 
 
@@ -708,7 +709,7 @@ def conv_quad_interp3d(input: torch.Tensor,
                                      current_non_converged_masked,
                                      dx_masked_upd,
                                      B, CH, D, H, W)
-        in_progress_mask = _filter_new_mask(new_nms_mask, converged_all, already_tried)
+        in_progress_mask = _filter_new_mask(new_nms_mask, already_tried)
     delta_coords_all.masked_fill_((~converged_all).view(-1, 1, 1).expand_as(delta_coords_all), 0)
     dy_all = 0.5 * torch.bmm(b.permute(0, 2, 1), delta_coords_all)
     y_max = input + dy_all.view(B, CH, D, H, W)
