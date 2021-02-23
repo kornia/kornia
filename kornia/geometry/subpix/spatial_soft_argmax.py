@@ -543,7 +543,64 @@ class SpatialSoftArgmax2d(nn.Module):
                                      self.normalized_coordinates, self.eps)
 
 
-def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7):
+def _get_extrema(b: torch.Tensor,
+                 Hes: torch.Tensor,
+                 where_to_calculate_mask: torch.Tensor,
+                 eps: float = 1e-7) -> Tuple[torch.Tensor, torch.Tensor]:
+    x_solved: torch.Tensor = torch.zeros_like(b)
+    x_solved_masked, _ = torch.solve(b[where_to_calculate_mask.view(-1)],
+                                     Hes[where_to_calculate_mask.view(-1)])
+    x_solved.masked_scatter_(where_to_calculate_mask.view(-1, 1, 1), x_solved_masked)
+    dx: torch.Tensor = -x_solved
+    return dx, -x_solved_masked
+
+
+def _update_converged_mask(dx_masked: torch.Tensor,
+                           converged_all: torch.Tensor,
+                           nms_mask: torch.Tensor) -> Tuple[torch.Tensor,
+                                                            torch.Tensor,
+                                                            torch.Tensor]:
+    current_converged_masked = (dx_masked.abs().max(dim=1, keepdim=True)[0] < 0.5)
+    current_non_converged_masked = ~current_converged_masked
+    converged_to_add = converged_all.clone().view(-1).masked_scatter_(nms_mask.view(-1),  # noqa
+                                                                      current_converged_masked.view(-1)).view_as(nms_mask) # noqa
+    converged_all = converged_all.clone() | converged_to_add
+    return converged_all, current_converged_masked, current_non_converged_masked
+
+
+def _get_new_mask(in_progress_mask: torch.Tensor,
+                  current_converged_masked: torch.Tensor,
+                  current_non_converged_masked: torch.Tensor,
+                  dx_masked: torch.Tensor,
+                  B: int, CH: int, D: int, H: int, W: int) -> torch.Tensor:
+    in_progress_mask = in_progress_mask.view(-1).clone().masked_scatter_(in_progress_mask.view(-1), # noqa
+                                                                         ~current_converged_masked).view(B, CH, D, H, W) # noqa
+    new_nms_mask = torch.zeros_like(in_progress_mask)
+    new_positions = in_progress_mask.view(B, CH, D, H, W).nonzero().float()
+    if len(new_positions) == 0:
+        return new_nms_mask
+    new_positions[:, 2:] = (new_positions[:, 2:].clone() +
+                            dx_masked[current_non_converged_masked.repeat(1, 3, 1)].view(-1, 3).flip(1))
+    new_positions = new_positions.round().long()
+    bad_idxs = ((new_positions < 0).max(dim=1)[0] |
+                (new_positions[:, 4] >= W) |
+                (new_positions[:, 3] >= H) |
+                (new_positions[:, 2] >= D))
+    new_positions_to_try = new_positions[~bad_idxs]
+    new_positions_to_try_idxs = torch.split(new_positions_to_try, 1, dim=1)
+    new_nms_mask.masked_fill_(new_positions_to_try_idxs, 1)
+    return new_nms_mask
+
+
+def _filter_new_mask(new_nms_mask: torch.Tensor,
+                     already_tried: torch.Tensor) -> torch.Tensor:
+    return new_nms_mask & (~already_tried)
+
+
+def conv_quad_interp3d(input: torch.Tensor,
+                       strict_maxima_bonus: float = 10.0,
+                       eps: float = 1e-7,
+                       n_iter: int = 1):
     r"""Function that computes the single iteration of quadratic interpolation of of the extremum (max or min) location
     and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT
 
@@ -551,6 +608,8 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
         strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
                                      This is needed for mimic behavior of strict NMS in classic local features
         eps (float): parameter to control the hessian matrix ill-condition number.
+        n_iter (float): number of iterations.
+
     Shape:
         - Input: :math:`(N, C, D_{in}, H_{in}, W_{in})`
         - Output: :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`, where
@@ -595,7 +654,6 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dxy = 0.25 * A[..., 3]  # normalization to match OpenCV implementation
     dys = 0.25 * A[..., 4]  # normalization to match OpenCV implementation
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
-
     Hes = torch.stack([dxx, dxy, dxs,
                        dxy, dyy, dys,
                        dxs, dys, dss], dim=-1).view(-1, 3, 3)
@@ -604,24 +662,61 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
     nms_mask: torch.Tensor = kornia.feature.nms3d(input, (3, 3, 3), True)
-    x_solved: torch.Tensor = torch.zeros_like(b)
-    x_solved_masked, _ = torch.solve(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
-    x_solved.masked_scatter_(nms_mask.view(-1, 1, 1), x_solved_masked)
-    dx: torch.Tensor = -x_solved
+    num_nc = nms_mask.sum().item()
+    if num_nc == 0:  # no extrema, abort
+        return grid_global[None].expand(B, CH, 3, D, H, W), input
 
-    # Ignore ones, which are far from window center
-    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7)
-    dx.masked_fill_(mask1.expand_as(dx), 0)
-    dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
-    y_max = input + dy.view(B, CH, D, H, W)
+    converged_all = torch.zeros_like(nms_mask)
+    in_progress_mask = nms_mask.clone()
+    already_tried = nms_mask.clone()
+
+    #  Find extrema around existing mask
+    delta_coords_all, dx_masked = _get_extrema(b, Hes, in_progress_mask, eps)
+
+    #  Save those extrema, which are converged
+    (converged_all,
+     current_converged_masked,
+     current_non_converged_masked) = _update_converged_mask(dx_masked, converged_all, nms_mask)
+
+    # Generate new mask from the non-converging extremas
+    new_nms_mask = _get_new_mask(in_progress_mask,
+                                 current_converged_masked,
+                                 current_non_converged_masked,
+                                 dx_masked,
+                                 B, CH, D, H, W)
+
+    # Exclude from the new mask those, which are already checked
+    in_progress_mask = _filter_new_mask(new_nms_mask, already_tried)
+
+    # Iterate
+    for iter_idx in range(max(0, n_iter - 1)):
+        num_nc = in_progress_mask.sum().item()
+        if num_nc == 0:
+            break
+        dx_upd, dx_masked_upd = _get_extrema(b, Hes, in_progress_mask, eps)
+        already_tried = already_tried | in_progress_mask
+        delta_coords_all += dx_upd
+        (converged_all,
+         current_converged_masked,
+         current_non_converged_masked) = _update_converged_mask(dx_masked_upd,
+                                                                converged_all,
+                                                                in_progress_mask)
+        if current_non_converged_masked.sum().item() == 0:
+            break
+        new_nms_mask = _get_new_mask(in_progress_mask,
+                                     current_converged_masked,
+                                     current_non_converged_masked,
+                                     dx_masked_upd,
+                                     B, CH, D, H, W)
+        in_progress_mask = _filter_new_mask(new_nms_mask, converged_all, already_tried)
+    delta_coords_all.masked_fill_((~converged_all).view(-1, 1, 1).expand_as(delta_coords_all), 0)
+    dy_all = 0.5 * torch.bmm(b.permute(0, 2, 1), delta_coords_all)
+    y_max = input + dy_all.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
-        y_max += strict_maxima_bonus * nms_mask.to(input.dtype)
-
-    dx_res: torch.Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
-    coords_max: torch.Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
-    coords_max = coords_max + dx_res
-
-    return coords_max, y_max
+        y_max += strict_maxima_bonus * converged_all.to(input.dtype)
+    delta_coords_all = delta_coords_all.flip(1).view(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
+    delta_coords_all += grid_global[None].expand_as(delta_coords_all)
+    return delta_coords_all, y_max
 
 
 class ConvQuadInterp3d(nn.Module):
@@ -630,14 +725,17 @@ class ConvQuadInterp3d(nn.Module):
     """
 
     def __init__(self,
-                 strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:
+                 strict_maxima_bonus: float = 10.0,
+                 eps: float = 1e-7,
+                 n_iter: int = 1) -> None:
         super(ConvQuadInterp3d, self).__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
         self.eps = eps
+        self.n_iter = n_iter
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
+        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ', n_iter=' + str(self.n_iter) + ')' # noqa
 
     def forward(self, x: torch.Tensor):  # type: ignore
-        return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)
+        return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps, self.n_iter)
