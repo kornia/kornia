@@ -148,7 +148,7 @@ class ScaleSpaceDetector(nn.Module):
 
             # Now, lets crop out some small responses
             responses_flatten = response_max.view(response_max.size(0), -1)  # [B, N]
-            max_coords_flatten = coord_max.view(response_max.size(0), 3, -1).permute(0, 2, 1)  # [B, N, 3]
+            max_coords_flatten = coord_max.reshape(response_max.size(0), 3, -1).permute(0, 2, 1)  # [B, N, 3]
 
             if responses_flatten.size(1) > num_feats:
                 resp_flat_best, idxs = torch.topk(responses_flatten, k=num_feats, dim=1)
