@@ -40,7 +40,10 @@ from .mix_augmentation import (
     RandomCutMix
 )
 from .container import (
-    VideoSequential
+    VideoSequential,
+    TTABase,
+    TTAClassificationWrapper,
+    TTASegmentationWrapper
 )
 
 __all__ = [
@@ -80,4 +83,7 @@ __all__ = [
     "CenterCrop3D",
     "RandomEqualize3D",
     "VideoSequential",
+    "TTABase",
+    "TTAClassificationWrapper",
+    "TTASegmentationWrapper"
 ]

@@ -29,3 +29,24 @@ Currently, `VideoSequential` supports data format like :math:`(B, C, T, H, W)` a
       data_format="BCTHW",
       same_on_frame=True
    )
+
+
+Test Time Augmentation
+----------------------
+
+TTA (Test Time Augmentation) smoothed predictions by aggregating several transformed testing samples. It has three stages:
+transform, inference and aggregate results. Specifically, for non-classification tasks, it normally
+requires to "inverse the geometric transform" prior to the aggregation.
+
+
+.. autoclass:: TTABase
+
+
+.. autoclass:: TTAClassificationWrapper
+
+   .. automethod:: forward
+
+
+.. autoclass:: TTASegmentationWrapper
+
+   .. automethod:: forward
