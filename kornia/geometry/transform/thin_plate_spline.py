@@ -8,7 +8,7 @@ from kornia.utils import _extract_device_dtype, create_meshgrid
 __all__ = [
     "get_tps_transform",
     "warp_points_tps",
-    "warp_img_tensor_tps"
+    "warp_image_tps"
 ]
 
 # utilities for computing thin plate spline transforms
@@ -64,7 +64,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
         raise ValueError(f"Invalid shape for points_src, expected BxNx2. Got {points_src.shape}")
 
     if not len(points_dst.shape) == 3:
-        raise ValueError(f"Invalid shape for points_src, expected BxNx2. Got {points_src.shape}")
+        raise ValueError(f"Invalid shape for points_dst, expected BxNx2. Got {points_dst.shape}")
 
     device, dtype = _extract_device_dtype([points_src, points_dst])
     batch_size, num_points = points_src.shape[:2]
@@ -75,6 +75,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
+    requires_grad = points_src.requires_grad or points_dst.requires_grad
     zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
     one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
     dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
@@ -197,8 +198,8 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
     if not isinstance(affine_weights, torch.Tensor):
         raise TypeError(f"Input affine_weights is not torch.Tensor. Got {type(affine_weights)}")
 
-    if not len(image.shape) == 3:
-        raise ValueError(f"Invalid shape for image, expected BxNx2. Got {image.shape}")
+    if not len(image.shape) == 4:
+        raise ValueError(f"Invalid shape for image, expected BxCxHxW. Got {image.shape}")
 
     if not len(kernel_centers.shape) == 3:
         raise ValueError(f"Invalid shape for kernel_centers, expected BxNx2. Got {kernel_centers.shape}")
@@ -209,11 +210,11 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
     if not len(affine_weights.shape) == 3:
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
-    device, dtype = _extract_device_dtype([tensor, kernel_centers, kernel_weights, affine_weights])
-    batch_size, _, h, w = tensor.shape
+    device, dtype = _extract_device_dtype([image, kernel_centers, kernel_weights, affine_weights])
+    batch_size, _, h, w = image.shape
     coords: torch.Tensor = create_meshgrid(h, w, device=device).reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
-    warped_image: torch.Tensor = nn.functional.grid_sample(tensor, warped, align_corners=align_corners)
+    warped_image: torch.Tensor = nn.functional.grid_sample(image, warped, align_corners=align_corners)
 
     return warped_image
