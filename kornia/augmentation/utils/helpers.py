@@ -271,7 +271,7 @@ def _adapted_beta(
     ])
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
-    dist = Beta(a, b)
+    dist = Beta(a, b, validate_args=False)
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 

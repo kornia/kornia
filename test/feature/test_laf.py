@@ -215,14 +215,14 @@ class TestMakeUpright:
     def test_do_nothing(self, device):
         inp = torch.tensor([[1, 0, 0], [0, 1, 0]], device=device).float()
         inp = inp.view(1, 1, 2, 3)
-        expected = torch.tensor([[1, 0, 0], [0, 1, 0]], device=device).float()
+        expected = torch.tensor([[[[1, 0, 0], [0, 1, 0]]]], device=device).float()
         laf = kornia.feature.make_upright(inp)
         assert_allclose(laf, expected)
 
     def test_do_nothing_with_scalea(self, device):
         inp = torch.tensor([[2, 0, 0], [0, 2, 0]], device=device).float()
         inp = inp.view(1, 1, 2, 3)
-        expected = torch.tensor([[2, 0, 0], [0, 2, 0]], device=device).float()
+        expected = torch.tensor([[[[2, 0, 0], [0, 2, 0]]]], device=device).float()
         laf = kornia.feature.make_upright(inp)
         assert_allclose(laf, expected)
 
@@ -298,7 +298,7 @@ class TestNormalizeLAF:
         laf = torch.tensor([[1, 0, 1], [0, 1, 1]]).float()
         laf = laf.view(1, 1, 2, 3)
         img = torch.rand(1, 3, h, w)
-        expected = torch.tensor([[0.2, 0, 0.1], [0, 0.2, 0.2]]).float()
+        expected = torch.tensor([[[[0.2, 0, 0.1], [0, 0.2, 0.2]]]]).float()
         lafn = kornia.feature.normalize_laf(laf, img)
         assert_allclose(lafn, expected)
 
