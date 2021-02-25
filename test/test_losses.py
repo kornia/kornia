@@ -388,13 +388,16 @@ class TestSSIMLoss:
     def test_gradcheck(self, device, dtype):
         # input data
         window_size = 3
-        img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
-        img2 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
+        img1 = torch.rand(1, 1, 5, 4, device=device, dtype=dtype)
+        img2 = torch.rand(1, 1, 5, 4, device=device, dtype=dtype)
 
         # evaluate function gradient
         img1 = utils.tensor_to_gradcheck_var(img1)  # to var
-        img2 = utils.tensor_to_gradcheck_var(img2, requires_grad=False)  # to var
-        assert gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True)
+        img2 = utils.tensor_to_gradcheck_var(img2)  # to var
+
+        # TODO: review method since it needs `nondet_tol` in cuda sometimes.
+        assert gradcheck(kornia.losses.ssim_loss,
+                         (img1, img2, window_size), raise_exception=True, nondet_tol=1e-8)
 
 
 class TestDivergenceLoss:
