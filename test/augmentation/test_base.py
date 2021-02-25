@@ -47,7 +47,7 @@ class TestBasicAugmentationBase:
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
-            output = augmentation.__forward_parameters__(input_shape, p, p_batch, same_on_batch)
+            output = augmentation.forward_parameters(input_shape)
             assert "batch_prob" in output
             assert len(output['degrees']) == output['batch_prob'].sum().item() == num
 
