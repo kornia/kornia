@@ -96,7 +96,7 @@ class TestRandomPerspective:
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
         assert_allclose(out_perspective[0], x_data)
-        assert_allclose(out_perspective[1], torch.eye(3, device=device))
+        assert_allclose(out_perspective[1], torch.eye(3, device=device)[None])
 
     def test_transform_module_should_return_expected_transform(self, device):
         torch.manual_seed(0)
