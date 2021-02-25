@@ -86,7 +86,7 @@ class TestColorJitter:
 
         expected = input
 
-        assert_allclose(F.apply_color_jitter(input[None], jitter_param), expected, atol=1e-4, rtol=1e-5)
+        assert_allclose(F.apply_color_jitter(input[None], jitter_param), expected[None], atol=1e-4, rtol=1e-5)
 
     def test_color_jitter_batch(self):
         batch_size = 2
@@ -327,7 +327,7 @@ class TestRandomGrayscale:
                                   [0.6988886, 0.5897652, 0.6532392, 0.7234108, 0.7218805]]])
         expected = expected.to(device)
 
-        assert_allclose(F.apply_grayscale(data[None]), expected)
+        assert_allclose(F.apply_grayscale(data[None]), expected[None])
 
     def test_opencv_true_batch(self, device):
         batch_size = 4

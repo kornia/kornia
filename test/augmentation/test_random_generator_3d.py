@@ -476,7 +476,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
                  [50, 25, 159],
                  [149, 25, 159],
                  [149, 174, 159],
-                 [50, 174, 159]]], device=device, dtype=torch.long),
+                 [50, 174, 159]]], device=device, dtype=torch.long).repeat(2, 1, 1),
             dst=torch.tensor([
                 [[0, 0, 0],
                  [99, 0, 0],
@@ -485,7 +485,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
                  [0, 0, 119],
                  [99, 0, 119],
                  [99, 149, 119],
-                 [0, 149, 119]]], device=device, dtype=torch.long),
+                 [0, 149, 119]]], device=device, dtype=torch.long).repeat(2, 1, 1),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'].to(device=device), expected['src'], atol=1e-4, rtol=1e-4)
