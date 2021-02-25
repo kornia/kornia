@@ -1,11 +1,10 @@
-from typing import List, Tuple, Union, cast
+from typing import Tuple, Union, cast
 
 import torch
 import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
-from kornia.augmentation import ColorJitter
 
 
 class VideoSequential(nn.Sequential):
@@ -109,18 +108,17 @@ class VideoSequential(nn.Sequential):
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(input)
         input = self._input_shape_convert_in(input)
-        _original_shape = input.shape
         input = input.reshape(-1, *batch_shape[1:])
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
         for aug in self.children():
             aug = cast(_AugmentationBase, aug)
-            param = aug.__forward_parameters__(batch_shape, aug.p, aug.p_batch, aug.same_on_batch)
+            param = aug.forward_parameters(batch_shape)
             if self.same_on_frame:
                 for k, v in param.items():
                     # TODO: revise colorjitter order param in the future to align the standard.
-                    if not (k == "order" and isinstance(aug, ColorJitter)):
+                    if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
                         param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
             input = aug(input, params=param)
 

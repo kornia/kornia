@@ -13,9 +13,6 @@ Kornia provides Torchvision-like augmentation APIs while may not reproduce Torch
 For detailed comparison, please checkout the `Colab: Kornia Playground <https://colab.research.google.com/drive/1T20UNAG4SdlE2n2wstuhiewve5Q81VpS#revisionId=0B4unZG1uMc-WR3NVeTBDcmRwN0NxcGNNVlUwUldPMVprb1dJPQ>`_.
 
 
-Module API
-----------
-
 Kornia augmentation implementations can be easily used in a TorchVision style using `nn.Sequential`.
 
 .. code-block:: python
@@ -64,11 +61,11 @@ Example for semantic segmentation using low-level randomness control:
 	    f"Input shape should be consistent with mask shape, "
             f"while got {input.shape}, {mask.shape}" 
 
-	 aff_params = self.aff.generate_parameters(input.shape)
+	 aff_params = self.aff.forward_parameters(input.shape)
 	 input = self.aff(input, aff_params)
 	 mask = self.aff(mask, aff_params)
 		
-	 jit_params = self.jit.generate_parameters(input.shape)
+	 jit_params = self.jit.forward_parameters(input.shape)
 	 input = self.jit(input, jit_params)
 	 mask = self.jit(mask, jit_params)
 	 return input, mask

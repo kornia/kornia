@@ -1,10 +1,8 @@
-kornia.augmentation.base
-========================
+Base Classes
+============
 
 .. currentmodule:: kornia.augmentation.base
 
-Base Classes
-------------
 
 This is the base class for creating a new transform. The user only needs to override: `generate_parameters`, `apply_transform` and optionally, `compute_transformation`.
 

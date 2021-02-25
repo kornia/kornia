@@ -1,5 +1,5 @@
-kornia.augmentation.container
-=============================
+Augmentation Containers
+=======================
 
 .. currentmodule:: kornia.augmentation.container
 
