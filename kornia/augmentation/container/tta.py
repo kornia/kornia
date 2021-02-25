@@ -76,7 +76,7 @@ class TTABase(nn.Sequential):
             "Input must have the same batch size as recorded transforms. "
             f"Got {input.size(0)} and {self.transforms.size(0)}.")
         return torch.cat([
-            kornia.warp_affine(tensor[None], trans.inverse()[None, :2], dsize=tuple(tensor.shape[-2:]), **kwargs)
+            kornia.warp_perspective(tensor[None], trans.inverse()[None], dsize=tuple(tensor.shape[-2:]), **kwargs)
             for tensor, trans in zip(input, self.transforms)
         ])
 
@@ -145,24 +145,24 @@ class TTASegmentationWrapper(TTABase):
         ... )
         >>> model = nn.Conv2d(3, 3, kernel_size=(2, 3))
         >>> tta(model, input, tta_times=3)
-        tensor([[[[ 6.8983e-02, -1.2261e-01],
-                  [ 1.8148e-01,  1.8101e-01]],
+        tensor([[[[ 0.0153, -0.0493],
+                  [ 0.0391,  0.0442]],
         <BLANKLINE>
-                 [[ 7.6052e-02,  2.3324e-02],
-                  [-4.1025e-02,  7.4649e-02]],
+                 [[ 0.0251,  0.0048],
+                  [-0.0088,  0.0188]],
         <BLANKLINE>
-                 [[-3.4549e-02,  3.4902e-02],
-                  [-2.1821e-01, -1.8697e-01]]],
+                 [[-0.0033,  0.0172],
+                  [-0.0470, -0.0455]]],
         <BLANKLINE>
         <BLANKLINE>
-                [[[ 9.3109e-03,  6.8537e-03],
-                  [ 9.8155e-02,  3.5413e-05]],
+                [[[ 0.0000,  0.0000],
+                  [ 0.0586, -0.0201]],
         <BLANKLINE>
-                 [[-4.5008e-03, -4.6529e-03],
-                  [-4.3216e-02, -5.9058e-02]],
+                 [[ 0.0000,  0.0000],
+                  [-0.0561, -0.0580]],
         <BLANKLINE>
-                 [[-2.4113e-02, -2.5761e-02],
-                  [-1.8114e-01, -8.6980e-02]]]], grad_fn=<MeanBackward1>)
+                 [[ 0.0000,  0.0000],
+                  [-0.1352, -0.0299]]]], grad_fn=<MeanBackward1>)
     """
 
     def forward(self, model: Callable, input: torch.Tensor, tta_times: int = 16, **kwargs) -> torch.Tensor:
