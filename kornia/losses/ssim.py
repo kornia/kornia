@@ -77,13 +77,13 @@ def ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int,
     mu1: torch.Tensor = filter2D(img1, kernel)
     mu2: torch.Tensor = filter2D(img2, kernel)
 
-    mu1_sq = mu1.pow(2)
-    mu2_sq = mu2.pow(2)
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
 
     # compute local sigma per channel
-    sigma1_sq = filter2D(img1 * img1, kernel) - mu1_sq
-    sigma2_sq = filter2D(img2 * img2, kernel) - mu2_sq
+    sigma1_sq = filter2D(img1 ** 2, kernel) - mu1_sq
+    sigma2_sq = filter2D(img2 ** 2, kernel) - mu2_sq
     sigma12 = filter2D(img1 * img2, kernel) - mu1_mu2
 
     # compute the similarity index map
