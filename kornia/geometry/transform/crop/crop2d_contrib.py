@@ -1,5 +1,6 @@
 from typing import Optional
 
+import kornia
 import torch
 from .crop2d import crop_by_boxes as sampling_by_boxes, validate_bboxes
 
@@ -78,10 +79,7 @@ def bbox_to_mask(boxes: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
                   [0., 1., 1., 1., 0.],
                   [0., 0., 0., 0., 0.],
                   [0., 0., 0., 0., 0.]]]], grad_fn=<CatBackward>)
-        >>> target = torch.ones(1, 1, 5, 5)
-        >>> _ = mask.register_hook(lambda x: print(x))
-        >>> loss = (target - out).mean()
-        >>> loss.backward()
+        >>> kornia.utils.gradient_printer(out, torch.ones_like(mask), mask)
         tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
                   [ 0.0000, -0.0400, -0.0400, -0.0400,  0.0000],
                   [ 0.0000, -0.0400, -0.0400, -0.0400,  0.0000],

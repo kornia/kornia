@@ -665,6 +665,27 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
 
     Returns:
         torch.Tensor: Erased image.
+    
+    Examples:
+        >>> input = torch.ones(1, 1, 4, 5, requires_grad=True)
+        >>> params = {
+        ...     "widths": torch.tensor([3.]),
+        ...     "heights": torch.tensor([4.]),
+        ...     "xs": torch.tensor([1.]),
+        ...     "ys": torch.tensor([1.]),
+        ...     "values": torch.tensor([2.]),
+        ... }
+        >>> out = apply_erase_rectangles(input, params)
+        >>> out
+        tensor([[[[1., 1., 1., 1., 1.],
+                  [1., 2., 2., 2., 1.],
+                  [1., 2., 2., 2., 1.],
+                  [1., 2., 2., 2., 1.]]]], grad_fn=<AddBackward0>)
+        >>> K.utils.gradient_printer(out, torch.ones_like(out), input)
+        tensor([[[[-0.0500, -0.0500, -0.0500, -0.0500, -0.0500],
+                  [-0.0500, -0.0000, -0.0000, -0.0000, -0.0500],
+                  [-0.0500, -0.0000, -0.0000, -0.0000, -0.0500],
+                  [-0.0500, -0.0000, -0.0000, -0.0000, -0.0500]]]])
     """
     if not (params['widths'].size() == params['heights'].size() == params['xs'].size() == params['ys'].size()):
         raise TypeError(
@@ -682,7 +703,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     vs = params['values']
 
     boxes = bbox_generator(xs, ys, widths, heights)
-    src_mask = torch.ones_like(b, 1, h, w, requires_grad=boxes.requires_grad)
+    src_mask = torch.ones(b, 1, h, w)
     mask = bbox_to_mask(boxes, src_mask)
     transformed = input * (1 - mask) + mask * vs[..., None, None, None]
     return transformed
@@ -968,6 +989,7 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
 
     Examples:
         >>> input = torch.stack([torch.zeros(1, 5, 5), torch.ones(1, 5, 5)], dim=0)
+        >>> input.requires_grad = True
         >>> labels = torch.tensor([0, 1])
         >>> params = {'mix_pairs': torch.tensor([[1, 0]]), 'crop_src': torch.tensor([[[
         ...        [1., 1.],
@@ -977,8 +999,9 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
         ...       [[1., 1.],
         ...        [3., 1.],
         ...        [3., 2.],
-        ...        [1., 2.]]]])}
-        >>> apply_cutmix(input, labels, params)
+        ...        [1., 2.]]]], requires_grad=True)}
+        >>> out = apply_cutmix(input, labels, params)
+        >>> out
         (tensor([[[[0., 0., 0., 0., 0.],
                   [0., 1., 1., 0., 0.],
                   [0., 1., 1., 0., 0.],
@@ -990,8 +1013,21 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
                   [1., 0., 0., 0., 1.],
                   [1., 0., 0., 0., 1.],
                   [1., 1., 1., 1., 1.],
-                  [1., 1., 1., 1., 1.]]]]), tensor([[[0.0000, 1.0000, 0.1600],
-                 [1.0000, 0.0000, 0.2400]]]))
+                  [1., 1., 1., 1., 1.]]]], grad_fn=<IndexPutBackward>), tensor([[[0.0000, 1.0000, 0.1600],
+                 [1.0000, 0.0000, 0.2400]]], grad_fn=<StackBackward>))
+        >>> K.utils.gradient_printer(out[0], torch.ones_like(out[0]), input)
+        tensor([[[[-0.0200, -0.0200, -0.0200, -0.0200, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0400, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0400, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0200, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0200, -0.0200]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[-0.0200, -0.0200, -0.0200, -0.0200, -0.0200],
+                  [-0.0200, -0.0200, -0.0200,  0.0000, -0.0200],
+                  [-0.0200, -0.0200, -0.0200,  0.0000, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0200, -0.0200],
+                  [-0.0200, -0.0200, -0.0200, -0.0200, -0.0200]]]])
     """
     height, width = input.size(2), input.size(3)
     num_mixes = params['mix_pairs'].size(0)
@@ -1008,8 +1044,8 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
         h, w = infer_box_shape(crop)
         lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
         # compute mask to match input shape
-        src_mask = torch.ones_like(1, 1, height, width, requires_grad=boxes.requires_grad)
-        mask = bbox_to_mask(crop, src_mask).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
+        src_mask = torch.ones_like(input, requires_grad=crop.requires_grad)
+        mask = bbox_to_mask(crop, src_mask).bool()
         out_inputs[mask] = input_permute[mask]
         out_labels.append(torch.stack([
             labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))

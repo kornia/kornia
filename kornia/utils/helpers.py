@@ -30,3 +30,10 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
+
+
+def gradient_printer(output: torch.Tensor, target: torch.Tensor, grad_tensor: torch.Tensor) -> None:
+    """Print out the gradients through an L1 loss."""
+    _ = grad_tensor.register_hook(lambda x: print(x))
+    loss = (target - output).mean()
+    loss.backward()
