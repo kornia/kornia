@@ -2,6 +2,7 @@ from typing import Tuple, List, Union, Dict, cast, Optional
 
 import kornia as K
 import torch
+import torch.nn.functional as F
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (
@@ -609,25 +610,71 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
 
 
 @_validate_input
-def apply_crop_v2(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_crop_by_masks(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box.
 
-    Order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
+    Different to `apply_crop`, this function will apply cropping on a mask that will not interpolate the
+    internal pixels inside the image. Order: top-left, top-right, bottom-right and bottom-left.
+    The coordinates must be in the x, y order.
 
     Args:
         input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
         params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 4, 2)`.
+            - params['dst']: The applied cropping dst matrix :math: `(*, 4, 2)`.
             - params['mask']: The applied source mask matrix :math: `(*, H, W)`. Optional.
+        flags (Dict[str, torch.Tensor], only usable for resizing cropped area):
+            - params['interpolation']: Integer tensor. NEAREST = 0, BILINEAR = 1.
+            - params['align_corners']: Boolean tensor.
 
     Returns:
         torch.Tensor: The cropped input.
+
+    Examples:
+        >>> input = torch.ones(2, 1, 4, 5, requires_grad=True)
+        >>> src_boxes = torch.tensor([[
+        ...     [1., 1.], [2., 1.], [2., 2.], [1., 2.],
+        ... ], [[1., 1.], [3., 1.], [3., 2.], [1., 2.],
+        ... ]])  # 2x4x2
+        >>> dst_boxes = torch.tensor([[
+        ...     [0., 0.], [2., 0.], [2., 1.], [0., 1.],
+        ... ], [[0., 0.], [2., 0.], [2., 1.], [0., 1.],
+        ... ]])  # 2x4x2
+        >>> params = {"src": src_boxes, "dst": dst_boxes}
+        >>> flags = {"interpolation": torch.tensor(1), "align_corners": torch.tensor(True)}
+        >>> out = apply_crop_by_masks(input, params, flags)
+        >>> out
+        [tensor([[[[1., 1., 1.],
+                  [1., 1., 1.]]]], grad_fn=<UpsampleBilinear2DBackward1>), tensor([[[[1., 1., 1.],
+                  [1., 1., 1.]]]], grad_fn=<UpsampleBilinear2DBackward1>)]
+        >>> K.utils.gradient_printer(out[0], torch.ones_like(out[0]), input)  # Only out[0] is hooked
+        tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+                  [ 0.0000, -0.2500, -0.2500,  0.0000,  0.0000],
+                  [ 0.0000, -0.2500, -0.2500,  0.0000,  0.0000],
+                  [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]],
+        <BLANKLINE>
+        <BLANKLINE>
+                [[[ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+                  [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+                  [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000],
+                  [ 0.0000,  0.0000,  0.0000,  0.0000,  0.0000]]]])
     """
-    return crop_by_boxes(
+    cropped = crop_by_boxes(
         input,
         params['src'],
         params['mask'] if 'mask' in params else None
     )
+    resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
+    align_corners: bool = cast(bool, flags['align_corners'].item())
+
+    bbox_dst = infer_box_shape(params['dst'])
+    output = [F.interpolate(cropped[i][None],
+        (bbox_dst[0][i].int().item(), bbox_dst[1][i].int().item()),
+        mode=resample_mode, align_corners=align_corners) for i in range(len(cropped))]
+    if isinstance(cropped, (torch.Tensor)):
+        output = torch.cat(output)
+    return output
 
 
 @_validate_input
@@ -665,7 +712,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
 
     Returns:
         torch.Tensor: Erased image.
-    
+
     Examples:
         >>> input = torch.ones(1, 1, 4, 5, requires_grad=True)
         >>> params = {

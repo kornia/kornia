@@ -1,6 +1,7 @@
 from typing import Tuple, Union
 
 import torch
+from torch.autograd.grad_mode import F
 
 from kornia.geometry.transform.imgwarp import (
     warp_perspective, get_perspective_transform, warp_affine

@@ -148,10 +148,7 @@ def crop_by_boxes(
         <BLANKLINE>
                 [[ 5.,  6.],
                  [ 9., 10.]]], grad_fn=<CatBackward>)
-        >>> target = torch.ones(1, 1, 2, 2) * 8
-        >>> _ = out.register_hook(lambda x: print(x))
-        >>> loss = (target - out).mean()
-        >>> loss.backward()
+        >>> kornia.utils.gradient_printer(out, torch.ones_like(out) * 8, out)
         tensor([[[-0.1250, -0.1250],
                  [-0.1250, -0.1250]],
         <BLANKLINE>
@@ -178,4 +175,8 @@ def crop_by_boxes(
     cropped = []
     for _masked, _l, _t, _r, _b in zip(masked_tensor, left, top, right, bottom):
         cropped.append(_masked[..., int(_t):h - int(_b), int(_l):w - int(_r)])
-    return torch.cat(cropped)
+
+    if len(set([c.shape for c in cropped])) == 1:
+        # If all cropped pathes are under the exact same size
+        return torch.cat(cropped)
+    return cropped
