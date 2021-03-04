@@ -669,9 +669,9 @@ def apply_crop_by_masks(
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    bbox_dst = infer_box_shape(params['dst'])
+    height, width = infer_box_shape(params['dst'])
     output = [F.interpolate(
-        cropped[i][None], (bbox_dst[0][i].int().item(), bbox_dst[1][i].int().item()),
+        cropped[i][None], (height[i].int().item(), width[i].int().item()),
         mode=resample_mode, align_corners=align_corners) for i in range(len(cropped))]
     if isinstance(cropped, (torch.Tensor)):
         output = torch.cat(output)

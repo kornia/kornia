@@ -1,5 +1,7 @@
 from typing import Optional
 
+from torch.autograd.grad_mode import F
+
 import kornia
 import torch
 from .crop2d import crop_by_boxes as sampling_by_boxes, validate_bboxes
@@ -143,11 +145,12 @@ def crop_by_boxes(
         ... ]]).repeat(2, 1, 1)  # 1x4x2
         >>> out = crop_by_boxes(input, src_box)
         >>> out
-        tensor([[[ 5.,  6.],
-                 [ 9., 10.]],
+        tensor([[[[ 5.,  6.],
+                  [ 9., 10.]]],
         <BLANKLINE>
-                [[ 5.,  6.],
-                 [ 9., 10.]]], grad_fn=<CatBackward>)
+        <BLANKLINE>
+                [[[ 5.,  6.],
+                  [ 9., 10.]]]], grad_fn=<CatBackward>)
         >>> kornia.utils.gradient_printer(out, torch.ones_like(out) * 8, input)
         tensor([[[[ 0.0000,  0.0000,  0.0000,  0.0000],
                   [ 0.0000, -0.1250, -0.1250,  0.0000],
@@ -179,7 +182,7 @@ def crop_by_boxes(
 
     cropped = []
     for _masked, _l, _t, _r, _b in zip(masked_tensor, left, top, right, bottom):
-        cropped.append(_masked[..., int(_t):h - int(_b), int(_l):w - int(_r)])
+        cropped.append(_masked[None, ..., int(_t):h - int(_b), int(_l):w - int(_r)])
 
     if len(set([c.shape for c in cropped])) == 1:
         # If all cropped pathes are under the exact same size
