@@ -611,7 +611,8 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
 
 @_validate_input
 def apply_crop_by_masks(
-    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> Union[torch.Tensor, List[torch.Tensor]]:
     r"""Apply cropping by src bounding box.
 
     Different to `apply_crop`, this function will apply cropping on a mask that will not interpolate the
@@ -669,8 +670,8 @@ def apply_crop_by_masks(
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
     bbox_dst = infer_box_shape(params['dst'])
-    output = [F.interpolate(cropped[i][None],
-        (bbox_dst[0][i].int().item(), bbox_dst[1][i].int().item()),
+    output = [F.interpolate(
+        cropped[i][None], (bbox_dst[0][i].int().item(), bbox_dst[1][i].int().item()),
         mode=resample_mode, align_corners=align_corners) for i in range(len(cropped))]
     if isinstance(cropped, (torch.Tensor)):
         output = torch.cat(output)
