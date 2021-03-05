@@ -146,8 +146,8 @@ def compute_tiles(imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size
 
     # compute stride and kernel size
     h, w = batch.shape[-2:]
-    kernel_vert = math.ceil(h / grid_size[0])
-    kernel_horz = math.ceil(w / grid_size[1])
+    kernel_vert: int = math.ceil(h / grid_size[0])
+    kernel_horz: int = math.ceil(w / grid_size[1])
 
     if even_tile_size:
         kernel_vert += 1 if kernel_vert % 2 else 0
@@ -224,7 +224,7 @@ def compute_luts(tiles_x_im: torch.Tensor) -> torch.Tensor:
         if not diff:
             histo = torch.histc(patch, bins=256, min=0, max=1)
         else:
-            bins: torch.Tensor = torch.linspace(0, 1, 256)
+            bins: torch.Tensor = torch.linspace(0, 1, 256, device=patch.device)
             histo = kornia.enhance.histogram(patch.flatten()[None], bins, torch.tensor(0.001)).squeeze()
             histo *= patch.shape[0] * patch.shape[1]
 
@@ -248,32 +248,34 @@ def compute_luts(tiles_x_im: torch.Tensor) -> torch.Tensor:
     return luts
 
 
-def compute_luts_optim(tiles_x_im: torch.Tensor, diff: bool = False) -> torch.Tensor:
+def compute_luts_optim(tiles_x_im: torch.Tensor, num_bins: int = 256, diff: bool = False) -> torch.Tensor:
     """Compute luts for a batched set of tiles.
 
     Args:
         tiles_x_im (torch.Tensor): set of tiles per image to apply the lut. (B, GH, GW, C, TH, TW)
+        num_bins (int, optional): number of bins. default: 256
+        diff (bool, optional): denote if the differentiable histagram will be used. Default: False
 
     Returns:
         torch.Tensor: Lut for each tile (B, GH, GW, C, 256)
 
     """
-    tiles: torch.Tensor = tiles_x_im.reshape(-1, tiles_x_im.shape[-2] * tiles_x_im.shape[-1])
     pixels: int = tiles_x_im.shape[-2] * tiles_x_im.shape[-1]
-    histos: torch.Tensor = torch.zeros(tiles.shape[0], 256, device=tiles.device)
+    tiles: torch.Tensor = tiles_x_im.reshape(-1, pixels)  # test with view  # T x (THxTW)
+    histos: torch.Tensor = torch.zeros(tiles.shape[0], num_bins, device=tiles.device)
     if not diff:
         for i, tile in enumerate(tiles):
-            histos[i] = torch.histc(tile, bins=256, min=0, max=1)
+            histos[i] = torch.histc(tile, bins=num_bins, min=0, max=1)
     else:
-        bins: torch.Tensor = torch.linspace(0, 1, 256)
+        bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = kornia.enhance.histogram(tiles, bins, torch.tensor(0.001)).squeeze()
         histos *= pixels
 
     # same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
-    lut_scale = 255 / pixels
+    lut_scale = (num_bins - 1) / pixels
     luts = torch.cumsum(histos, 1) * lut_scale
-    luts = luts.clamp(0, 255).byte()
-    luts = luts.view(([*tiles_x_im.shape[0:4]] + [256]))
+    luts = luts.clamp(0, num_bins - 1).floor()  # to get the same values as converting to int maintaining the type
+    luts = luts.view(([*tiles_x_im.shape[0:4]] + [num_bins]))
     return luts
 
 
@@ -376,33 +378,32 @@ def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
     # the tensor is init to -1 to denote non init hists
     luts_x_interp_tiles: torch.Tensor = -torch.ones(
-        num_imgs, gh, gw, 4, c, luts.shape[-1], device=interp_tiles.device)  # B x GH x GW x 4 x C x B
-    for im in range(num_imgs):
-        for j in range(gh):
-            for i in range(gw):
-                # corner region
-                if (i == 0 or i == gw - 1) and (j == 0 or j == gh - 1):
-                    luts_x_interp_tiles[im, j, i, 0] = luts[im, j // 2, i // 2]
-                    #print(f'corner ({j},{i})')
-                    continue
+        num_imgs, gh, gw, 4, c, luts.shape[-1], device=interp_tiles.device)  # B x GH x GW x 4 x C x 256
+    # TODO: optimice indices
+    for j in range(gh):
+        for i in range(gw):
+            # corner region
+            if (i == 0 or i == gw - 1) and (j == 0 or j == gh - 1):
+                luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, i // 2]
+                continue
 
-                # border region (h)
-                if i == 0 or i == gw - 1:
-                    luts_x_interp_tiles[im, j, i, 0] = luts[im, max(0, j // 2 + j % 2 - 1), i // 2]
-                    luts_x_interp_tiles[im, j, i, 1] = luts[im, j // 2 + j % 2, i // 2]
-                    continue
+            # border region (h)
+            if i == 0 or i == gw - 1:
+                luts_x_interp_tiles[:, j, i, 0] = luts[:, max(0, j // 2 + j % 2 - 1), i // 2]
+                luts_x_interp_tiles[:, j, i, 1] = luts[:, j // 2 + j % 2, i // 2]
+                continue
 
-                # border region (w)
-                if j == 0 or j == gh - 1:
-                    luts_x_interp_tiles[im, j, i, 0] = luts[im, j // 2, max(0, i // 2 + i % 2 - 1)]
-                    luts_x_interp_tiles[im, j, i, 1] = luts[im, j // 2, i // 2 + i % 2]
-                    continue
+            # border region (w)
+            if j == 0 or j == gh - 1:
+                luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, max(0, i // 2 + i % 2 - 1)]
+                luts_x_interp_tiles[:, j, i, 1] = luts[:, j // 2, i // 2 + i % 2]
+                continue
 
-                # internal region
-                luts_x_interp_tiles[im, j, i, 0] = luts[im, max(0, j // 2 + j % 2 - 1), max(0, i // 2 + i % 2 - 1)]
-                luts_x_interp_tiles[im, j, i, 1] = luts[im, max(0, j // 2 + j % 2 - 1), i // 2 + i % 2]
-                luts_x_interp_tiles[im, j, i, 2] = luts[im, j // 2 + j % 2, max(0, i // 2 + i % 2 - 1)]
-                luts_x_interp_tiles[im, j, i, 3] = luts[im, j // 2 + j % 2, i // 2 + i % 2]
+            # internal region
+            luts_x_interp_tiles[:, j, i, 0] = luts[:, max(0, j // 2 + j % 2 - 1), max(0, i // 2 + i % 2 - 1)]
+            luts_x_interp_tiles[:, j, i, 1] = luts[:, max(0, j // 2 + j % 2 - 1), i // 2 + i % 2]
+            luts_x_interp_tiles[:, j, i, 2] = luts[:, j // 2 + j % 2, max(0, i // 2 + i % 2 - 1)]
+            luts_x_interp_tiles[:, j, i, 3] = luts[:, j // 2 + j % 2, i // 2 + i % 2]
     return luts_x_interp_tiles
 
 
