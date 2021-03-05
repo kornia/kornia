@@ -374,36 +374,61 @@ def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     tw: int
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
+    # precompute idxs for non corner regions
+    j_idxs = torch.zeros((gh - 2, 4), dtype=torch.long, device=luts.device)
+    i_idxs = torch.zeros((gw - 2, 4), dtype=torch.long, device=luts.device)
+    for j in range(1, gh - 1):
+        v = j // 2 + j % 2
+        j_idxs[j - 1] = torch.tensor([v - 1, v - 1, v, v], device=luts.device)
+    for i in range(1, gw - 1):
+        v = i // 2 + i % 2
+        i_idxs[i - 1] = torch.tensor([v - 1, v, v - 1, v], device=luts.device)
+
     # selection of luts to interpolate each patch
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
     # the tensor is init to -1 to denote non init hists
     luts_x_interp_tiles: torch.Tensor = -torch.ones(
         num_imgs, gh, gw, 4, c, luts.shape[-1], device=interp_tiles.device)  # B x GH x GW x 4 x C x 256
-    # TODO: optimice indices
-    for j in range(gh):
-        for i in range(gw):
-            # corner region
-            if (i == 0 or i == gw - 1) and (j == 0 or j == gh - 1):
-                luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, i // 2]
-                continue
+    # corner regions
+    luts_x_interp_tiles[:, 0::gh - 1, 0::gw - 1, 0] = luts[:, 0::gh // 2 - 1, 0::gw // 2 - 1]
+    # border region (h)
+    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 0] = luts[:, j_idxs[:, 0], 0::gw // 2 - 1]
+    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 1] = luts[:, j_idxs[:, 2], 0::gw // 2 - 1]
+    # border region (w)
+    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 0] = luts[:, 0::gh // 2 - 1, i_idxs[:, 0]]
+    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 1] = luts[:, 0::gh // 2 - 1, i_idxs[:, 1]]
+    # internal region
+    luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
+        :, j_idxs.repeat(gh - 2, 1, 1).permute(1, 0, 2), i_idxs.repeat(gw - 2, 1, 1)]
 
-            # border region (h)
-            if i == 0 or i == gw - 1:
-                luts_x_interp_tiles[:, j, i, 0] = luts[:, max(0, j // 2 + j % 2 - 1), i // 2]
-                luts_x_interp_tiles[:, j, i, 1] = luts[:, j // 2 + j % 2, i // 2]
-                continue
-
-            # border region (w)
-            if j == 0 or j == gh - 1:
-                luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, max(0, i // 2 + i % 2 - 1)]
-                luts_x_interp_tiles[:, j, i, 1] = luts[:, j // 2, i // 2 + i % 2]
-                continue
-
-            # internal region
-            luts_x_interp_tiles[:, j, i, 0] = luts[:, max(0, j // 2 + j % 2 - 1), max(0, i // 2 + i % 2 - 1)]
-            luts_x_interp_tiles[:, j, i, 1] = luts[:, max(0, j // 2 + j % 2 - 1), i // 2 + i % 2]
-            luts_x_interp_tiles[:, j, i, 2] = luts[:, j // 2 + j % 2, max(0, i // 2 + i % 2 - 1)]
-            luts_x_interp_tiles[:, j, i, 3] = luts[:, j // 2 + j % 2, i // 2 + i % 2]
+    # t = luts_x_interp_tiles.clone()
+    # for j in range(gh):
+    #    for i in range(gw):
+    #        # corner region
+    #        if (i == 0 or i == gw - 1) and (j == 0 or j == gh - 1):
+    #            luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, i // 2]
+    #            assert torch.allclose(luts_x_interp_tiles[:, j, i, :], t[:, j, i, :])
+    #            continue
+#
+    #        # border region (h)
+    #        if i == 0 or i == gw - 1:
+    #            indexes = [max(0, j // 2 + j % 2 - 1), j // 2 + j % 2]
+    #            luts_x_interp_tiles[:, j, i, [0, 1]] = luts[:, indexes, i // 2]
+    #            assert torch.allclose(luts_x_interp_tiles[:, j, i, [0, 1]], t[:, j, i, [0, 1]])
+    #            continue
+#
+    #        # border region (w)
+    #        if j == 0 or j == gh - 1:
+    #            indexes = [max(0, i // 2 + i % 2 - 1), i // 2 + i % 2]
+    #            luts_x_interp_tiles[:, j, i, [0, 1]] = luts[:, j // 2, indexes]
+    #            assert torch.allclose(luts_x_interp_tiles[:, j, i, :], t[:, j, i, :])
+    #            continue
+#
+    #        # internal region
+    #        j_indxs = [max(0, j // 2 + j % 2 - 1), max(0, j // 2 + j % 2 - 1), j // 2 + j % 2, j // 2 + j % 2]
+    #        i_indxs = [max(0, i // 2 + i % 2 - 1), i // 2 + i % 2, max(0, i // 2 + i % 2 - 1), i // 2 + i % 2]
+    #        luts_x_interp_tiles[:, j, i, :] = luts[:, j_indxs, i_indxs]
+    #        assert torch.allclose(luts_x_interp_tiles[:, j, i, :], t[:, j, i, :])
     return luts_x_interp_tiles
 
 
