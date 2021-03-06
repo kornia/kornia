@@ -248,12 +248,16 @@ def compute_luts(tiles_x_im: torch.Tensor) -> torch.Tensor:
     return luts
 
 
-def compute_luts_optim(tiles_x_im: torch.Tensor, num_bins: int = 256, diff: bool = False) -> torch.Tensor:
+def compute_luts_optim(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40., diff: bool = False
+                       ) -> torch.Tensor:
     """Compute luts for a batched set of tiles.
+
+    Same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
 
     Args:
         tiles_x_im (torch.Tensor): set of tiles per image to apply the lut. (B, GH, GW, C, TH, TW)
         num_bins (int, optional): number of bins. default: 256
+        clip (float): threshold value for contrast limiting. Default: 40
         diff (bool, optional): denote if the differentiable histagram will be used. Default: False
 
     Returns:
@@ -262,16 +266,34 @@ def compute_luts_optim(tiles_x_im: torch.Tensor, num_bins: int = 256, diff: bool
     """
     pixels: int = tiles_x_im.shape[-2] * tiles_x_im.shape[-1]
     tiles: torch.Tensor = tiles_x_im.reshape(-1, pixels)  # test with view  # T x (THxTW)
-    histos: torch.Tensor = torch.zeros(tiles.shape[0], num_bins, device=tiles.device)
+    histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
-        for i, tile in enumerate(tiles):
+        for i, tile in enumerate(tiles.unbind(0)):
             histos[i] = torch.histc(tile, bins=num_bins, min=0, max=1)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = kornia.enhance.histogram(tiles, bins, torch.tensor(0.001)).squeeze()
         histos *= pixels
 
-    # same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
+    # clip limit (TODO: optimice the code)
+    if clip > 0:
+        clip_limit = clip * pixels // num_bins
+        clip_limit = max(clip_limit, 1)
+
+        clip_idxs = histos > clip_limit
+        for i, hist in enumerate(histos.unbind(0)):
+            idxs = clip_idxs[i]
+            if idxs.any():
+                clipped = (hist[idxs] - clip_limit).sum()
+                hist[idxs] = clip_limit
+
+                redist = clipped // num_bins
+                hist += redist
+
+                residual = clipped - redist * num_bins
+                if residual:
+                    hist[0:int(residual)] += 1
+
     lut_scale = (num_bins - 1) / pixels
     luts = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1).floor()  # to get the same values as converting to int maintaining the type
@@ -508,8 +530,45 @@ def compute_equalized_tiles_opt(interp_tiles: torch.Tensor, luts: torch.Tensor) 
     return tiles_equalized
 
 
+def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
+    r"""Apply clahe equalization on the input tensor.
+
+    Args:
+        input (torch.Tensor): images tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        clip_limit (float): threshold value for contrast limiting. Default: 40.
+        grid_size (Tuple[int, int]): number of tiles to be cropped in each direction (GH, GW).
+
+    Returns:
+        torch.Tensor: Sharpened image or images with shape as the input.
+
+    """
+    imgs: torch.Tensor = image._to_bchw(input)  # B x C x H x W
+
+    hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW
+    img_padded: torch.Tensor  # B x C x H' x W'
+    # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
+    hist_tiles, img_padded = compute_tiles(imgs, grid_size, True)
+    tile_size: Tuple[int, int] = hist_tiles.shape[-2:]  # type: ignore
+    interp_tiles: torch.Tensor = (
+        compute_interpolation_tiles(img_padded, tile_size))  # B x 2GH x 2GW x C x TH/2 x TW/2
+    luts: torch.Tensor = compute_luts_optim(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
+    equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+
+    # reconstruct the images form the tiles
+    p1 = torch.cat(equalized_tiles.unbind(2), 4)
+    p2 = torch.cat(p1.unbind(1), 2)
+    h, w = imgs.shape[-2:]
+    p2 = p2[..., :h, :w]
+
+    if input.dim() != p2.dim():
+        # remove batch if the input was not in batch form
+        return p2.squeeze(0)
+    return p2
+
+
 def main():
     """Run the main function."""
+    clip_limit = 2.
     on_rgb: bool = False
     if not torch.cuda.is_available():
         print("WARNING: Cuda is not enabled!!!")
@@ -538,17 +597,19 @@ def main():
     # visualize(interp_tiles[0])
     # visualize(interp_tiles[1])
     time_tiles = time.time() - tic
-    tic = time.time()
-    for i in range(10):
-        luts: torch.Tensor = compute_luts_optim(hist_tiles)  # B x GH x GW x C x B
-        # luts: torch.Tensor = compute_luts(hist_tiles)  # B x GH x GW x C x B
-        equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
-    p1 = torch.cat(equalized_tiles.unbind(2), 4)
-    p2 = torch.cat(p1.unbind(1), 2)
-    h, w = img_rgb.shape[-2:]
-    p2 = p2[..., :h, :w]
-    time_torch = time.time() - tic
+    # for i in range(10):
+    #    luts: torch.Tensor = compute_luts_optim(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
+    #    equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+
+    #p1 = torch.cat(equalized_tiles.unbind(2), 4)
+    #p2 = torch.cat(p1.unbind(1), 2)
+    #h, w = img_rgb.shape[-2:]
+    #p2 = p2[..., :h, :w]
+
+    tic = time.time()
+    p2 = equalize_clahe(img, clip_limit, (gh, gw))
+    time_my_clahe = time.time() - tic
 
 #    if on_rgb:
 #        plot_image(p2.div(255.))
@@ -558,14 +619,16 @@ def main():
 
     tic = time.time()
     for i in range(10):
-        luts = compute_luts(hist_tiles)  # B x GH x GW x C x B
-        equalized_tiles: torch.Tensor = compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+        # luts = compute_luts(hist_tiles)  # B x GH x GW x C x B
+        # equalized_tiles: torch.Tensor = compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
+        luts: torch.Tensor = compute_luts_optim(hist_tiles, clip=0.)  # B x GH x GW x C x B
+        equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
     p1 = torch.cat(equalized_tiles.unbind(2), 4)
     p2 = torch.cat(p1.unbind(1), 2)
     h, w = img_rgb.shape[-2:]
     p2 = p2[..., :h, :w]
-    time_kornia = time.time() - tic
+    time_my_ahe = time.time() - tic
 
 #    if on_rgb:
 #        plot_image(p2.div(255.))
@@ -595,7 +658,7 @@ def main():
     tic = time.time()
     for i in range(10):
         # with this clip limit produces the "same" result as ahe
-        clahe = cv2.createCLAHE(clipLimit=2000, tileGridSize=(gh, gw))
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(gh, gw))
         res = np.zeros_like(ims)
         for j in range(ims.shape[1]):
             res[0, j] = clahe.apply(ims[0][j])
@@ -607,7 +670,7 @@ def main():
 #        plot_hist(torch.tensor(res).float().div(255))
 #        plot_image(img_rgb, torch.tensor(res).float().div(255))
 
-    print(f'time_tiles: \t{time_tiles:.5f}\nkorna ahe opt: \t{time_torch:.5f}\nkornia ahe: \t{time_kornia:.5f}\nkornia he: \t{time_kornia_he:.5f}\nopencv he: \t{time_opencv_he:.5f}\nopencv clahe: \t{time_opencv_clahe:.5f}')
+    print(f'time_tiles: \t{time_tiles:.5f}\nmy clahe: \t{time_my_clahe:.5f}\nmy ahe: \t{time_my_ahe:.5f}\nkornia he: \t{time_kornia_he:.5f}\nopencv he: \t{time_opencv_he:.5f}\nopencv clahe: \t{time_opencv_clahe:.5f}')
 
 
 if __name__ == "__main__":
