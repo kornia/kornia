@@ -571,15 +571,15 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
     equalized_tiles: torch.Tensor = compute_equalized_tiles_opt(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
     # reconstruct the images form the tiles
-    p1 = torch.cat(equalized_tiles.unbind(2), 4)
-    p2 = torch.cat(p1.unbind(1), 2)
+    eq_imgs: torch.Tensor = torch.cat(equalized_tiles.unbind(2), 4)
+    eq_imgs = torch.cat(eq_imgs.unbind(1), 2)
     h, w = imgs.shape[-2:]
-    p2 = p2[..., :h, :w]
+    eq_imgs = eq_imgs[..., :h, :w]  # crop imgs if they were padded
 
-    if input.dim() != p2.dim():
-        # remove batch if the input was not in batch form
-        return p2.squeeze(0)
-    return p2
+    # remove batch if the input was not in batch form
+    if input.dim() != eq_imgs.dim():
+        eq_imgs.squeeze_(0)
+    return eq_imgs
 
 
 def main():
