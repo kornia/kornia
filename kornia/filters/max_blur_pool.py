@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.geometry.transform.pyramid import pyrdown
+import kornia
 from .median import _compute_zero_padding
 
 __all__ = [
@@ -14,8 +14,7 @@ __all__ = [
 
 
 class MaxBlurPool2d(nn.Module):
-    r"""Creates a module that computes pools and blurs and downsample a given
-    feature map.
+    r"""Create a module that computes pools and blurs and downsample a given feature map.
 
     See :cite:`zhang2019shiftinvar` for more details.
 
@@ -39,20 +38,20 @@ class MaxBlurPool2d(nn.Module):
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
         super(MaxBlurPool2d, self).__init__()
         self.ceil_mode: bool = ceil_mode
-        self.kernel_size: Tuple[int, int] = (kernel_size, kernel_size)
+        self.kernel_size = kernel_size
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return max_blur_pool2d(input, self.kernel_size, self.ceil_mode)
 
 
 def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
-    r"""Creates a module that computes pools and blurs and downsample a given
-    feature map.
+    r"""Compute pools and blurs and downsample a given feature map.
 
-    See :class:`~kornia.contrib.MaxBlurPool2d` for details.
+    See :class:`~kornia.filters.MaxBlurPool2d` for details.
     """
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    kernel_size: Tuple[int, int] = (kernel_size, kernel_size)
     padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
     # compute local maxima
     x_max: torch.Tensor = F.max_pool2d(
@@ -60,5 +59,5 @@ def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = Fal
         padding=padding, stride=1, ceil_mode=ceil_mode)
 
     # blur and downsample
-    x_down: torch.Tensor = pyrdown(x_max)
+    x_down: torch.Tensor = kornia.geometry.transform.pyramid.pyrdown(x_max)
     return x_down
