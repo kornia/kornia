@@ -1,4 +1,5 @@
 from typing import Tuple, Optional
+import warnings
 
 import torch
 import torch.nn.functional as F
@@ -93,7 +94,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 def warp_affine(src: torch.Tensor, M: torch.Tensor,
                 dsize: Tuple[int, int], flags: str = 'bilinear',
                 padding_mode: str = 'zeros',
-                align_corners: bool = False) -> torch.Tensor:
+                align_corners: bool = True) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
     The function warp_affine transforms the source tensor using
@@ -111,7 +112,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: False.
+        align_corners (bool): mode for grid_generation. Default: True.
 
     Returns:
         torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
@@ -135,17 +136,27 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(M.shape))
+
+    # TODO: remove in kornia v0.6
+    message: str = (
+        "The align_corners flag has been inverted. By default now is set True "
+        "in order to match cv2.warpAffine. Set to False in order to keep your previous behaviour. "
+        "This warning will disappear in kornia >0.6.")
+    # warnings.warn(message, DeprecationWarning, stacklevel=2)
+
     B, C, H, W = src.size()
-    dsize_src = (H, W)
-    out_size = dsize
+
     # we generate a 3x3 transformation matrix from 2x3 affine
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
-        M_3x3, dsize_src, out_size)
+        M_3x3, (H, W), dsize)
+
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
-                         [B, C, out_size[0], out_size[1]],
+                         [B, C, dsize[0], dsize[1]],
                          align_corners=align_corners)
+
     return F.grid_sample(src, grid,
                          align_corners=align_corners,
                          mode=flags,
