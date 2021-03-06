@@ -397,14 +397,24 @@ def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
     # precompute idxs for non corner regions
-    j_idxs = torch.zeros((gh - 2, 4), dtype=torch.long, device=luts.device)
-    i_idxs = torch.zeros((gw - 2, 4), dtype=torch.long, device=luts.device)
-    for j in range(1, gh - 1):
-        v = j // 2 + j % 2
-        j_idxs[j - 1] = torch.tensor([v - 1, v - 1, v, v], device=luts.device)
-    for i in range(1, gw - 1):
-        v = i // 2 + i % 2
-        i_idxs[i - 1] = torch.tensor([v - 1, v, v - 1, v], device=luts.device)
+    # j_idxs = torch.zeros((gh - 2, 4), dtype=torch.long, device=luts.device)
+    # i_idxs = torch.zeros((gw - 2, 4), dtype=torch.long, device=luts.device)
+    # for j in range(1, gh - 1):
+    #     v = j // 2 + j % 2
+    #     j_idxs[j - 1] = torch.tensor([v - 1, v - 1, v, v], device=luts.device)
+    # for i in range(1, gw - 1):
+    #     v = i // 2 + i % 2
+    #     i_idxs[i - 1] = torch.tensor([v - 1, v, v - 1, v], device=luts.device)
+
+    # fast idxs (doing it in cpu seems sligthly faster)
+    j_idxs = torch.ones(gh - 2, 4, dtype=torch.long) * torch.arange(1, gh - 1).reshape(gh - 2, 1)
+    i_idxs = torch.ones(gw - 2, 4, dtype=torch.long) * torch.arange(1, gw - 1).reshape(gw - 2, 1)
+    # j_idxs = torch.arange(1, gh - 1, device=interp_tiles.device).reshape(gh - 2, 1).repeat(1, 4)
+    # i_idxs = torch.arange(1, gw - 1, device=interp_tiles.device).reshape(gh - 2, 1).repeat(1, 4)
+    j_idxs = j_idxs // 2 + j_idxs % 2
+    j_idxs[:, [0, 1]] -= 1
+    i_idxs = i_idxs // 2 + i_idxs % 2
+    i_idxs[:, [0, 2]] -= 1
 
     # selection of luts to interpolate each patch
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
@@ -412,16 +422,16 @@ def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     luts_x_interp_tiles: torch.Tensor = -torch.ones(
         num_imgs, gh, gw, 4, c, luts.shape[-1], device=interp_tiles.device)  # B x GH x GW x 4 x C x 256
     # corner regions
-    luts_x_interp_tiles[:, 0::gh - 1, 0::gw - 1, 0] = luts[:, 0::gh // 2 - 1, 0::gw // 2 - 1]
+    luts_x_interp_tiles[:, 0::gh - 1, 0::gw - 1, 0] = luts[:, 0::max(gh // 2 - 1, 1), 0::max(gw // 2 - 1, 1)]
     # border region (h)
-    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 0] = luts[:, j_idxs[:, 0], 0::gw // 2 - 1]
-    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 1] = luts[:, j_idxs[:, 2], 0::gw // 2 - 1]
+    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 0] = luts[:, j_idxs[:, 0], 0::max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 1] = luts[:, j_idxs[:, 2], 0::max(gw // 2 - 1, 1)]
     # border region (w)
-    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 0] = luts[:, 0::gh // 2 - 1, i_idxs[:, 0]]
-    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 1] = luts[:, 0::gh // 2 - 1, i_idxs[:, 1]]
+    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 0] = luts[:, 0::max(gh // 2 - 1, 1), i_idxs[:, 0]]
+    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 1] = luts[:, 0::max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
     luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
-        :, j_idxs.repeat(gh - 2, 1, 1).permute(1, 0, 2), i_idxs.repeat(gw - 2, 1, 1)]
+        :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)]
 
     # t = luts_x_interp_tiles.clone()
     # for j in range(gh):
@@ -431,21 +441,21 @@ def map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     #            luts_x_interp_tiles[:, j, i, 0] = luts[:, j // 2, i // 2]
     #            assert torch.allclose(luts_x_interp_tiles[:, j, i, :], t[:, j, i, :])
     #            continue
-#
+
     #        # border region (h)
     #        if i == 0 or i == gw - 1:
     #            indexes = [max(0, j // 2 + j % 2 - 1), j // 2 + j % 2]
     #            luts_x_interp_tiles[:, j, i, [0, 1]] = luts[:, indexes, i // 2]
     #            assert torch.allclose(luts_x_interp_tiles[:, j, i, [0, 1]], t[:, j, i, [0, 1]])
     #            continue
-#
+
     #        # border region (w)
     #        if j == 0 or j == gh - 1:
     #            indexes = [max(0, i // 2 + i % 2 - 1), i // 2 + i % 2]
     #            luts_x_interp_tiles[:, j, i, [0, 1]] = luts[:, j // 2, indexes]
     #            assert torch.allclose(luts_x_interp_tiles[:, j, i, :], t[:, j, i, :])
     #            continue
-#
+
     #        # internal region
     #        j_indxs = [max(0, j // 2 + j % 2 - 1), max(0, j // 2 + j % 2 - 1), j // 2 + j % 2, j // 2 + j % 2]
     #        i_indxs = [max(0, i // 2 + i % 2 - 1), i // 2 + i % 2, max(0, i // 2 + i % 2 - 1), i // 2 + i % 2]
@@ -495,36 +505,42 @@ def compute_equalized_tiles_opt(interp_tiles: torch.Tensor, luts: torch.Tensor) 
     tih = ih.repeat((gh - 2) // 2, 1, 1, 1).unsqueeze(1)  # GH-2 x 1 x 1 x TH x TW
 
     # internal regions
-    tl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 0]
-    tr = preinterp_tiles_equalized[:, 1:-1, 1:-1, 1]
-    bl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 2]
-    br = preinterp_tiles_equalized[:, 1:-1, 1:-1, 3]
+    tl, tr, bl, br = preinterp_tiles_equalized[:, 1:-1, 1:-1].unbind(3)
+    # tl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 0]
+    # tr = preinterp_tiles_equalized[:, 1:-1, 1:-1, 1]
+    # bl = preinterp_tiles_equalized[:, 1:-1, 1:-1, 2]
+    # br = preinterp_tiles_equalized[:, 1:-1, 1:-1, 3]
     t = tiw * (tl - tr) + tr
     b = tiw * (bl - br) + br
     tiles_equalized[:, 1:-1, 1:-1] = tih * (t - b) + b
 
     # corner regions
-    tiles_equalized[:, 0, 0] = preinterp_tiles_equalized[:, 0, 0, 0]
-    tiles_equalized[:, gh - 1, 0] = preinterp_tiles_equalized[:, gh - 1, 0, 0]
-    tiles_equalized[:, 0, gw - 1] = preinterp_tiles_equalized[:, 0, gw - 1, 0]
-    tiles_equalized[:, gh - 1, gw - 1] = preinterp_tiles_equalized[:, gh - 1, gw - 1, 0]
+    tiles_equalized[:, 0::gh - 1, 0::gw - 1] = preinterp_tiles_equalized[:, 0::gh - 1, 0::gw - 1, 0]
+    # tiles_equalized[:, 0, 0] = preinterp_tiles_equalized[:, 0, 0, 0]
+    # tiles_equalized[:, gh - 1, 0] = preinterp_tiles_equalized[:, gh - 1, 0, 0]
+    # tiles_equalized[:, 0, gw - 1] = preinterp_tiles_equalized[:, 0, gw - 1, 0]
+    # tiles_equalized[:, gh - 1, gw - 1] = preinterp_tiles_equalized[:, gh - 1, gw - 1, 0]
 
     # border region (h)
-    t = preinterp_tiles_equalized[:, 1:-1, 0, 0]
-    b = preinterp_tiles_equalized[:, 1:-1, 0, 1]
+    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
+    # t = preinterp_tiles_equalized[:, 1:-1, 0, 0]
+    # b = preinterp_tiles_equalized[:, 1:-1, 0, 1]
     tiles_equalized[:, 1:-1, 0] = tih.squeeze(1) * (t - b) + b
 
-    t = preinterp_tiles_equalized[:, 1:-1, gh - 1, 0]
-    b = preinterp_tiles_equalized[:, 1:-1, gh - 1, 1]
+    t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, gh - 1].unbind(2)
+    # t = preinterp_tiles_equalized[:, 1:-1, gh - 1, 0]
+    # b = preinterp_tiles_equalized[:, 1:-1, gh - 1, 1]
     tiles_equalized[:, 1:-1, gh - 1] = tih.squeeze(1) * (t - b) + b
 
     # border region (w)
-    l = preinterp_tiles_equalized[:, 0, 1:-1, 0]
-    r = preinterp_tiles_equalized[:, 0, 1:-1, 1]
+    l, r, _, _ = preinterp_tiles_equalized[:, 0, 1:-1].unbind(2)
+    # l = preinterp_tiles_equalized[:, 0, 1:-1, 0]
+    # r = preinterp_tiles_equalized[:, 0, 1:-1, 1]
     tiles_equalized[:, 0, 1:-1] = tiw * (l - r) + r
 
-    l = preinterp_tiles_equalized[:, gw - 1, 1:-1, 0]
-    r = preinterp_tiles_equalized[:, gw - 1, 1:-1, 1]
+    l, r, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
+    # l = preinterp_tiles_equalized[:, gw - 1, 1:-1, 0]
+    # r = preinterp_tiles_equalized[:, gw - 1, 1:-1, 1]
     tiles_equalized[:, gw - 1, 1:-1] = tiw * (l - r) + r
 
     return tiles_equalized
