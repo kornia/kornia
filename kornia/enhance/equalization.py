@@ -1,4 +1,4 @@
-"""In this module are exposed several equalization methods: he, ahe, clahe."""
+"""In this module several equalization methods are exposed: he, ahe, clahe."""
 
 from typing import Tuple
 import math
@@ -249,7 +249,8 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     l, r, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
     tiles_equalized[:, gw - 1, 1:-1] = tiw * (l - r) + r
 
-    return tiles_equalized
+    # same type as the input
+    return tiles_equalized.to(interp_tiles).div(255.)
 
 
 def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
@@ -268,6 +269,18 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
         raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
     if input.dim() not in [3, 4]:
         raise ValueError(f"Invalid input shape, we expect CxHxW or BxCxHxW. Got: {input.shape}")
+    if input.numel() == 0:
+        raise ValueError(f"Invalid input tensor, it is empty.")
+    if not isinstance(clip_limit, float):
+        raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
+    if not isinstance(grid_size, tuple):
+        raise TypeError(f"Input grid_size type is not Tuple. Got {type(grid_size)}")
+    if len(grid_size) != 2:
+        raise TypeError(f"Input grid_size is not a Tuple with 2 elements. Got {len(grid_size)}")
+    if type(grid_size[0]) != type(grid_size[1]) or isinstance(grid_size[0], float):
+        raise TypeError("Input grid_size type is not valid, must be a Tuple[int, int].")
+    if grid_size[0] <= 0 or grid_size[1] <= 0:
+        raise ValueError("Input grid_size elements must be positive. Got {grid_size}")
 
     imgs: torch.Tensor = _to_bchw(input)  # B x C x H x W
 
