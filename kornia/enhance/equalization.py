@@ -264,6 +264,11 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
         torch.Tensor: Equalized image or images with shape as the input.
 
     """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+    if input.dim() not in [3, 4]:
+        raise ValueError(f"Invalid input shape, we expect CxHxW or BxCxHxW. Got: {input.shape}")
+
     imgs: torch.Tensor = _to_bchw(input)  # B x C x H x W
 
     hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW
