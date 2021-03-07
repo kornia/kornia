@@ -1,8 +1,9 @@
 from typing import Tuple
 
+import warnings
 import torch
-from kornia.filters.max_blur_pool import (
-    MaxBlurPool2d as _MaxBlurPool2d,
+from kornia.filters.blur_pool import (
+    MaxBlurPool2D as _MaxBlurPool2d,
     max_blur_pool2d as _max_blur_pool2d
 )
 
@@ -16,9 +17,9 @@ class MaxBlurPool2d(_MaxBlurPool2d):
     __doc__ = _MaxBlurPool2d.__doc__
 
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
-        super(MaxBlurPool2d, self).__init__(kernel_size,  ceil_mode)
-        raise DeprecationWarning(
-            "`MaxBlurPool2d` is deprecated. Please use `kornia.filters.MaxBlurPool2d instead.`")
+        super(MaxBlurPool2d, self).__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
+        warnings.warn("`MaxBlurPool2d` is deprecated. Please use `kornia.filters.MaxBlurPool2D instead.`",
+                      DeprecationWarning, stacklevel=2)
 
 
 def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
@@ -27,6 +28,6 @@ def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = Fal
 
     See :class:`~kornia.contrib.MaxBlurPool2d` for details.
     """
-    raise DeprecationWarning(
-        "`max_blur_pool2d` is deprecated. Please use `kornia.filters.max_blur_pool2d instead.`")
-    return _max_blur_pool2d(input, kernel_size, ceil_mode)
+    warnings.warn("`max_blur_pool2d` is deprecated. Please use `kornia.filters.max_blur_pool2d instead.`",
+                  DeprecationWarning, stacklevel=2)
+    return _max_blur_pool2d(input, kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)

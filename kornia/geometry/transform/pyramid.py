@@ -56,7 +56,7 @@ class PyrDown(nn.Module):
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return pyrdown(input, self.border_type, self.align_corners)
 
 
@@ -87,7 +87,7 @@ class PyrUp(nn.Module):
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return pyrup(input, self.border_type, self.align_corners)
 
 
@@ -237,11 +237,12 @@ def pyrdown(
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+    b, c, height, width = input.shape
     # blur image
     x_blur: torch.Tensor = filter2D(input, kernel, border_type)
 
     # downsample.
-    out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear',
+    out: torch.Tensor = F.interpolate(x_blur, size=(height // 2, width // 2), mode='bilinear',
                                       align_corners=align_corners)
     return out
 
