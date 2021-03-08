@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .xyz import rgb_to_xyz, xyz_to_rgb
+from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
 
 """
 The RGB to Lab color transformations were translated from scikit image's rgb2lab and lab2rgb
@@ -37,27 +38,20 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    # Convert from Linear RGB to sRGB
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    # Convert from sRGB to Linear RGB
+    lin_rgb = rgb_to_linear_rgb(image)
 
-    rs: torch.Tensor = torch.where(r > 0.04045, torch.pow(((r + 0.055) / 1.055), 2.4), r / 12.92)
-    gs: torch.Tensor = torch.where(g > 0.04045, torch.pow(((g + 0.055) / 1.055), 2.4), g / 12.92)
-    bs: torch.Tensor = torch.where(b > 0.04045, torch.pow(((b + 0.055) / 1.055), 2.4), b / 12.92)
-
-    image_s = torch.stack([rs, gs, bs], dim=-3)
-
-    xyz_im: torch.Tensor = rgb_to_xyz(image_s)
+    xyz_im: torch.Tensor = rgb_to_xyz(lin_rgb)
 
     # normalize for D65 white point
     xyz_ref_white = torch.tensor(
         [0.95047, 1., 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
-    power = torch.pow(xyz_normalized, 1 / 3)
+    threshold = 0.008856
+    power = torch.pow(xyz_normalized.clamp_min(threshold), 1 / 3.)
     scale = 7.787 * xyz_normalized + 4. / 29.
-    xyz_int = torch.where(xyz_normalized > 0.008856, power, scale)
+    xyz_int = torch.where(xyz_normalized > threshold, power, scale)
 
     x: torch.Tensor = xyz_int[..., 0, :, :]
     y: torch.Tensor = xyz_int[..., 1, :, :]
@@ -103,7 +97,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     fz = fy - (_b / 200.)
 
     # if color data out of range: Z < 0
-    fz = torch.where(fz < 0, torch.zeros_like(fz), fz)
+    fz = fz.clamp_min(0)
 
     fxyz = torch.stack([fx, fy, fz], dim=-3)
 
@@ -122,16 +116,8 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     # https://github.com/richzhang/colorization-pytorch/blob/66a1cb2e5258f7c8f374f582acc8b1ef99c13c27/util/util.py#L107
 #     rgbs_im = torch.where(rgbs_im < 0, torch.zeros_like(rgbs_im), rgbs_im)
 
-    # Convert from sRGB to RGB Linear
-    rs: torch.Tensor = rgbs_im[..., 0, :, :]
-    gs: torch.Tensor = rgbs_im[..., 1, :, :]
-    bs: torch.Tensor = rgbs_im[..., 2, :, :]
-
-    r: torch.Tensor = torch.where(rs > 0.0031308, 1.055 * torch.pow(rs, 1 / 2.4) - 0.055, 12.92 * rs)
-    g: torch.Tensor = torch.where(gs > 0.0031308, 1.055 * torch.pow(gs, 1 / 2.4) - 0.055, 12.92 * gs)
-    b: torch.Tensor = torch.where(bs > 0.0031308, 1.055 * torch.pow(bs, 1 / 2.4) - 0.055, 12.92 * bs)
-
-    rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
+    # Convert from RGB Linear to sRGB
+    rgb_im = linear_rgb_to_rgb(rgbs_im)
 
     # Clip to 0,1 https://www.w3.org/Graphics/Color/srgb
     if clip:
