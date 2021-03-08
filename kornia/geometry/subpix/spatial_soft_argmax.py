@@ -580,7 +580,7 @@ def _get_new_mask(in_progress_mask: torch.Tensor,
     if len(new_positions) == 0:
         return new_nms_mask
     new_positions[:, 2:] = (new_positions[:, 2:].clone() +
-                            dx_masked[current_non_converged_masked.repeat(1, 3, 1)].view(-1, 3).flip(1))
+                            dx_masked[current_non_converged_masked.repeat(1, 3, 1)].view(-1, 3))
     new_positions = new_positions.round().long()
     bad_idxs = ((new_positions < 0).max(dim=1)[0] |
                 (new_positions[:, 4] >= W) |
@@ -646,7 +646,7 @@ def conv_quad_interp3d(input: torch.Tensor,
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
     b: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=1, mode='diff')  #
-    b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
+    b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1).flip(1)
     A: torch.Tensor = kornia.filters.spatial_gradient3d(input, order=2, mode='diff')
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
     dxx = A[..., 0]
@@ -655,9 +655,9 @@ def conv_quad_interp3d(input: torch.Tensor,
     dxy = 0.25 * A[..., 3]  # normalization to match OpenCV implementation
     dys = 0.25 * A[..., 4]  # normalization to match OpenCV implementation
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
-    Hes = torch.stack([dxx, dxy, dxs,
-                       dxy, dyy, dys,
-                       dxs, dys, dss], dim=-1).view(-1, 3, 3)
+    Hes = torch.stack([dss, dys, dxs,
+                       dys, dyy, dxy,
+                       dxs, dxy, dss], dim=-1).view(-1, 3, 3)
 
     # The following is needed to avoid singular cases
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
@@ -715,7 +715,7 @@ def conv_quad_interp3d(input: torch.Tensor,
     y_max = input + dy_all.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:
         y_max += strict_maxima_bonus * converged_all.to(input.dtype)
-    delta_coords_all = delta_coords_all.flip(1).view(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
+    delta_coords_all = delta_coords_all.view(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
     delta_coords_all += grid_global[None].expand_as(delta_coords_all)
     return delta_coords_all, y_max
 
