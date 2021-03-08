@@ -84,7 +84,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         "The align_corners flag has been inverted. By default now is set True "
         "in order to match cv2.warpAffine. Set to False in order to keep your previous behaviour. "
         "This warning will disappear in kornia >0.6.")
-    # warnings.warn(message, DeprecationWarning, stacklevel=2)
+    warnings.warn(message)
 
     B, C, H, W = src.size()
     h_out, w_out = dsize
@@ -157,7 +157,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
         "The align_corners flag has been inverted. By default now is set True "
         "in order to match cv2.warpPerspective. Set to False in order to keep your previous behaviour. "
         "This warning will disappear in kornia >0.6.")
-    # warnings.warn(message, DeprecationWarning, stacklevel=2)
+    warnings.warn(message)
 
     B, C, H, W = src.size()
 
