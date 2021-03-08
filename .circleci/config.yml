@@ -128,7 +128,7 @@ workflows:
       - TPU-tests:
           matrix:
             parameters:
-              python: ["3.6", "3.7"]
+              python: ["3.7"]
               pytorch: ["1.7", "1.8", "nightly"]
   tpu-cleanup:
     triggers:
