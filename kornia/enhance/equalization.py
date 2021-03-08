@@ -10,6 +10,9 @@ from kornia.enhance.histogram import histogram
 from kornia.utils.image import _to_bchw
 
 
+__all__ = ["equalize_clahe"]
+
+
 def _compute_tiles(imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False
                    ) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute tiles on an image according to a grid size.
@@ -104,10 +107,13 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
         torch.Tensor: Lut for each tile (B, GH, GW, C, 256)
 
     """
+    assert tiles_x_im.dim() == 6, "Tensor must be 6D."
+
     pixels: int = tiles_x_im.shape[-2] * tiles_x_im.shape[-1]
     tiles: torch.Tensor = tiles_x_im.reshape(-1, pixels)  # test with view  # T x (THxTW)
     histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
+        tile: torch.Tensor
         for i, tile in enumerate(tiles.unbind(0)):
             histos[i] = torch.histc(tile, bins=num_bins, min=0, max=1)
     else:
@@ -117,25 +123,26 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
 
     # clip limit (TODO: optimice the code)
     if clip > 0:
-        clip_limit = clip * pixels // num_bins
+        clip_limit: float = clip * pixels // num_bins
         clip_limit = max(clip_limit, 1)
 
-        clip_idxs = histos > clip_limit
+        clip_idxs: torch.Tensor = histos > clip_limit
+        hist: torch.Tensor
         for i, hist in enumerate(histos.unbind(0)):
             idxs = clip_idxs[i]
             if idxs.any():
-                clipped = (hist[idxs] - clip_limit).sum()
+                clipped: float = (hist[idxs] - clip_limit).sum().item()
                 hist[idxs] = clip_limit
 
-                redist = clipped // num_bins
+                redist: float = clipped // num_bins
                 hist += redist
 
-                residual = clipped - redist * num_bins
+                residual: float = clipped - redist * num_bins
                 if residual:
                     hist[0:int(residual)] += 1
 
-    lut_scale = (num_bins - 1) / pixels
-    luts = torch.cumsum(histos, 1) * lut_scale
+    lut_scale: float = (num_bins - 1) / pixels
+    luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1).floor()  # to get the same values as converting to int maintaining the type
     luts = luts.view(([*tiles_x_im.shape[0:4]] + [num_bins]))
     return luts
@@ -152,6 +159,9 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         torch.Tensor: mapped luts (B, 2GH, 2GW, 4, C, 256)
 
     """
+    assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
+    assert luts.dim() == 5, "luts tensor must be 5D."
+
     num_imgs: int  # number of batched images
     gh: int  # 2x the number of tiles used to compute the histograms
     gw: int
@@ -192,13 +202,19 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     r"""Equalize the tiles.
 
     Args:
-        interp_tiles (torch.Tensor): set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
+        interp_tiles (torch.Tensor): set of interpolation tiles, values must be in the range [0, 1].
+                                     (B, 2GH, 2GW, C, TH/2, TW/2)
         luts (torch.Tensor): luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
         torch.Tensor: equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
 
     """
+    assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
+    assert interp_tiles.max() <= 1., "interp_tiles max value must be <= 1."
+    assert interp_tiles.min() >= 0., "interp_tiles min value must be >= 0."
+    assert luts.dim() == 5, "luts tensor must be 5D."
+
     mapped_luts: torch.Tensor = _map_luts(interp_tiles, luts)  # Bx2GHx2GWx4xCx256
 
     num_imgs: int  # number of batched images
@@ -257,28 +273,50 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
     r"""Apply clahe equalization on the input tensor.
 
     Args:
-        input (torch.Tensor): images tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+        input (torch.Tensor): images tensor to equalize with values in the range [0, 1] and shapes like
+                              :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         clip_limit (float): threshold value for contrast limiting. If 0 clipping is disabled. Default: 40.
-        grid_size (Tuple[int, int]): number of tiles to be cropped in each direction (GH, GW).
+        grid_size (Tuple[int, int]): number of tiles to be cropped in each direction (GH, GW). Default: (8, 8).
 
     Returns:
         torch.Tensor: Equalized image or images with shape as the input.
 
+    Examples:
+        >>> img = torch.rand(1, 10, 20)
+        >>> res = equalize_clahe(img)
+        >>> res.shape
+        torch.Size([1, 10, 20])
+
+        >>> img = torch.rand(2, 3, 10, 20)
+        >>> res = equalize_clahe(img)
+        >>> res.shape
+        torch.Size([2, 3, 10, 20])
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+
     if input.dim() not in [3, 4]:
         raise ValueError(f"Invalid input shape, we expect CxHxW or BxCxHxW. Got: {input.shape}")
+
     if input.numel() == 0:
-        raise ValueError(f"Invalid input tensor, it is empty.")
+        raise ValueError("Invalid input tensor, it is empty.")
+
+    if input.max() > 1. or input.min() < 0.:
+        raise ValueError(f"Invalid tensor values, values must in the range [0, 1]. Got [{input.min()}, {input.max()}]")
+
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
+
     if not isinstance(grid_size, tuple):
         raise TypeError(f"Input grid_size type is not Tuple. Got {type(grid_size)}")
+
     if len(grid_size) != 2:
         raise TypeError(f"Input grid_size is not a Tuple with 2 elements. Got {len(grid_size)}")
+
     if type(grid_size[0]) != type(grid_size[1]) or isinstance(grid_size[0], float):
         raise TypeError("Input grid_size type is not valid, must be a Tuple[int, int].")
+
     if grid_size[0] <= 0 or grid_size[1] <= 0:
         raise ValueError("Input grid_size elements must be positive. Got {grid_size}")
 
@@ -288,7 +326,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
     img_padded: torch.Tensor  # B x C x H' x W'
     # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
-    tile_size: Tuple[int, int] = hist_tiles.shape[-2:]  # type: ignore
+    tile_size: Tuple[int, int] = hist_tiles.shape[-2:]  # type: ignore  # mypy cannot infer the type
     interp_tiles: torch.Tensor = (
         _compute_interpolation_tiles(img_padded, tile_size))  # B x 2GH x 2GW x C x TH/2 x TW/2
     luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
@@ -302,5 +340,5 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
 
     # remove batch if the input was not in batch form
     if input.dim() != eq_imgs.dim():
-        eq_imgs.squeeze_(0)
+        eq_imgs = eq_imgs.squeeze(0)
     return eq_imgs
