@@ -9,7 +9,7 @@ from kornia.filters import SpatialGradient
 from kornia.constants import pi
 from kornia.feature import (extract_patches_from_pyramid, make_upright,
                             normalize_laf, raise_error_if_laf_is_not_valid,
-                            set_laf_orientation)
+                            set_laf_orientation, get_laf_orientation)
 from kornia.geometry import rad2deg
 
 urls: Dict[str, str] = dict()
@@ -238,5 +238,6 @@ class LAFOrienter(nn.Module):
                                                                                    self.patch_size,
                                                                                    self.patch_size)
         angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
-        laf_out: torch.Tensor = set_laf_orientation(laf, rad2deg(angles_radians))
+        prev_angle = get_laf_orientation(laf).view_as(angles_radians)
+        laf_out: torch.Tensor = set_laf_orientation(laf, rad2deg(angles_radians) + prev_angle)
         return laf_out
