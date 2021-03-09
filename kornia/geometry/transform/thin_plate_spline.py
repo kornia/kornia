@@ -3,7 +3,7 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 
-from kornia.utils import _extract_device_dtype, create_meshgrid
+from kornia.utils import create_meshgrid
 
 __all__ = [
     "get_tps_transform",
@@ -66,7 +66,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     if not len(points_dst.shape) == 3:
         raise ValueError(f"Invalid shape for points_dst, expected BxNx2. Got {points_dst.shape}")
 
-    device, dtype = _extract_device_dtype([points_src, points_dst])
+    device, dtype = points_src.device, points_src.dtype
     batch_size, num_points = points_src.shape[:2]
 
     # set up and solve linear system
@@ -75,7 +75,6 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    requires_grad = points_src.requires_grad or points_dst.requires_grad
     zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
     one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
     dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
@@ -210,9 +209,10 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
     if not len(affine_weights.shape) == 3:
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
-    device, dtype = _extract_device_dtype([image, kernel_centers, kernel_weights, affine_weights])
+    device, dtype = image.device, image.dtype
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=device).reshape(-1, 2).expand(batch_size, -1, -1)
+    coords: torch.Tensor = create_meshgrid(h, w, device=device).to(dtype=dtype)
+    coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
     warped_image: torch.Tensor = nn.functional.grid_sample(image, warped, align_corners=align_corners)
