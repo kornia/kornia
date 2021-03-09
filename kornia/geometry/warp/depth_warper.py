@@ -29,8 +29,10 @@ class DepthWarper(_DepthWarper):
         super(DepthWarper, self).__init__(
             pinhole_dst=pinhole_dst, height=height, width=width, mode=mode, padding_mode=padding_mode,
             align_corners=align_corners)
-        warnings.warn("`DepthWarper` is deprecated. Please use `kornia.geometry.DepthWarper instead.`",
-                      DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            "`DepthWarper` is deprecated and will be removed > 0.6.0. "
+            "Please use `kornia.geometry.DepthWarper instead.`",
+            DeprecationWarning, stacklevel=2)
 
 
 def depth_warp(pinhole_dst: PinholeCamera,
@@ -40,6 +42,7 @@ def depth_warp(pinhole_dst: PinholeCamera,
                height: int, width: int,
                align_corners: bool = True):
     __doc__ = _depth_warp.__doc__
-    warnings.warn("`depth_warp` is deprecated. Please use `kornia.geometry.depth_warp instead.`",
-                  DeprecationWarning, stacklevel=2)
+    warnings.warn(
+        "`depth_warp` is deprecated and will be removed > 0.6.0. Please use `kornia.geometry.depth_warp instead.`",
+        DeprecationWarning, stacklevel=2)
     return _depth_warp(pinhole_dst, pinhole_src, depth_src, patch_dst, height, width, align_corners)
