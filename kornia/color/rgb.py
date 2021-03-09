@@ -17,6 +17,14 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_bgr(input) # 2x3x4x5
     """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
+
     return bgr_to_rgb(image)
 
 
@@ -183,6 +191,14 @@ def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_linear_rgb(input) # 2x3x4x5
     """
 
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
+
     lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(
         ((image + 0.055) / 1.055), 2.4), image / 12.92)
 
@@ -202,6 +218,14 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = linear_rgb_to_rgb(input) # 2x3x4x5
     """
+
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
 
     threshold = 0.0031308
     rgb: torch.Tensor = torch.where(
@@ -385,7 +409,7 @@ class RgbaToBgr(nn.Module):
 class RgbToLinearRgb(nn.Module):
     r"""Convert an image from sRGB to linear RGB.
 
-    Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions.
+    Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions. The image data is assumed to be in the range of :math:`[0, 1]`
 
     Returns:
         torch.Tensor: Linear RGB version of the image.
