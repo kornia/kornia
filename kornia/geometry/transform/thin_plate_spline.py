@@ -22,7 +22,7 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
     t1_t2: torch.Tensor = tensor1.matmul(tensor2.transpose(1, 2))
     square_dist: torch.Tensor = -2 * t1_t2 + t1_sq + t2_sq
-    square_dist: torch.Tensor = square_dist.clamp(min=0)  # handle possible numerical errors
+    square_dist = square_dist.clamp(min=0)  # handle possible numerical errors
     return square_dist
 
 
@@ -114,7 +114,7 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
         >>> points_dst = torch.rand(1, 5, 2)
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
         >>> warped = warp_points_tps(points_src, points_dst, kernel_weights, affine_weights)
-        >>> torch.allclose(warped, points_dst)
+        >>> warped_correct = torch.allclose(warped, points_dst)
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
