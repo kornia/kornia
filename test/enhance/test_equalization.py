@@ -65,13 +65,6 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    def test_exception_tensor_values(self):
-        img = torch.rand(1, 10, 20)
-        img[0, 0, 0] = -1.
-        img[0, 0, 1] = 2.
-        with pytest.raises(ValueError):
-            enhance.equalize_clahe(img)
-
     def test_gradcheck(self, device, dtype):
         pass
 

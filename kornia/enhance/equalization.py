@@ -211,8 +211,6 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     """
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
-    assert interp_tiles.max() <= 1., "interp_tiles max value must be <= 1."
-    assert interp_tiles.min() >= 0., "interp_tiles min value must be >= 0."
     assert luts.dim() == 5, "luts tensor must be 5D."
 
     mapped_luts: torch.Tensor = _map_luts(interp_tiles, luts)  # Bx2GHx2GWx4xCx256
@@ -235,9 +233,9 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles, dtype=torch.long)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
-    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2 * th - 1)[None].T.expand(2 * th, tw)
+    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2. * th - 1)[None].T.expand(2 * th, tw)
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
-    iw = torch.arange(2 * tw - 1, -1, -1, device=interp_tiles.device).div(2 * tw - 1).expand(th, 2 * tw)
+    iw = torch.arange(2 * tw - 1, -1, -1, device=interp_tiles.device).div(2. * tw - 1).expand(th, 2 * tw)
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
 
     # compute row and column interpolation weigths
@@ -301,9 +299,6 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
 
     if input.numel() == 0:
         raise ValueError("Invalid input tensor, it is empty.")
-
-    if input.max() > 1. or input.min() < 0.:
-        raise ValueError(f"Invalid tensor values, values must in the range [0, 1]. Got [{input.min()}, {input.max()}]")
 
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")
