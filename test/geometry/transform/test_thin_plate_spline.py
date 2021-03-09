@@ -14,7 +14,7 @@ def _sample_points(batch_size, device, dtype=torch.float32):
                          [10., 10.],
                          [5., 5.]]], device=device, dtype=dtype)
     src = src.repeat(batch_size, 1, 1)
-    dst = torch.rand_like(src) * 2.4
+    dst = src + torch.rand_like(src) * 2.5
     return src, dst
 
 
@@ -219,18 +219,11 @@ class TestWarpImage:
 
     @pytest.mark.grad
     @pytest.mark.parametrize('batch_size', [1, 3])
-    @pytest.mark.parametrize('requires_grad', ['kernel', 'affine', 'image', 'dst'])
-    def test_gradcheck(self, batch_size, device, dtype, requires_grad):
+    def test_gradcheck(self, batch_size, device, dtype):
         opts = dict(device=device, dtype=torch.float64)
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.get_tps_transform(src, dst)
-        if requires_grad == 'dst':
-            dst.requires_grad_(True)
-        if requires_grad == 'kernel':
-            kernel.requires_grad_(True)
-        if requires_grad == 'affine':
-            affine.requires_grad_(True)
-        image = torch.rand(batch_size, 3, 8, 8, requires_grad=(requires_grad == 'image'), **opts)
+        image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)
         assert gradcheck(kornia.warp_image_tps, (image, dst, kernel, affine),
                          raise_exception=True, atol=1e-4, rtol=1e-4)
 
