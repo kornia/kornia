@@ -9,7 +9,7 @@ from torch.testing import assert_allclose
 
 def _sample_points(batch_size, device, dtype=torch.float32):
     src = torch.tensor([[[0., 0.],
-                         [0., 10.,],
+                         [0., 10.],
                          [10., 0.],
                          [10., 10.],
                          [5., 5.]]], device=device, dtype=dtype)
