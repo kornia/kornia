@@ -658,6 +658,9 @@ def conv_quad_interp3d(input: torch.Tensor,
     Hes = torch.stack([dss, dys, dxs,
                        dys, dyy, dxy,
                        dxs, dxy, dss], dim=-1).view(-1, 3, 3)
+    Hes = torch.stack([dxx, dxy, dxs,
+                       dxy, dyy, dys,
+                       dxs, dys, dss], dim=-1).view(-1, 3, 3)
 
     # The following is needed to avoid singular cases
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
