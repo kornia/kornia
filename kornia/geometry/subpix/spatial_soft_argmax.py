@@ -573,7 +573,7 @@ def _get_new_mask(in_progress_mask: torch.Tensor,
                   current_non_converged_masked: torch.Tensor,
                   dx_masked: torch.Tensor,
                   B: int, CH: int, D: int, H: int, W: int) -> torch.Tensor:
-    in_progress_mask = in_progress_mask.view(-1).clone().masked_scatter_(in_progress_mask.view(-1), # noqa
+    in_progress_mask = in_progress_mask.view(-1).clone().masked_scatter_(in_progress_mask.view(-1).clone(), # noqa
                                                                          ~current_converged_masked).view(B, CH, D, H, W) # noqa
     new_nms_mask = torch.zeros_like(in_progress_mask)
     new_positions = in_progress_mask.view(B, CH, D, H, W).nonzero().float()
@@ -658,9 +658,6 @@ def conv_quad_interp3d(input: torch.Tensor,
     Hes = torch.stack([dss, dys, dxs,
                        dys, dyy, dxy,
                        dxs, dxy, dss], dim=-1).view(-1, 3, 3)
-    Hes = torch.stack([dxx, dxy, dxs,
-                       dxy, dyy, dys,
-                       dxs, dys, dss], dim=-1).view(-1, 3, 3)
 
     # The following is needed to avoid singular cases
     Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
@@ -699,7 +696,7 @@ def conv_quad_interp3d(input: torch.Tensor,
             break
         dx_upd, dx_masked_upd = _get_extrema(b, Hes, in_progress_mask, eps)
         already_tried = already_tried | in_progress_mask
-        delta_coords_all += dx_upd
+        delta_coords_all = delta_coords_all.clone() + dx_upd
         (converged_all,
          current_converged_masked,
          current_non_converged_masked) = _update_converged_mask(dx_masked_upd,
@@ -713,7 +710,10 @@ def conv_quad_interp3d(input: torch.Tensor,
                                      dx_masked_upd,
                                      B, CH, D, H, W)
         in_progress_mask = _filter_new_mask(new_nms_mask, already_tried)
-    delta_coords_all.masked_fill_((~converged_all).view(-1, 1, 1).expand_as(delta_coords_all), 0)
+    delta_coords_all.masked_fill_((~converged_all).view(-1, 1, 1).expand_as(delta_coords_all), 0.0)
+    #delta_coords_final = converged_all.view(-1, 1, 1).expand_as(delta_coords_all).to(delta_coords_all.dtype) * 
+    #delta_coords_final.masked_scatter_(where_to_calculate_mask.view(-1, 1, 1), x_solved_masked)
+    
     dy_all = 0.5 * torch.bmm(b.permute(0, 2, 1), delta_coords_all)
     y_max = input + dy_all.view(B, CH, D, H, W)
     if strict_maxima_bonus > 0:

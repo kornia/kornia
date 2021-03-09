@@ -423,8 +423,9 @@ class TestConvQuadInterp3d:
         input = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         input[0, 0, 1, 2, 2] += 20.
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
-                         (input), raise_exception=True, atol=1e-3, rtol=1e-3)
+        with torch.autograd.set_detect_anomaly(True):
+            assert gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
+                            (input), raise_exception=True, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck_iter(self, device, dtype):
         input = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
@@ -517,7 +518,7 @@ class TestConvQuadInterp3d:
 
                                           [[0.0, 0.0, 0.0, 0.0, 0.0],
                                              [1.0, 1.0, 1.0, 1.0, 1.0],
-                                             [2.0, 2.0, 2.0495, 2.0, 2.0],
+                                             [2.0, 2.0, 2.0142, 2.0, 2.0],
                                              [3.0, 3.0, 3.0, 3.0, 3.0],
                                              [4.0, 4.0, 4.0, 4.0, 4.0]],
 
