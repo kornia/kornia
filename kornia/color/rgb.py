@@ -232,7 +232,7 @@ def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
         image > threshold,
         1.055 *
         torch.pow(
-            image.clamp_min(threshold),
+            image.clamp(min=threshold),
             1 /
             2.4) -
         0.055,

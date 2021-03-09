@@ -50,7 +50,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     threshold = 0.008856
     L: torch.Tensor = torch.where(y > threshold,
-                                  116. * torch.pow(y.clamp_min(threshold), 1. / 3.) - 16.,
+                                  116. * torch.pow(y.clamp(min=threshold), 1. / 3.) - 16.,
                                   903.3 * y)
 
     # Compute reference white point

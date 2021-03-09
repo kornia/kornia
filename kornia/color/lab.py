@@ -49,7 +49,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
     threshold = 0.008856
-    power = torch.pow(xyz_normalized.clamp_min(threshold), 1 / 3.)
+    power = torch.pow(xyz_normalized.clamp(min=threshold), 1 / 3.)
     scale = 7.787 * xyz_normalized + 4. / 29.
     xyz_int = torch.where(xyz_normalized > threshold, power, scale)
 
@@ -97,7 +97,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     fz = fy - (_b / 200.)
 
     # if color data out of range: Z < 0
-    fz = fz.clamp_min(0)
+    fz = fz.clamp(min=0)
 
     fxyz = torch.stack([fx, fy, fz], dim=-3)
 
