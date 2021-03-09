@@ -409,7 +409,7 @@ class RgbaToBgr(nn.Module):
 class RgbToLinearRgb(nn.Module):
     r"""Convert an image from sRGB to linear RGB.
 
-    Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions. 
+    Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions.
     The image data is assumed to be in the range of :math:`[0, 1]`
 
     Returns:
