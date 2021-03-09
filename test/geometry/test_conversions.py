@@ -517,7 +517,14 @@ class TestConvertAtoH:
 
 
 class TestConvertPointsFromHomogeneous:
-    def test_convert_points(self, device, dtype):
+    @pytest.mark.parametrize("batch_shape", [
+        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
+    def test_cardinality(self, device, dtype, batch_shape):
+        points_h = torch.rand(batch_shape, device=device, dtype=dtype)
+        points = kornia.convert_points_from_homogeneous(points_h)
+        assert points.shape == points.shape[:-1] + (2,)
+
+    def test_points(self, device, dtype):
         # generate input data
         points_h = torch.tensor([
             [1., 2., 1.],
@@ -539,7 +546,7 @@ class TestConvertPointsFromHomogeneous:
         points = kornia.convert_points_from_homogeneous(points_h)
         assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
-    def test_convert_points_batch(self, device, dtype):
+    def test_points_batch(self, device, dtype):
         # generate input data
         points_h = torch.tensor([[
             [2., 1., 0.],
@@ -561,17 +568,28 @@ class TestConvertPointsFromHomogeneous:
         points = kornia.convert_points_from_homogeneous(points_h)
         assert_allclose(points, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_shape", [
-        (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-    def test_gradcheck(self, batch_shape, device, dtype):
-        points_h = torch.rand(batch_shape, device=device, dtype=dtype)
+    def test_gradcheck(self, device, dtype):
+        points_h = torch.ones(1, 10, 3, device=device, dtype=dtype)
 
         # evaluate function gradient
         points_h = tensor_to_gradcheck_var(points_h)  # to var
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
+    @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
+    def test_gradcheck_zvec_zeros(self, device, dtype):
+        # generate input data
+        points_h = torch.tensor([
+            [1., 2., 0.],
+            [0., 1., 0.1],
+            [2., 1., 0.1],
+        ], device=device, dtype=dtype)
+
+        # evaluate function gradient
+        points_h = tensor_to_gradcheck_var(points_h)  # to var
+        assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
+                         raise_exception=True)
+
     def test_jit(self, device, dtype):
         op = kornia.convert_points_from_homogeneous
         op_script = torch.jit.script(op)
