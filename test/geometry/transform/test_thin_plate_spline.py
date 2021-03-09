@@ -51,8 +51,9 @@ class TestTransformParameters:
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        src = torch.rand(batch_size, 5, 2, device=device, requires_grad=requires_grad)
-        dst = torch.rand(batch_size, 5, 2, device=device, requires_grad=(not requires_grad))
+        opts = dict(device=device, dtype=torch.float64)
+        src = torch.rand(batch_size, 5, 2, requires_grad=requires_grad, **opts)
+        dst = torch.rand(batch_size, 5, 2, requires_grad=(not requires_grad), **opts)
         assert gradcheck(kornia.get_tps_transform, (src, dst), raise_exception=True)
 
     @pytest.mark.jit
@@ -62,7 +63,10 @@ class TestTransformParameters:
         dst = torch.rand(batch_size, 5, 2, device=device)
         op = kornia.get_tps_transform
         op_jit = torch.jit.script(op)
-        assert_allclose(op(src, dst), op_jit(src, dst))
+        op_output = op(src, dst)
+        jit_output = op_jit(src, dst)
+        assert_allclose(op_output[0], jit_output[0])
+        assert_allclose(op_output[1], jit_output[1])
 
 
 class TestWarpPoints:
@@ -120,9 +124,12 @@ class TestWarpPoints:
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        src = torch.rand(batch_size, 5, 2, device=device, requires_grad=requires_grad)
-        dst = torch.rand(batch_size, 5, 2, device=device, requires_grad=(not requires_grad))
+        opts = dict(device=device, dtype=torch.float64)
+        src = torch.rand(batch_size, 5, 2, **opts)
+        dst = torch.rand(batch_size, 5, 2, **opts)
         kernel, affine = kornia.get_tps_transform(src, dst)
+        kernel.requires_grad_(requires_grad)
+        affine.requires_grad_(not requires_grad)
         assert gradcheck(kornia.warp_points_tps, (src, dst, kernel, affine), raise_exception=True)
 
     @pytest.mark.jit
@@ -206,12 +213,19 @@ class TestWarpImage:
 
     @pytest.mark.grad
     @pytest.mark.parametrize('batch_size', [1, 3])
-    @pytest.mark.parametrize('requires_grad', [True, False])
+    @pytest.mark.parametrize('requires_grad', ['kernel', 'affine', 'image', 'dst'])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        src = torch.rand(batch_size, 5, 2, device=device, requires_grad=requires_grad)
-        dst = torch.rand(batch_size, 5, 2, device=device, requires_grad=(not requires_grad))
+        opts = dict(device=device, dtype=torch.float64)
+        src = torch.rand(batch_size, 5, 2, **opts)
+        dst = torch.rand(batch_size, 5, 2, **opts)
         kernel, affine = kornia.get_tps_transform(src, dst)
-        image = torch.rand(batch_size, 3, 8, 8, device=device, requires_grad=requires_grad)
+        if requires_grad == 'dst':
+            dst.requires_grad_(True)
+        if requires_grad == 'kernel':
+            kernel.requires_grad_(True)
+        if requires_grad == 'affine':
+            affine.requires_grad_(True)
+        image = torch.rand(batch_size, 3, 8, 8, requires_grad=(requires_grad == 'image'), **opts)
         assert gradcheck(kornia.warp_image_tps, (image, dst, kernel, affine), raise_exception=True)
 
     @pytest.mark.jit
