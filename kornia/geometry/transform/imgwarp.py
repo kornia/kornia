@@ -3,7 +3,7 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.warp import (
+from kornia.geometry.transform.homography_warper import (
     normalize_homography, homography_warp
 )
 from kornia.geometry.conversions import (
