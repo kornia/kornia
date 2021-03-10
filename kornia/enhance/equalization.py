@@ -78,8 +78,8 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     assert padded_imgs.shape[-1] % tile_size[1] == 0, "Images are not correctly padded."
 
     # tiles to be interpolated are built by dividing in 4 each alrady existing
-    interp_kernel_vert = tile_size[0] // 2
-    interp_kernel_horz = tile_size[1] // 2
+    interp_kernel_vert: int = tile_size[0] // 2
+    interp_kernel_horz: int = tile_size[1] // 2
 
     c: int = padded_imgs.shape[-3]
     interp_tiles: torch.Tensor = (padded_imgs.unfold(1, c, c)
@@ -109,11 +109,12 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     """
     assert tiles_x_im.dim() == 6, "Tensor must be 6D."
 
-    pixels: int = tiles_x_im.shape[-2] * tiles_x_im.shape[-1]
+    b, gh, gw, c, th, tw = tiles_x_im.shape
+    pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.reshape(-1, pixels)  # test with view  # T x (THxTW)
     histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
-        tile: torch.Tensor
+        # tile: torch.Tensor  # not supported by JIT
         for i, tile in enumerate(tiles.unbind(0)):
             histos[i] = torch.histc(tile, bins=num_bins, min=0, max=1)
     else:
@@ -122,16 +123,16 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
         histos *= pixels
 
     # clip limit (TODO: optimice the code)
-    if clip > 0:
+    if clip > 0.:
         clip_limit: float = clip * pixels // num_bins
         clip_limit = max(clip_limit, 1)
 
         clip_idxs: torch.Tensor = histos > clip_limit
-        hist: torch.Tensor
+        # hist: torch.Tensor  # not supported by JIT
         for i, hist in enumerate(histos.unbind(0)):
             idxs = clip_idxs[i]
             if idxs.any():
-                clipped: float = (hist[idxs] - clip_limit).sum().item()
+                clipped: float = float((hist[idxs] - clip_limit).sum().item())
                 hist[idxs] = clip_limit
 
                 redist: float = clipped // num_bins
@@ -144,7 +145,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
     luts = luts.clamp(0, num_bins - 1).floor()  # to get the same values as converting to int maintaining the type
-    luts = luts.view(([*tiles_x_im.shape[0:4]] + [num_bins]))
+    luts = luts.view((b, gh, gw, c, num_bins))
     return luts
 
 
@@ -162,21 +163,19 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     assert interp_tiles.dim() == 6, "interp_tiles tensor must be 6D."
     assert luts.dim() == 5, "luts tensor must be 5D."
 
-    num_imgs: int  # number of batched images
-    gh: int  # 2x the number of tiles used to compute the histograms
-    gw: int
-    c: int  # number of channels
-    th: int  # /2 the sizes of the tiles used to compute the histograms
-    tw: int
+    # gh, gw -> 2x the number of tiles used to compute the histograms
+    # th, tw -> /2 the sizes of the tiles used to compute the histograms
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
     # precompute idxs for non corner regions (doing it in cpu seems sligthly faster)
     j_idxs = torch.ones(gh - 2, 4, dtype=torch.long) * torch.arange(1, gh - 1).reshape(gh - 2, 1)
     i_idxs = torch.ones(gw - 2, 4, dtype=torch.long) * torch.arange(1, gw - 1).reshape(gw - 2, 1)
     j_idxs = j_idxs // 2 + j_idxs % 2
-    j_idxs[:, [0, 1]] -= 1
+    j_idxs[:, 0:2] -= 1
     i_idxs = i_idxs // 2 + i_idxs % 2
-    i_idxs[:, [0, 2]] -= 1
+    # i_idxs[:, [0, 2]] -= 1  # this slicing is not supported by jit
+    i_idxs[:, 0] -= 1
+    i_idxs[:, 2] -= 1
 
     # selection of luts to interpolate each patch
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
@@ -215,12 +214,8 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     mapped_luts: torch.Tensor = _map_luts(interp_tiles, luts)  # Bx2GHx2GWx4xCx256
 
-    num_imgs: int  # number of batched images
-    gh: int  # 2x the number of tiles used to compute the histograms
-    gw: int
-    c: int  # number of channels
-    th: int  # /2 the sizes of the tiles used to compute the histograms
-    tw: int
+    # gh, gw -> 2x the number of tiles used to compute the histograms
+    # th, tw -> /2 the sizes of the tiles used to compute the histograms
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
     # equalize tiles
@@ -291,7 +286,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
         torch.Size([2, 3, 10, 20])
 
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
     if input.dim() not in [3, 4]:
@@ -309,7 +304,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
     if len(grid_size) != 2:
         raise TypeError(f"Input grid_size is not a Tuple with 2 elements. Got {len(grid_size)}")
 
-    if type(grid_size[0]) != type(grid_size[1]) or isinstance(grid_size[0], float):
+    if isinstance(grid_size[0], float) or isinstance(grid_size[1], float):
         raise TypeError("Input grid_size type is not valid, must be a Tuple[int, int].")
 
     if grid_size[0] <= 0 or grid_size[1] <= 0:
@@ -317,11 +312,11 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
 
     imgs: torch.Tensor = _to_bchw(input)  # B x C x H x W
 
-    hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW
-    img_padded: torch.Tensor  # B x C x H' x W'
+    # hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW  # not supported by JIT
+    # img_padded: torch.Tensor  # B x C x H' x W'  # not supported by JIT
     # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
-    tile_size: Tuple[int, int] = hist_tiles.shape[-2:]  # type: ignore  # mypy cannot infer the type
+    tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
     interp_tiles: torch.Tensor = (
         _compute_interpolation_tiles(img_padded, tile_size))  # B x 2GH x 2GW x C x TH/2 x TW/2
     luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
