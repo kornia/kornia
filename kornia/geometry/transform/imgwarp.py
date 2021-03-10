@@ -33,7 +33,7 @@ __all__ = [
 
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
-                     flags: str = 'bilinear', border_mode: str = 'zeros',
+                     mode: str = 'bilinear', padding_mode: str = 'zeros',
                      align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
@@ -50,9 +50,9 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         src (torch.Tensor): input image with shape :math:`(B, C, H, W)`.
         M (torch.Tensor): transformation matrix with shape :math:`(B, 3, 3)`.
         dsize (tuple): size of the output image (height, width).
-        flags (str): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        border_mode (str): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners(bool, optional): interpolation flag. Default: None.
 
@@ -105,12 +105,12 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 
     return F.grid_sample(src, grid,
                          align_corners=align_corners,
-                         mode=flags,
-                         padding_mode=border_mode)
+                         mode=mode,
+                         padding_mode=padding_mode)
 
 
 def warp_affine(src: torch.Tensor, M: torch.Tensor,
-                dsize: Tuple[int, int], flags: str = 'bilinear',
+                dsize: Tuple[int, int], mode: str = 'bilinear',
                 padding_mode: str = 'zeros',
                 align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
@@ -180,7 +180,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
 
     return F.grid_sample(src, grid,
                          align_corners=align_corners,
-                         mode=flags,
+                         mode=mode,
                          padding_mode=padding_mode)
 
 

@@ -217,7 +217,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}.")
     patches: torch.Tensor = warp_affine(
         tensor, dst_trans_src[:, :2, :], (int(bbox[0][0].item()), int(bbox[1][0].item())),
-        flags=interpolation, align_corners=align_corners)
+        mode=interpolation, align_corners=align_corners)
 
     return patches
 
