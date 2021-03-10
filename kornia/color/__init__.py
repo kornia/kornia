@@ -6,6 +6,8 @@ from .rgb import RgbToRgba, rgb_to_rgba
 from .rgb import BgrToRgba, bgr_to_rgba
 from .rgb import RgbaToRgb, rgba_to_rgb
 from .rgb import RgbaToBgr, rgba_to_bgr
+from .rgb import RgbToLinearRgb, rgb_to_linear_rgb
+from .rgb import LinearRgbToRgb, linear_rgb_to_rgb
 from .hsv import RgbToHsv, rgb_to_hsv
 from .hsv import HsvToRgb, hsv_to_rgb
 from .hls import RgbToHls, rgb_to_hls

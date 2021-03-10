@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from .xyz import rgb_to_xyz, xyz_to_rgb
+from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
 
 """
 The RGB to Luv color transformations were translated from scikit image's rgb2luv and luv2rgb
@@ -38,25 +39,18 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
                          .format(image.shape))
 
-    # Convert from Linear RGB to sRGB
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    # Convert from sRGB to Linear RGB
+    lin_rgb = rgb_to_linear_rgb(image)
 
-    rs: torch.Tensor = torch.where(r > 0.04045, torch.pow(((r + 0.055) / 1.055), 2.4), r / 12.92)
-    gs: torch.Tensor = torch.where(g > 0.04045, torch.pow(((g + 0.055) / 1.055), 2.4), g / 12.92)
-    bs: torch.Tensor = torch.where(b > 0.04045, torch.pow(((b + 0.055) / 1.055), 2.4), b / 12.92)
-
-    image_s = torch.stack([rs, gs, bs], dim=-3)
-
-    xyz_im: torch.Tensor = rgb_to_xyz(image_s)
+    xyz_im: torch.Tensor = rgb_to_xyz(lin_rgb)
 
     x: torch.Tensor = xyz_im[..., 0, :, :]
     y: torch.Tensor = xyz_im[..., 1, :, :]
     z: torch.Tensor = xyz_im[..., 2, :, :]
 
-    L: torch.Tensor = torch.where(torch.gt(y, 0.008856),
-                                  116. * torch.pow(y, 1. / 3.) - 16.,
+    threshold = 0.008856
+    L: torch.Tensor = torch.where(y > threshold,
+                                  116. * torch.pow(y.clamp(min=threshold), 1. / 3.) - 16.,
                                   903.3 * y)
 
     # Compute reference white point
@@ -122,16 +116,8 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
 
-    # Convert from sRGB to RGB Linear
-    rs: torch.Tensor = rgbs_im[..., 0, :, :]
-    gs: torch.Tensor = rgbs_im[..., 1, :, :]
-    bs: torch.Tensor = rgbs_im[..., 2, :, :]
-
-    r: torch.Tensor = torch.where(rs > 0.0031308, 1.055 * torch.pow(rs, 1 / 2.4) - 0.055, 12.92 * rs)
-    g: torch.Tensor = torch.where(gs > 0.0031308, 1.055 * torch.pow(gs, 1 / 2.4) - 0.055, 12.92 * gs)
-    b: torch.Tensor = torch.where(bs > 0.0031308, 1.055 * torch.pow(bs, 1 / 2.4) - 0.055, 12.92 * bs)
-
-    rgb_im: torch.Tensor = torch.stack([r, g, b], dim=-3)
+    # Convert from RGB Linear to sRGB
+    rgb_im = linear_rgb_to_rgb(rgbs_im)
 
     return rgb_im
 
