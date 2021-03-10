@@ -4,7 +4,7 @@ from typing import Tuple, List
 import torch
 import kornia as K
 from kornia.geometry.conversions import convert_affinematrix_to_homography3d
-from kornia.geometry.warp import normalize_homography3d, homography_warp3d
+from kornia.geometry.transform.homography_warper import normalize_homography3d, homography_warp3d
 from kornia.testing import check_is_tensor
 
 __all__ = [
