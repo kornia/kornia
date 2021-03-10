@@ -17,6 +17,14 @@ def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_bgr(input) # 2x3x4x5
     """
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
+
     return bgr_to_rgb(image)
 
 
@@ -167,6 +175,71 @@ def rgba_to_bgr(image: torch.Tensor) -> torch.Tensor:
     # convert to RGB first, then to BGR
     x_rgb: torch.Tensor = rgba_to_rgb(image)
     return rgb_to_bgr(x_rgb)
+
+
+def rgb_to_linear_rgb(image: torch.Tensor) -> torch.Tensor:
+    r"""Convert an sRGB image to linear RGB. Used in colorspace conversions.
+
+    Args:
+        image (torch.Tensor): sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        torch.Tensor: linear RGB version of the image with shape of :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb_to_linear_rgb(input) # 2x3x4x5
+    """
+
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
+
+    lin_rgb: torch.Tensor = torch.where(image > 0.04045, torch.pow(
+        ((image + 0.055) / 1.055), 2.4), image / 12.92)
+
+    return lin_rgb
+
+
+def linear_rgb_to_rgb(image: torch.Tensor) -> torch.Tensor:
+    r"""Convert a linear RGB image to sRGB. Used in colorspace conversions.
+
+    Args:
+        image (torch.Tensor): linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        torch.Tensor: sRGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = linear_rgb_to_rgb(input) # 2x3x4x5
+    """
+
+    if not isinstance(image, torch.Tensor):
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
+            type(image)))
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError("Input size must have a shape of (*, 3, H, W).Got {}"
+                         .format(image.shape))
+
+    threshold = 0.0031308
+    rgb: torch.Tensor = torch.where(
+        image > threshold,
+        1.055 *
+        torch.pow(
+            image.clamp(min=threshold),
+            1 /
+            2.4) -
+        0.055,
+        12.92 *
+        image)
+
+    return rgb
 
 
 class BgrToRgb(nn.Module):
@@ -331,3 +404,68 @@ class RgbaToBgr(nn.Module):
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgba_to_bgr(image)
+
+
+class RgbToLinearRgb(nn.Module):
+    r"""Convert an image from sRGB to linear RGB.
+
+    Reverses the gamma correction of sRGB to get linear RGB values for colorspace conversions.
+    The image data is assumed to be in the range of :math:`[0, 1]`
+
+    Returns:
+        torch.Tensor: Linear RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb_lin = RgbToLinearRgb()
+        >>> output = rgb_lin(input)  # 2x3x4x5
+
+    References:
+        [1] https://stackoverflow.com/questions/35952564/convert-rgb-to-srgb
+
+        [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
+
+        [3] https://en.wikipedia.org/wiki/SRGB
+    """
+
+    def __init__(self) -> None:
+        super(RgbToLinearRgb, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return rgb_to_linear_rgb(image)
+
+
+class LinearRgbToRgb(nn.Module):
+    r"""Convert a linear RGB image to sRGB.
+
+    Applies gamma correction to linear RGB values, at the end of colorspace conversions, to get sRGB.
+
+    Returns:
+        torch.Tensor: sRGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> srgb = LinearRgbToRgb()
+        >>> output = srgb(input)  # 2x3x4x5
+
+    References:
+        [1] https://stackoverflow.com/questions/35952564/convert-rgb-to-srgb
+
+        [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
+
+        [3] https://en.wikipedia.org/wiki/SRGB
+    """
+
+    def __init__(self) -> None:
+        super(LinearRgbToRgb, self).__init__()
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return linear_rgb_to_rgb(image)
