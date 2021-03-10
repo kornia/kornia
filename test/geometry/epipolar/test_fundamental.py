@@ -318,3 +318,31 @@ class TestFundamentalFromProjections:
         P2 = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
         assert gradcheck(epi.fundamental_from_projections,
                          (P1, P2,), raise_exception=True)
+
+    def test_batch_support_check(self, device, dtype):
+        P1_batch = torch.tensor([[[9.4692e+02, -9.6658e+02, 6.0862e+02, -2.3076e+05],
+                                  [-2.1829e+02, 5.4163e+02, 1.3445e+03, -6.4387e+05],
+                                  [-6.0675e-01, -6.9807e-01, 3.8021e-01, 3.8896e+02]],
+
+                                 [[9.4692e+02, -9.6658e+02, 6.0862e+02, -2.3076e+05],
+                                  [-2.1829e+02, 5.4163e+02, 1.3445e+03, -6.4387e+05],
+                                  [-6.0675e-01, -6.9807e-01, 3.8021e-01, 3.8896e+02]]], device=device, dtype=dtype)
+        P1 = torch.tensor([[[9.4692e+02, -9.6658e+02, 6.0862e+02, -2.3076e+05],
+                            [-2.1829e+02, 5.4163e+02, 1.3445e+03, -6.4387e+05],
+                            [-6.0675e-01, -6.9807e-01, 3.8021e-01, 3.8896e+02]],
+                           ], device=device, dtype=dtype)
+        P2_batch = torch.tensor([[[1.1518e+03, -7.5822e+02, 5.4764e+02, -1.9764e+05],
+                                  [-2.1548e+02, 5.3102e+02, 1.3492e+03, -6.4731e+05],
+                                  [-4.3727e-01, -7.8632e-01, 4.3646e-01, 3.4515e+02]],
+
+                                 [[9.9595e+02, -8.6464e+02, 6.7959e+02, -2.7517e+05],
+                                  [-8.1716e+01, 7.7826e+02, 1.2395e+03, -5.8137e+05],
+                                  [-5.7090e-01, -6.0416e-01, 5.5594e-01, 2.8111e+02]]], device=device, dtype=dtype)
+        P2 = torch.tensor([[[1.1518e+03, -7.5822e+02, 5.4764e+02, -1.9764e+05],
+                            [-2.1548e+02, 5.3102e+02, 1.3492e+03, -6.4731e+05],
+                            [-4.3727e-01, -7.8632e-01, 4.3646e-01, 3.4515e+02]],
+                           ], device=device, dtype=dtype)
+
+        F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
+        F = epi.fundamental_from_projections(P1, P2)
+        assert (F_batch[0] == F[0]).all()
