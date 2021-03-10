@@ -34,7 +34,7 @@ __all__ = [
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
                      flags: str = 'bilinear', border_mode: str = 'zeros',
-                     align_corners: bool = True) -> torch.Tensor:
+                     align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
@@ -54,7 +54,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
           'bilinear' | 'nearest'. Default: 'bilinear'.
         border_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: True.
+        align_corners(bool, optional): interpolation flag. Default: None.
 
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, H, W)`.
@@ -79,12 +79,15 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(M.shape))
 
-    # TODO: remove in kornia v0.6
-    message: str = (
-        "The align_corners flag has been inverted. By default now is set True "
-        "in order to match cv2.warpAffine. Set to False in order to keep your previous behaviour. "
-        "This warning will disappear in kornia >0.6.")
-    warnings.warn(message)
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpPerspective. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
 
     B, C, H, W = src.size()
     h_out, w_out = dsize
@@ -109,7 +112,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
 def warp_affine(src: torch.Tensor, M: torch.Tensor,
                 dsize: Tuple[int, int], flags: str = 'bilinear',
                 padding_mode: str = 'zeros',
-                align_corners: bool = True) -> torch.Tensor:
+                align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
     The function warp_affine transforms the source tensor using
@@ -127,7 +130,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: True.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
 
     Returns:
         torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
@@ -152,12 +155,15 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(M.shape))
 
-    # TODO: remove in kornia v0.6
-    message: str = (
-        "The align_corners flag has been inverted. By default now is set True "
-        "in order to match cv2.warpPerspective. Set to False in order to keep your previous behaviour. "
-        "This warning will disappear in kornia >0.6.")
-    warnings.warn(message)
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpAffine. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
 
     B, C, H, W = src.size()
 
