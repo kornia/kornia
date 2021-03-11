@@ -23,7 +23,7 @@ class SOSNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(8, 1, 32, 32)
-        >>> sosnet = kornia.feature.SOSNet()
+        >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
 
@@ -55,7 +55,7 @@ class SOSNet(nn.Module):
             nn.BatchNorm2d(128, affine=False),
         )
         self.desc_norm = nn.Sequential(
-            nn.LocalResponseNorm(256, alpha=256, beta=0.5, k=0)
+            nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0)
         )
         # load pretrained model
         if pretrained:
@@ -66,7 +66,7 @@ class SOSNet(nn.Module):
 
         return
 
-    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:   # type: ignore
+    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)
         return descr

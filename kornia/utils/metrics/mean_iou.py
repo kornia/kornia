@@ -19,7 +19,7 @@ def mean_iou(
           values between 0 and K-1.
         target (torch.Tensor) : tensor with ground truth (correct) target
           values. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1, whete targets are assumed to be provided as
+          values between 0 and K-1, where targets are assumed to be provided as
           one-hot vectors.
         num_classes (int): total possible number of classes in target.
 
@@ -40,7 +40,7 @@ def mean_iou(
         raise ValueError("Inputs must be in the same device. "
                          "Got: {} - {}".format(input.device, target.device))
     if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError("The number of classes must be an intenger bigger "
+        raise ValueError("The number of classes must be an integer bigger "
                          "than two. Got: {}".format(num_classes))
     # we first compute the confusion matrix
     conf_mat: torch.Tensor = confusion_matrix(input, target, num_classes)

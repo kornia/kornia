@@ -7,11 +7,44 @@ import kornia
 from kornia.filters.kernels import get_gaussian_kernel2d
 
 
+def gaussian_blur2d(
+        input: torch.Tensor,
+        kernel_size: Tuple[int, int],
+        sigma: Tuple[float, float],
+        border_type: str = 'reflect') -> torch.Tensor:
+    r"""Creates an operator that blurs a tensor using a Gaussian filter.
+
+    The operator smooths the given tensor with a gaussian kernel by convolving
+    it to each channel. It supports batched operation.
+
+    Arguments:
+        input (torch.Tensor): the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size (Tuple[int, int]): the size of the kernel.
+        sigma (Tuple[float, float]): the standard deviation of the kernel.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+
+    Returns:
+        torch.Tensor: the blurred tensor with shape :math:`(B, C, H, W)`.
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> output = gaussian_blur2d(input, (3, 3), (1.5, 1.5))
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+    kernel: torch.Tensor = torch.unsqueeze(
+        get_gaussian_kernel2d(kernel_size, sigma), dim=0)
+
+    return kornia.filter2D(input, kernel, border_type)
+
+
 class GaussianBlur2d(nn.Module):
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
-    it to each channel. It suports batched operation.
+    it to each channel. It supports batched operation.
 
     Arguments:
         kernel_size (Tuple[int, int]): the size of the kernel.
@@ -30,8 +63,10 @@ class GaussianBlur2d(nn.Module):
     Examples::
 
         >>> input = torch.rand(2, 4, 5, 5)
-        >>> gauss = kornia.filters.GaussianBlur((3, 3), (1.5, 1.5))
+        >>> gauss = GaussianBlur2d((3, 3), (1.5, 1.5))
         >>> output = gauss(input)  # 2x4x5x5
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
     """
 
     def __init__(self, kernel_size: Tuple[int, int],
@@ -40,10 +75,6 @@ class GaussianBlur2d(nn.Module):
         super(GaussianBlur2d, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.sigma: Tuple[float, float] = sigma
-        self.kernel: torch.Tensor = torch.unsqueeze(
-            get_gaussian_kernel2d(kernel_size, sigma), dim=0)
-
-        assert border_type in ["constant", "reflect", "replicate", "circular"]
         self.border_type = border_type
 
     def __repr__(self) -> str:
@@ -52,23 +83,5 @@ class GaussianBlur2d(nn.Module):
             'sigma=' + str(self.sigma) + ', ' +\
             'border_type=' + self.border_type + ')'
 
-    def forward(self, x: torch.Tensor):  # type: ignore
-        return kornia.filter2D(x, self.kernel, self.border_type)
-
-
-######################
-# functional interface
-######################
-# TODO: In terms of functional API, there should not be any initialization of an nn.Module.
-#       This logic is reversed.
-
-def gaussian_blur2d(
-        input: torch.Tensor,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
-        border_type: str = 'reflect') -> torch.Tensor:
-    r"""Function that blurs a tensor using a Gaussian filter.
-
-    See :class:`~kornia.filters.GaussianBlur` for details.
-    """
-    return GaussianBlur2d(kernel_size, sigma, border_type)(input)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type)

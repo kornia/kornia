@@ -11,11 +11,44 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
 
 def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    r"""Function that computes Sørensen-Dice Coefficient loss.
+    r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
-    See :class:`~kornia.losses.DiceLoss` for details.
+    According to [1], we compute the Sørensen-Dice Coefficient as follows:
+
+    .. math::
+
+        \text{Dice}(x, class) = \frac{2 |X| \cap |Y|}{|X| + |Y|}
+
+    Where:
+       - :math:`X` expects to be the scores of each class.
+       - :math:`Y` expects to be the one-hot tensor with the class labels.
+
+    the loss, is finally computed as:
+
+    .. math::
+
+        \text{loss}(x, class) = 1 - \text{Dice}(x, class)
+
+    Reference:
+        [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+
+    Args:
+        input (torch.Tensor): logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        labels (torch.Tensor): labels tensor with shape :math:`(N, H, W)` where each value
+          is :math:`0 ≤ targets[i] ≤ C−1`.
+        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
+
+    Return:
+        torch.Tensor: the computed loss.
+
+    Example:
+        >>> N = 5  # num_classes
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = dice_loss(input, target)
+        >>> output.backward()
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
 
@@ -46,6 +79,7 @@ def dice_loss(input: torch.Tensor, target: torch.Tensor, eps: float = 1e-8) -> t
     cardinality = torch.sum(input_soft + target_one_hot, dims)
 
     dice_score = 2. * intersection / (cardinality + eps)
+
     return torch.mean(-dice_score + 1.)
 
 
@@ -58,7 +92,7 @@ class DiceLoss(nn.Module):
 
         \text{Dice}(x, class) = \frac{2 |X| \cap |Y|}{|X| + |Y|}
 
-    where:
+    Where:
        - :math:`X` expects to be the scores of each class.
        - :math:`Y` expects to be the one-hot tensor with the class labels.
 
@@ -68,28 +102,29 @@ class DiceLoss(nn.Module):
 
         \text{loss}(x, class) = 1 - \text{Dice}(x, class)
 
-    [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+    Reference:
+        [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+
+    Args:
+        eps (float, optional): Scalar to enforce numerical stabiliy. Default: 1e-8.
 
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
         - Target: :math:`(N, H, W)` where each value is
           :math:`0 ≤ targets[i] ≤ C−1`.
 
-    Examples:
+    Example:
         >>> N = 5  # num_classes
-        >>> loss = kornia.losses.DiceLoss()
+        >>> criterion = DiceLoss()
         >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = loss(input, target)
+        >>> output = criterion(input, target)
         >>> output.backward()
     """
 
-    def __init__(self) -> None:
+    def __init__(self, eps: float = 1e-8) -> None:
         super(DiceLoss, self).__init__()
-        self.eps: float = 1e-6
+        self.eps: float = eps
 
-    def forward(  # type: ignore
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return dice_loss(input, target, self.eps)

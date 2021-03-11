@@ -4,6 +4,8 @@ import math
 import torch
 import torch.nn.functional as F
 
+from kornia.geometry import angle_to_rotation_matrix
+
 
 def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
     """Auxilary function, which verifies that input is a torch.tensor of [BxNx2x3] shape
@@ -12,7 +14,7 @@ def raise_error_if_laf_is_not_valid(laf: torch.Tensor) -> None:
         laf
     """
     laf_message: str = "Invalid laf shape, we expect BxNx2x3. Got: {}".format(laf.shape)
-    if not torch.is_tensor(laf):
+    if not isinstance(laf, torch.Tensor):
         raise TypeError("Laf type is not a torch.Tensor. Got {}"
                         .format(type(laf)))
     if len(laf.shape) != 4:
@@ -37,7 +39,7 @@ def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
-        >>> output = kornia.get_laf_scale(input)  # BxNx1x1
+        >>> output = get_laf_scale(input)  # BxNx1x1
     """
     raise_error_if_laf_is_not_valid(LAF)
     eps = 1e-10
@@ -60,7 +62,7 @@ def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
-        >>> output = kornia.get_laf_center(input)  # BxNx2
+        >>> output = get_laf_center(input)  # BxNx2
     """
     raise_error_if_laf_is_not_valid(LAF)
     out: torch.Tensor = LAF[..., 2]
@@ -82,11 +84,35 @@ def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
-        >>> output = kornia.get_laf_orientation(input)  # BxNx1
+        >>> output = get_laf_orientation(input)  # BxNx1
     """
     raise_error_if_laf_is_not_valid(LAF)
     angle_rad: torch.Tensor = torch.atan2(LAF[..., 0, 1], LAF[..., 0, 0])
     return kornia.rad2deg(angle_rad).unsqueeze(-1)
+
+
+def set_laf_orientation(LAF: torch.Tensor,
+                        angles_degrees: torch.Tensor) -> torch.Tensor:
+    """Changes the orientation of the LAFs.
+
+    Args:
+        LAF: (torch.Tensor): tensor [BxNx2x3].
+        angles: (torch.Tensor): tensor  BxNx1, in degrees .
+
+    Returns:
+        torch.Tensor: tensor  [BxNx2x3] .
+
+    Shape:
+        - Input: :math: `(B, N, 2, 3)`, `(B, N, 1)`
+        - Output: :math: `(B, N, 2, 3)`
+
+    """
+    raise_error_if_laf_is_not_valid(LAF)
+    B, N = LAF.shape[:2]
+    rotmat: torch.Tensor = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
+    laf_out: torch.Tensor = torch.cat([torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat),
+                                       LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2).view(B, N, 2, 3)
+    return laf_out
 
 
 def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.Tensor) -> torch.Tensor:
@@ -104,7 +130,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
     for var_name, var, req_shape in zip(names,
                                         [xy, scale, ori],
                                         [("B", "N", 2), ("B", "N", 1, 1), ("B", "N", 1)]):
-        if not torch.is_tensor(var):
+        if not isinstance(var, torch.Tensor):
             raise TypeError("{} type is not a torch.Tensor. Got {}"
                             .format(var_name, type(var)))
         if len(var.shape) != len(req_shape):  # type: ignore  # because it does not like len(tensor.shape)
@@ -145,7 +171,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
         >>> scale = 0.5
-        >>> output = kornia.scale_laf(input, scale)  # BxNx2x3
+        >>> output = scale_laf(input, scale)  # BxNx2x3
     """
     if (type(scale_coef) is not float) and (type(scale_coef) is not torch.Tensor):
         raise TypeError(
@@ -173,7 +199,7 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
-        >>> output = kornia.make_upright(input)  #  BxNx2x3
+        >>> output = make_upright(input)  #  BxNx2x3
     """
     raise_error_if_laf_is_not_valid(laf)
     det = get_laf_scale(laf)
@@ -210,7 +236,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
 
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
-        >>> output = kornia.ellipse_to_laf(input)  #  BxNx2x3
+        >>> output = ellipse_to_laf(input)  #  BxNx2x3
     """
     n_dims = len(ells.size())
     if n_dims != 3:
@@ -265,9 +291,9 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
                      torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
                      torch.ones(n_pts - 1, 1)], dim=1)
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0, 0, 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
+    pts = torch.cat([torch.tensor([0., 0., 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
-    aux = torch.tensor([0, 0, 1.]).view(1, 1, 3).expand(B * N, 1, 3)
+    aux = torch.tensor([0., 0., 1.]).view(1, 1, 3).expand(B * N, 1, 3)
     HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
@@ -289,12 +315,13 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
         - Output:  :math:`(B, N, n_pts, 2)`
 
     Examples:
-        >>> x, y = kornia.feature.laf.get_laf_pts_to_draw(LAF, img_idx)
-        >>> plt.figure()
-        >>> plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
-        >>> plt.plot(x, y, 'r')
-        >>> plt.show()
+        x, y = get_laf_pts_to_draw(LAF, img_idx)
+        plt.figure()
+        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.plot(x, y, 'r')
+        plt.show()
     """
+    # TODO: Refactor doctest
     raise_error_if_laf_is_not_valid(LAF)
     pts = laf_to_boundary_points(LAF[img_idx:img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
@@ -303,8 +330,8 @@ def get_laf_pts_to_draw(LAF: torch.Tensor,
 
 def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """De-normalizes LAFs from scale to image scale.
-        >>> B,N,H,W = images.size()
-        >>> MIN_SIZE = min(H,W)
+        B,N,H,W = images.size()
+        MIN_SIZE = min(H,W)
         [a11 a21 x]
         [a21 a22 y]
         becomes
@@ -335,8 +362,8 @@ def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
 
 def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """Normalizes LAFs to [0,1] scale from pixel scale. See below:
-        >>> B,N,H,W = images.size()
-        >>> MIN_SIZE = min(H,W)
+        B,N,H,W = images.size()
+        MIN_SIZE = min(H,W)
         [a11 a21 x]
         [a21 a22 y]
         becomes:
@@ -453,18 +480,19 @@ def extract_patches_from_pyramid(img: torch.Tensor,
     B, N, _, _ = laf.size()
     num, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    pyr_idx = (scale.log2() + 0.5).relu().long()
+    half: float = 0.5
+    pyr_idx = (scale.log2() + half).relu().long()
     cur_img = img
-    cur_pyr_level = int(0)
+    cur_pyr_level = 0
     out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         num, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
-            scale_mask = (pyr_idx[i] == cur_pyr_level).bool().squeeze()
+            scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
             if (scale_mask.float().sum()) == 0:
                 continue
-            scale_mask = scale_mask.bool().view(-1)
+            scale_mask = (scale_mask > 0).view(-1)
             grid = generate_patch_grid_from_normalized_LAF(
                 cur_img[i:i + 1],
                 nlaf[i:i + 1, scale_mask, :, :],

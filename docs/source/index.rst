@@ -23,6 +23,7 @@ Kornia Documentation
    filters
    geometry
    losses
+   morphology
    utils
 
 .. toctree::

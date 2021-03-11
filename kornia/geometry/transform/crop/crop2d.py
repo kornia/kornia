@@ -37,21 +37,21 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
 
     Example:
-        >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-            ]])
+        >>> input = torch.tensor([[[
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ... ]]])
         >>> boxes = torch.tensor([[
-                [1., 1.],
-                [2., 1.],
-                [2., 2.],
-                [1., 2.],
-            ]])  # 1x4x2
-        >>> kornia.crop_and_resize(input, boxes, (2, 2))
-        tensor([[[ 6.0000,  7.0000],
-                 [ 10.0000, 11.0000]]])
+        ...     [1., 1.],
+        ...     [2., 1.],
+        ...     [2., 2.],
+        ...     [1., 2.],
+        ... ]])  # 1x4x2
+        >>> crop_and_resize(input, boxes, (2, 2), interpolation='nearest', align_corners=True)
+        tensor([[[[ 6.,  7.],
+                  [10., 11.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -98,15 +98,15 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         torch.Tensor: the output tensor with patches.
 
     Examples:
-        >>> input = torch.tensor([[
-                [1., 2., 3., 4.],
-                [5., 6., 7., 8.],
-                [9., 10., 11., 12.],
-                [13., 14., 15., 16.],
-             ]])
-        >>> kornia.center_crop(input, (2, 4))
-        tensor([[[ 5.0000,  6.0000,  7.0000,  8.0000],
-                 [ 9.0000, 10.0000, 11.0000, 12.0000]]])
+        >>> input = torch.tensor([[[
+        ...     [1., 2., 3., 4.],
+        ...     [5., 6., 7., 8.],
+        ...     [9., 10., 11., 12.],
+        ...     [13., 14., 15., 16.],
+        ...  ]]])
+        >>> center_crop(input, (2, 4), interpolation='nearest', align_corners=True)
+        tensor([[[[ 5.,  6.,  7.,  8.],
+                  [ 9., 10., 11., 12.]]]])
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
@@ -180,7 +180,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         torch.Tensor: the output tensor with patches.
 
     Examples:
-        >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 4, 4))
+        >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 1, 4, 4))
         >>> src_box = torch.tensor([[
         ...     [1., 1.],
         ...     [2., 1.],
@@ -194,8 +194,8 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         ...     [0., 1.],
         ... ]])  # 1x4x2
         >>> crop_by_boxes(input, src_box, dst_box, align_corners=True)
-        tensor([[[ 5.0000,  6.0000],
-                 [ 9.0000, 10.0000]]])
+        tensor([[[[ 5.0000,  6.0000],
+                  [ 9.0000, 10.0000]]]])
 
     Note:
         If the src_box is smaller than dst_box, the following error will be thrown.
@@ -258,7 +258,8 @@ def infer_box_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     return (height, width)
 
 
-def validate_bboxes(boxes: torch.Tensor) -> None:
+@torch.jit.ignore
+def validate_bboxes(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not.
 
     This function checks if the boxes are rectangular or not.
@@ -270,12 +271,19 @@ def validate_bboxes(boxes: torch.Tensor) -> None:
           order: top-left, top-right, bottom-right, bottom-left. The
           coordinates must be in the x, y order.
     """
-    assert torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)), \
-        "Boxes must have be rectangular, while get widths %s and %s" % \
-        (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
-    assert torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)), \
-        "Boxes must have be rectangular, while get heights %s and %s" % \
-        (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
+    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
+                          (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
+        raise ValueError("Boxes must have be rectangular, while get widths %s and %s" %
+                         (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1),
+                          str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1)))
+
+    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
+                          (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
+        raise ValueError("Boxes must have be rectangular, while get heights %s and %s" %
+                         (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1),
+                          str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1)))
+
+    return True
 
 
 def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
@@ -290,6 +298,9 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
 
     Returns:
         torch.Tensor: the output mask tensor.
+
+    Note:
+        It is currently non-differentiable.
 
     Examples:
         >>> boxes = torch.tensor([[
@@ -306,7 +317,11 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
     """
     validate_bboxes(boxes)
-    mask = torch.zeros((len(boxes), height, width))
+    # zero padding the surroudings
+    mask = torch.zeros((len(boxes), height + 2, width + 2))
+    # push all points one pixel off
+    # in order to zero-out the fully filled rows or columns
+    boxes += 1
 
     mask_out = []
     # TODO: Looking for a vectorized way
@@ -315,6 +330,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         m = m.index_fill(0, torch.arange(box[1, 1].item(), box[2, 1].item() + 1, dtype=torch.long), torch.tensor(1))
         m = m.unsqueeze(dim=0)
         m_out = (m == 1).all(dim=1) * (m == 1).all(dim=2).T
+        m_out = m_out[1:-1, 1:-1]
         mask_out.append(m_out)
 
     return torch.stack(mask_out, dim=0).float()
@@ -372,13 +388,13 @@ def bbox_generator(
         [0, 0],
         [0, 0],
         [0, 0],
-    ]], device=x_start.device, dtype=x_start.dtype).repeat(len(x_start), 1, 1)
+    ]], device=x_start.device, dtype=x_start.dtype).repeat(1 if x_start.dim() == 0 else len(x_start), 1, 1)
 
     bbox[:, :, 0] += x_start.view(-1, 1)
     bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width
-    bbox[:, 2, 0] += width
-    bbox[:, 2, 1] += height
-    bbox[:, 3, 1] += height
+    bbox[:, 1, 0] += width - 1
+    bbox[:, 2, 0] += width - 1
+    bbox[:, 2, 1] += height - 1
+    bbox[:, 3, 1] += height - 1
 
     return bbox

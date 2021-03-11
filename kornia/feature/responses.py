@@ -47,32 +47,33 @@ def harris_response(input: torch.Tensor,
 
     Examples:
         >>> input = torch.tensor([[[
-            [0., 0., 0., 0., 0., 0., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0., 0., 0.],
-        ]]])  # 1x1x7x7
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ... ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> output = harris_response(input, 0.04)
+        harris_response(input, 0.04)
         tensor([[[[0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012],
-          [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
-          [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
-          [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-          [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
-          [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
-          [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
+                  [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
+                  [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
+                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                  [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
+                  [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
+                  [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
     """
-    if not torch.is_tensor(input):
+    # TODO: Recompute doctest
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
     if sigmas is not None:
-        if not torch.is_tensor(sigmas):
+        if not isinstance(sigmas, torch.Tensor):
             raise TypeError("sigmas type is not a torch.Tensor. Got {}"
                             .format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
@@ -82,12 +83,11 @@ def harris_response(input: torch.Tensor,
     dy: torch.Tensor = gradients[:, :, 1]
 
     # compute the structure tensor M elements
-    def g(x):
-        return gaussian_blur2d(x, (7, 7), (1., 1.))
 
-    dx2: torch.Tensor = g(dx ** 2)
-    dy2: torch.Tensor = g(dy ** 2)
-    dxy: torch.Tensor = g(dx * dy)
+    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1., 1.))
+    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1., 1.))
+    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
+
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
     # compute the response map
@@ -133,25 +133,26 @@ def gftt_response(input: torch.Tensor,
 
     Examples:
         >>> input = torch.tensor([[[
-            [0., 0., 0., 0., 0., 0., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 1., 1., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0., 0., 0.],
-        ]]])  # 1x1x7x7
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ... ]]])  # 1x1x7x7
         >>> # compute the response map
-        >>> output = gftt_response(input)
+        gftt_response(input)
         tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
-          [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-          [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-          [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-          [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-          [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-          [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
+                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
+                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
+                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
+                  [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
-    if not torch.is_tensor(input):
+    # TODO: Recompute doctest
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
     if not len(input.shape) == 4:
@@ -161,13 +162,9 @@ def gftt_response(input: torch.Tensor,
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    # compute the structure tensor M elements
-    def g(x):
-        return gaussian_blur2d(x, (7, 7), (1., 1.))
-
-    dx2: torch.Tensor = g(dx ** 2)
-    dy2: torch.Tensor = g(dy ** 2)
-    dxy: torch.Tensor = g(dx * dy)
+    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1., 1.))
+    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1., 1.))
+    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
@@ -216,33 +213,34 @@ def hessian_response(input: torch.Tensor,
        - Output: :math:`(B, C, H, W)`
 
     Examples:
-         >>> input = torch.tensor([[[
-             [0., 0., 0., 0., 0., 0., 0.],
-             [0., 1., 1., 1., 1., 1., 0.],
-             [0., 1., 1., 1., 1., 1., 0.],
-             [0., 1., 1., 1., 1., 1., 0.],
-             [0., 1., 1., 1., 1., 1., 0.],
-             [0., 1., 1., 1., 1., 1., 0.],
-             [0., 0., 0., 0., 0., 0., 0.],
-         ]]])  # 1x1x7x7
-         >>> # compute the response map
-         >>> output = hessian_response(input)
-         tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
-           [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-           [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-           [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-           [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
-           [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
-           [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 1., 1., 1., 1., 1., 0.],
+        ...    [0., 0., 0., 0., 0., 0., 0.],
+        ... ]]])  # 1x1x7x7
+        >>> # compute the response map
+        hessian_response(input)
+        tensor([[[[0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155],
+                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
+                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
+                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                  [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
+                  [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
+                  [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
     """
-    if not torch.is_tensor(input):
+    # TODO: Recompute doctest
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
     if not len(input.shape) == 4:
         raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
                          .format(input.shape))
     if sigmas is not None:
-        if not torch.is_tensor(sigmas):
+        if not isinstance(sigmas, torch.Tensor):
             raise TypeError("sigmas type is not a torch.Tensor. Got {}"
                             .format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
@@ -260,7 +258,7 @@ def hessian_response(input: torch.Tensor,
 
 
 def dog_response(input: torch.Tensor) -> torch.Tensor:
-    r"""Computes the Difference-of-Gaussian responce given the Gaussian 5d input:
+    r"""Computes the Difference-of-Gaussian response given the Gaussian 5d input:
 
 
     Args:
@@ -274,7 +272,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
       - Output: :math:`(B, C, D-1, H, W)`
 
     """
-    if not torch.is_tensor(input):
+    if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(input)))
     if not len(input.shape) == 5:

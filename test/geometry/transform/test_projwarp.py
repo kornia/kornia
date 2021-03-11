@@ -38,7 +38,7 @@ class TestWarpAffine3d:
         P = torch.rand(2, 3, 4, device=device, dtype=dtype)
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
-        output = proj.warp_affine3d(input, P_hat, out_shape)
+        output = proj.warp_affine3d(input, P_hat, out_shape, flags='nearest')
         assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
@@ -79,7 +79,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected)
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_y(self, device, dtype):
         input = torch.tensor([[[[
@@ -119,7 +119,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected)
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_z(self, device, dtype):
         input = torch.tensor([[[[
@@ -159,7 +159,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected)
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_y_large(self, device, dtype):
         """Rotates 90deg anti-clockwise."""
@@ -224,7 +224,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected)
+        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
 
 class TestGetRotationMatrix3d:
@@ -253,7 +253,7 @@ class TestGetRotationMatrix3d:
             [1., 0., 0., 0.],
             [0., 1., 0., 0.],
             [0., 0., 1., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90x(self, device, dtype):
@@ -265,7 +265,7 @@ class TestGetRotationMatrix3d:
             [1., 0., 0., 0.],
             [0., 0., -1., 0.],
             [0., 1., 0., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90y(self, device, dtype):
@@ -277,7 +277,7 @@ class TestGetRotationMatrix3d:
             [0., 0., 1., 0.],
             [0., 1., 0., 0.],
             [-1., 0., 0., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90z(self, device, dtype):
@@ -289,7 +289,7 @@ class TestGetRotationMatrix3d:
             [0., -1., 0., 0.],
             [1., 0., 0., 0.],
             [0., 0., 1., 0.],
-        ], device=device, dtype=dtype)
+        ], device=device, dtype=dtype).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):

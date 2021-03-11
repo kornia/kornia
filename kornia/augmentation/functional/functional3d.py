@@ -391,8 +391,9 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     angle = params['angle_factor']
     direction = params['direction_factor']
     border_type: str = cast(str, BorderType(flags['border_type'].item()).name.lower())
+    mode: str = cast(str, Resample(flags['interpolation'].item()).name.lower())
 
-    return motion_blur3d(input, kernel_size, angle, direction, border_type)
+    return motion_blur3d(input, kernel_size, angle, direction, border_type, mode)
 
 
 def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -447,7 +448,7 @@ def apply_perspective3d(
         input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
-              bottom-left] of the orignal image with shape Bx8x3.
+              bottom-left] of the original image with shape Bx8x3.
             - params['end_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the transformed image with shape Bx8x3.
         flags (Dict[str, torch.Tensor]):
@@ -507,10 +508,12 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
 
 def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
+
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`,
+          :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]): shall be empty.
+
     Returns:
         torch.Tensor: The equalized input. :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
     """

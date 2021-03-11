@@ -13,14 +13,16 @@ class Vflip(nn.Module):
         torch.Tensor: The vertically flipped image tensor
 
     Examples:
+        >>> vflip = Vflip()
         >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
-        >>> kornia.vflip(input)
-        tensor([[[0, 1, 1],
-                 [0, 0, 0],
-                 [0, 0, 0]]])
+        ...    [0., 0., 0.],
+        ...    [0., 0., 0.],
+        ...    [0., 1., 1.]
+        ... ]]])
+        >>> vflip(input)
+        tensor([[[[0., 1., 1.],
+                  [0., 0., 0.],
+                  [0., 0., 0.]]]])
     """
 
     def __init__(self) -> None:
@@ -45,14 +47,16 @@ class Hflip(nn.Module):
         torch.Tensor: The horizontally flipped image tensor
 
     Examples:
+        >>> hflip = Hflip()
         >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 1., 1.]]]])
-        >>> kornia.hflip(input)
-        tensor([[[0, 0, 0],
-                 [0, 0, 0],
-                 [1, 1, 0]]])
+        ...    [0., 0., 0.],
+        ...    [0., 0., 0.],
+        ...    [0., 1., 1.]
+        ... ]]])
+        >>> hflip(input)
+        tensor([[[[0., 0., 0.],
+                  [0., 0., 0.],
+                  [1., 1., 0.]]]])
     """
 
     def __init__(self) -> None:
@@ -68,22 +72,24 @@ class Hflip(nn.Module):
 
 class Rot180(nn.Module):
     r"""Rotate a tensor image or a batch of tensor images
-        180 degrees. Input must be a tensor of shape (C, H, W)
-        or a batch of tensors :math:`(*, C, H, W)`.
+    180 degrees. Input must be a tensor of shape (C, H, W)
+    or a batch of tensors :math:`(*, C, H, W)`.
 
-        Args:
-            input (torch.Tensor): input tensor
+    Args:
+        input (torch.Tensor): input tensor
 
-        Examples:
-            >>> input = torch.tensor([[[
-                [0., 0., 0.],
-                [0., 0., 0.],
-                [0., 1., 1.]]]])
-            >>> kornia.rot180(input)
-            tensor([[[1, 1, 0],
-                    [0, 0, 0],
-                    [0, 0, 0]]])
-        """
+    Examples:
+        >>> rot180 = Rot180()
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0.],
+        ...    [0., 0., 0.],
+        ...    [0., 1., 1.]
+        ... ]]])
+        >>> rot180(input)
+        tensor([[[[1., 1., 0.],
+                  [0., 0., 0.],
+                  [0., 0., 0.]]]])
+    """
 
     def __init__(self) -> None:
 

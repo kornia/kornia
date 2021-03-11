@@ -246,7 +246,7 @@ def conv_soft_argmax2d(input: torch.Tensor,
         normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
                                        it will return the coordinates in the range of the input shape. Default is True.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is outputed, if False, only ij
+        output_value (bool): if True, val is output, if False, only ij
 
     Shape:
         - Input: :math:`(N, C, H_{in}, W_{in})`
@@ -262,7 +262,7 @@ def conv_soft_argmax2d(input: torch.Tensor,
 
     Examples::
         >>> input = torch.randn(20, 16, 50, 32)
-        >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1))
+        >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1), output_value=True)
     """
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -370,7 +370,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
         normalized_coordinates (bool): whether to return the coordinates normalized in the range of [-1, 1]. Otherwise,
                                        it will return the coordinates in the range of the input shape. Default is False.
         eps (float): small value to avoid zero division. Default is 1e-8.
-        output_value (bool): if True, val is outputed, if False, only ij
+        output_value (bool): if True, val is output, if False, only ij
         strict_maxima_bonus (float): pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
                                      This is needed for mimic behavior of strict NMS in classic local features
     Shape:
@@ -391,7 +391,7 @@ def conv_soft_argmax3d(input: torch.Tensor,
 
     Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
-        >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
+        >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
     """
     if not torch.is_tensor(input):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -506,10 +506,10 @@ def spatial_soft_argmax2d(
 
     Examples:
         >>> input = torch.tensor([[[
-            [0., 0., 0.],
-            [0., 10., 0.],
-            [0., 0., 0.]]]])
-        >>> coords = kornia.spatial_soft_argmax2d(input, False)
+        ... [0., 0., 0.],
+        ... [0., 10., 0.],
+        ... [0., 0., 0.]]]])
+        >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
         tensor([[[1.0000, 1.0000]]])
     """
     input_soft: torch.Tensor = dsnt.spatial_softmax2d(input, temperature)
