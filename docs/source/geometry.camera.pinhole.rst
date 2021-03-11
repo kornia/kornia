@@ -40,11 +40,33 @@ or
 where:
     * :math:`M'` is a 3D point in space with coordinates :math:`[X,Y,Z]^T` expressed in a Euclidean coordinate system.
     * :math:`m'` is the projection of the 3D point :math:`M'` onto the *image plane* with coordinates :math:`[u,v]^T` expressed in pixel units.
-    * :math:`K` is the *camera calibration matrix*, also refered as the instrinsics parameters matrix.
+    * :math:`K` is the *camera calibration matrix*, also referred as the intrinsics parameters matrix.
     * :math:`C` is the *principal point offset* with coordinates :math:`[u_0, v_0]^T` at the origin in the image plane.
     * :math:`fx, fy` are the focal lengths expressed in pixel units.
 
-The camera rotation and translation are expressed in terms of Euclidean coordinate frame, also known as the *world coordinates system*. This terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]`, or also called as the extrinsics parameters matrix. It is used to describe the camera pose around a static scene and translates the coordinates of a 3D point :math:`(X,Y,Z)` to a coordinate sytstem respect to the camera.
+The camera rotation and translation are expressed in terms of Euclidean coordinate frame, also known as the *world coordinates system*. This terms are usually expressed by the joint rotation-translation matrix :math:`[R|t]`, or also called as the extrinsics parameters matrix. It is used to describe the camera pose around a static scene and translates the coordinates of a 3D point :math:`(X,Y,Z)` to a coordinate system respect to the camera.
+
+The :class:`PinholeCamera` expects the *intrinsics parameters matrix* and the *extrensics parameters matrix*
+to  be of shape `(B, 4, 4)` such that each *intrinsics parameters matrix* has the following format:
+
+.. math::
+    \begin{bmatrix}
+    f_x & 0 & u_0 & 0\\
+    0 & f_y & v_0 & 0\\
+    0 & 0 & 1 & 0 \\
+    0 & 0 & 0 & 1
+    \end{bmatrix}
+
+And each *extrensics parameters matrix* has the following format:
+
+.. math::
+    \begin{bmatrix}
+    r_{11} & r_{12} & r_{13} & t_1  \\
+    r_{21} & r_{22} & r_{23} & t_2  \\
+    r_{31} & r_{32} & r_{33} & t_3  \\
+    0      & 0      & 0      & 1
+    \end{bmatrix}
+
 
 .. autoclass:: PinholeCamera
     :members:

@@ -37,7 +37,7 @@ class MaxBlurPool2d(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 4, 4, 8)
-        >>> pool = kornia.contrib.MaxBlurPool2d(kernel_size=3)
+        >>> pool = MaxBlurPool2d(kernel_size=3)
         >>> output = pool(input)  # 1x4x2x4
     """
 

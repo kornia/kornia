@@ -18,7 +18,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 
     Args:
        points (torch.Tensor): Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
-       eps (float): epsilon value to avoid numerical unstabilities. Default: 1e-8.
+       eps (float): epsilon value to avoid numerical instabilities. Default: 1e-8.
 
     Returns:
        Tuple[torch.Tensor, torch.Tensor]: tuple containing the normalized points in the
@@ -204,9 +204,9 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     X1Y3, X2Y3, X3Y3 = vstack(X1, Y3), vstack(X2, Y3), vstack(X3, Y3)
 
     F_vec = torch.cat([
-        X1Y1.det(), X2Y1.det(), X3Y1.det(),
-        X1Y2.det(), X2Y2.det(), X3Y2.det(),
-        X1Y3.det(), X2Y3.det(), X3Y3.det(),
-    ], dim=-1)
+        X1Y1.det().reshape(-1, 1), X2Y1.det().reshape(-1, 1), X3Y1.det().reshape(-1, 1),
+        X1Y2.det().reshape(-1, 1), X2Y2.det().reshape(-1, 1), X3Y2.det().reshape(-1, 1),
+        X1Y3.det().reshape(-1, 1), X2Y3.det().reshape(-1, 1), X3Y3.det().reshape(-1, 1),
+    ], dim=1)
 
     return F_vec.view(*P1.shape[:-2], 3, 3)

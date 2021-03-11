@@ -26,17 +26,20 @@ from .laf import (extract_patches_from_pyramid,
                   get_laf_scale,
                   get_laf_center,
                   get_laf_orientation,
+                  set_laf_orientation,
                   raise_error_if_laf_is_not_valid,
                   laf_from_center_scale_ori,
                   laf_is_inside_image,
                   laf_to_three_points,
                   laf_from_three_points)
 from .siftdesc import SIFTDescriptor
+from .mkd import MKDDescriptor
 from .hardnet import HardNet
+from .tfeat import TFeat
 from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
-from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator
-from .orientation import LAFOrienter, PatchDominantGradientOrientation
+from .affine_shape import LAFAffineShapeEstimator, PatchAffineShapeEstimator, LAFAffNetShapeEstimator
+from .orientation import LAFOrienter, PatchDominantGradientOrientation, OriNet
 from .matching import match_nn, match_mnn, match_snn, match_smnn
 
 
@@ -65,9 +68,14 @@ __all__ = [
     "get_laf_scale",
     "get_laf_center",
     "get_laf_orientation",
+    "set_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
+    "MKDDescriptor",
     "HardNet",
+    "TFeat",
+    "OriNet",
+    "LAFAffNetShapeEstimator",
     "PassLAF",
     "ScaleSpaceDetector",
     "LAFAffineShapeEstimator",

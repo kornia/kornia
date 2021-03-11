@@ -10,10 +10,14 @@ The functions in this section perform various color space conversions.
 .. autofunction:: rgb_to_hsv
 .. autofunction:: rgb_to_hls
 .. autofunction:: rgb_to_luv
+.. autofunction:: rgb_to_lab
 .. autofunction:: rgb_to_rgba
 .. autofunction:: rgb_to_xyz
 .. autofunction:: rgb_to_ycbcr
 .. autofunction:: rgb_to_yuv
+
+.. autofunction:: rgb_to_linear_rgb
+.. autofunction:: linear_rgb_to_rgb
 
 .. autofunction:: rgba_to_rgb
 .. autofunction:: rgba_to_bgr
@@ -26,6 +30,7 @@ The functions in this section perform various color space conversions.
 
 .. autofunction:: hsv_to_rgb
 
+.. autofunction:: lab_to_rgb
 .. autofunction:: luv_to_rgb
 
 .. autofunction:: ycbcr_to_rgb
@@ -57,3 +62,7 @@ Modules
 .. autoclass:: LuvToRgb
 .. autoclass:: YcbcrToRgb
 .. autoclass:: RgbToYcbcr
+.. autoclass:: RgbToLab
+.. autoclass:: LabToRgb
+.. autoclass:: LinearRgbToRgb
+.. autoclass:: RgbToLinearRgb

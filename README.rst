@@ -9,9 +9,15 @@
 .. image:: https://img.shields.io/badge/License-Apache%202.0-blue.svg
     :target: https://opensource.org/licenses/Apache-2.0
 
-.. image:: https://circleci.com/gh/kornia/kornia/tree/master.svg?style=svg
-    :target: https://circleci.com/gh/kornia/kornia/tree/master
+.. image:: https://github.com/kornia/kornia/workflows/tests-cpu-versions/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cpu-versions
 
+.. image:: https://github.com/kornia/kornia/workflows/tests-cuda-versions/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda-versions
+
+.. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
+    :target: https://circleci.com/gh/kornia/kornia
+    
 .. image:: https://codecov.io/github/kornia/kornia/branch/master/graph/badge.svg
     :target: https://codecov.io/github/kornia/kornia
 
@@ -57,6 +63,8 @@ At a granular level, Kornia is a library that consists of the following componen
 | `kornia.geometry <https://kornia.readthedocs.io/en/latest/geometry.html>`_        | a geometric computer vision library to perform image transformations, 3D linear algebra and conversions using different camera models |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | `kornia.losses <https://kornia.readthedocs.io/en/latest/losses.html>`_            | a stack of loss functions to solve different vision tasks                                                                             |
++-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
+| `kornia.morphology <https://kornia.readthedocs.io/en/latest/morphology.html>`_    | a module to perform morphological operations                                                                                          |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+
 | `kornia.utils <https://kornia.readthedocs.io/en/latest/utils.html>`_              | image to tensor utilities and metrics for vision problems                                                                             |
 +-----------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------+

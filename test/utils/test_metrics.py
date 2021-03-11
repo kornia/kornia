@@ -32,7 +32,7 @@ class TestMeanIoU:
 
         mean_iou = kornia.utils.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor(
-            [[1.0, 1.0]], dtype=torch.float32)
+            [[1.0, 1.0], [1.0, 1.0]], dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
         assert_allclose(mean_iou, mean_iou_real)
 
@@ -118,8 +118,10 @@ class TestConfusionMatrix:
         conf_mat = kornia.utils.metrics.confusion_matrix(
             predicted, actual, num_classes)
         conf_mat_real = torch.tensor(
-            [[[3, 1],
-              [0, 4]]], dtype=torch.float32)
+            [
+                [[3, 1], [0, 4]],
+                [[3, 1], [0, 4]]
+            ], dtype=torch.float32)
         assert_allclose(conf_mat, conf_mat_real)
 
     def test_three_classes(self):

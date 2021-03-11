@@ -20,7 +20,7 @@ class HardNet(nn.Module):
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
 
     Returns:
-        torch.Tensor: HardeNet descriptor of the patches.
+        torch.Tensor: HardNet descriptor of the patches.
 
     Shape:
         - Input: (B, 1, 32, 32)
@@ -28,7 +28,7 @@ class HardNet(nn.Module):
 
     Examples:
         >>> input = torch.rand(16, 1, 32, 32)
-        >>> hardnet = kornia.feature.HardNet()
+        >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
     """
 
@@ -74,7 +74,7 @@ class HardNet(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:   # type: ignore
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_out = x_features.view(x_features.size(0), -1)

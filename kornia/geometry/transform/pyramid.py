@@ -48,7 +48,7 @@ class PyrDown(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = kornia.transform.PyrDown()(input)  # 1x2x2x2
+        >>> output = PyrDown()(input)  # 1x2x2x2
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
@@ -92,7 +92,7 @@ class PyrUp(nn.Module):
 
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
-        >>> output = kornia.transform.PyrUp()(input)  # 1x2x8x8
+        >>> output = PyrUp()(input)  # 1x2x8x8
     """
 
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
@@ -141,7 +141,7 @@ class ScalePyramid(nn.Module):
 
     Examples::
         >>> input = torch.rand(2, 4, 100, 100)
-        >>> sp, sigmas, pds = kornia.ScalePyramid(3, 15)(input)
+        >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
 
     def __init__(self,
@@ -283,7 +283,7 @@ def build_pyramid(
     by recursively applying pyrDown to the previously built pyramid layers.
 
     Args:
-        input (torch.Tensor): the tensor to be used to constructuct the pyramid.
+        input (torch.Tensor): the tensor to be used to construct the pyramid.
         max_level (int): 0-based index of the last (the smallest) pyramid layer.
           It must be non-negative.
         border_type (str): the padding mode to be applied before convolving.
@@ -293,7 +293,7 @@ def build_pyramid(
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output :math:`[(B, NL, C, H, W), (B, NL, C, H/2, W/2), ...]`
+        - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")

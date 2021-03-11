@@ -36,11 +36,40 @@ fi
 # define a python version to initialise the conda environment.
 # by default we assume python 3.7.
 python_version=${PYTHON_VERSION:-"3.7"}
+pytorch_version=${PYTORCH_VERSION:-"1.7.0"}
+pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
+cuda_version=${CUDA_VERSION:-"10.2"}
+
+# configure for nightly builds
+pytorch_channel="pytorch"
+if [ "$pytorch_version" == "nightly" ]; then
+    pytorch_version=""
+    pytorch_channel="pytorch-nightly"
+fi
+
+# configure cudatoolkit
+cuda_toolkit="cudatoolkit=$cuda_version"
+if [ "$pytorch_mode" == "cpuonly" ]
+then
+    cuda_toolkit=""
+fi
 
 # create an environment with the specific python version
 $conda_bin config --append channels conda-forge
-$conda_bin config --append channels pytorch
 $conda_bin update -n base -c defaults conda
-$conda_bin create --name venv --file requirements.txt python=$python_version
-
+$conda_bin create --name venv python=$python_version
 $conda_bin clean -ya
+
+# activate local virtual environment
+source $conda_bin_dir/activate $dev_env_dir/envs/venv
+
+# install pytorch and torchvision
+conda install pytorch=$pytorch_version torchvision $cuda_toolkit $pytorch_mode -c $pytorch_channel
+
+# install testing dependencies
+pip install -r requirements-dev.txt
+
+# install documentation dependencies
+pip install -r docs/requirements.txt
+
+conda deactivate  # close the `venv` environment

@@ -15,7 +15,7 @@ from kornia.geometry.transform import ScalePyramid
 
 
 def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
-    """Auxilary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
+    """Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d
     to the actual scale, using the sigmas from the ScalePyramid output
     Args:
         max_coords: (torch.Tensor): tensor [BxNx3].
@@ -56,7 +56,7 @@ class ScaleSpaceDetector(nn.Module):
 
     Args:
         num_features: (int) Number of features to detect. default = 500. In order to keep everything batchable,
-                      output would always have num_features outputed, even for completely homogeneous images.
+                      output would always have num_features output, even for completely homogeneous images.
         mr_size: (float), default 6.0. Multiplier for local feature scale compared to the detection scale.
                     6.0 is matching OpenCV 12.0 convention for SIFT.
         scale_pyr_module: (nn.Module), which generates scale pyramid.
@@ -193,7 +193,7 @@ class ScaleSpaceDetector(nn.Module):
         Args:
             img (torch.Tensor): image to extract features with shape [BxCxHxW]
             mask (torch.Tensor, optional): a mask with weights where to apply the
-            response function. The shae must same as the input image.
+            response function. The shape must be the same as the input image.
 
         Returns:
             lafs (torch.Tensor): shape [BxNx2x3]. Detected local affine frames.

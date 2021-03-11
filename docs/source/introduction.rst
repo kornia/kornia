@@ -18,13 +18,13 @@ and low level image processing such as filtering and edge detection that operate
 
     1. **Differentiability** for commodity avoiding to write derivative functions for complex loss  functions.
 
-    2. **Transparency** to perform parallel or serial computing eitherin CPU or GPU devices using batches in a common API.
+    2. **Transparency** to perform parallel or serial computing in either CPU or GPU devices using batches in a common API.
 
     3. **Distributed** for computing large-scale applications.
 
     4. **Production** ready using the *JIT* compiler.
 
-Hightlighted Features
+Highlighted Features
 ---------------------
 
 At a granular level, Kornia is a library that consists of the following components:
