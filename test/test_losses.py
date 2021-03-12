@@ -350,10 +350,10 @@ class TestSSIMLoss:
         assert_allclose(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
         assert_allclose(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
 
+    @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
-    @pytest.mark.xfail(reason="fail sometimes with tpu")
     def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
         # input data
         img = torch.rand(batch_shape, device=device, dtype=dtype)
