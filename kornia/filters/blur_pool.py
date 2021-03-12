@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 import torch
 import numpy as np
@@ -53,8 +53,10 @@ class BlurPool2D(nn.Module):
         self.register_buffer('kernel', get_pascal_kernel_2d(kernel_size, norm=True))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # To align the logic with the whole lib
+        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(
-            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride)
+            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -96,8 +98,10 @@ class MaxBlurPool2D(nn.Module):
         self.register_buffer('kernel', get_pascal_kernel_2d(kernel_size, norm=True))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # To align the logic with the whole lib
+        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode)
+            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode)
 
 
 def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):

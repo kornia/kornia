@@ -205,6 +205,7 @@ class ScalePyramid(nn.Module):
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             nextOctaveFirstLevel = F.interpolate(pyr[-1][-self.extra_levels], scale_factor=0.5,
+                                                 recompute_scale_factor=True,  # scale_factor changed in 1.6.0
                                                  mode='nearest')  # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
@@ -232,7 +233,22 @@ def pyrdown(
         border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
-    See :class:`~kornia.transform.PyrDown` for details.
+    Args:
+        input (tensor): the tensor to be downsampled.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+
+    Return:
+        torch.Tensor: the downsampled tensor.
+
+    Examples:
+        >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
+        >>> pyrdown(input, align_corners=True)
+        tensor([[[[ 3.7500,  5.2500],
+                  [ 9.7500, 11.2500]]]])
     """
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
@@ -250,7 +266,24 @@ def pyrdown(
 def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
-    See :class:`~kornia.transform.PyrUp` for details.
+    Args:
+        input (tensor): the tensor to be downsampled.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+
+    Return:
+        torch.Tensor: the downsampled tensor.
+
+    Examples:
+        >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
+        >>> pyrup(input, align_corners=True)
+        tensor([[[[0.7500, 0.8750, 1.1250, 1.2500],
+                  [1.0000, 1.1250, 1.3750, 1.5000],
+                  [1.5000, 1.6250, 1.8750, 2.0000],
+                  [1.7500, 1.8750, 2.1250, 2.2500]]]])
     """
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")

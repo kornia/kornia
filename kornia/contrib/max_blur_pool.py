@@ -18,16 +18,17 @@ class MaxBlurPool2d(_MaxBlurPool2d):
 
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
         super(MaxBlurPool2d, self).__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
-        warnings.warn("`MaxBlurPool2d` is deprecated. Please use `kornia.filters.MaxBlurPool2D instead.`",
+        warnings.warn("`MaxBlurPool2d` is deprecated and will be removed after > 0.6. "
+                      "Please use `kornia.filters.MaxBlurPool2D instead.`",
                       DeprecationWarning, stacklevel=2)
 
 
 def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
-    r"""Creates a module that computes pools and blurs and downsample a given
-    feature map.
+    r"""Creates a module that computes pools and blurs and downsample a given feature map.
 
     See :class:`~kornia.contrib.MaxBlurPool2d` for details.
     """
-    warnings.warn("`max_blur_pool2d` is deprecated. Please use `kornia.filters.max_blur_pool2d instead.`",
+    warnings.warn("`max_blur_pool2d` is deprecated and will be removed after > 0.6. "
+                  "Please use `kornia.filters.max_blur_pool2d instead.`",
                   DeprecationWarning, stacklevel=2)
     return _max_blur_pool2d(input, kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)

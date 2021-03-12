@@ -54,7 +54,7 @@ __all__ = [
     "SpatialGradient",
     "Sobel",
     "BoxBlur",
-    "BlurPool2D", 
+    "BlurPool2D",
     "MaxBlurPool2D",
     "MedianBlur",
     "MotionBlur",
