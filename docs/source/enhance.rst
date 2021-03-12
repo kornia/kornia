@@ -26,6 +26,9 @@ The functions in this section perform normalisations and intensity transformatio
 .. autofunction:: posterize
 .. autofunction:: sharpness
 .. autofunction:: equalize
+.. autofunction:: equalize3d
+
+.. autofunction:: equalize_clahe
 
 Modules
 -------
