@@ -114,9 +114,8 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     tiles: torch.Tensor = tiles_x_im.reshape(-1, pixels)  # test with view  # T x (THxTW)
     histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
-        # tile: torch.Tensor  # not supported by JIT
-        for i, tile in enumerate(tiles.unbind(0)):
-            histos[i] = torch.histc(tile, bins=num_bins, min=0, max=1)
+        for i in range(tiles.shape[0]):
+            histos[i] = torch.histc(tiles[i], bins=num_bins, min=0, max=1)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
@@ -124,16 +123,15 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
 
     # clip limit (TODO: optimice the code)
     if clip > 0.:
-        clip_limit: float = clip * pixels // num_bins
-        clip_limit = max(clip_limit, 1)
+        clip_limit: torch.Tensor = torch.tensor(max(clip * pixels // num_bins, 1), device=tiles.device)
 
         clip_idxs: torch.Tensor = histos > clip_limit
-        # hist: torch.Tensor  # not supported by JIT
-        for i, hist in enumerate(histos.unbind(0)):
+        for i in range(histos.shape[0]):
+            hist: torch.Tensor = histos[i]
             idxs = clip_idxs[i]
             if idxs.any():
                 clipped: float = float((hist[idxs] - clip_limit).sum().item())
-                hist[idxs] = clip_limit
+                hist = torch.where(idxs, clip_limit, hist)
 
                 redist: float = clipped // num_bins
                 hist += redist
@@ -141,6 +139,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
                 residual: float = clipped - redist * num_bins
                 if residual:
                     hist[0:int(residual)] += 1
+                histos[i] = hist
 
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
