@@ -6,7 +6,7 @@ def draw_rectangle(
     image: torch.Tensor,
     rectangle: torch.Tensor,
     color: Optional[torch.Tensor] = None,
-    fill: Optional[bool] = False,
+    fill: Optional[bool] = None,
     width: int = 1
 ) -> torch.Tensor:
     """Draws N rectangles on a batch of image tensors
@@ -43,6 +43,9 @@ def draw_rectangle(
 
     if color is None:
         color = torch.tensor([0.0] * c).expand(batch, num_rectangle, c)
+
+    if fill is None:
+        fill = False
 
     if len(color.shape) == 1:
         color = color.expand(batch, num_rectangle, c)
