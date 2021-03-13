@@ -8,6 +8,7 @@ Image
 
 .. autofunction:: tensor_to_image
 .. autofunction:: image_to_tensor
+.. autofunction:: draw_rectangle
 
 Grid
 ----
