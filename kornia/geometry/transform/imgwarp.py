@@ -1,4 +1,5 @@
 from typing import Tuple, Optional
+import warnings
 
 import torch
 import torch.nn.functional as F
@@ -12,7 +13,9 @@ from kornia.geometry.conversions import (
 from kornia.geometry.transform.projwarp import (
     get_projective_transform
 )
-from kornia.testing import check_is_tensor
+from kornia.utils import create_meshgrid
+from kornia.geometry.linalg import transform_points
+
 
 __all__ = [
     "warp_perspective",
@@ -29,23 +32,9 @@ __all__ = [
 ]
 
 
-def transform_warp_impl(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
-                        dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int],
-                        grid_mode: str, padding_mode: str,
-                        align_corners: bool) -> torch.Tensor:
-    """Compute the transform in normalized coordinates and perform the warping.
-    """
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
-        dst_pix_trans_src_pix, dsize_src, dsize_dst)
-
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    return homography_warp(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode,
-                           align_corners, True)
-
-
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
-                     flags: str = 'bilinear', border_mode: str = 'zeros',
-                     align_corners: bool = False) -> torch.Tensor:
+                     mode: str = 'bilinear', padding_mode: str = 'zeros',
+                     align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
@@ -61,21 +50,33 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         src (torch.Tensor): input image with shape :math:`(B, C, H, W)`.
         M (torch.Tensor): transformation matrix with shape :math:`(B, 3, 3)`.
         dsize (tuple): size of the output image (height, width).
-        flags (str): interpolation mode to calculate output values
+        mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
-        border_mode (str): padding mode for outside grid values
+        padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(bool, optional): interpolation flag. Default: None.
 
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, H, W)`.
+
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> H = torch.eye(3)[None]
+       >>> out = warp_perspective(img, H, (4, 2))
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/
        tutorials/warp_perspective.html>`_.
     """
-    check_is_tensor(src)
-    check_is_tensor(M)
+    if not isinstance(src, torch.Tensor):
+        raise TypeError("Input src type is not a torch.Tensor. Got {}"
+                        .format(type(src)))
+
+    if not isinstance(M, torch.Tensor):
+        raise TypeError("Input M type is not a torch.Tensor. Got {}"
+                        .format(type(M)))
 
     if not len(src.shape) == 4:
         raise ValueError("Input src must be a BxCxHxW tensor. Got {}"
@@ -85,15 +86,40 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
         raise ValueError("Input M must be a Bx3x3 tensor. Got {}"
                          .format(M.shape))
 
-    # launches the warper
-    h, w = src.shape[-2:]
-    return transform_warp_impl(src, M, (h, w), dsize, flags, border_mode, align_corners)
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpPerspective. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
+
+    B, C, H, W = src.size()
+    h_out, w_out = dsize
+
+    # we normalize the 3x3 transformation matrix and convert to 3x4
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
+        M, (H, W), (h_out, w_out))  # Bx3x3
+
+    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)  # Bx3x3
+
+    # this piece of code substitutes F.affine_grid since it does not support 3x3
+    grid = create_meshgrid(h_out, w_out, normalized_coordinates=True,
+                           device=src.device).to(src.dtype).repeat(B, 1, 1, 1)
+    grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+
+    return F.grid_sample(src, grid,
+                         align_corners=align_corners,
+                         mode=mode,
+                         padding_mode=padding_mode)
 
 
 def warp_affine(src: torch.Tensor, M: torch.Tensor,
-                dsize: Tuple[int, int], flags: str = 'bilinear',
+                dsize: Tuple[int, int], mode: str = 'bilinear',
                 padding_mode: str = 'zeros',
-                align_corners: bool = False) -> torch.Tensor:
+                align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies an affine transformation to a tensor.
 
     The function warp_affine transforms the source tensor using
@@ -111,10 +137,17 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners (bool): mode for grid_generation. Default: False.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
 
     Returns:
         torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
+
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> A = torch.eye(2, 3)[None]
+       >>> out = warp_affine(img, A, (4, 2))
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/
@@ -135,20 +168,33 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError("Input M must be a Bx2x3 tensor. Got {}"
                          .format(M.shape))
+
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpAffine. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
+
     B, C, H, W = src.size()
-    dsize_src = (H, W)
-    out_size = dsize
+
     # we generate a 3x3 transformation matrix from 2x3 affine
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
-        M_3x3, dsize_src, out_size)
+        M_3x3, (H, W), dsize)
+
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
-                         [B, C, out_size[0], out_size[1]],
+                         [B, C, dsize[0], dsize[1]],
                          align_corners=align_corners)
+
     return F.grid_sample(src, grid,
                          align_corners=align_corners,
-                         mode=flags,
+                         mode=mode,
                          padding_mode=padding_mode)
 
 

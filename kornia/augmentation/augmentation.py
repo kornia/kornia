@@ -838,9 +838,9 @@ class RandomResizedCrop(AugmentationBase2D):
         ...                         [6., 7., 8.]]])
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1.)
         >>> aug(inputs)
-        tensor([[[[1.2500, 1.7500, 1.5000],
-                  [4.2500, 4.7500, 3.7500],
-                  [7.2500, 7.7500, 6.0000]]]])
+        tensor([[[[1.0000, 1.5000, 2.0000],
+                  [4.0000, 4.5000, 5.0000],
+                  [7.0000, 7.5000, 8.0000]]]])
     """
 
     def __init__(
@@ -848,7 +848,7 @@ class RandomResizedCrop(AugmentationBase2D):
         ratio: Union[torch.Tensor, Tuple[float, float]] = (3. / 4., 4. / 3.),
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = False, p: float = 1., keepdim: bool = False
+        align_corners: bool = True, p: float = 1., keepdim: bool = False
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
