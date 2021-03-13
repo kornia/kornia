@@ -354,6 +354,9 @@ class TestSSIMLoss:
     @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
     def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
+        if device.type == 'xla':
+            pytest.skip("test highly unstable with tpu")
+
         # input data
         img = torch.rand(batch_shape, device=device, dtype=dtype)
 
