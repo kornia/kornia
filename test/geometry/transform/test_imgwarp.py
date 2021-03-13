@@ -262,7 +262,7 @@ class TestWarpPerspective:
         # invert the transform
         H_ba = torch.inverse(H_ab)
         img_b_hat = kornia.warp_perspective(img_a, H_ba, (h, w))
-        assert_allclose(img_b_hat, img_b)
+        assert_allclose(img_b_hat, img_b, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 5])
     @pytest.mark.parametrize("channels", [1, 5])
