@@ -66,10 +66,10 @@ class TestEqualization(BaseTester):
             enhance.equalize_clahe([1, 2, 3])
 
     def test_gradcheck(self, device, dtype):
-        bs, channels, height, width = 1, 2, 10, 20
+        bs, channels, height, width = 1, 1, 6, 6
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(enhance.equalize_clahe, (inputs,),
+        assert gradcheck(enhance.equalize_clahe, (inputs, 40., (2, 2)),
                          raise_exception=True)
 
     def test_jit(self, device, dtype):
