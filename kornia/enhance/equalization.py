@@ -123,7 +123,8 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
 
     # clip limit (TODO: optimice the code)
     if clip > 0.:
-        clip_limit: torch.Tensor = torch.tensor(max(clip * pixels // num_bins, 1), device=tiles.device)
+        clip_limit: torch.Tensor = torch.tensor(
+            max(clip * pixels // num_bins, 1), dtype=histos.dtype, device=tiles.device)
 
         clip_idxs: torch.Tensor = histos > clip_limit
         for i in range(histos.shape[0]):
@@ -263,6 +264,8 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
 def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
+
+    NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
 
     Args:
         input (torch.Tensor): images tensor to equalize with values in the range [0, 1] and shapes like
