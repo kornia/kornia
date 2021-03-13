@@ -59,6 +59,13 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, H, W)`.
 
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> H = torch.eye(3)[None]
+       >>> out = warp_perspective(img, H, (4, 2))
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
+
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/
        tutorials/warp_perspective.html>`_.
@@ -134,6 +141,13 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
 
     Returns:
         torch.Tensor: the warped tensor with shape :math:`(B, C, H, W)`.
+
+    Example:
+       >>> img = torch.rand(1, 4, 5, 6)
+       >>> A = torch.eye(2, 3)[None]
+       >>> out = warp_affine(img, A, (4, 2))
+       >>> print(out.shape)
+       torch.Size([1, 4, 4, 2])
 
     .. note::
        See a working example `here <https://kornia.readthedocs.io/en/latest/

@@ -52,7 +52,7 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         ...     [2., 2.],
         ...     [1., 2.],
         ... ]])  # 1x4x2
-        >>> crop_and_resize(input, boxes, (2, 2), interpolation='nearest', align_corners=True)
+        >>> crop_and_resize(input, boxes, (2, 2), mode='nearest')
         tensor([[[[ 6.,  7.],
                   [10., 11.]]]])
     """
@@ -114,7 +114,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         ...     [9., 10., 11., 12.],
         ...     [13., 14., 15., 16.],
         ...  ]]])
-        >>> center_crop(input, (2, 4), interpolation='nearest', align_corners=True)
+        >>> center_crop(input, (2, 4), mode='nearest')
         tensor([[[[ 5.,  6.,  7.,  8.],
                   [ 9., 10., 11., 12.]]]])
     """
