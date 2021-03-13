@@ -65,7 +65,8 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    @pytest.mark.xfail(reason="Sometimes generates the error: 'Numerical gradient for function expected to be zero'")
+    @pytest.mark.xfail(raises=RuntimeError,
+                       reason="Sometimes generates the error: 'Numerical gradient for function expected to be zero'")
     def test_gradcheck(self, device, dtype):
         bs, channels, height, width = 1, 1, 6, 6
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
