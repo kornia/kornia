@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 import torch
 
@@ -18,8 +18,9 @@ __all__ = [
 
 
 def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, int],
-                    interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    r"""Extract crops from 2D images (4D tensor) and resize them.
+                    mode: str = 'bilinear', padding_mode: str = 'zeros',
+                    align_corners: Optional[bool] = None) -> torch.Tensor:
+    r"""Extract crops from 2D images (4D tensor) and resize given a bounding box.
 
     Args:
         tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
@@ -29,9 +30,11 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
             The coordinates would compose a rectangle with a shape of (N1, N2).
         size (Tuple[int, int]): a tuple with the height and width that will be
             used to resize the extracted patches.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-            https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details.
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
 
     Returns:
         torch.Tensor: tensor containing the patches with shape BxCxN1xN2.
@@ -56,19 +59,23 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
+
     if not isinstance(boxes, torch.Tensor):
         raise TypeError("Input boxes type is not a torch.Tensor. Got {}"
                         .format(type(boxes)))
+
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+
     assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
+
     # unpack input data
     dst_h, dst_w = size
 
     # [x, y] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = boxes
+    points_src: torch.Tensor = boxes.to(tensor)
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -77,23 +84,26 @@ def crop_and_resize(tensor: torch.Tensor, boxes: torch.Tensor, size: Tuple[int, 
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
+    ]], device=tensor.device, dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
 
-    return crop_by_boxes(tensor, points_src, points_dst, interpolation, align_corners)
+    return crop_by_boxes(tensor, points_src, points_dst, mode, padding_mode, align_corners)
 
 
 def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
-                interpolation: str = 'bilinear',
-                align_corners: bool = True) -> torch.Tensor:
-    r"""Crop the 2D images (4D tensor) at the center.
+                mode: str = 'bilinear', padding_mode: str = 'zeros',
+                align_corners: Optional[bool] = None) -> torch.Tensor:
+    r"""Crop the 2D images (4D tensor) from the center.
 
     Args:
         tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
         size (Tuple[int, int]): a tuple with the expected height and width
           of the output patch.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
+
     Returns:
         torch.Tensor: the output tensor with patches.
 
@@ -111,9 +121,11 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}"
                         .format(type(tensor)))
+
     if not isinstance(size, (tuple, list,)) and len(size) == 2:
         raise ValueError("Input size must be a tuple/list of length 2. Got {}"
                          .format(size))
+
     assert len(tensor.shape) == 4, f"Only tensor with shape (B, C, H, W) supported. Got {tensor.shape}."
 
     # unpack input sizes
@@ -121,16 +133,17 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
     src_h, src_w = tensor.shape[-2:]
 
     # compute start/end offsets
-    dst_h_half = dst_h / 2
-    dst_w_half = dst_w / 2
-    src_h_half = src_h / 2
-    src_w_half = src_w / 2
+    dst_h_half: float = dst_h / 2
+    dst_w_half: float = dst_w / 2
+    src_h_half: float = src_h / 2
+    src_w_half: float = src_w / 2
 
-    start_x = src_w_half - dst_w_half
-    start_y = src_h_half - dst_h_half
+    start_x: float = src_w_half - dst_w_half
+    start_y: float = src_h_half - dst_h_half
 
-    end_x = start_x + dst_w - 1
-    end_y = start_y + dst_h - 1
+    end_x: float = start_x + dst_w - 1
+    end_y: float = start_y + dst_h - 1
+
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
     points_src: torch.Tensor = torch.tensor([[
@@ -138,7 +151,7 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [end_x, start_y],
         [end_x, end_y],
         [start_x, end_y],
-    ]], device=tensor.device)
+    ]], device=tensor.device, dtype=tensor.dtype)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
@@ -147,17 +160,16 @@ def center_crop(tensor: torch.Tensor, size: Tuple[int, int],
         [dst_w - 1, 0],
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
-    ]], device=tensor.device).expand(points_src.shape[0], -1, -1)
-    return crop_by_boxes(tensor,
-                         points_src.to(tensor.dtype),
-                         points_dst.to(tensor.dtype),
-                         interpolation,
-                         align_corners)
+    ]], device=tensor.device, dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
+
+    return crop_by_boxes(tensor, points_src, points_dst,
+                         mode, padding_mode, align_corners)
 
 
 def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Tensor,
-                  interpolation: str = 'bilinear', align_corners: bool = False) -> torch.Tensor:
-    """Perform crop transform on 2D images (4D tensor) by bounding boxes.
+                  mode: str = 'bilinear', padding_mode: str = 'zeros',
+                  align_corners: Optional[bool] = None) -> torch.Tensor:
+    """Perform crop transform on 2D images (4D tensor) given two bounding boxes.
 
     Given an input tensor, this function selected the interested areas by the provided bounding boxes (src_box).
     Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
@@ -172,9 +184,11 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         dst_box (torch.Tensor): a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be placed. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.
-        interpolation (str): Interpolation flag. Default: 'bilinear'.
-        align_corners (bool): mode for grid_generation. Default: False. See
-          https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for details
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
 
     Returns:
         torch.Tensor: the output tensor with patches.
@@ -201,6 +215,7 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
         If the src_box is smaller than dst_box, the following error will be thrown.
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
     """
+    # TODO: improve this since might slow down the function
     validate_bboxes(src_box)
     validate_bboxes(dst_box)
 
@@ -208,16 +223,23 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
 
     # compute transformation between points and warp
     # Note: Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
-    dst_trans_src: torch.Tensor = get_perspective_transform(src_box.to(tensor.dtype), dst_box.to(tensor.dtype))
-    # simulate broadcasting
-    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1).type_as(tensor)
+    dst_trans_src: torch.Tensor = get_perspective_transform(
+        src_box.to(tensor), dst_box.to(tensor))
 
-    bbox = infer_box_shape(dst_box)
+    # simulate broadcasting
+    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
+
+    bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
-        f"Cropping height, width and depth must be exact same in a batch. Got height {bbox[0]} and width {bbox[1]}.")
+        f"Cropping height, width and depth must be exact same in a batch. "
+        f"Got height {bbox[0]} and width {bbox[1]}.")
+
+    h_out: int = int(bbox[0][0].item())
+    w_out: int = int(bbox[1][0].item())
+
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (int(bbox[0][0].item()), int(bbox[1][0].item())),
-        mode=interpolation, align_corners=align_corners)
+        tensor, dst_trans_src[:, :2, :], (h_out, w_out),
+        mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
     return patches
 
