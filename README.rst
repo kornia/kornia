@@ -9,11 +9,11 @@
 .. image:: https://img.shields.io/badge/License-Apache%202.0-blue.svg
     :target: https://opensource.org/licenses/Apache-2.0
 
-.. image:: https://github.com/kornia/kornia/workflows/tests-cpu/badge.svg
-    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cpu
+.. image:: https://github.com/kornia/kornia/workflows/tests-cpu-versions/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cpu-versions
 
-.. image:: https://github.com/kornia/kornia/workflows/tests-cuda/badge.svg
-    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda
+.. image:: https://github.com/kornia/kornia/workflows/tests-cuda-versions/badge.svg
+    :target: https://github.com/kornia/kornia/actions?query=workflow%3Atests-cuda-versions
 
 .. image:: https://circleci.com/gh/kornia/kornia.svg?style=shield
     :target: https://circleci.com/gh/kornia/kornia

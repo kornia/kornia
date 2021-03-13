@@ -30,6 +30,9 @@ The functions in this section perform various geometrical transformations of 2D 
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
 .. autofunction:: elastic_transform2d
+.. autofunction:: get_tps_transform
+.. autofunction:: warp_points_tps
+.. autofunction:: warp_image_tps
 
 .. autofunction:: affine
 .. autofunction:: rotate

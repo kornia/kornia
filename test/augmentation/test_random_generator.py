@@ -569,7 +569,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             ratio=torch.tensor([1., 1.], device=device, dtype=dtype),
             same_on_batch=False)
         expected = dict(
-            size=torch.tensor([[100, 100]], device=device, dtype=dtype)
+            size=torch.tensor([[100, 100]], device=device, dtype=dtype).repeat(100, 1)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
@@ -1005,14 +1005,14 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('p', [0, 0.5, 1.])
     @pytest.mark.parametrize('width,height', [(200, 200)])
     @pytest.mark.parametrize('num_mix', [1, 3])
-    @pytest.mark.parametrize('beta', [None, torch.tensor(0.), torch.tensor(1.)])
+    @pytest.mark.parametrize('beta', [None, torch.tensor(1e-15), torch.tensor(1.)])
     @pytest.mark.parametrize('cut_size', [None, torch.tensor([0., 1.]), torch.tensor([0.3, 0.6])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, batch_size, p, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype
     ):
         random_cutmix_generator(
-            batch_size=batch_size, p=p, width=width, height=height,
+            batch_size=batch_size, p=p, width=width, height=height, num_mix=num_mix,
             beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
             cut_size=cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
             same_on_batch=same_on_batch)
@@ -1026,10 +1026,11 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         (200, 200, 1, None, torch.tensor([-1., 1.])),
         (200, 200, 1, None, torch.tensor([0., 2.])),
     ])
-    def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, device, dtype):
+    @pytest.mark.parametrize('same_on_batch', [True, False])
+    def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype):
         with pytest.raises(Exception):
             random_cutmix_generator(
-                batch_size=8, p=p, width=width, height=height,
+                batch_size=8, p=0.5, width=width, height=height, num_mix=num_mix,
                 beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
                 cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
                 same_on_batch=same_on_batch)

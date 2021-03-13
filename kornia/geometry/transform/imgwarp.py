@@ -3,7 +3,7 @@ from typing import Tuple, Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.warp import (
+from kornia.geometry.transform.homography_warper import (
     normalize_homography, homography_warp
 )
 from kornia.geometry.conversions import (
@@ -470,6 +470,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
         translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
         center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B, 2)`.
+        angle: (torch.Tensor): tensor of angles in degrees :math:`(B)`.
         sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
         sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
@@ -544,6 +545,9 @@ def get_affine_matrix3d(translations: torch.Tensor, center: torch.Tensor, scale:
         translations (torch.Tensor): tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
         center (torch.Tensor): tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B)`.
+        angle: (torch.Tensor): angle axis vector containing the rotation angles in degrees in the form
+            of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
+            the rotation matrix from axis-angle.
         sxy (torch.Tensor, optional): tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
         sxz (torch.Tensor, optional): tensor containing the shear factor in the xz-direction with shape :math:`(B)`.
         syx (torch.Tensor, optional): tensor containing the shear factor in the yx-direction with shape :math:`(B)`.
