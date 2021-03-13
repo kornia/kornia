@@ -429,7 +429,7 @@ def apply_perspective(
 
     out_data = warp_perspective(
         input, transform, (height, width),
-        flags=resample_name, align_corners=align_corners)
+        mode=resample_name, align_corners=align_corners)
 
     return out_data.view_as(input)
 
