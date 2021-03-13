@@ -61,9 +61,13 @@ def draw_rectangle(
                 image[b, :, int(rectangle[b, n, 1]):int(rectangle[b, n, 3] + 1),
                       int(rectangle[b, n, 0]):int(rectangle[b, n, 2] + 1)] = color[b, n, :, None, None]
             else:
-                image[b, :, int(rectangle[b, n, 1]):int(rectangle[b, n, 3] + 1), rectangle[b, n, 0]] = color[b, n, :, None]
-                image[b, :, int(rectangle[b, n, 1]):int(rectangle[b, n, 3] + 1), rectangle[b, n, 2]] = color[b, n, :, None]
-                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]):int(rectangle[b, n, 2] + 1)] = color[b, n, :, None]
-                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]):int(rectangle[b, n, 2] + 1)] = color[b, n, :, None]
+                image[b, :, int(rectangle[b, n, 1]):int(rectangle[b, n, 3] + 1),
+                      rectangle[b, n, 0]] = color[b, n, :, None]
+                image[b, :, int(rectangle[b, n, 1]):int(rectangle[b, n, 3] + 1),
+                      rectangle[b, n, 2]] = color[b, n, :, None]
+                image[b, :, rectangle[b, n, 1], int(rectangle[b, n, 0]):int(
+                    rectangle[b, n, 2] + 1)] = color[b, n, :, None]
+                image[b, :, rectangle[b, n, 3], int(rectangle[b, n, 0]):int(
+                    rectangle[b, n, 2] + 1)] = color[b, n, :, None]
 
     return image
