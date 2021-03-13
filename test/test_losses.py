@@ -356,7 +356,7 @@ class TestSSIMLoss:
     def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
         if device.type == 'xla':
             pytest.skip("test highly unstable with tpu")
-        
+
         # input data
         img = torch.rand(batch_shape, device=device, dtype=dtype)
 
