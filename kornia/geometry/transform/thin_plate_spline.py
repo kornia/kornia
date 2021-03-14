@@ -53,6 +53,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
         >>> points_src = torch.rand(1, 5, 2)
         >>> points_dst = torch.rand(1, 5, 2)
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
+
+    .. note::
+        This function is often used in conjuntion with :func:`warp_points_tps`, :func:`warp_image_tps`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -115,6 +118,9 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
         >>> warped = warp_points_tps(points_src, points_dst, kernel_weights, affine_weights)
         >>> warped_correct = torch.allclose(warped, points_dst)
+
+    .. note::
+        This function is often used in conjuntion with :func:`get_tps_transform`.
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -184,6 +190,9 @@ def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_wei
         >>> # note that we are getting the reverse transform: dst -> src
         >>> kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
         >>> warped_image = warp_image_tps(image, points_src, kernel_weights, affine_weights)
+
+    .. note::
+        This function is often used in conjuntion with :func:`get_tps_transform`.
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image is not torch.Tensor. Got {type(image)}")
