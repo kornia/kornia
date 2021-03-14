@@ -40,6 +40,8 @@ def warp_affine3d(src: torch.Tensor,
     Returns:
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
     assert len(src.shape) == 5, src.shape
     assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
@@ -105,6 +107,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     Returns:
         torch.Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`warp_affine3d`.
     """
     assert len(center.shape) == 2 and center.shape[-1] == 3, center.shape
     assert len(angles.shape) == 2 and angles.shape[-1] == 3, angles.shape
@@ -194,32 +198,36 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         \end{pmatrix}
 
     Args:
-        src (Tensor): coordinates of quadrangle vertices in the source image.
-        dst (Tensor): coordinates of the corresponding quadrangle vertices in
-            the destination image.
+        src (torch.Tensor): coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
+        dst (torch.Tensor): coordinates of the corresponding quadrangle vertices in
+            the destination image with shape :math:`(B, 8, 3)`.
 
     Returns:
-        Tensor: the perspective transformation.
+        torch.Tensor: the perspective transformation with shape :math:`(B, 4, 4)`.
 
-    Shape:
-        - Input: :math:`(B, 8, 3)` and :math:`(B, 8, 3)`
-        - Output: :math:`(B, 4, 4)`
+    .. note::
+        This function is often used in conjuntion with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(src)))
+
     if not isinstance(dst, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(dst)))
+
     if not src.shape[-2:] == (8, 3):
         raise ValueError("Inputs must be a Bx8x3 tensor. Got {}"
                          .format(src.shape))
+
     if not src.shape == dst.shape:
         raise ValueError("Inputs must have the same shape. Got {}"
                          .format(dst.shape))
+
     if not (src.shape[0] == dst.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
+
     assert src.device == dst.device and src.dtype == dst.dtype, (
         f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
         f"with the same dtype (Got {src.dtype}, {dst.dtype})."
@@ -319,6 +327,8 @@ def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, D, H, W)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
     check_is_tensor(src)
     check_is_tensor(M)
