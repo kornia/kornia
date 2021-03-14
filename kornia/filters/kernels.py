@@ -786,3 +786,77 @@ def get_motion_kernel3d(kernel_size: int, angle: Union[torch.Tensor, Tuple[float
     kernel = kernel / kernel.sum(dim=(1, 2, 3), keepdim=True)
 
     return kernel
+
+
+def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> torch.Tensor:
+    """ Generate pascal filter kernel by kernel size.
+
+    Args:
+        kernel_size (int): height and width of the kernel.
+        norm (bool): if to normalize the kernel or not. Default: True.
+
+    Returns:
+        torch.Tensor: kernel shaped as :math:`(kernel_size, kernel_size)`
+
+    Examples:
+    >>> get_pascal_kernel_2d(1)
+    tensor([[1.]])
+    >>> get_pascal_kernel_2d(4)
+    tensor([[0.0156, 0.0469, 0.0469, 0.0156],
+            [0.0469, 0.1406, 0.1406, 0.0469],
+            [0.0469, 0.1406, 0.1406, 0.0469],
+            [0.0156, 0.0469, 0.0469, 0.0156]])
+    >>> get_pascal_kernel_2d(4, norm=False)
+    tensor([[1., 3., 3., 1.],
+            [3., 9., 9., 3.],
+            [3., 9., 9., 3.],
+            [1., 3., 3., 1.]])
+    """
+    a = get_pascal_kernel_1d(kernel_size)
+
+    filt = a[:, None] * a[None, :]
+    if norm:
+        filt = filt / torch.sum(filt)
+    return filt
+
+
+def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
+    """ Generate Yang Hui triangle (Pascal's triangle) by a given number.
+
+    Args:
+        kernel_size (int): height and width of the kernel.
+        norm (bool): if to normalize the kernel or not. Default: False.
+
+    Returns:
+        torch.Tensor: kernel shaped as :math:`(kernel_size,)`
+
+    Examples:
+    >>> get_pascal_kernel_1d(1)
+    tensor([1.])
+    >>> get_pascal_kernel_1d(2)
+    tensor([1., 1.])
+    >>> get_pascal_kernel_1d(3)
+    tensor([1., 2., 1.])
+    >>> get_pascal_kernel_1d(4)
+    tensor([1., 3., 3., 1.])
+    >>> get_pascal_kernel_1d(5)
+    tensor([1., 4., 6., 4., 1.])
+    >>> get_pascal_kernel_1d(6)
+    tensor([ 1.,  5., 10., 10.,  5.,  1.])
+    """
+    pre: List[float] = []
+    cur: List[float] = []
+    for i in range(kernel_size):
+        cur = [1.] * (i + 1)
+
+        for j in range(1, i // 2 + 1):
+            value = pre[j - 1] + pre[j]
+            cur[j] = value
+            if i != 2 * j:
+                cur[-j - 1] = value
+        pre = cur
+
+    out = torch.as_tensor(cur)
+    if norm:
+        out = out / torch.sum(out)
+    return out
