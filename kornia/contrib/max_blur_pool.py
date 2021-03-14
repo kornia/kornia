@@ -1,10 +1,13 @@
 from typing import Tuple
 
+import warnings
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-from kornia.geometry.transform.pyramid import pyrdown
+import torch.nn as nn  # For doctest
+from kornia.filters.blur_pool import (
+    MaxBlurPool2D,
+    BlurPool2D,  # For doctest
+    max_blur_pool2d as _max_blur_pool2d
+)
 
 __all__ = [
     "max_blur_pool2d",
@@ -12,67 +15,22 @@ __all__ = [
 ]
 
 
-def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
-    """Computes zero padding tuple."""
-    padding = [(k - 1) // 2 for k in kernel_size]
-    return padding[0], padding[1]
-
-
-class MaxBlurPool2d(nn.Module):
-    r"""Creates a module that computes pools and blurs and downsample a given
-    feature map.
-
-    See :cite:`zhang2019shiftinvar` for more details.
-
-    Args:
-        kernel_size (int): the kernel size for max pooling..
-        ceil_mode (bool): should be true to match output size of conv2d with same kernel size.
-
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, C, H / 2, W / 2)`
-
-    Returns:
-        torch.Tensor: the transformed tensor.
-
-    Examples:
-        >>> input = torch.rand(1, 4, 4, 8)
-        >>> pool = MaxBlurPool2d(kernel_size=3)
-        >>> output = pool(input)  # 1x4x2x4
-    """
+class MaxBlurPool2d(MaxBlurPool2D):
+    __doc__ = MaxBlurPool2D.__doc__
 
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
-        super(MaxBlurPool2d, self).__init__()
-        self.ceil_mode: bool = ceil_mode
-        self.kernel_size: Tuple[int, int] = (kernel_size, kernel_size)
-        self.padding: Tuple[int, int] = _compute_zero_padding(self.kernel_size)
-
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        if not torch.is_tensor(input):
-            raise TypeError("Input input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(input.shape))
-        # compute local maxima
-        x_max: torch.Tensor = F.max_pool2d(
-            input, kernel_size=self.kernel_size,
-            padding=self.padding, stride=1, ceil_mode=self.ceil_mode)
-
-        # blur and downsample
-        x_down: torch.Tensor = pyrdown(x_max)
-        return x_down
-
-
-######################
-# functional interface
-######################
+        super(MaxBlurPool2d, self).__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
+        warnings.warn("`MaxBlurPool2d` is deprecated and will be removed after > 0.6. "
+                      "Please use `kornia.filters.MaxBlurPool2D instead.`",
+                      DeprecationWarning, stacklevel=2)
 
 
 def max_blur_pool2d(input: torch.Tensor, kernel_size: int, ceil_mode: bool = False) -> torch.Tensor:
-    r"""Creates a module that computes pools and blurs and downsample a given
-    feature map.
+    r"""Creates a module that computes pools and blurs and downsample a given feature map.
 
     See :class:`~kornia.contrib.MaxBlurPool2d` for details.
     """
-    return MaxBlurPool2d(kernel_size, ceil_mode)(input)
+    warnings.warn("`max_blur_pool2d` is deprecated and will be removed after > 0.6. "
+                  "Please use `kornia.filters.max_blur_pool2d instead.`",
+                  DeprecationWarning, stacklevel=2)
+    return _max_blur_pool2d(input, kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
