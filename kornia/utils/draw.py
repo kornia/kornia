@@ -9,7 +9,8 @@ def draw_rectangle(
     fill: Optional[bool] = None,
     width: int = 1
 ) -> torch.Tensor:
-    """Draws N rectangles on a batch of image tensors
+    r"""Draws N rectangles on a batch of image tensors.
+
         Args:
             image (torch.Tensor): is tensor of BxCxHxW.
             rectangle (torch.Tensor): represents number of rectangles to draw in BxNx4
@@ -20,8 +21,8 @@ def draw_rectangle(
             fill (bool, optional): is a flag used to fill the boxes with color if True. Default: False.
             width (int): The line width. Default: 1. (Not implemented yet).
         Returns:
-            torch.Tensor: This operation modifies image inplace but also returns
-            the drawn tensor for convenience with same shape the of the input BxCxHxW.
+            torch.Tensor: This operation modifies image inplace but also returns the drawn tensor for
+            convenience with same shape the of the input BxCxHxW.
 
         Example:
             >>> img = torch.rand(2, 3, 10, 12)

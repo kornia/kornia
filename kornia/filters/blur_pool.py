@@ -46,6 +46,7 @@ class BlurPool2D(nn.Module):
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
     """
+
     def __init__(self, kernel_size: int, stride: int = 2):
         super(BlurPool2D, self).__init__()
         self.kernel_size = kernel_size
@@ -89,6 +90,7 @@ class MaxBlurPool2D(nn.Module):
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
     """
+
     def __init__(self, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False):
         super(MaxBlurPool2D, self).__init__()
         self.kernel_size = kernel_size

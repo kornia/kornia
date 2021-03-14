@@ -41,7 +41,7 @@ class TestAddWeighted:
         op = TestAddWeighted.fcn
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*inputs), op_script(*inputs))
+        assert_allclose(op(*inputs), op_script(*inputs), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("size", [2, 3])
     def test_gradcheck(self, size, device, dtype):
