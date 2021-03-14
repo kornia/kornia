@@ -3,6 +3,7 @@ from .laplacian import Laplacian, laplacian
 from .sobel import SpatialGradient, spatial_gradient, SpatialGradient3d, spatial_gradient3d
 from .sobel import Sobel, sobel
 from .blur import BoxBlur, box_blur
+from .blur_pool import MaxBlurPool2D, BlurPool2D, max_blur_pool2d, blur_pool2d
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .filter import filter2D, filter3D
@@ -41,6 +42,8 @@ __all__ = [
     "sobel",
     "spatial_gradient",
     "box_blur",
+    "blur_pool2d",
+    "max_blur_pool2d",
     "median_blur",
     "motion_blur",
     "motion_blur3d",
@@ -51,6 +54,8 @@ __all__ = [
     "SpatialGradient",
     "Sobel",
     "BoxBlur",
+    "BlurPool2D",
+    "MaxBlurPool2D",
     "MedianBlur",
     "MotionBlur",
     "MotionBlur3D",
