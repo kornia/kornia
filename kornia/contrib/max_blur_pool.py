@@ -2,8 +2,10 @@ from typing import Tuple
 
 import warnings
 import torch
+import torch.nn as nn  # For doctest
 from kornia.filters.blur_pool import (
     MaxBlurPool2D,
+    BlurPool2D,  # For doctest
     max_blur_pool2d as _max_blur_pool2d
 )
 

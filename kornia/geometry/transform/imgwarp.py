@@ -62,7 +62,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
        >>> H = torch.eye(3)[None]
-       >>> out = warp_perspective(img, H, (4, 2))
+       >>> out = warp_perspective(img, H, (4, 2), align_corners=True)
        >>> print(out.shape)
        torch.Size([1, 4, 4, 2])
 
@@ -145,7 +145,7 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
        >>> A = torch.eye(2, 3)[None]
-       >>> out = warp_affine(img, A, (4, 2))
+       >>> out = warp_affine(img, A, (4, 2), align_corners=True)
        >>> print(out.shape)
        torch.Size([1, 4, 4, 2])
 

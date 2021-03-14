@@ -204,8 +204,8 @@ class ScalePyramid(nn.Module):
                 pyr[-1].append(cur_level)
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            nextOctaveFirstLevel = F.interpolate(pyr[-1][-self.extra_levels], scale_factor=0.5,
-                                                 recompute_scale_factor=True,  # scale_factor changed in 1.6.0
+            _pyr = pyr[-1][-self.extra_levels]
+            nextOctaveFirstLevel = F.interpolate(_pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2),
                                                  mode='nearest')  # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
