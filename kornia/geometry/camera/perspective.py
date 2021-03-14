@@ -79,7 +79,7 @@ def unproject_points(
         depth (torch.Tensor): tensor containing the depth value of each 2d
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
-            matrix. The tensor shape must be Bx4x4.
+            matrix. The tensor shape must be :math:`(*, 3, 3)`.
         normalize (bool, optional): whether to normalize the pointcloud. This
             must be set to `True` when the depth is represented as the Euclidean
             ray length from the camera position. Default is `False`.
@@ -114,6 +114,7 @@ def unproject_points(
     if not camera_matrix.shape[-2:] == (3, 3):
         raise ValueError(
             "Input camera_matrix must be in the shape of (*, 3, 3).")
+
     # projection eq. K_inv * [u v 1]'
     # x = (u - cx) * Z / fx
     # y = (v - cy) * Z / fy
