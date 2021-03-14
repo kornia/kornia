@@ -3,7 +3,7 @@ from typing import Tuple
 import warnings
 import torch
 from kornia.filters.blur_pool import (
-    MaxBlurPool2D as _MaxBlurPool2d,
+    MaxBlurPool2D,
     max_blur_pool2d as _max_blur_pool2d
 )
 
@@ -13,8 +13,8 @@ __all__ = [
 ]
 
 
-class MaxBlurPool2d(_MaxBlurPool2d):
-    __doc__ = _MaxBlurPool2d.__doc__
+class MaxBlurPool2d(MaxBlurPool2D):
+    __doc__ = MaxBlurPool2D.__doc__
 
     def __init__(self, kernel_size: int, ceil_mode: bool = False) -> None:
         super(MaxBlurPool2d, self).__init__(kernel_size, stride=2, max_pool_size=2, ceil_mode=ceil_mode)
