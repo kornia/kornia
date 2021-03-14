@@ -170,7 +170,7 @@ def affine(tensor: torch.Tensor, matrix: torch.Tensor,
 
 def affine3d(tensor: torch.Tensor, matrix: torch.Tensor,
              mode: str = 'bilinear', padding_mode: str = 'zeros',
-             align_corners: Optional[bool] = None) -> torch.Tensor:
+             align_corners: bool = False) -> torch.Tensor:
     r"""Apply an affine transformation to the 3d volume.
 
     Args:
@@ -181,7 +181,7 @@ def affine3d(tensor: torch.Tensor, matrix: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        align_corners(bool, optional): interpolation flag. Default: False.
 
     Returns:
         torch.Tensor: The warped image.
@@ -282,12 +282,12 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor,
              pitch: torch.Tensor, roll: torch.Tensor,
              center: Union[None, torch.Tensor] = None,
              mode: str = 'bilinear', padding_mode: str = 'zeros',
-             align_corners: Optional[bool] = None) -> torch.Tensor:
+             align_corners: bool = False) -> torch.Tensor:
     r"""Rotate 3D the tensor anti-clockwise about the centre.
 
     Args:
         tensor (torch.Tensor): The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
-        yaw (torch.Tensor): The yaw angle through which to rotate. The tensor
+        yaw(torch.Tensor): The yaw angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         pitch (torch.Tensor): The pitch angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
@@ -300,7 +300,7 @@ def rotate3d(tensor: torch.Tensor, yaw: torch.Tensor,
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
-        align_corners(bool, optional): interpolation flag. Default: None.
+        align_corners(bool, optional): interpolation flag. Default: False.
 
     Returns:
         torch.Tensor: The rotated tensor with shape as input.
@@ -612,7 +612,7 @@ class Resize(nn.Module):
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
-        self.align_corners: bool = align_corners
+        self.align_corners: Optional[bool] = align_corners
         self.side: str = side
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

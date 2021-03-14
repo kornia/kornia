@@ -552,7 +552,7 @@ def get_affine_matrix2d(translations: torch.Tensor, center: torch.Tensor, scale:
         translations (torch.Tensor): tensor containing the translation vector with shape :math:`(B, 2)`.
         center (torch.Tensor): tensor containing the center vector with shape :math:`(B, 2)`.
         scale (torch.Tensor): tensor containing the scale factor with shape :math:`(B, 2)`.
-        angle: (torch.Tensor): tensor of angles in degrees :math:`(B)`.
+        angle (torch.Tensor): tensor of angles in degrees :math:`(B)`.
         sx (torch.Tensor, optional): tensor containing the shear factor in the x-direction with shape :math:`(B)`.
         sy (torch.Tensor, optional): tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
