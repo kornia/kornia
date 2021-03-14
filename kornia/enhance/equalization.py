@@ -228,7 +228,8 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles, dtype=torch.long)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
-    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2. * th - 1)[None].T.expand(2 * th, tw)
+    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2. *
+                                                                          th - 1)[None].transpose(-2, -1).expand(2 * th, tw)
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
     iw = torch.arange(2 * tw - 1, -1, -1, device=interp_tiles.device).div(2. * tw - 1).expand(th, 2 * tw)
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
