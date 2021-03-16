@@ -13,8 +13,7 @@ Kornia Documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: Kornia
-   module_intro/core_module
+   :caption: Modules
    module_intro/augmentation_module
 
 .. toctree::
