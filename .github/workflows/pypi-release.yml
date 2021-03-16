@@ -24,7 +24,7 @@ jobs:
         python -m pip install --user --upgrade setuptools wheel
     - name: Build
       run: |
-        python setup.py sdist bdist_wheel
+        KORNIA_RELEASE=1 python setup.py sdist bdist_wheel
         ls -lh dist/
 
     - name: Publish distribution 📦 to PyPI
