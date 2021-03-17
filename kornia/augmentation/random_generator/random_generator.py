@@ -244,7 +244,8 @@ def random_affine_generator(
 
     if translate is not None:
         translate = translate.to(device=device, dtype=dtype)
-        _joint_range_check(cast(torch.Tensor, translate), "translate")
+        assert 0. <= translate[0] <= 1. and 0. <= translate[1] <= 1., \
+            f"Expect translate ranges are in [0, 1]. Got {translate}."
         max_dx: torch.Tensor = translate[0] * width
         max_dy: torch.Tensor = translate[1] * height
         translations = torch.stack([
