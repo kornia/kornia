@@ -438,7 +438,7 @@ def get_rotation_matrix2d(
 
 def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
           mode: str = 'bilinear', padding_mode: str = 'zeros',
-          align_corners: Optional[bool] = None) -> torch.Tensor:
+          align_corners: Optional[bool] = None, normalized_coordinates: bool = True) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
     The function remap transforms the source tensor using the specified map:
@@ -458,6 +458,8 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners (bool, optional): mode for grid_generation. Default: None.
+        normalized_coordinates (bool): whether to normalize
+          coordinates in the range [-1, 1]
 
     Returns:
         torch.Tensor: the warped tensor with same shape as the input grid maps.
@@ -493,11 +495,13 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
 
     # grid_sample need the grid between -1/1
     map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
-    map_xy_norm: torch.Tensor = normalize_pixel_coordinates(
-        map_xy, height, width)
+
+    # normalize coordinates if not already normalized
+    if normalized_coordinates:
+        map_xy: torch.Tensor = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
-    map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
+    map_xy_norm = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp ans return
     tensor_warped: torch.Tensor = F.grid_sample(
