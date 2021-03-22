@@ -498,10 +498,10 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
 
     # normalize coordinates if not already normalized
     if normalized_coordinates:
-        map_xy: torch.Tensor = normalize_pixel_coordinates(map_xy, height, width)
+        map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
-    map_xy_norm = map_xy.expand(batch_size, -1, -1, -1)
+    map_xy_norm: torch.Tensor = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp ans return
     tensor_warped: torch.Tensor = F.grid_sample(
