@@ -3,11 +3,11 @@ Differentiable Data Augmentation (DDA)
 
 Kornia DDA module leverages differentiable computer vision solutions from Kornia, with an aim of integrating data augmentation (DA) pipelines and strategies to existing PyTorch components (e.g. autograd for differentiability, optim for optimization).
 
-Currently, differentiable data augmentation has been proved useful by many tasks:
+Currently, differentiable data augmentation has been proved useful by many tasks, the following works are already taking the advantage of Kornia:
 
-1. Differentiable Augmentation for Data-Efficient GAN Training \cite{zhao2020differentiable}, which takes the advantage of the augmentation gradients to accelerate the training of GANs.
+1. To accelerate the training, such as DABO \cite{mounsaveng2021learning}.
 
-2. Faster autoaugment: Learning augmentation strategies using backpropagation \cite{hataya2020faster}, which optimizes and learns the best augmentation strategies.
+2. To learn augmentation strategies, such as Faster autoaugment \cite{hataya2020faster}, MADAO \cite{hataya2020meta}.
 
 
 Features
@@ -160,8 +160,8 @@ The Updated results as follows.
 From left to right: the original input, augmented image and gradient-updated image.
 
 
-Customization
--------------
+Customized Augmentations
+------------------------
 
 Kornia provides useful 2D and 3D augmentation base classes for an easier customization of your new augmenatation ideas. In general, all augmentations shall inherit from either ``AugmentationBase2D``, ``AugmentationBase3D`` or ``AugmentationBaseMix``. Those base classes would handle:
     1) forward/backward operations.
