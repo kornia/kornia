@@ -438,7 +438,7 @@ def get_rotation_matrix2d(
 
 def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
           mode: str = 'bilinear', padding_mode: str = 'zeros',
-          align_corners: Optional[bool] = None, normalized_coordinates: bool = True) -> torch.Tensor:
+          align_corners: Optional[bool] = None, normalized_coordinates: bool = False) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
     The function remap transforms the source tensor using the specified map:
@@ -497,7 +497,7 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
     map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
 
     # normalize coordinates if not already normalized
-    if normalized_coordinates:
+    if not normalized_coordinates:
         map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
