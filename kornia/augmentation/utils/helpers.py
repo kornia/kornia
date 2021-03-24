@@ -29,7 +29,7 @@ def _validate_input(f: Callable) -> Callable:
     return wrapper
 
 
-def _validate_input3D(f: Callable) -> Callable:
+def _validate_input3d(f: Callable) -> Callable:
     r"""Validates the 3D input of the wrapped function.
 
     Args:
