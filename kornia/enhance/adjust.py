@@ -564,7 +564,7 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
 
     Returns:
-        torch.Tensor: Sharpened image or images.
+        torch.Tensor: Sharpened image or images with shape :math:`(B, C, H, W)`.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -698,7 +698,7 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         input (torch.Tensor): image tensor to equalize with shapes like :math:`(C, H, W)` or :math:`(B, C, H, W)`.
 
     Returns:
-        torch.Tensor: Sharpened image or images with shape as the input.
+        torch.Tensor: Equalized image tensor with shape :math:`(B, C, H, W)`.
 
     Example:
         >>> _ = torch.manual_seed(0)
@@ -733,7 +733,7 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         input (torch.Tensor): image tensor with shapes like :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)` to equalize.
 
     Returns:
-        torch.Tensor: Sharpened image or images with same shape as the input.
+        torch.Tensor: Equalized volume with shape :math:`(B, C, D, H, W)`.
     """
     input = _to_bcdhw(input)
 
