@@ -30,6 +30,8 @@ Set of operators to perform data augmentation on 2D image tensors.
     :members:
 
 
+.. currentmodule:: kornia.augmentation
+
 Transforms3D
 ============
 
@@ -48,6 +50,8 @@ Set of operators to perform data augmentation on 3D volumetric tensors.
 .. automodule:: kornia.augmentation.functional.functional3d
     :members:
 
+
+.. currentmodule:: kornia.augmentation
 
 Normalizations
 ==============
