@@ -22,8 +22,7 @@ from kornia.enhance import (
 
 from .. import random_generator as rg
 from ..utils import (
-    _transform_input3d,
-    _validate_input_dtype
+    _validate_input3d
 )
 from kornia.filters import motion_blur3d
 
@@ -87,36 +86,30 @@ def random_dflip3d(input: torch.Tensor, p: float = 0.5, return_transform: bool =
     return output
 
 
+@_validate_input3d
 def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply horizontal flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
 
-    Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
-
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The horizontal flipped input
+        torch.Tensor: Horizontal flipped input with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-1])
 
 
+@_validate_input3d
 def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the horizontal flip transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: Horizontal flip transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     w: int = input.shape[-1]
     flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1],
@@ -124,39 +117,33 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_validate_input3d
 def apply_vflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
 
-    Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
-
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The vertical flipped input
+        torch.Tensor: Vertical flipped input with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-2])
 
 
+@_validate_input3d
 def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the veritical flip transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: The vertical flip transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     h: int = input.shape[-2]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
@@ -164,54 +151,47 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
                                            [0, 0, 1, 0],
                                            [0, 0, 0, 1]])
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_validate_input3d
 def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply depthical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
 
-    Input should be a tensor of shape :math:`(D, H, W)`, :math:`(C, D, H, W)` or :math:`(*, C, D, H, W)`.
-
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The depthical flipped input.
+        torch.Tensor: Depthical flipped input with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return torch.flip(input, [-3])
 
 
+@_validate_input3d
 def compute_intensity_transformation3d(input: torch.Tensor):
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the identity matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`. Returns identity transformations.
+        torch.Tensor: Identity matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     identity: torch.Tensor = torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
     return identity
 
 
+@_validate_input3d
 def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the depthical flip transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`, :math:`(C, D, H, W)`,
-            :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: Depthical flip transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     d: int = input.shape[-3]
     flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
@@ -219,15 +199,16 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
                                            [0, 0, -1, d - 1],
                                            [0, 0, 0, 1]])
 
-    return flip_mat.repeat(input.size(0), 1, 1).type_as(input)
+    return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_validate_input3d
 def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                    flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Random affine transformation of the image keeping center invariant.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
             - params['translations']: Horizontal, vertical and depthical translations (dx,dy,dz).
@@ -244,13 +225,8 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
             - params['align_corners']: Boolean tensor.
 
     Returns:
-        torch.Tensor: The transfromed input
+        torch.Tensor: Affine transfromed input with shape :math:`(*, C, D, H, W)`.
     """
-    if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
-
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     # arrange input data
     x_data: torch.Tensor = input.view(-1, *input.shape[-4:])
@@ -269,11 +245,12 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return out_data.view_as(input)
 
 
+@_validate_input3d
 def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the affine transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['angles']: Degrees of rotation with the shape of :math: `(*, 3)` for yaw, pitch, roll.
             - params['translations']: Horizontal, vertical and depthical translations (dx,dy,dz).
@@ -287,26 +264,23 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
             - params['szy']: Shear param toward z-y-axis.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: The affine transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform = get_affine_matrix3d(
         params['translations'], params['center'], params['scale'], params['angles'],
         deg2rad(params['sxy']), deg2rad(params['sxz']), deg2rad(params['syx']),
         deg2rad(params['syz']), deg2rad(params['szx']), deg2rad(params['szy'])
-    ).type_as(input)
+    ).to(input)
     return transform
 
 
+@_validate_input3d
 def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                      flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
 
-    Input should be a tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
-
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['degrees']: degree to be applied.
         flags (Dict[str, torch.Tensor]):
@@ -314,13 +288,11 @@ def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
             - params['align_corners']: Boolean tensor.
 
     Returns:
-        torch.Tensor: The cropped input
+        torch.Tensor: The cropped input.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    yaw: torch.Tensor = params["yaw"].type_as(input)
-    pitch: torch.Tensor = params["pitch"].type_as(input)
-    roll: torch.Tensor = params["roll"].type_as(input)
+    yaw: torch.Tensor = params["yaw"].to(input)
+    pitch: torch.Tensor = params["pitch"].to(input)
+    roll: torch.Tensor = params["roll"].to(input)
 
     resample_mode: str = Resample(flags['resample'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
@@ -330,24 +302,23 @@ def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return transformed
 
 
+@_validate_input3d
 def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]):
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the rotation transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['yaw']: degree to be applied.
             - params['pitch']: degree to be applied.
             - params['roll']: degree to be applied.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: The rotation transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-    yaw: torch.Tensor = params["yaw"].type_as(input)
-    pitch: torch.Tensor = params["pitch"].type_as(input)
-    roll: torch.Tensor = params["roll"].type_as(input)
+    yaw: torch.Tensor = params["yaw"].to(input)
+    pitch: torch.Tensor = params["pitch"].to(input)
+    roll: torch.Tensor = params["roll"].to(input)
 
     center: torch.Tensor = _compute_tensor_center3d(input)
     rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
@@ -361,14 +332,13 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     return trans_mat
 
 
+@_validate_input3d
 def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                         flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform motion blur on an image.
 
-    The input image is expected to be in the range of [0, 1].
-
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['ksize_factor']: motion kernel width and height (odd and positive).
             - params['angle_factor']: yaw, pitch and roll range of the motion blur in degrees :math:`(B, 3)`.
@@ -381,11 +351,8 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
               CONSTANT = 0, REFLECT = 1, REPLICATE = 2, CIRCULAR = 3. Default: BorderType.CONSTANT.
 
     Returns:
-        torch.Tensor: Adjusted image with the shape as the inpute (\*, C, H, W).
-
+        torch.Tensor: adjusted image tensor with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     kernel_size: int = cast(int, params['ksize_factor'].unique().item())
     angle = params['angle_factor']
@@ -396,11 +363,13 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return motion_blur3d(input, kernel_size, angle, direction, border_type, mode)
 
 
+@_validate_input3d
 def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
 
-    Order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
-        back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
+    Args:
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
+        params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
         flags (Dict[str, torch.Tensor]):
@@ -409,9 +378,11 @@ def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
 
     Returns:
         torch.Tensor: The cropped input.
+
+    Note:
+        BBox order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
+        back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
     align_corners: bool = cast(bool, flags['align_corners'].item())
@@ -420,32 +391,34 @@ def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
         input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
-def compute_crop_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]):
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+@_validate_input3d
+def compute_crop_transformation3d(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
+    r"""Compute the cropping transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (H, W), (C, H, W), (B, C, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['src']: The applied cropping src matrix :math: `(*, 8, 3)`.
             - params['dst']: The applied cropping dst matrix :math: `(*, 8, 3)`.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: The cropping transformation matrix :math: `(*, 4, 4)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     transform: torch.Tensor = get_perspective_transform3d(params['src'].to(input.dtype), params['dst'].to(input.dtype))
-    transform = transform.expand(input.shape[0], -1, -1).type_as(input)
+    transform = transform.expand(input.shape[0], -1, -1).to(input)
     return transform
 
 
+@_validate_input3d
 def apply_perspective3d(
     input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
 ) -> torch.Tensor:
     r"""Perform perspective transform of the given torch.Tensor or batch of tensors.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the original image with shape Bx8x3.
@@ -456,10 +429,8 @@ def apply_perspective3d(
             - params['align_corners']: Boolean tensor.
 
     Returns:
-        torch.Tensor: Perspectively transformed tensor.
+        torch.Tensor: Perspectively transformed tensor with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     _, _, depth, height, width = input.shape
 
@@ -480,11 +451,12 @@ def apply_perspective3d(
     return out_data.view_as(input)
 
 
+@_validate_input3d
 def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-    r"""Compute the applied transformation matrix :math: `(*, 4, 4)`.
+    r"""Compute the perspective transformation matrix :math: `(*, 4, 4)`.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape (D, H, W), (C, D, H, W), (B, C, D, H, W).
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]):
             - params['start_points']: Tensor containing [top-left, top-right, bottom-right,
               bottom-left] of the orignal image with shape Bx8x3.
@@ -492,12 +464,10 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
               bottom-left] of the transformed image with shape Bx8x3.
 
     Returns:
-        torch.Tensor: The applied transformation matrix :math: `(*, 4, 4)`
+        torch.Tensor: The perspective transformation matrix :math: `(*, 4, 4)`
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
     perspective_transform: torch.Tensor = get_perspective_transform3d(
-        params['start_points'], params['end_points']).type_as(input)
+        params['start_points'], params['end_points']).to(input)
 
     transform: torch.Tensor = K.eye_like(4, input)
 
@@ -506,18 +476,16 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     return transform
 
 
+@_validate_input3d
 def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
 
     Args:
-        input (torch.Tensor): Tensor to be transformed with shape :math:`(D, H, W)`,
-          :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
+        input (torch.Tensor): Tensor to be transformed with shape :math:`(*, C, D, H, W)`.
         params (Dict[str, torch.Tensor]): shall be empty.
 
     Returns:
-        torch.Tensor: The equalized input. :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(*, C, D, H, W)`.
+        torch.Tensor: Equalized input with shape :math:`(*, C, D, H, W)`.
     """
-    input = _transform_input3d(input)
-    _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
     return equalize3d(input)

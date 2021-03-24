@@ -45,14 +45,12 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
+def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Converts a PyTorch tensor image to BCHW format.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
             :math:`(B, C, H, W)`.
-        color_channel_num (Optional[int]): Color channel of the input tensor.
-            If None, it will not alter the input channel.
 
     Returns:
         torch.Tensor: input tensor of the form :math:`(B, C, H, W)`.
@@ -69,22 +67,15 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
     if len(tensor.shape) == 3:
         tensor = tensor.unsqueeze(0)
 
-    # TODO(jian): this function is never used. Besides is not feasible for torchscript.
-    # In addition, the docs must be updated. I don't understand what is doing.
-    # if color_channel_num is not None and color_channel_num != 1:
-    #    channel_list = [0, 1, 2, 3]
-    #    channel_list.insert(1, channel_list.pop(color_channel_num))
-    #    tensor = tensor.permute(*channel_list)
     return tensor
 
 
-def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
-    """Converts a PyTorch tensor image to BCHW format.
+def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
+    """Converts a PyTorch tensor image to BCDHW format.
+
     Args:
         tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
             :math:`(B, C, D, H, W)`.
-        color_channel_num (Optional[int]): Color channel of the input tensor.
-            If None, it will not alter the input channel.
 
     Returns:
         torch.Tensor: input tensor of the form :math:`(B, C, D, H, W)`.
@@ -101,12 +92,6 @@ def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> 
     if len(tensor.shape) == 4:
         tensor = tensor.unsqueeze(0)
 
-    # TODO(jian): this function is never used. Besides is not feasible for torchscript.
-    # In addition, the docs must be updated. I don't understand what is doing.
-    # if color_channel_num is not None and color_channel_num != 1:
-    #    channel_list = [0, 1, 2, 3, 4]
-    #    channel_list.insert(1, channel_list.pop(color_channel_num))
-    #    tensor = tensor.permute(*channel_list)
     return tensor
 
 
