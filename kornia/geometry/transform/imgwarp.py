@@ -458,8 +458,8 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners (bool, optional): mode for grid_generation. Default: None.
-        normalized_coordinates (bool): whether to normalize
-          coordinates in the range [-1, 1]
+        normalized_coordinates (bool): whether the input coordinates are
+           normalised in the range of [-1, 1]. Default: False
 
     Returns:
         torch.Tensor: the warped tensor with same shape as the input grid maps.
