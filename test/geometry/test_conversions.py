@@ -11,6 +11,24 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+@pytest.fixture
+def atol(device, dtype):
+    """Lower tolerance for cuda-float16 only"""
+    if 'cuda' in device.type and dtype == torch.float16:
+        return 1.e-3
+    else:
+        return 1.e-4
+
+
+@pytest.fixture
+def rtol(device, dtype):
+    """Lower tolerance for cuda-float16 only"""
+    if 'cuda' in device.type and dtype == torch.float16:
+        return 1.e-3
+    else:
+        return 1.e-4
+
+
 # based on:
 # https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
 
@@ -50,33 +68,33 @@ class TestAngleAxisToQuaternion:
     def test_small_angle_z(self, device, dtype):
         theta = 1e-2
         angle_axis = torch.tensor([0., 0., theta], device=device, dtype=dtype)
-        expected = torch.tensor([0., 0.,np.sin(theta / 2), np.cos(theta / 2)], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., np.sin(theta / 2), np.cos(theta / 2)], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
-    def test_x_rotation(self, device, dtype):
-        half_sqrt2 = 0.5 * np.sqrt(2)
+    def test_x_rotation(self, device, dtype, atol, rtol):
+        half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor([kornia.pi / 2., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([half_sqrt2, 0., 0., half_sqrt2], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
 
-    def test_y_rotation(self, device, dtype):
-        half_sqrt2 = 0.5 * np.sqrt(2)
+    def test_y_rotation(self, device, dtype, atol, rtol):
+        half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor([0., kornia.pi / 2., 0.], device=device, dtype=dtype)
         expected = torch.tensor([0., half_sqrt2, 0., half_sqrt2], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
 
-    def test_z_rotation(self, device, dtype):
-        half_sqrt2 = 0.5 * np.sqrt(2)
+    def test_z_rotation(self, device, dtype, atol, rtol):
+        half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor([0., 0., kornia.pi / 2.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., half_sqrt2, half_sqrt2], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
-        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
-        eps = 1e-12
+        eps = torch.finfo(dtype).eps
         angle_axis = torch.tensor([0., 0., 0.], device=device, dtype=dtype) + eps
         angle_axis = tensor_to_gradcheck_var(angle_axis)
         # evaluate function gradient
@@ -230,10 +248,12 @@ class TestQuaternionLogToExp:
         quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log)
         assert quaternion_exp.shape == (batch_size, 4)
 
-    def test_unit_quaternion(self, device, dtype):
+    def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion_log = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
-        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+        eps = torch.finfo(dtype).eps
+        quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps)
+        assert_allclose(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype):
         one = torch.tensor(1., device=device, dtype=dtype)
@@ -285,10 +305,12 @@ class TestQuaternionExpToLog:
         quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
         assert quaternion_log.shape == (batch_size, 3)
 
-    def test_unit_quaternion(self, device, dtype):
+    def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion_exp = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
-        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
+        eps = torch.finfo(dtype).eps
+        quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps)
+        assert_allclose(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype):
         quaternion_exp = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
@@ -305,11 +327,12 @@ class TestQuaternionExpToLog:
         expected = torch.tensor([0., 0., kornia.pi / 2.], device=device, dtype=dtype)
         assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_back_and_forth(self, device, dtype):
+    def test_back_and_forth(self, device, dtype, atol, rtol):
         quaternion_exp = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
-        quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp)
-        quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log)
-        assert_allclose(quaternion_exp, quaternion_exp_hat, atol=1e-4, rtol=1e-4)
+        eps = torch.finfo(dtype).eps
+        quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps)
+        quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log, eps=eps)
+        assert_allclose(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
@@ -388,7 +411,7 @@ class TestQuaternionToAngleAxis:
         assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
-        eps = 1e-12
+        eps = torch.finfo(dtype).eps
         quaternion = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype) + eps
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
@@ -420,7 +443,7 @@ def test_rad2deg(batch_shape, device, dtype):
 
 @pytest.mark.parametrize("batch_shape", [
     (2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3), ])
-def test_deg2rad(batch_shape, device, dtype):
+def test_deg2rad(batch_shape, device, dtype, atol, rtol):
     # generate input data
     x_deg = 180. * torch.rand(batch_shape, device=device, dtype=dtype)
 
@@ -428,7 +451,7 @@ def test_deg2rad(batch_shape, device, dtype):
     x_rad = kornia.deg2rad(x_deg)
     x_rad_to_deg = kornia.rad2deg(x_rad)
 
-    assert_allclose(x_deg, x_rad_to_deg, atol=1e-4, rtol=1e-4)
+    assert_allclose(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
     assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)

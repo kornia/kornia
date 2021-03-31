@@ -142,40 +142,31 @@ class TestAngleOfRotations:
     """
 
     @staticmethod
-    def matrix_angle_abs(mx):
+    def matrix_angle_abs(mx: torch.Tensor):
         """Unsigned rotation matrix angle"""
-        return torch.arccos((torch.trace(mx[..., :3, :3]) - 1.) / 2.)
+        trace = torch.diagonal(mx[..., :3, :3], dim1=-1, dim2=-2).sum(-1, keepdim=True)
+        return torch.arccos((trace - 1.) / 2.)
 
     @staticmethod
-    def axis_and_angle_to_rotation_matrix(axis_name: str, angle: float, device, dtype):
+    def axis_and_angle_to_rotation_matrix(axis_name: str, angle: torch.Tensor, device, dtype):
         """
         See also: https://en.wikipedia.org/wiki/Rotation_matrix#Basic_rotations
         """
         axis_name = axis_name.lower()
         assert axis_name in ('x', 'y', 'z')
-        sn = np.sin(angle)
-        cs = np.cos(angle)
+        sn = torch.sin(angle)
+        cs = torch.cos(angle)
+        ones = torch.ones_like(sn)
+        zeros = torch.zeros_like(sn)
         if axis_name == 'x':
-            axis = torch.tensor((1., 0., 0.), device=device, dtype=dtype)
-            rot_m = torch.tensor(
-                ((1., 0., 0.),
-                 (0., cs, -sn),
-                 (0., sn, cs)),
-                device=device, dtype=dtype)
+            axis = torch.tensor((1., 0., 0.), device=device, dtype=dtype).repeat(angle.size())
+            rot_m = torch.stack((ones, zeros, zeros, zeros, cs, -sn, zeros, sn, cs), dim=2).view(-1, 3, 3)
         elif axis_name == 'y':
-            axis = torch.tensor((0., 1., 0.), device=device, dtype=dtype)
-            rot_m = torch.tensor(
-                ((cs, 0., sn),
-                 (0., 1., 0.),
-                 (-sn, 0., cs)),
-                device=device, dtype=dtype)
+            axis = torch.tensor((0., 1., 0.), device=device, dtype=dtype).repeat(angle.size())
+            rot_m = torch.stack((cs, zeros, sn, zeros, ones, zeros, -sn, zeros, cs), dim=2).view(-1, 3, 3)
         elif axis_name == 'z':
-            axis = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
-            rot_m = torch.tensor(
-                ((cs, -sn, 0.),
-                 (sn, cs, 0.),
-                 (0., 0., 1.)),
-                device=device, dtype=dtype)
+            axis = torch.tensor((0., 0., 1.), device=device, dtype=dtype).repeat(angle.size())
+            rot_m = torch.stack((cs, -sn, zeros, sn, cs, zeros, zeros, zeros, ones), dim=2).view(-1, 3, 3)
         else:
             raise NotImplementedError(f'Not prepared for axis with name {axis_name}')
 
@@ -184,49 +175,57 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype):
         # Random angle in [-pi..pi]
-        angle = np.random.random() * 2. * np.pi - np.pi
+        angle = torch.tensor((np.random.random(size=(2, 1)) * 2. * np.pi - np.pi), device=device, dtype=dtype)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype)
+        assert rot_m.dim() == 3
+        assert rot_m.shape[-1] == 3
+        assert rot_m.shape[-2] == 3
+        assert rot_m.shape[-3] == angle.numel()
+        assert axis.shape[-1] == 3
+        assert axis.shape[-2] == angle.numel()
 
         # Make sure the returned axis matches the named one, and the appropriate column
         if axis_name == 'x':
-            assert_allclose(axis, (1., 0., 0.))
-            assert_allclose(axis, rot_m[:3, 0])
+            assert_allclose(axis, torch.tensor((1., 0., 0.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, rot_m[..., :3, 0])
         elif axis_name == 'y':
-            assert_allclose(axis, (0., 1., 0.))
-            assert_allclose(axis, rot_m[:3, 1])
+            assert_allclose(axis, torch.tensor((0., 1., 0.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, rot_m[..., :3, 1])
         elif axis_name == 'z':
-            assert_allclose(axis, (0., 0., 1.))
-            assert_allclose(axis, rot_m[:3, 2])
+            assert_allclose(axis, torch.tensor((0., 0., 1.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, rot_m[..., :3, 2])
         else:
             raise NotImplementedError(f'Not prepared for axis_name {axis_name}')
 
         # Make sure axes are perpendicular
-        assert_allclose(torch.dot(rot_m[:3, 0], rot_m[:3, 1]), 0., atol=1.e-4, rtol=1.e-4)
-        assert_allclose(torch.dot(rot_m[:3, 1], rot_m[:3, 2]), 0., atol=1.e-4, rtol=1.e-4)
-        assert_allclose(torch.dot(rot_m[:3, 0], rot_m[:3, 2]), 0., atol=1.e-4, rtol=1.e-4)
+        assert_allclose(rot_m[..., :3, 1:2].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], 0., atol=1.e-4, rtol=1.e-4)
+        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 1:2], 0., atol=1.e-4, rtol=1.e-4)
+        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], 0., atol=1.e-4, rtol=1.e-4)
 
         # Make sure axes are unit norm
-        one = torch.tensor((1.,), device=device, dtype=dtype)
-        assert torch.isclose(torch.linalg.norm(rot_m[:3, 0]), one, atol=1.e-4, rtol=1.e-4)
-        assert torch.isclose(torch.linalg.norm(rot_m[:3, 1]), one, atol=1.e-4, rtol=1.e-4)
-        assert torch.isclose(torch.linalg.norm(rot_m[:3, 2]), one, atol=1.e-4, rtol=1.e-4)
+        one = torch.ones_like(angle)
+        assert_allclose(torch.linalg.norm(rot_m[..., :3, 0], dim=-1, keepdim=True), one, atol=1.e-4, rtol=1.e-4)
+        assert_allclose(torch.linalg.norm(rot_m[..., :3, 1], dim=-1, keepdim=True), one, atol=1.e-4, rtol=1.e-4)
+        assert_allclose(torch.linalg.norm(rot_m[..., :3, 2], dim=-1, keepdim=True), one, atol=1.e-4, rtol=1.e-4)
 
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -135., -90., -45., 0., 45, 90, 135, 179.9))
     def test_matrix_angle(self, axis_name, angle_deg, device, dtype):
-        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device)
+        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).view(1, 1)
         rot_m, _ = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
                                                                           angle=angle,
                                                                           device=device,
                                                                           dtype=dtype)
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
-        assert_allclose(np.abs(angle), matrix_angle_abs)
+        assert_allclose(torch.abs(angle), matrix_angle_abs)
 
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90., -45., 0., 45, 90, 179.9))
     def test_quaternion(self, axis_name, angle_deg, device, dtype):
-        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device)
+        angle = torch.tensor((angle_deg * kornia.pi / 180.,), device=device, dtype=dtype).repeat(2, 1)
+        pi = torch.ones_like(angle) * kornia.pi
+        assert len(angle.shape) >= 2
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
                                                                              angle=angle,
                                                                              device=device,
@@ -234,13 +233,15 @@ class TestAngleOfRotations:
         quaternion = kornia.rotation_matrix_to_quaternion(rot_m)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
-        angle_hat = 2. * torch.atan2(torch.linalg.norm(quaternion[..., :3]), quaternion[..., 3])
+        angle_hat = 2. * torch.atan2(torch.linalg.norm(quaternion[..., :3], dim=-1, keepdim=True), quaternion[..., 3:4])
         # make sure it lands between [-pi..pi)
-        while kornia.pi <= angle_hat:
-            angle_hat -= 2. * kornia.pi
+        mask = pi <= angle_hat
+        while torch.any(mask):
+            angle_hat = torch.where(mask, angle_hat - 2. * kornia.pi, angle_hat)
+            mask = pi <= angle_hat
         # invert angle, if quaternion axis points in the opposite direction of the original axis
-        if torch.dot(quaternion[..., :3], axis) < 0.:
-            angle_hat *= -1.
+        dots = (quaternion[..., :3] * axis).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0., angle_hat * -1., angle_hat)
         # quaternion angle should match input angle
         assert_allclose(angle_hat, angle, atol=1.e-4, rtol=1.e-4)
         # magnitude of angle should match matrix rotation angle
@@ -250,17 +251,17 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90., -45., 0, 45, 90, 179.9))
     def test_angle_axis(self, axis_name, angle_deg, device, dtype):
-        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device)
+        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).repeat(2, 1)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
                                                                              angle=angle,
                                                                              device=device,
                                                                              dtype=dtype)
         angle_axis = kornia.rotation_matrix_to_angle_axis(rot_m)
         # compute angle_axis rotation angle
-        angle_hat = torch.linalg.norm(angle_axis)
+        angle_hat = torch.linalg.norm(angle_axis, dim=-1, keepdim=True)
         # invert angle, if angle_axis axis points in the opposite direction of the original axis
-        if torch.dot(angle_axis, axis) < 0.:
-            angle_hat *= -1.
+        dots = (angle_axis * axis).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0., angle_hat * -1., angle_hat)
         # angle_axis angle should match input angle
         assert_allclose(angle_hat, angle, atol=1.e-4, rtol=1.e-4)
         # magnitude of angle should match matrix rotation angle
@@ -270,7 +271,8 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90., -45., 0, 45, 90, 179.9))
     def test_log_quaternion(self, axis_name, angle_deg, device, dtype):
-        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device)
+        angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).repeat(2, 1)
+        pi = torch.ones_like(angle) * kornia.pi
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
                                                                              angle=angle,
                                                                              device=device,
@@ -278,13 +280,15 @@ class TestAngleOfRotations:
         quaternion = kornia.rotation_matrix_to_quaternion(rot_m)
         log_q = kornia.quaternion_exp_to_log(quaternion)
         # compute angle_axis rotation angle
-        angle_hat = 2. * torch.linalg.norm(log_q)
+        angle_hat = 2. * torch.linalg.norm(log_q, dim=-1, keepdim=True)
         # make sure it lands between [-pi..pi)
-        while kornia.pi <= angle_hat:
-            angle_hat -= 2. * kornia.pi
+        mask = pi <= angle_hat
+        while torch.any(mask):
+            angle_hat = torch.where(mask, angle_hat - 2. * kornia.pi, angle_hat)
+            mask = pi <= angle_hat
         # invert angle, if angle_axis axis points in the opposite direction of the original axis
-        if torch.dot(log_q, axis) < 0.:
-            angle_hat *= -1.
+        dots = (log_q * axis).sum(dim=-1, keepdim=True)
+        angle_hat = torch.where(dots < 0., angle_hat * -1., angle_hat)
         # angle_axis angle should match input angle
         assert_allclose(angle_hat, angle, atol=1.e-4, rtol=1.e-4)
         # magnitude of angle should match matrix rotation angle
