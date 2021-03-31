@@ -29,21 +29,49 @@ class TestAngleAxisToQuaternion:
 
     def test_zero_angle(self, device, dtype):
         angle_axis = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
-        expected = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
-    def test_small_angle(self, device, dtype):
+    def test_small_angle_x(self, device, dtype):
         theta = 1e-2
         angle_axis = torch.tensor([theta, 0., 0.], device=device, dtype=dtype)
-        expected = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([np.sin(theta / 2), 0., 0., np.cos(theta / 2)], device=device, dtype=dtype)
+        quaternion = kornia.angle_axis_to_quaternion(angle_axis)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+
+    def test_small_angle_y(self, device, dtype):
+        theta = 1e-2
+        angle_axis = torch.tensor([0., theta, 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., np.sin(theta / 2), 0., np.cos(theta / 2)], device=device, dtype=dtype)
+        quaternion = kornia.angle_axis_to_quaternion(angle_axis)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+
+    def test_small_angle_z(self, device, dtype):
+        theta = 1e-2
+        angle_axis = torch.tensor([0., 0., theta], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0.,np.sin(theta / 2), np.cos(theta / 2)], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
     def test_x_rotation(self, device, dtype):
         half_sqrt2 = 0.5 * np.sqrt(2)
-        angle_axis = torch.tensor([kornia.pi / 2, 0., 0.], device=device, dtype=dtype)
-        expected = torch.tensor([half_sqrt2, half_sqrt2, 0., 0.], device=device, dtype=dtype)
+        angle_axis = torch.tensor([kornia.pi / 2., 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([half_sqrt2, 0., 0., half_sqrt2], device=device, dtype=dtype)
+        quaternion = kornia.angle_axis_to_quaternion(angle_axis)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+
+    def test_y_rotation(self, device, dtype):
+        half_sqrt2 = 0.5 * np.sqrt(2)
+        angle_axis = torch.tensor([0., kornia.pi / 2., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., half_sqrt2, 0., half_sqrt2], device=device, dtype=dtype)
+        quaternion = kornia.angle_axis_to_quaternion(angle_axis)
+        assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
+
+    def test_z_rotation(self, device, dtype):
+        half_sqrt2 = 0.5 * np.sqrt(2)
+        angle_axis = torch.tensor([0., 0., kornia.pi / 2.], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., half_sqrt2, half_sqrt2], device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis)
         assert_allclose(quaternion, expected, atol=1e-4, rtol=1e-4)
 
@@ -207,14 +235,26 @@ class TestQuaternionLogToExp:
         expected = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
         assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
 
-    def test_pi_quaternion(self, device, dtype):
+    def test_pi_quaternion_x(self, device, dtype):
         one = torch.tensor(1., device=device, dtype=dtype)
         quaternion_log = torch.tensor([1., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([torch.sin(one), 0., 0., torch.cos(one)], device=device, dtype=dtype)
         assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
 
+    def test_pi_quaternion_y(self, device, dtype):
+        one = torch.tensor(1., device=device, dtype=dtype)
+        quaternion_log = torch.tensor([0., 1., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., torch.sin(one), 0., torch.cos(one)], device=device, dtype=dtype)
+        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+
+    def test_pi_quaternion_z(self, device, dtype):
+        one = torch.tensor(1., device=device, dtype=dtype)
+        quaternion_log = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., torch.sin(one), torch.cos(one)], device=device, dtype=dtype)
+        assert_allclose(kornia.quaternion_log_to_exp(quaternion_log), expected)
+
     def test_back_and_forth(self, device, dtype):
-        quaternion_log = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
+        quaternion_log = torch.tensor([1., 0., 0.], device=device, dtype=dtype)
         quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log)
         quaternion_log_hat = kornia.quaternion_exp_to_log(quaternion_exp)
         assert_allclose(quaternion_log, quaternion_log_hat)
@@ -250,9 +290,19 @@ class TestQuaternionExpToLog:
         expected = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
         assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_pi_quaternion(self, device, dtype):
+    def test_pi_quaternion_x(self, device, dtype):
         quaternion_exp = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
-        expected = torch.tensor([kornia.pi / 2, 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([kornia.pi / 2., 0., 0.], device=device, dtype=dtype)
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
+
+    def test_pi_quaternion_y(self, device, dtype):
+        quaternion_exp = torch.tensor([0., 1., 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., kornia.pi / 2., 0.], device=device, dtype=dtype)
+        assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
+
+    def test_pi_quaternion_z(self, device, dtype):
+        quaternion_exp = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., kornia.pi / 2.], device=device, dtype=dtype)
         assert_allclose(kornia.quaternion_exp_to_log(quaternion_exp), expected, atol=1e-4, rtol=1e-4)
 
     def test_back_and_forth(self, device, dtype):
@@ -293,33 +343,53 @@ class TestQuaternionToAngleAxis:
         assert angle_axis.shape == (batch_size, 3)
 
     def test_unit_quaternion(self, device, dtype):
-        quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
+        quaternion = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., 0.], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
+    def test_x_rotation(self, device, dtype):
+        quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype)
+        expected = torch.tensor([kornia.pi, 0., 0.], device=device, dtype=dtype)
+        angle_axis = kornia.quaternion_to_angle_axis(quaternion)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
+
     def test_y_rotation(self, device, dtype):
-        quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
+        quaternion = torch.tensor([0., 1., 0., 0.], device=device, dtype=dtype)
         expected = torch.tensor([0., kornia.pi, 0.], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_z_rotation(self, device, dtype):
-        quaternion = torch.tensor([np.sqrt(3) / 2, 0., 0., 0.5], device=device, dtype=dtype)
+        quaternion = torch.tensor([0., 0., 0.5, np.sqrt(3) / 2], device=device, dtype=dtype)
         expected = torch.tensor([0., 0., kornia.pi / 3], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
-    def test_small_angle(self, device, dtype):
+    def test_small_angle_x(self, device, dtype):
         theta = 1e-2
-        quaternion = torch.tensor([np.cos(theta / 2), np.sin(theta / 2), 0., 0.], device=device, dtype=dtype)
+        quaternion = torch.tensor([np.sin(theta / 2), 0., 0., np.cos(theta / 2)], device=device, dtype=dtype)
         expected = torch.tensor([theta, 0., 0.], device=device, dtype=dtype)
+        angle_axis = kornia.quaternion_to_angle_axis(quaternion)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
+
+    def test_small_angle_y(self, device, dtype):
+        theta = 1e-2
+        quaternion = torch.tensor([0., np.sin(theta / 2), 0., np.cos(theta / 2)], device=device, dtype=dtype)
+        expected = torch.tensor([0., theta, 0.], device=device, dtype=dtype)
+        angle_axis = kornia.quaternion_to_angle_axis(quaternion)
+        assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
+
+    def test_small_angle_z(self, device, dtype):
+        theta = 1e-2
+        quaternion = torch.tensor([0., 0., np.sin(theta / 2), np.cos(theta / 2)], device=device, dtype=dtype)
+        expected = torch.tensor([0., 0., theta], device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion)
         assert_allclose(angle_axis, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         eps = 1e-12
-        quaternion = torch.tensor([1., 0., 0., 0.], device=device, dtype=dtype) + eps
+        quaternion = torch.tensor([0., 0., 0., 1.], device=device, dtype=dtype) + eps
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
         assert gradcheck(kornia.quaternion_to_angle_axis, (quaternion,),

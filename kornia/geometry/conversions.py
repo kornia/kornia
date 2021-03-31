@@ -526,13 +526,13 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:
             "Input must be a tensor of shape Nx4 or 4. Got {}".format(
                 quaternion.shape))
     # unpack input and compute conversion
-    q1: torch.Tensor = quaternion[..., 1]
-    q2: torch.Tensor = quaternion[..., 2]
-    q3: torch.Tensor = quaternion[..., 3]
+    q1: torch.Tensor = quaternion[..., 0]
+    q2: torch.Tensor = quaternion[..., 1]
+    q3: torch.Tensor = quaternion[..., 2]
     sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
     sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
-    cos_theta: torch.Tensor = quaternion[..., 0]
+    cos_theta: torch.Tensor = quaternion[..., 3]
     two_theta: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta),
         torch.atan2(sin_theta, cos_theta))
@@ -679,7 +679,7 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor) -> torch.Tensor:
     quaternion[..., 0:1] += a0 * k
     quaternion[..., 1:2] += a1 * k
     quaternion[..., 2:3] += a2 * k
-    return torch.cat([w, quaternion], dim=-1)
+    return torch.cat([quaternion, w], dim=-1)
 
 
 # based on:
