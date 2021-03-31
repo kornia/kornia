@@ -453,6 +453,7 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
     assert_allclose(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
+    eps = torch.finfo(dtype).eps
     assert gradcheck(kornia.deg2rad, (tensor_to_gradcheck_var(x_deg),),
                      raise_exception=True)
 
@@ -695,7 +696,7 @@ class TestConvertPointsFromHomogeneous:
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 5])
-def test_angle_axis_to_rotation_matrix(batch_size, device, dtype):
+def test_angle_axis_to_rotation_matrix(batch_size, device, dtype, atol, rtol):
     # generate input data
     angle_axis = torch.rand(batch_size, 3, device=device, dtype=dtype)
     eye_batch = create_eye_batch(batch_size, 3, device=device, dtype=dtype)
@@ -705,7 +706,7 @@ def test_angle_axis_to_rotation_matrix(batch_size, device, dtype):
 
     rotation_matrix_eye = torch.matmul(
         rotation_matrix, rotation_matrix.transpose(1, 2))
-    assert_allclose(rotation_matrix_eye, eye_batch, atol=1e-4, rtol=1e-4)
+    assert_allclose(rotation_matrix_eye, eye_batch, atol=atol, rtol=rtol)
 
     # evaluate function gradient
     angle_axis = tensor_to_gradcheck_var(angle_axis)  # to var
@@ -742,7 +743,8 @@ def test_rotation_matrix_to_angle_axis_gradcheck(batch_size, device_type):
 
 
 class TestNormalizePixelCoordinates:
-    def test_tensor_bhw2(self, device, dtype):
+    def test_tensor_bhw2(self, device, dtype, atol, rtol):
+        eps = torch.finfo(dtype).eps
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False, device=device).to(dtype=dtype)
@@ -751,11 +753,12 @@ class TestNormalizePixelCoordinates:
             height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
 
         grid_norm = kornia.normalize_pixel_coordinates(
-            grid, height, width)
+            grid, height, width, eps=eps)
 
-        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(grid_norm, expected, atol=atol, rtol=rtol)
 
-    def test_list(self, device, dtype):
+    def test_list(self, device, dtype, atol, rtol):
+        eps = torch.finfo(dtype).eps
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=False, device=device).to(dtype=dtype)
@@ -766,9 +769,9 @@ class TestNormalizePixelCoordinates:
         expected = expected.contiguous().view(-1, 2)
 
         grid_norm = kornia.normalize_pixel_coordinates(
-            grid, height, width)
+            grid, height, width, eps=eps)
 
-        assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(grid_norm, expected, atol=atol, rtol=rtol)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
