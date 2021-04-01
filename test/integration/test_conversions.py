@@ -205,13 +205,13 @@ class TestAngleOfRotations:
 
         # Make sure the returned axis matches the named one, and the appropriate column
         if axis_name == 'x':
-            assert_allclose(axis, torch.tensor((1., 0., 0.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, torch.tensor(((1., 0., 0.),) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 0])
         elif axis_name == 'y':
-            assert_allclose(axis, torch.tensor((0., 1., 0.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, torch.tensor(((0., 1., 0.),) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 1])
         elif axis_name == 'z':
-            assert_allclose(axis, torch.tensor((0., 0., 1.), device=device, dtype=dtype).view(1, 3))
+            assert_allclose(axis, torch.tensor(((0., 0., 1.),) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 2])
         else:
             raise NotImplementedError(f'Not prepared for axis_name {axis_name}')
