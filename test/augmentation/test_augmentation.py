@@ -963,7 +963,7 @@ class TestRandomHorizontalFlip:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
-            return kornia.random_hflip(data)
+            return kornia.apply_hflip(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -1140,7 +1140,7 @@ class TestRandomVerticalFlip:
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.random_vflip(data)
+            return kornia.apply_vflip(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -1910,7 +1910,11 @@ class TestRandomRotation:
 
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.random_rotation(data, degrees=45.0)
+            flags = dict(
+                interpolation=torch.tensor(1),
+                align_corners=torch.tensor(True)
+            )
+            return kornia.apply_rotation(data, params={"degrees": torch.tensor(45.0)}, flags=flags)
 
         input = torch.tensor([[1., 0., 0., 2.],
                               [0., 0., 0., 0.],
