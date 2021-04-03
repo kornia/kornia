@@ -490,7 +490,7 @@ def random_crop_size_generator(
     w = torch.sqrt(area * aspect_ratio).round().floor()
     h = torch.sqrt(area / aspect_ratio).round().floor()
     # Element-wise w, h condition
-    cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
+    cond = ((0 < w) * (w < size[0]) * (0 < h) * (h < size[1])).int()
 
     # torch.argmax is not reproducible accross devices: https://github.com/pytorch/pytorch/issues/17738
     # Here, we will select the first occurance of the duplicated elements.
