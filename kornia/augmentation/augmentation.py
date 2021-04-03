@@ -18,17 +18,6 @@ from .utils import (
 )
 
 
-class AugmentationBase(AugmentationBase2D):
-    __doc__ = AugmentationBase2D.__doc__
-
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
-                 keepdim: bool = False) -> None:
-        super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
-                                                 keepdim=keepdim)
-        raise DeprecationWarning(
-            "`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
-
-
 class RandomHorizontalFlip(AugmentationBase2D):
 
     r"""Applies a random horizontal flip to a tensor image or a batch of tensor images with a given probability.
