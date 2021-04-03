@@ -872,7 +872,8 @@ class RandomResizedCrop(AugmentationBase2D):
         scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
         ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
         target_size: torch.Tensor = rg.random_crop_size_generator(
-            batch_shape[0], self.size, scale, ratio, self.same_on_batch, self.device, self.dtype)['size']
+            batch_shape[0], (batch_shape[-2], batch_shape[-1]), scale, ratio, self.same_on_batch,
+            self.device, self.dtype)['size']
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch,
                                         device=self.device, dtype=self.dtype)

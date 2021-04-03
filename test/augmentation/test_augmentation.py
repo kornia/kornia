@@ -2123,8 +2123,8 @@ class TestRandomResizedCrop:
         ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[4.0000, 4.5000, 5.0000],
-               [7.0000, 7.5000, 8.0000]]]], device=device, dtype=dtype)
+            [[[[0.0000, 1.0000, 2.0000],
+               [6.0000, 7.0000, 8.0000]]]], device=device, dtype=dtype)
 
         rrc = RandomResizedCrop(
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
