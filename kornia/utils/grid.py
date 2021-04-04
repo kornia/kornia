@@ -8,7 +8,8 @@ def create_meshgrid(
         height: int,
         width: int,
         normalized_coordinates: bool = True,
-        device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
+        device: Optional[torch.device] = torch.device('cpu'),
+        dtype: torch.dtype = torch.float32) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
     When the flag `normalized_coordinates` is set to True, the grid is
@@ -22,12 +23,14 @@ def create_meshgrid(
         normalized_coordinates (bool): whether to normalize
           coordinates in the range [-1, 1] in order to be consistent with the
           PyTorch function grid_sample.
+        device (torch.device): the device on which the grid will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated gird. Default: float32.
 
     Return:
         torch.Tensor: returns a grid tensor with shape :math:`(1, H, W, 2)`.
     """
-    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
-    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
+    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
     # Fix TracerWarning
     # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
     #       tensors will be generated.
@@ -50,7 +53,8 @@ def create_meshgrid3d(
         height: int,
         width: int,
         normalized_coordinates: bool = True,
-        device: Optional[torch.device] = torch.device('cpu')) -> torch.Tensor:
+        device: Optional[torch.device] = torch.device('cpu'),
+        dtype: torch.dtype = torch.float32) -> torch.Tensor:
     """Generates a coordinate grid for an image.
 
     When the flag `normalized_coordinates` is set to True, the grid is
@@ -65,13 +69,15 @@ def create_meshgrid3d(
         normalized_coordinates (bool): whether to normalize
           coordinates in the range [-1, 1] in order to be consistent with the
           PyTorch function grid_sample.
+        device (torch.device): the device on which the grid will be generated. Default: cpu.
+        dtype (torch.dtype): the data type of the generated gird. Default: float32.
 
     Return:
         torch.Tensor: returns a grid tensor with shape :math:`(1, D, H, W, 3)`.
     """
-    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=torch.float)
-    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=torch.float)
-    zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=torch.float)
+    xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+    ys: torch.Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+    zs: torch.Tensor = torch.linspace(0, depth - 1, depth, device=device, dtype=dtype)
     # Fix TracerWarning
     if normalized_coordinates:
         xs = (xs / (width - 1) - 0.5) * 2
