@@ -29,6 +29,7 @@ from kornia.filters import motion_blur3d
 from .__temp__ import __deprecation_warning
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply horizontal flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
@@ -43,6 +44,7 @@ def apply_hflip3d(input: torch.Tensor) -> torch.Tensor:
     return torch.flip(input, [-1])
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the horizontal flip transformation matrix :math: `(*, 4, 4)`.
@@ -63,6 +65,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_vflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
@@ -77,6 +80,7 @@ def apply_vflip3d(input: torch.Tensor) -> torch.Tensor:
     return torch.flip(input, [-2])
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the veritical flip transformation matrix :math: `(*, 4, 4)`.
@@ -97,6 +101,7 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
     r"""Apply depthical flip on a 3D tensor volume or a batch of tensors volumes with given random parameters.
@@ -111,6 +116,7 @@ def apply_dflip3d(input: torch.Tensor) -> torch.Tensor:
     return torch.flip(input, [-3])
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_intensity_transformation3d(input: torch.Tensor):
     r"""Compute the identity matrix :math: `(*, 4, 4)`.
@@ -125,6 +131,7 @@ def compute_intensity_transformation3d(input: torch.Tensor):
     return identity
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the depthical flip transformation matrix :math: `(*, 4, 4)`.
@@ -145,6 +152,7 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                    flags: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -188,6 +196,7 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return out_data.view_as(input)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the affine transformation matrix :math: `(*, 4, 4)`.
@@ -217,6 +226,7 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                      flags: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -245,6 +255,7 @@ def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]):
     r"""Compute the rotation transformation matrix :math: `(*, 4, 4)`.
@@ -275,6 +286,7 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
     return trans_mat
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
                         flags: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -306,6 +318,7 @@ def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return motion_blur3d(input, kernel_size, angle, direction, border_type, mode)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
@@ -334,6 +347,7 @@ def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
         input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_crop_transformation3d(
     input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
@@ -354,6 +368,7 @@ def compute_crop_transformation3d(
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_perspective3d(
     input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
@@ -394,6 +409,7 @@ def apply_perspective3d(
     return out_data.view_as(input)
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the perspective transformation matrix :math: `(*, 4, 4)`.
@@ -419,6 +435,7 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input3d
 def apply_equalize3d(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize a tensor volume or a batch of tensors volumes with given random parameters.
