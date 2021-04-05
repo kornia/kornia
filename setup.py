@@ -80,7 +80,7 @@ def read(*names, **kwargs):
 
 
 # open readme file and remove logo
-readme = open('README.rst').read()
+readme = open('README.md').read()
 long_description = '\n'.join(readme.split('\n')[7:])
 
 
