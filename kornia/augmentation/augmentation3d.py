@@ -70,7 +70,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_hflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_hflip3d(input)
 
 
@@ -135,7 +137,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_vflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_vflip3d(input)
 
 
@@ -201,7 +205,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_dflip_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_dflip3d(input)
 
 
@@ -337,7 +343,9 @@ class RandomAffine3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation3d(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_affine3d(input, params, self.flags)
 
 
@@ -428,7 +436,9 @@ class RandomRotation3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation3d(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_rotation3d(input, params, self.flags)
 
 
@@ -531,7 +541,9 @@ class RandomMotionBlur3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_motion_blur3d(input, params, self.flags)
 
 
@@ -614,7 +626,9 @@ class CenterCrop3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation3d(input, params, self.flags)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_crop3d(input, params, self.flags)
 
 
@@ -739,7 +753,9 @@ class RandomCrop3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation3d(input, params, self.flags)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_crop3d(input, params, self.flags)
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
@@ -834,7 +850,9 @@ class RandomPerspective3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation3d(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_perspective3d(input, params, self.flags)
 
 
@@ -892,5 +910,7 @@ class RandomEqualize3D(AugmentationBase3D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation3d(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_equalize3d(input, params)

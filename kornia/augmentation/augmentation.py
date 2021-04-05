@@ -69,7 +69,9 @@ class RandomHorizontalFlip(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_hflip_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_hflip(input)
 
 
@@ -118,7 +120,9 @@ class RandomVerticalFlip(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_vflip_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_vflip(input)
 
 
@@ -202,7 +206,9 @@ class ColorJitter(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_color_jitter(input, params)
 
 
@@ -259,7 +265,9 @@ class RandomGrayscale(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_grayscale(input)
 
 
@@ -328,7 +336,9 @@ class RandomErasing(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_erase_rectangles(input, params)
 
 
@@ -398,7 +408,9 @@ class RandomPerspective(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_perspective_transformation(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_perspective(input, params, self.flags)
 
 
@@ -526,7 +538,9 @@ class RandomAffine(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_affine_transformation(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_affine(input, params, self.flags)
 
 
@@ -599,7 +613,9 @@ class CenterCrop(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation(input, params, self.flags)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_crop(input, params, self.flags)
 
 
@@ -673,7 +689,9 @@ class RandomRotation(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_rotate_tranformation(input, params)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_rotation(input, params, self.flags)
 
 
@@ -780,7 +798,9 @@ class RandomCrop(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation(input, params, self.flags)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_crop(input, params, self.flags)
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
@@ -870,7 +890,9 @@ class RandomResizedCrop(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_crop_transformation(input, params, self.flags)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_crop(input, params, self.flags)
 
 
@@ -917,7 +939,9 @@ class Normalize(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return normalize(input, self.mean, self.std)
 
 
@@ -964,7 +988,9 @@ class Denormalize(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return denormalize(input, self.mean, self.std)
 
 
@@ -1051,7 +1077,9 @@ class RandomMotionBlur(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_motion_blur(input, params, self.flags)
 
 
@@ -1118,7 +1146,9 @@ class RandomSolarize(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_solarize(input, params)
 
 
@@ -1183,7 +1213,9 @@ class RandomPosterize(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_posterize(input, params)
 
 
@@ -1246,7 +1278,9 @@ class RandomSharpness(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_sharpness(input, params)
 
 
@@ -1298,7 +1332,9 @@ class RandomEqualize(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return F.compute_intensity_transformation(input)
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return F.apply_equalize(input, params)
 
 
@@ -1354,5 +1390,7 @@ class GaussianBlur(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return self.transform(input)

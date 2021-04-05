@@ -149,11 +149,17 @@ class _AugmentationBase(_BasicAugmentationBase):
                         to the batch form (False). Default: False.
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+    def __init__(self, return_transform: Optional[bool] = None, same_on_batch: bool = False, p: float = 0.5,
                  p_batch: float = 1., keepdim: bool = False) -> None:
         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
         self.p_batch = p_batch
+        if return_transform is not None:
+            warnings.warn(
+                "`return_transform` is going to be deprecated and the default behaviour is False."
+                "Please access the transformation matrix through `_transform_matrix` attribute."
+                "For chained transformation matrix, please use `kornia.augmentation.Sequential` instead."
+            )
         self.return_transform = return_transform
 
     def __repr__(self) -> str:
@@ -163,6 +169,11 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def __unpack_input__(  # type: ignore
@@ -188,18 +199,23 @@ class _AugmentationBase(_BasicAugmentationBase):
                 trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
-            output = self.apply_transform(in_tensor, params)
+            trans_matrix = None
             if return_transform:
                 trans_matrix = self.compute_transformation(in_tensor, params)
+            output = self.apply_transform(in_tensor, params, trans_matrix)
         else:
+            trans_matrix = None
             output = in_tensor.clone()
-            try:
-                output[to_apply] = self.apply_transform(in_tensor[to_apply], params)
-            except Exception as e:
-                raise ValueError(f"{e}, {to_apply}")
             if return_transform:
                 trans_matrix = self.identity_matrix(in_tensor)
                 trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
+
+            try:
+                output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix)
+            except Exception as e:
+                raise ValueError(f"{e}, {to_apply}")
+
+        self._transform_matrix = trans_matrix
 
         if return_transform:
             out_transformation = trans_matrix if in_transform is None else trans_matrix @ in_transform
