@@ -40,7 +40,8 @@ from .mix_augmentation import (
     RandomCutMix
 )
 from .container import (
-    VideoSequential
+    VideoSequential,
+    Sequential
 )
 
 __all__ = [
@@ -80,4 +81,5 @@ __all__ = [
     "CenterCrop3D",
     "RandomEqualize3D",
     "VideoSequential",
+    "Sequential"
 ]
