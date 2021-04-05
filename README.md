@@ -81,7 +81,7 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
 
 <div align="center">
   <a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb" target="_blank">
-    <img src="https://kornia-tutorials.readthedocs.io/en/latest/_images/hello_world_tutorial_17_0.png" width="50%" height="50%">
+    <img src="https://kornia-tutorials.readthedocs.io/en/latest/_images/hello_world_tutorial_17_0.png" width="75%" height="75%">
   </a>
 </div>
 
