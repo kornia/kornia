@@ -9,12 +9,12 @@ from kornia.geometry.transform.imgwarp import (
 __all__ = [
     "crop_and_resize",
     "crop_by_boxes",
+    "crop_by_transform_mat",
     "center_crop",
     "bbox_to_mask",
     "infer_box_shape",
     "validate_bboxes",
     "bbox_generator",
-    "crop_by_transform_mat"
 ]
 
 
@@ -249,6 +249,7 @@ def crop_by_transform_mat(
     Args:
         tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
         transform (torch.Tensor): a perspective transformation matrix with shape (B, 3, 3).
+        out_size (Tuple[int, int]): size of the output image (height, width).
         mode (str): interpolation mode to calculate output values
           'bilinear' | 'nearest'. Default: 'bilinear'.
         padding_mode (str): padding mode for outside grid values

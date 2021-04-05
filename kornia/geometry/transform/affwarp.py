@@ -13,6 +13,7 @@ from kornia.utils import _extract_device_dtype
 
 __all__ = [
     "affine",
+    "affine3d",
     "scale",
     "rotate",
     "rotate3d",

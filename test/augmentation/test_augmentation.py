@@ -136,7 +136,7 @@ class CommonTests(BaseTester):
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        output = augmentation.apply_transform(test_input, generated_params)
+        output = augmentation.apply_transform(test_input, generated_params, transformation)
         assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):

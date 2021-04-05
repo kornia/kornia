@@ -158,7 +158,8 @@ class _AugmentationBase(_BasicAugmentationBase):
             warnings.warn(
                 "`return_transform` is going to be deprecated and the default behaviour is False."
                 "Please access the transformation matrix through `_transform_matrix` attribute."
-                "For chained transformation matrix, please use `kornia.augmentation.Sequential` instead."
+                "For chained transformation matrix, please use `kornia.augmentation.Sequential` instead.",
+                category=DeprecationWarning
             )
         self.return_transform = return_transform
 
@@ -206,10 +207,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
             trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
-            try:
-                output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix)
-            except Exception as e:
-                raise ValueError(f"{e}, {to_apply}")
+            output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix[to_apply])
 
         self._transform_matrix = trans_matrix
 

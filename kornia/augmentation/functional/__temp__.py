@@ -15,4 +15,5 @@ def _deprecation_wrapper(f: Callable) -> Callable:
         warnings.warn(
             f"`{f.__name__}` is no longer maintained and will be removed from the future versions. ",
             category=DeprecationWarning)
+        return f(*args, **kwargs)
     return wrapper

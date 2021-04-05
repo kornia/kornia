@@ -39,7 +39,6 @@ from kornia.enhance import (
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
 
-from . import functional as F
 from . import random_generator as rg
 from .utils import (
     _range_bound,
@@ -153,8 +152,8 @@ class RandomVerticalFlip(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         h: int = input.shape[-2]
         flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                            [0, -1, h - 1],
-                                            [0, 0, 1]], device=input.device, dtype=input.dtype)
+                                               [0, -1, h - 1],
+                                               [0, 0, 1]], device=input.device, dtype=input.dtype)
 
         return flip_mat.repeat(input.size(0), 1, 1)
 
