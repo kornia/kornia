@@ -5,9 +5,37 @@ from torch.functional import Tensor
 import torch.nn as nn
 from torch.nn.functional import pad
 
-from kornia.constants import Resample, BorderType, SamplePadding
+from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.augmentation import AugmentationBase2D
-from kornia.filters import GaussianBlur2d
+from kornia.filters import gaussian_blur2d, motion_blur
+from kornia.geometry import (
+    affine,
+    bbox_generator,
+    bbox_to_mask,
+    crop_by_boxes,
+    crop_by_transform_mat,
+    deg2rad,
+    get_perspective_transform,
+    get_affine_matrix2d,
+    hflip,
+    vflip,
+    rotate,
+    warp_affine,
+    warp_perspective,
+)
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
+from kornia.color import rgb_to_grayscale
+from kornia.enhance import (
+    equalize,
+    posterize,
+    solarize,
+    sharpness,
+    adjust_brightness,
+    adjust_contrast,
+    adjust_saturation,
+    adjust_hue,
+    adjust_gamma,
+)
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
 
@@ -67,12 +95,17 @@ class RandomHorizontalFlip(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_hflip_transformation(input)
+        w: int = input.shape[-1]
+        flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
+                                               [0, 1, 0],
+                                               [0, 0, 1]], device=input.device, dtype=input.dtype)
+
+        return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_hflip(input)
+        return hflip(input)
 
 
 class RandomVerticalFlip(AugmentationBase2D):
@@ -118,12 +151,17 @@ class RandomVerticalFlip(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_vflip_transformation(input)
+        h: int = input.shape[-2]
+        flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
+                                            [0, -1, h - 1],
+                                            [0, 0, 1]], device=input.device, dtype=input.dtype)
+
+        return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_vflip(input)
+        return vflip(input)
 
 
 class ColorJitter(AugmentationBase2D):
@@ -204,12 +242,24 @@ class ColorJitter(AugmentationBase2D):
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_color_jitter(input, params)
+        transforms = [
+            lambda img: adjust_brightness(img, params['brightness_factor'].to(img.dtype) - 1),
+            lambda img: adjust_contrast(img, params['contrast_factor'].to(img.dtype)),
+            lambda img: adjust_saturation(img, params['saturation_factor'].to(img.dtype)),
+            lambda img: adjust_hue(img, params['hue_factor'].to(img.dtype) * 2 * pi)
+        ]
+
+        jittered = input
+        for idx in params['order'].tolist():
+            t = transforms[idx]
+            jittered = t(jittered)
+
+        return jittered
 
 
 class RandomGrayscale(AugmentationBase2D):
@@ -263,12 +313,15 @@ class RandomGrayscale(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_grayscale(input)
+        # Make sure it returns (*, 3, H, W)
+        grayscale = torch.ones_like(input)
+        grayscale[:] = rgb_to_grayscale(input)
+        return grayscale
 
 
 class RandomErasing(AugmentationBase2D):
@@ -334,12 +387,19 @@ class RandomErasing(AugmentationBase2D):
             value=self.value, same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_erase_rectangles(input, params)
+        _, c, h, w = input.size()
+        values = params['values'].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+
+        bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
+        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
+        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        transformed = torch.where(mask == 1., values, input)
+        return transformed
 
 
 class RandomPerspective(AugmentationBase2D):
@@ -406,12 +466,16 @@ class RandomPerspective(AugmentationBase2D):
             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_perspective_transformation(input, params)
+        return get_perspective_transform(
+            params['start_points'].to(input), params['end_points'].to(input))
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_perspective(input, params, self.flags)
+        _, _, height, width = input.shape
+        return warp_perspective(
+            input, transform, (height, width),
+            mode=self.resample.name.lower(), align_corners=self.align_corners)
 
 
 class RandomAffine(AugmentationBase2D):
@@ -536,12 +600,18 @@ class RandomAffine(AugmentationBase2D):
             self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_affine_transformation(input, params)
+        return get_affine_matrix2d(
+            params['translations'], params['center'], params['scale'], params['angle'],
+            deg2rad(params['sx']), deg2rad(params['sy'])
+        ).type_as(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_affine(input, params, self.flags)
+        _, _, height, width = input.shape
+        return warp_affine(
+            input, transform[:, :2, :], (height, width), self.resample.name.lower(),
+            align_corners=self.align_corners, padding_mode=self.padding_mode.name.lower())
 
 
 class CenterCrop(AugmentationBase2D):
@@ -587,7 +657,13 @@ class CenterCrop(AugmentationBase2D):
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(CenterCrop, self).__init__(p=1., return_transform=return_transform, same_on_batch=True, p_batch=p,
                                          keepdim=keepdim)
-        self.size = size
+        if isinstance(size, tuple):
+            self.size = (size[0], size[1])
+        elif isinstance(size, int):
+            self.size = (size, size)
+        else:
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
+                            f"Got: {type(size)}.")
         self.resample = Resample.get(resample)
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
@@ -600,23 +676,20 @@ class CenterCrop(AugmentationBase2D):
         return self.__class__.__name__ + f"({repr}, {super().__repr__()})"
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        if isinstance(self.size, tuple):
-            size_param = (self.size[0], self.size[1])
-        elif isinstance(self.size, int):
-            size_param = (self.size, self.size)
-        else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). "
-                            f"Got: {type(self.size)}.")
         return rg.center_crop_generator(
-            batch_shape[0], batch_shape[-2], batch_shape[-1], size_param, self.device)
+            batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_crop_transformation(input, params, self.flags)
+        transform: torch.Tensor = get_perspective_transform(
+            params['src'].to(input), params['dst'].to(input))
+        transform = transform.expand(input.shape[0], -1, -1)
+        return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_crop(input, params, self.flags)
+        return crop_by_transform_mat(
+            input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners)
 
 
 class RandomRotation(AugmentationBase2D):
@@ -687,12 +760,22 @@ class RandomRotation(AugmentationBase2D):
         return rg.random_rotation_generator(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_rotate_tranformation(input, params)
+        angles: torch.Tensor = params["degrees"].to(input)
+
+        center: torch.Tensor = _compute_tensor_center(input)
+        rotation_mat: torch.Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
+
+        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
+        trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        trans_mat[:, 0] = rotation_mat[:, 0]
+        trans_mat[:, 1] = rotation_mat[:, 1]
+
+        return trans_mat
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_rotation(input, params, self.flags)
+        return affine(input, transform[..., :2, :3], self.resample.name.lower(), 'zeros', self.align_corners)
 
 
 class RandomCrop(AugmentationBase2D):
@@ -796,12 +879,17 @@ class RandomCrop(AugmentationBase2D):
         return input
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_crop_transformation(input, params, self.flags)
+        transform: torch.Tensor = get_perspective_transform(
+            params['src'].to(input), params['dst'].to(input))
+        transform = transform.expand(input.shape[0], -1, -1)
+        return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_crop(input, params, self.flags)
+        return crop_by_transform_mat(
+            input, transform, self.size, mode=self.resample.name.lower(),
+            padding_mode='zeros', align_corners=self.align_corners)
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
@@ -888,12 +976,17 @@ class RandomResizedCrop(AugmentationBase2D):
                                         device=self.device, dtype=self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_crop_transformation(input, params, self.flags)
+        transform: torch.Tensor = get_perspective_transform(
+            params['src'].to(input), params['dst'].to(input))
+        transform = transform.expand(input.shape[0], -1, -1)
+        return transform
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_crop(input, params, self.flags)
+        return crop_by_transform_mat(
+            input, transform, self.size,
+            mode=self.resample.name.lower(), padding_mode='zeros', align_corners=self.align_corners)
 
 
 class Normalize(AugmentationBase2D):
@@ -937,7 +1030,7 @@ class Normalize(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -986,7 +1079,7 @@ class Denormalize(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1075,12 +1168,17 @@ class RandomMotionBlur(AugmentationBase2D):
             batch_shape[0], self.kernel_size, angle, direction, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_motion_blur(input, params, self.flags)
+        kernel_size: int = cast(int, params['ksize_factor'].unique().item())
+        angle = params['angle_factor']
+        direction = params['direction_factor']
+        return motion_blur(
+            input, kernel_size, angle, direction, border_type=self.border_type.name.lower(),
+            mode=self.resample.name.lower())
 
 
 class RandomSolarize(AugmentationBase2D):
@@ -1144,12 +1242,18 @@ class RandomSolarize(AugmentationBase2D):
                                             self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_solarize(input, params)
+        thresholds = params['thresholds_factor']
+        additions: Optional[torch.Tensor]
+        if 'additions_factor' in params:
+            additions = params['additions_factor']
+        else:
+            additions = None
+        return solarize(input, thresholds, additions)
 
 
 class RandomPosterize(AugmentationBase2D):
@@ -1211,12 +1315,12 @@ class RandomPosterize(AugmentationBase2D):
         return rg.random_posterize_generator(batch_shape[0], bits, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_posterize(input, params)
+        return posterize(input, params['bits_factor'])
 
 
 class RandomSharpness(AugmentationBase2D):
@@ -1276,12 +1380,13 @@ class RandomSharpness(AugmentationBase2D):
                                              self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_sharpness(input, params)
+        factor = params['sharpness_factor']
+        return sharpness(input, factor)
 
 
 class RandomEqualize(AugmentationBase2D):
@@ -1330,12 +1435,12 @@ class RandomEqualize(AugmentationBase2D):
         return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.compute_intensity_transformation(input)
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return F.apply_equalize(input, params)
+        return equalize(input)
 
 
 class GaussianBlur(AugmentationBase2D):
@@ -1382,7 +1487,9 @@ class GaussianBlur(AugmentationBase2D):
                  p: float = 0.5) -> None:
         super(GaussianBlur, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
-        self.transform = GaussianBlur2d(kernel_size, sigma, border_type)
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.border_type = BorderType.get(border_type)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
@@ -1390,7 +1497,10 @@ class GaussianBlur(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        return self.transform(input)
+        return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type.name.lower())

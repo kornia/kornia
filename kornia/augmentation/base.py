@@ -195,21 +195,17 @@ class _AugmentationBase(_BasicAugmentationBase):
         # if no augmentation needed
         if torch.sum(to_apply) == 0:
             output = in_tensor
-            if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
             trans_matrix = None
-            if return_transform:
-                trans_matrix = self.compute_transformation(in_tensor, params)
+            trans_matrix = self.compute_transformation(in_tensor, params)
             output = self.apply_transform(in_tensor, params, trans_matrix)
         else:
             trans_matrix = None
             output = in_tensor.clone()
-            if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor)
-                trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
-
+            trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
             try:
                 output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix)
             except Exception as e:
@@ -290,7 +286,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
-        return F.compute_intensity_transformation(input)
+        return torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
 
 class AugmentationBase3D(_AugmentationBase):
@@ -332,7 +328,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return F.compute_intensity_transformation3d(input)
+        return torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
 
 
 class MixAugmentationBase(_BasicAugmentationBase):

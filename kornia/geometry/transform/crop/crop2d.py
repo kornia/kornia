@@ -13,7 +13,8 @@ __all__ = [
     "bbox_to_mask",
     "infer_box_shape",
     "validate_bboxes",
-    "bbox_generator"
+    "bbox_generator",
+    "crop_by_transform_mat"
 ]
 
 
@@ -226,9 +227,6 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     dst_trans_src: torch.Tensor = get_perspective_transform(
         src_box.to(tensor), dst_box.to(tensor))
 
-    # simulate broadcasting
-    dst_trans_src = dst_trans_src.expand(tensor.shape[0], -1, -1)
-
     bbox: Tuple[torch.Tensor, torch.Tensor] = infer_box_shape(dst_box)
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all(), (
         f"Cropping height, width and depth must be exact same in a batch. "
@@ -237,8 +235,34 @@ def crop_by_boxes(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.Te
     h_out: int = int(bbox[0][0].item())
     w_out: int = int(bbox[1][0].item())
 
+    return crop_by_transform_mat(
+        tensor, dst_trans_src, (h_out, w_out),
+        mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+
+
+def crop_by_transform_mat(
+    tensor: torch.Tensor, transform: torch.Tensor, out_size: Tuple[int, int],
+    mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: Optional[bool] = None
+) -> torch.Tensor:
+    """Perform crop transform on 2D images (4D tensor) given a perspective transformation matrix.
+
+    Args:
+        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
+        transform (torch.Tensor): a perspective transformation matrix with shape (B, 3, 3).
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
+
+    Returns:
+        torch.Tensor: the output tensor with patches.
+    """
+    # simulate broadcasting
+    dst_trans_src = transform.expand(tensor.shape[0], -1, -1)
+
     patches: torch.Tensor = warp_affine(
-        tensor, dst_trans_src[:, :2, :], (h_out, w_out),
+        tensor, dst_trans_src[:, :2, :], out_size,
         mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
     return patches
