@@ -158,7 +158,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             warnings.warn(
                 "`return_transform` is going to be deprecated and the default behaviour is False."
                 "Please access the transformation matrix through `_transform_matrix` attribute."
-                "For chained transformation matrix, please use `kornia.augmentation.Sequential` instead.",
+                "For chained transformation matrix, please use `kornia.contrib.augmentation.Sequential` instead.",
                 category=DeprecationWarning
             )
         self.return_transform = return_transform
