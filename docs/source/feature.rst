@@ -26,6 +26,7 @@ Descriptors
 .. autoclass:: SIFTDescriptor
 .. autoclass:: MKDDescriptor
 .. autoclass:: HardNet
+.. autoclass:: HardNet8
 .. autoclass:: TFeat
 .. autoclass:: SOSNet
 
