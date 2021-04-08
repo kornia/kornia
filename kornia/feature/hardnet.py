@@ -134,7 +134,7 @@ class HardNet8(nn.Module):
             nn.BatchNorm2d(512, affine=False),
         )
         self.features.apply(self.weights_init)
-        self.register_buffer('components', torch.ones(128, 512, dtype=torch.float))
+        self.register_buffer('components', torch.ones(512, 128, dtype=torch.float))
         self.register_buffer('mean', torch.zeros(512, dtype=torch.float))
         # use torch.hub to load pretrained model
         if pretrained:
