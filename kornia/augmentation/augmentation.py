@@ -798,8 +798,6 @@ class RandomCrop(AugmentationBase2D):
                 return input[0], out[1]
             elif isinstance(out, tuple) and not isinstance(input, tuple):
                 return input, out[1]
-            elif not isinstance(out, tuple) and isinstance(input, tuple):
-                return input[0]
             else:
                 return input
         return out
