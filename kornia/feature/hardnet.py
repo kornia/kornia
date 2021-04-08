@@ -142,7 +142,6 @@ class HardNet8(nn.Module):
                 urls['hardnet8v2'], map_location=lambda storage, loc: storage
             )
             self.load_state_dict(pretrained_dict, strict=True)
-            
 
     @staticmethod
     def weights_init(m):
