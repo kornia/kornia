@@ -165,5 +165,6 @@ class HardNet8(nn.Module):
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
         x_prePCA = F.normalize(x_features.view(x_features.size(0), -1))
-        pca = torch.mm(x_prePCA - self.mean, self.components)
+        pca = torch.mm(x_prePCA - self.mean, self.components)  # type: ignore
+        # somehow type does not like using torch.mm and buffer...
         return F.normalize(pca, dim=1)
