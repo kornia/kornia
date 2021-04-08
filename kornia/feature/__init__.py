@@ -34,7 +34,7 @@ from .laf import (extract_patches_from_pyramid,
                   laf_from_three_points)
 from .siftdesc import SIFTDescriptor
 from .mkd import MKDDescriptor
-from .hardnet import HardNet
+from .hardnet import HardNet, HardNet8
 from .tfeat import TFeat
 from .sosnet import SOSNet
 from .scale_space_detector import ScaleSpaceDetector, PassLAF
@@ -73,6 +73,7 @@ __all__ = [
     "SIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
+    "HardNet8",
     "TFeat",
     "OriNet",
     "LAFAffNetShapeEstimator",
