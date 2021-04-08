@@ -86,7 +86,8 @@ class HardNet8(nn.Module):
     """
     Module, which computes HardNet8 descriptors of given grayscale patches of 32x32.
 
-    This is based on the original code from paper "Improving the HardNet Descriptor". See :cite:`HardNet2020` for more details.
+    This is based on the original code from paper "Improving the HardNet Descriptor".
+    See :cite:`HardNet2020` for more details.
 
     Args:
         pretrained: (bool) Download and set pretrained weights to the model. Default: false.
@@ -134,7 +135,7 @@ class HardNet8(nn.Module):
         )
         self.features.apply(self.weights_init)
         self.register_buffer('components', torch.ones(128, 512, dtype=torch.float))
-        self.register_buffer('mean',torch.zeros(512, dtype=torch.float))
+        self.register_buffer('mean', torch.zeros(512, dtype=torch.float))
         # use torch.hub to load pretrained model
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(
@@ -150,6 +151,7 @@ class HardNet8(nn.Module):
                 nn.init.constant_(m.bias.data, 0.01)
             except:
                 pass
+
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-7) -> torch.Tensor:
         "Utility function that normalizes the input by batch."""
