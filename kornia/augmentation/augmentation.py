@@ -790,7 +790,7 @@ class RandomCrop(AugmentationBase2D):
             _input = (self.precrop_padding(input[0]), input[1])
         else:
             _input = cast(torch.Tensor, input)
-            _input = self.precrop_padding(input)
+            _input = self.precrop_padding(_input)
         out = super().forward(_input, params, return_transform)
         if not self._params['batch_prob'].all():
             # undo the pre-crop if nothing happened.
