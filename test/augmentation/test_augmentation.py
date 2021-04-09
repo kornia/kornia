@@ -2062,10 +2062,29 @@ class TestRandomCrop:
             [3., 4., 5.],
             [6., 7., 8.]
         ]]], device=device, dtype=dtype)
+        trans = torch.tensor([[
+            [1., 2., 3.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+        # Not return transform
         rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.)
-        out = rc(inp)
 
+        out = rc(inp)
         assert_allclose(out, inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
+
+        # with return transform
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0., return_transform=True)
+        out = rc(inp)
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)

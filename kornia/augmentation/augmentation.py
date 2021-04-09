@@ -786,7 +786,7 @@ class RandomCrop(AugmentationBase2D):
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if type(input) == tuple:
+        if isinstance(input, (tuple, list)):
             _input = (self.precrop_padding(input[0]), input[1])
         else:
             _input = cast(torch.Tensor, input)
