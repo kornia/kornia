@@ -2185,7 +2185,6 @@ class TestRandomResizedCrop:
         assert out.shape == torch.Size([1, 1, 4, 4])
         assert_allclose(out, exp, atol=1e-4, rtol=1e-4)
 
-
     def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2

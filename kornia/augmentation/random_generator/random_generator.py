@@ -384,6 +384,8 @@ def random_crop_generator(
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
+    assert input_size[0] > 0 and input_size[1] > 0 and (size > 0).all(), \
+        f"Got non-positive input size or size. {input_size}, {size}."
     size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1

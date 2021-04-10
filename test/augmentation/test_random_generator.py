@@ -434,9 +434,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
         ((-300, 300), (200, 200), (100, 100)),
-        ((100, 100), (200, 200), (100, 100)),
         ((200, 200), torch.tensor([50, 50]), (100, 100)),
-        ((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100)),
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
