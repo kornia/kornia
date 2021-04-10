@@ -2165,6 +2165,26 @@ class TestRandomResizedCrop:
         out = rrc(inp)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
+    def test_crop_size_greater_than_input(self, device, dtype):
+        # This is included in doctest
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        exp = torch.tensor([[[[1.0000, 1.3333, 1.6667, 2.0000],
+                              [3.0000, 3.3333, 3.6667, 4.0000],
+                              [5.0000, 5.3333, 5.6667, 6.0000],
+                              [7.0000, 7.3333, 7.6667, 8.0000]]]], device=device, dtype=dtype)
+
+        rrc = RandomResizedCrop(size=(4, 4), scale=(3., 3.), ratio=(2., 2.))
+        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert out.shape == torch.Size([1, 1, 4, 4])
+        assert_allclose(out, exp, atol=1e-4, rtol=1e-4)
+
     def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2

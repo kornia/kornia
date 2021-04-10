@@ -384,14 +384,16 @@ def random_crop_generator(
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
+    assert input_size[0] > 0 and input_size[1] > 0 and (size > 0).all(), \
+        f"Got non-positive input size or size. {input_size}, {size}."
     size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1
 
-    if (x_diff < 0).any() or (y_diff < 0).any():
-        raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
-                         % (str(input_size), str(size)))
+    # Start point will be 0 if diff < 0
+    x_diff = x_diff.clamp(0)
+    y_diff = y_diff.clamp(0)
 
     if batch_size == 0:
         return dict(
@@ -409,15 +411,15 @@ def random_crop_generator(
     crop_src = bbox_generator(
         x_start.view(-1).to(device=_device, dtype=_dtype),
         y_start.view(-1).to(device=_device, dtype=_dtype),
-        size[:, 1].to(device=_device, dtype=_dtype),
-        size[:, 0].to(device=_device, dtype=_dtype))
+        torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
+        torch.where(size[:, 0] == 0, torch.tensor(input_size[0], device=_device, dtype=_dtype), size[:, 0]))
 
     if resize_to is None:
         crop_dst = bbox_generator(
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-            size[:, 1].to(device=_device, dtype=_dtype),
-            size[:, 0].to(device=_device, dtype=_dtype))
+            size[:, 1],
+            size[:, 0])
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
