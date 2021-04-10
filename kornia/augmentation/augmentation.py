@@ -786,12 +786,21 @@ class RandomCrop(AugmentationBase2D):
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if type(input) == tuple:
-            input = (self.precrop_padding(input[0]), input[1])
+        if isinstance(input, (tuple, list)):
+            _input = (self.precrop_padding(input[0]), input[1])
         else:
-            input = cast(torch.Tensor, input)
-            input = self.precrop_padding(input)
-        return super().forward(input, params, return_transform)
+            input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
+            _input = self.precrop_padding(input)  # type: ignore
+        out = super().forward(_input, params, return_transform)
+        if not self._params['batch_prob'].all():
+            # undo the pre-crop if nothing happened.
+            if isinstance(out, tuple) and isinstance(input, tuple):
+                return input[0], out[1]
+            elif isinstance(out, tuple) and not isinstance(input, tuple):
+                return input, out[1]
+            else:
+                return input
+        return out
 
 
 class RandomResizedCrop(AugmentationBase2D):
