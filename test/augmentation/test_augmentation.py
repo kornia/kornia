@@ -1970,7 +1970,11 @@ class TestRandomCrop:
         rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
+        torch.manual_seed(0)
+        out2 = rc(inp.squeeze())
+
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_no_padding_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -1995,6 +1999,26 @@ class TestRandomCrop:
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
+
+    def test_padding(self, device, dtype):
+        torch.manual_seed(42)
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[
+            [7., 8., 7.],
+            [4., 5., 4.]
+        ]]], device=device, dtype=dtype)
+        rc = RandomCrop(size=(2, 3), padding=1, padding_mode='reflect', align_corners=True, p=1.)
+        out = rc(inp)
+
+        torch.manual_seed(42)
+        out2 = rc(inp.squeeze())
+
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)
