@@ -789,8 +789,8 @@ class RandomCrop(AugmentationBase2D):
         if isinstance(input, (tuple, list)):
             _input = (self.precrop_padding(input[0]), input[1])
         else:
-            _input = cast(torch.Tensor, input)
-            _input = self.precrop_padding(_input)
+            input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
+            _input = self.precrop_padding(input)  # type: ignore
         out = super().forward(_input, params, return_transform)
         if not self._params['batch_prob'].all():
             # undo the pre-crop if nothing happened.
