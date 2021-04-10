@@ -136,6 +136,7 @@ class HardNet8(nn.Module):
         self.features.apply(self.weights_init)
         self.register_buffer('components', torch.ones(512, 128, dtype=torch.float))
         self.register_buffer('mean', torch.zeros(512, dtype=torch.float))
+
         # use torch.hub to load pretrained model
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(
@@ -164,7 +165,8 @@ class HardNet8(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
+        mean: torch.Tensor = torch.jit.annotate(torch.Tensor, self.mean)
+        components: torch.Tensor = torch.jit.annotate(torch.Tensor, self.components)
         x_prePCA = F.normalize(x_features.view(x_features.size(0), -1))
-        pca = torch.mm(x_prePCA - self.mean, self.components)  # type: ignore
-        # somehow type does not like using torch.mm and buffer...
+        pca = torch.mm(x_prePCA - mean, components)
         return F.normalize(pca, dim=1)
