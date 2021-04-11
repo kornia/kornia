@@ -22,6 +22,7 @@ from .augmentation import (
     RandomMotionBlur,
     Normalize,
     Denormalize,
+    RandomInvert,
 )
 from .augmentation3d import (
     RandomHorizontalFlip3D,

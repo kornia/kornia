@@ -24,7 +24,8 @@ from kornia.augmentation import (
     RandomCrop,
     RandomResizedCrop,
     Normalize,
-    Denormalize
+    Denormalize,
+    RandomInvert,
 )
 
 
@@ -2410,6 +2411,13 @@ class TestGaussianBlur:
         f = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
         repr = "GaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
+
+
+class TestRandomInvert:
+
+    def test_smoke(self, device, dtype):
+        img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
+        assert_allclose(RandomInvert(p=1.0)(img), torch.zeros_like(img))
 
 
 class TestNormalize:
