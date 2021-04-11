@@ -23,11 +23,13 @@ __all__ = [
     "equalize3d",
     "posterize",
     "sharpness",
+    "invert",
     "AdjustBrightness",
     "AdjustContrast",
     "AdjustGamma",
     "AdjustHue",
     "AdjustSaturation",
+    "Invert",
 ]
 
 
@@ -747,6 +749,32 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
     return torch.stack(res)
 
 
+def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
+    r"""Inverts the values of an input tensor by its maximum value.
+
+    Args:
+        input (torch.Tensor): The input tensor to invert with an arbitatry shape.
+        max_val (torch.Tensor): The expected maximum value in the input tensor. The shape has to
+          according to the input tensor shape, or at least has to work with broadcasting. Default: 1.0.
+
+    Example:
+        >>> img = torch.rand(1, 2, 4, 4)
+        >>> invert(img).shape
+        torch.Size([1, 2, 4, 4])
+
+        >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
+        >>> invert(img, torch.tensor(255.)).shape
+        torch.Size([1, 2, 3, 4, 4])
+
+        >>> img = torch.rand(1, 3, 4, 4)
+        >>> invert(img, torch.tensor([[[[1.]]]])).shape
+        torch.Size([1, 3, 4, 4])
+    """
+    assert isinstance(input, torch.Tensor), f"Input is not a torch.Tensor. Got: {type(input)}"
+    assert isinstance(max_val, torch.Tensor), f"max_val is not a torch.Tensor. Got: {type(max_val)}"
+    return max_val.to(input) - input
+
+
 class AdjustSaturation(nn.Module):
     r"""Adjust color saturation of an image.
 
@@ -943,3 +971,33 @@ class AdjustBrightness(nn.Module):
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return adjust_brightness(input, self.brightness_factor)
+
+
+class Invert(nn.Module):
+    r"""Inverts the values of an input tensor by its maximum value.
+
+    Args:
+        input (torch.Tensor): The input tensor to invert with an arbitatry shape.
+        max_val (torch.Tensor): The expected maximum value in the input tensor. The shape has to
+          according to the input tensor shape, or at least has to work with broadcasting. Default: 1.0.
+
+    Example:
+        >>> img = torch.rand(1, 2, 4, 4)
+        >>> Invert()(img).shape
+        torch.Size([1, 2, 4, 4])
+
+        >>> img = 255. * torch.rand(1, 2, 3, 4, 4)
+        >>> Invert(torch.tensor(255.))(img).shape
+        torch.Size([1, 2, 3, 4, 4])
+
+        >>> img = torch.rand(1, 3, 4, 4)
+        >>> Invert(torch.tensor([[[[1.]]]]))(img).shape
+        torch.Size([1, 3, 4, 4])
+    """
+
+    def __init__(self, max_val: torch.Tensor = torch.tensor(1.)) -> None:
+        super(Invert, self).__init__()
+        self.max_val = max_val
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return invert(input, self.max_val)
