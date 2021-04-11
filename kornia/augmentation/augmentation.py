@@ -15,6 +15,7 @@ from . import functional as F
 from . import random_generator as rg
 from .utils import (
     _range_bound,
+    _transform_input
 )
 
 
@@ -755,6 +756,7 @@ class RandomCrop(AugmentationBase2D):
                                         same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
+        assert len(input.shape) == 4, f"Expected BCHW. Got {input.shape}"
         if self.padding is not None:
             if isinstance(self.padding, int):
                 self.padding = cast(int, self.padding)
@@ -787,9 +789,11 @@ class RandomCrop(AugmentationBase2D):
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if isinstance(input, (tuple, list)):
-            _input = (self.precrop_padding(input[0]), input[1])
+            input_temp = _transform_input(input[0])
+            _input = (self.precrop_padding(input_temp), input[1])
         else:
             input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
+            input = _transform_input(input)
             _input = self.precrop_padding(input)  # type: ignore
         out = super().forward(_input, params, return_transform)
         if not self._params['batch_prob'].all():
