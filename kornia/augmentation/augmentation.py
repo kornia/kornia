@@ -10,6 +10,7 @@ from kornia.augmentation import AugmentationBase2D
 from kornia.filters import GaussianBlur2d
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
+from kornia.enhance import Invert
 
 from . import functional as F
 from . import random_generator as rg
@@ -1360,6 +1361,49 @@ class GaussianBlur(AugmentationBase2D):
         super(GaussianBlur, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.transform = GaussianBlur2d(kernel_size, sigma, border_type)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
+        return dict()
+
+    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.transform(input)
+
+
+class RandomInvert(AugmentationBase2D):
+
+    r"""Invert the tensor images values randomly.
+
+    Args:
+        max_val (torch.Tensor): The expected maximum value in the input tensor. The shape has to
+          according to the input tensor shape, or at least has to work with broadcasting. Default: 1.0.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> img = torch.rand(1, 1, 5, 5)
+        >>> inv = RandomInvert()
+        >>> inv(img)
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
+                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
+    """
+
+    def __init__(self,
+                 max_val: torch.Tensor = torch.tensor(1.),
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomInvert, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.transform = Invert(max_val)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
