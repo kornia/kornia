@@ -75,3 +75,29 @@ class TestSIFTDescriptor:
         model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
         assert_allclose(model(patches), model_jit(patches))
+
+
+class TestDenseSIFTDescriptor:
+    def test_shape(self, device):
+        pass
+
+    def test_batch_shape(self, device):
+        pass
+
+    def test_batch_shape_non_std(self, device):
+        pass
+
+    def test_print(self, device):
+        sift = DenseSIFTDescriptor()
+        sift.__repr__()
+
+    def test_toy(self, device):
+        pass
+
+    @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
+    def test_gradcheck(self, device):
+        batch_size, channels, height, width = 1, 1, 32, 32
+        patches = torch.rand(batch_size, channels, height, width, device=device)
+        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        assert gradcheck(DenseSIFTDescriptor(), (patches),
+                         raise_exception=True, nondet_tol=1e-4)

@@ -32,7 +32,7 @@ from .laf import (extract_patches_from_pyramid,
                   laf_is_inside_image,
                   laf_to_three_points,
                   laf_from_three_points)
-from .siftdesc import SIFTDescriptor
+from .siftdesc import SIFTDescriptor, DenseSIFTDescriptor
 from .mkd import MKDDescriptor
 from .hardnet import HardNet, HardNet8
 from .tfeat import TFeat
@@ -71,6 +71,7 @@ __all__ = [
     "set_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
+    "DenseSIFTDescriptor",
     "MKDDescriptor",
     "HardNet",
     "HardNet8",
