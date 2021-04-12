@@ -99,5 +99,5 @@ class TestDenseSIFTDescriptor:
         batch_size, channels, height, width = 1, 1, 32, 32
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(DenseSIFTDescriptor(), (patches),
+        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches),
                          raise_exception=True, nondet_tol=1e-4)
