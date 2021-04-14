@@ -21,6 +21,13 @@ __all__ = [
 ]
 
 
+def _kornia_inverse(input: torch.Tensor) -> torch.Tensor:
+    dtype: torch.dtype = input.dtype
+    if not dtype in (torch.float32, torch.float64,):
+        dtype = torch.float32
+    return torch.inverse(input.to(dtype)).to(input.dtype)
+
+
 def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     r"""Compute the grid to warp the coordinates grid by the homography/ies.
 
@@ -363,7 +370,8 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
         src_h, src_w).to(dst_pix_trans_src_pix)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+    # src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+    src_pix_trans_src_norm = _kornia_inverse(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
         dst_h, dst_w).to(dst_pix_trans_src_pix)
 
@@ -402,7 +410,8 @@ def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
         src_d, src_h, src_w).to(dst_pix_trans_src_pix)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+    # src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+    src_pix_trans_src_norm = _kornia_inverse(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations

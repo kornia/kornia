@@ -33,7 +33,10 @@ __all__ = [
 
 
 def _kornia_inverse(input: torch.Tensor) -> torch.Tensor:
-    return torch.inverse(input.float()).to(input.dtype)
+    dtype: torch.dtype = input.dtype
+    if not dtype in (torch.float32, torch.float64,):
+        dtype = torch.float32
+    return torch.inverse(input.to(dtype)).to(input.dtype)
 
 
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
