@@ -65,7 +65,7 @@ class _BasicAugmentationBase(nn.Module):
         raise NotImplementedError
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        raise NotImplementedError
+        return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError

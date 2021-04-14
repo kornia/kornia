@@ -81,9 +81,6 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict()
-
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         w: int = input.shape[-1]
         flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1],
@@ -152,9 +149,6 @@ class RandomVerticalFlip3D(AugmentationBase3D):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         h: int = input.shape[-2]
@@ -225,9 +219,6 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         d: int = input.shape[-3]
@@ -969,9 +960,6 @@ class RandomEqualize3D(AugmentationBase3D):
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
-
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict()
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
