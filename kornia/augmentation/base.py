@@ -149,18 +149,11 @@ class _AugmentationBase(_BasicAugmentationBase):
                         to the batch form (False). Default: False.
     """
 
-    def __init__(self, return_transform: Optional[bool] = None, same_on_batch: bool = False, p: float = 0.5,
+    def __init__(self, return_transform: bool = None, same_on_batch: bool = False, p: float = 0.5,
                  p_batch: float = 1., keepdim: bool = False) -> None:
         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
         self.p_batch = p_batch
-        if return_transform is not None:
-            warnings.warn(
-                "`return_transform` is going to be deprecated and the default behaviour is False."
-                "Please access the transformation matrix through `_transform_matrix` attribute."
-                "For chained transformation matrix, please use `kornia.contrib.augmentation.Sequential` instead.",
-                category=DeprecationWarning
-            )
         self.return_transform = return_transform
 
     def __repr__(self) -> str:

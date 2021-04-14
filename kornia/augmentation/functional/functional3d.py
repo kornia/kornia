@@ -26,7 +26,7 @@ from ..utils import (
 )
 from kornia.filters import motion_blur3d
 
-from .__temp__ import __deprecation_warning
+from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
 
 @_deprecation_wrapper
