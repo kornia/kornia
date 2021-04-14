@@ -32,6 +32,10 @@ __all__ = [
 ]
 
 
+def _kornia_inverse(input: torch.Tensor) -> torch.Tensor:
+    return torch.inverse(input.float()).to(input.dtype)
+
+
 def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
                      mode: str = 'bilinear', padding_mode: str = 'zeros',
                      align_corners: Optional[bool] = None) -> torch.Tensor:
@@ -106,7 +110,8 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M, (H, W), (h_out, w_out))  # Bx3x3
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)  # Bx3x3
+    # src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)  # Bx3x3
+    src_norm_trans_dst_norm = _kornia_inverse(dst_norm_trans_src_norm)  # Bx3x3
 
     # this piece of code substitutes F.affine_grid since it does not support 3x3
     grid = create_meshgrid(h_out, w_out, normalized_coordinates=True,
@@ -193,7 +198,8 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, (H, W), dsize)
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    # src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    src_norm_trans_dst_norm = _kornia_inverse(dst_norm_trans_src_norm)
 
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
                          [B, C, dsize[0], dsize[1]],
