@@ -963,7 +963,7 @@ class TestRandomHorizontalFlip:
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
-            return kornia.random_hflip(data)
+            return kornia.apply_hflip(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -1140,7 +1140,7 @@ class TestRandomVerticalFlip:
     def test_jit(self, device, dtype):
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.random_vflip(data)
+            return kornia.apply_vflip(data)
 
         input = torch.tensor([[0., 0., 0.],
                               [0., 0., 0.],
@@ -1910,7 +1910,11 @@ class TestRandomRotation:
 
         @torch.jit.script
         def op_script(data: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-            return kornia.random_rotation(data, degrees=45.0)
+            flags = dict(
+                interpolation=torch.tensor(1),
+                align_corners=torch.tensor(True)
+            )
+            return kornia.apply_rotation(data, params={"degrees": torch.tensor(45.0)}, flags=flags)
 
         input = torch.tensor([[1., 0., 0., 2.],
                               [0., 0., 0., 0.],
@@ -1966,7 +1970,11 @@ class TestRandomCrop:
         rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
+        torch.manual_seed(0)
+        out2 = rc(inp.squeeze())
+
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_no_padding_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -1991,6 +1999,26 @@ class TestRandomCrop:
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
+
+    def test_padding(self, device, dtype):
+        torch.manual_seed(42)
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[
+            [7., 8., 7.],
+            [4., 5., 4.]
+        ]]], device=device, dtype=dtype)
+        rc = RandomCrop(size=(2, 3), padding=1, padding_mode='reflect', align_corners=True, p=1.)
+        out = rc(inp)
+
+        torch.manual_seed(42)
+        out2 = rc(inp.squeeze())
+
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)
@@ -2051,6 +2079,36 @@ class TestRandomCrop:
         out = rc(inp)
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_padding_no_forward(self, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.tensor([[[
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype)
+        trans = torch.tensor([[
+            [1., 2., 3.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+        # Not return transform
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.)
+
+        out = rc(inp)
+        assert_allclose(out, inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
+
+        # with return transform
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0., return_transform=True)
+        out = rc(inp)
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
 
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)
@@ -2123,8 +2181,8 @@ class TestRandomResizedCrop:
         ]], device=device, dtype=dtype)
 
         expected = torch.tensor(
-            [[[[4.0000, 4.5000, 5.0000],
-               [7.0000, 7.5000, 8.0000]]]], device=device, dtype=dtype)
+            [[[[0.0000, 1.0000, 2.0000],
+               [6.0000, 7.0000, 8.0000]]]], device=device, dtype=dtype)
 
         rrc = RandomResizedCrop(
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0))
@@ -2160,6 +2218,26 @@ class TestRandomResizedCrop:
         # It will crop a size of (3, 3) from the aspect ratio implementation of torch
         out = rrc(inp)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_crop_size_greater_than_input(self, device, dtype):
+        # This is included in doctest
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        exp = torch.tensor([[[[1.0000, 1.3333, 1.6667, 2.0000],
+                              [3.0000, 3.3333, 3.6667, 4.0000],
+                              [5.0000, 5.3333, 5.6667, 6.0000],
+                              [7.0000, 7.3333, 7.6667, 8.0000]]]], device=device, dtype=dtype)
+
+        rrc = RandomResizedCrop(size=(4, 4), scale=(3., 3.), ratio=(2., 2.))
+        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert out.shape == torch.Size([1, 1, 4, 4])
+        assert_allclose(out, exp, atol=1e-4, rtol=1e-4)
 
     def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)

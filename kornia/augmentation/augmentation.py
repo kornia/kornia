@@ -15,18 +15,8 @@ from . import functional as F
 from . import random_generator as rg
 from .utils import (
     _range_bound,
+    _transform_input
 )
-
-
-class AugmentationBase(AugmentationBase2D):
-    __doc__ = AugmentationBase2D.__doc__
-
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
-                 keepdim: bool = False) -> None:
-        super(AugmentationBase2D, self).__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch,
-                                                 keepdim=keepdim)
-        raise DeprecationWarning(
-            "`AugmentationBase` is deprecated. Please use `kornia.augmentation.AugmentationBase2D instead.`")
 
 
 class RandomHorizontalFlip(AugmentationBase2D):
@@ -766,6 +756,7 @@ class RandomCrop(AugmentationBase2D):
                                         same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
     def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
+        assert len(input.shape) == 4, f"Expected BCHW. Got {input.shape}"
         if self.padding is not None:
             if isinstance(self.padding, int):
                 self.padding = cast(int, self.padding)
@@ -797,12 +788,23 @@ class RandomCrop(AugmentationBase2D):
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None
                 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        if type(input) == tuple:
-            input = (self.precrop_padding(input[0]), input[1])
+        if isinstance(input, (tuple, list)):
+            input_temp = _transform_input(input[0])
+            _input = (self.precrop_padding(input_temp), input[1])
         else:
-            input = cast(torch.Tensor, input)
-            input = self.precrop_padding(input)
-        return super().forward(input, params, return_transform)
+            input = cast(torch.Tensor, input)  # TODO: weird that cast is not working under this context.
+            input = _transform_input(input)
+            _input = self.precrop_padding(input)  # type: ignore
+        out = super().forward(_input, params, return_transform)
+        if not self._params['batch_prob'].all():
+            # undo the pre-crop if nothing happened.
+            if isinstance(out, tuple) and isinstance(input, tuple):
+                return input[0], out[1]
+            elif isinstance(out, tuple) and not isinstance(input, tuple):
+                return input, out[1]
+            else:
+                return input
+        return out
 
 
 class RandomResizedCrop(AugmentationBase2D):
@@ -872,7 +874,8 @@ class RandomResizedCrop(AugmentationBase2D):
         scale = torch.as_tensor(self.scale, device=self._device, dtype=self._dtype)
         ratio = torch.as_tensor(self.ratio, device=self._device, dtype=self._dtype)
         target_size: torch.Tensor = rg.random_crop_size_generator(
-            batch_shape[0], self.size, scale, ratio, self.same_on_batch, self.device, self.dtype)['size']
+            batch_shape[0], (batch_shape[-2], batch_shape[-1]), scale, ratio, self.same_on_batch,
+            self.device, self.dtype)['size']
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), target_size,
                                         resize_to=self.size, same_on_batch=self.same_on_batch,
                                         device=self.device, dtype=self.dtype)

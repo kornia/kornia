@@ -449,6 +449,28 @@ class TestRemap:
         input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
         assert_allclose(input_warped, expected, rtol=1e-4, atol=1e-4)
 
+    def test_normalized_coordinates(self, device, dtype):
+        height, width = 3, 4
+        normalized_coordinates = True
+        inp = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        expected = torch.tensor([[[
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+            [1., 1., 1., 1.],
+        ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
+
+        grid = kornia.utils.create_meshgrid(
+            height, width, normalized_coordinates=normalized_coordinates, device=device).to(dtype)
+
+        # Normalized input coordinates
+        input_warped = kornia.remap(inp, grid[..., 0], grid[..., 1], align_corners=True,
+                                    normalized_coordinates=normalized_coordinates)
+        assert_allclose(input_warped, expected, rtol=1e-4, atol=1e-4)
+
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
