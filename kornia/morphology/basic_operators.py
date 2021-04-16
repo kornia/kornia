@@ -107,7 +107,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     # pad
     se_h, se_w = kernel.shape
-    pad_e: List[int] = [se_h // 2, se_h // 2, se_w // 2, se_w // 2]
+    pad_e: List[int] = [se_w // 2, se_w // 2, se_h // 2, se_h // 2]
 
     output: torch.Tensor = tensor.view(
         tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
