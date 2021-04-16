@@ -12,8 +12,8 @@ def _se_to_mask(se: torch.Tensor) -> torch.Tensor:
     num_feats = se_h * se_w
     out = torch.zeros(num_feats, 1, se_h, se_w, dtype=se.dtype, device=se.device)
     for i in range(num_feats):
-        y = i % se_h
-        x = i // se_h
+        y = i // se_w
+        x = i % se_w
         out[i, 0, y, x] = (se_flat[i] >= 0).float()
     return out
 
