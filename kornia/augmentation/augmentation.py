@@ -846,11 +846,17 @@ class RandomResizedCrop(AugmentationBase2D):
     """
 
     def __init__(
-        self, size: Tuple[int, int], scale: Union[torch.Tensor, Tuple[float, float]] = (0.08, 1.0),
+        self,
+        size: Tuple[int, int],
+        scale: Union[torch.Tensor, Tuple[float, float]] = (0.08, 1.0),
         ratio: Union[torch.Tensor, Tuple[float, float]] = (3. / 4., 4. / 3.),
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False,
-        align_corners: bool = True, p: float = 1., keepdim: bool = False
+        return_transform: bool = False,
+        same_on_batch: bool = False,
+        align_corners: bool = True,
+        p: float = 1.,
+        keepdim: bool = False,
+        mode: str = 'slice',
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super(RandomResizedCrop, self).__init__(
@@ -863,7 +869,8 @@ class RandomResizedCrop(AugmentationBase2D):
         self.align_corners = align_corners
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
-            align_corners=torch.tensor(align_corners)
+            align_corners=torch.tensor(align_corners),
+            mode=mode
         )
 
     def __repr__(self) -> str:
@@ -884,7 +891,26 @@ class RandomResizedCrop(AugmentationBase2D):
         return F.compute_crop_transformation(input, params, self.flags)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.apply_crop(input, params, self.flags)
+        if self.flags['mode'] == 'resample':
+            return F.apply_crop(input, params, self.flags)
+        elif self.flags['mode'] == 'slice':
+            import kornia as K
+            coords = params['src'].long()
+            B, C, _, _ = input.shape
+            out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
+            for i in range(B):
+                x1 = int(coords[i, 0, 0])
+                x2 = int(coords[i, 1, 0]) + 1
+                y1 = int(coords[i, 0, 1])
+                y2 = int(coords[i, 3, 1]) + 1
+                out[i] = K.geometry.transform.resize(
+                    input[i:i+1, :, y1:y2, x1:x2],
+                    self.size,
+                    interpolation='bilinear',
+                    align_corners=True)
+            return out
+        else:
+            raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
 
 
 class Normalize(AugmentationBase2D):
