@@ -12,9 +12,9 @@ def _se_to_mask(se: torch.Tensor) -> torch.Tensor:
     num_feats = se_h * se_w
     out = torch.zeros(num_feats, 1, se_h, se_w, dtype=se.dtype, device=se.device)
     for i in range(num_feats):
-        y = i % se_h
-        x = i // se_h
-        out[i, 0, x, y] = (se_flat[i] >= 0).float()
+        y = i // se_w
+        x = i % se_w
+        out[i, 0, y, x] = (se_flat[i] >= 0).float()
     return out
 
 
@@ -107,7 +107,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     # pad
     se_h, se_w = kernel.shape
-    pad_e: List[int] = [se_h // 2, se_w // 2, se_h // 2, se_w // 2]
+    pad_e: List[int] = [se_w // 2, se_w // 2, se_h // 2, se_h // 2]
 
     output: torch.Tensor = tensor.view(
         tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])

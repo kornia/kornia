@@ -15,7 +15,7 @@ class TestDilate():
     @pytest.mark.parametrize(
         "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
     @pytest.mark.parametrize(
-        "kernel", [(3, 3), (5, 5)])
+        "kernel", [(3, 3), (5, 5), (3, 5), (5, 3)])
     def test_cardinality(self, device, dtype, shape, kernel):
         img = torch.ones(shape, device=device, dtype=dtype)
         krnl = torch.ones(kernel, device=device, dtype=dtype)
