@@ -26,6 +26,7 @@ from kornia.augmentation import (
     Normalize,
     Denormalize,
     RandomInvert,
+    RandomChannelShuffle,
 )
 
 
@@ -2374,6 +2375,26 @@ class TestRandomInvert:
     def test_smoke(self, device, dtype):
         img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
         assert_allclose(RandomInvert(p=1.0)(img), torch.zeros_like(img))
+
+
+class TestRandomChannelShuffle:
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
+
+        out_expected = torch.tensor([[
+            [[8., 9.],
+             [10., 11.]],
+            [[0., 1.],
+             [2., 3.]],
+            [[4., 5.],
+             [6., 7.]]]
+        ], device=device, dtype=dtype)
+
+        aug = RandomChannelShuffle(p=1.)
+        out = aug(img)
+        assert_allclose(out, out_expected)
 
 
 class TestNormalize:

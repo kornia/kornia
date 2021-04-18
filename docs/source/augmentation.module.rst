@@ -26,6 +26,7 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomMixUp
 .. autoclass:: RandomCutMix
 .. autoclass:: RandomInvert
+.. autoclass:: RandomChannelShuffle
 
 .. automodule:: kornia.augmentation.functional.functional
     :members:
