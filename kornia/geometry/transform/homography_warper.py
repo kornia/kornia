@@ -404,8 +404,8 @@ def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
         src_d, src_h, src_w).to(dst_pix_trans_src_pix)
-    # src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
-    src_pix_trans_src_norm = _kornia_inverse(src_norm_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
