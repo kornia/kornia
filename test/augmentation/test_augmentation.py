@@ -27,6 +27,7 @@ from kornia.augmentation import (
     Denormalize,
     RandomInvert,
     RandomChannelShuffle,
+    RandomGaussianNoise,
 )
 
 
@@ -2395,6 +2396,15 @@ class TestRandomChannelShuffle:
         aug = RandomChannelShuffle(p=1.)
         out = aug(img)
         assert_allclose(out, out_expected)
+
+
+class TestRandomGaussianNoise:
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomGaussianNoise(p=1.)
+        assert img.shape == aug(img).shape
 
 
 class TestNormalize:
