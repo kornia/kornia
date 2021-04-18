@@ -1777,6 +1777,17 @@ class TestCenterCrop:
         out = kornia.augmentation.CenterCrop((3, 4))(inp)
         assert out.shape == (1, 2, 3, 4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+
+        op1 = CenterCrop(size=(2, 2), mode='resample')
+        out = op1(img)
+
+        op2 = CenterCrop(size=(2, 2), mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
