@@ -772,7 +772,7 @@ def invert(input: torch.Tensor, max_val: torch.Tensor = torch.tensor(1.0)) -> to
     """
     assert isinstance(input, torch.Tensor), f"Input is not a torch.Tensor. Got: {type(input)}"
     assert isinstance(max_val, torch.Tensor), f"max_val is not a torch.Tensor. Got: {type(max_val)}"
-    return max_val.to(input) - input
+    return max_val.to(input.dtype) - input
 
 
 class AdjustSaturation(nn.Module):
@@ -997,7 +997,10 @@ class Invert(nn.Module):
 
     def __init__(self, max_val: torch.Tensor = torch.tensor(1.)) -> None:
         super(Invert, self).__init__()
-        self.max_val = max_val
+        if not isinstance(max_val, nn.Parameter):
+            self.register_buffer("max_val", max_val)
+        else:
+            self.max_val = max_val
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return invert(input, self.max_val)
