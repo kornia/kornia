@@ -24,6 +24,7 @@ from .augmentation import (
     Denormalize,
     RandomInvert,
     RandomChannelShuffle,
+    RandomGaussianNoise,
 )
 from .augmentation3d import (
     RandomHorizontalFlip3D,

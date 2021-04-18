@@ -1580,14 +1580,10 @@ class GaussianBlur(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.identity_matrix(input)
 
-<<<<<<< HEAD
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type.name.lower())
-=======
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return self.transform(input)
 
 
 class RandomInvert(AugmentationBase2D):
@@ -1631,49 +1627,4 @@ class RandomInvert(AugmentationBase2D):
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return self.transform(input)
-<<<<<<< HEAD
->>>>>>> implement RandomInvert
-=======
 
-
-class RandomChannelShuffle(AugmentationBase2D):
-    r"""Shuffles the channels of a batch of multi-dimensional images.
-
-    Args:
-        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        p (float): probability of applying the transformation. Default value is 0.5.
-
-    Examples:
-        >>> rng = torch.manual_seed(0)
-        >>> img = torch.arange(1*2*2*2.).view(1,2,2,2)
-        >>> RandomChannelShuffle()(img)
-        tensor([[[[4., 5.],
-                  [6., 7.]],
-        <BLANKLINE>
-                 [[0., 1.],
-                  [2., 3.]]]])
-    """
-
-    def __init__(self,
-                 return_transform: bool = False,
-                 same_on_batch: bool = False,
-                 p: float = 0.5) -> None:
-        super(RandomChannelShuffle, self).__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
-
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
-        B, C, _, _ = shape
-        channels = torch.rand(B, C).argsort(dim=1)
-        return dict(channels=channels)
-
-    def apply_transform(self, img: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        out = torch.empty_like(img)
-        for i in range(out.shape[0]):
-            out[i] = img[i, params['channels'][i]]
-        return out
->>>>>>> implement random shuffle channels
