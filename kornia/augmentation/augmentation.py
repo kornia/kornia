@@ -10,6 +10,7 @@ from kornia.augmentation import AugmentationBase2D
 from kornia.filters import GaussianBlur2d
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
+from kornia.geometry import resize
 
 from . import functional as F
 from . import random_generator as rg
@@ -823,6 +824,10 @@ class RandomResizedCrop(AugmentationBase2D):
         align_corners(bool): interpolation flag. Default: False.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
+        mode (str): The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                    on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                    to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                    differentiability. Default: `slice`.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -870,8 +875,8 @@ class RandomResizedCrop(AugmentationBase2D):
         self.flags: Dict[str, torch.Tensor] = dict(
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners),
-            mode=mode
         )
+        self.mode = mode
 
     def __repr__(self) -> str:
         repr = f"size={self.size}, scale={self.scale}, ratio={self.ratio}, interpolation={self.resample.name}"
@@ -891,23 +896,20 @@ class RandomResizedCrop(AugmentationBase2D):
         return F.compute_crop_transformation(input, params, self.flags)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        if self.flags['mode'] == 'resample':
+        if self.mode == 'resample':  # uses bilinear interpolation to crop
             return F.apply_crop(input, params, self.flags)
-        elif self.flags['mode'] == 'slice':
-            import kornia as K
-            coords = params['src'].long()
+        elif self.mode == 'slice':   # uses advanced slicing to crop
             B, C, _, _ = input.shape
             out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
             for i in range(B):
-                x1 = int(coords[i, 0, 0])
-                x2 = int(coords[i, 1, 0]) + 1
-                y1 = int(coords[i, 0, 1])
-                y2 = int(coords[i, 3, 1]) + 1
-                out[i] = K.geometry.transform.resize(
-                    input[i:i+1, :, y1:y2, x1:x2],
-                    self.size,
-                    interpolation='bilinear',
-                    align_corners=True)
+                x1 = int(params['src'][i, 0, 0])
+                x2 = int(params['src'][i, 1, 0]) + 1
+                y1 = int(params['src'][i, 0, 1])
+                y2 = int(params['src'][i, 3, 1]) + 1
+                out[i] = resize(input[i:i + 1, :, y1:y2, x1:x2],
+                                self.size,
+                                interpolation=(self.resample.name).lower(),
+                                align_corners=self.align_corners)
             return out
         else:
             raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
