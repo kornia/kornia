@@ -4,7 +4,8 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.utils.helpers import _torch_inverse_cast, _torch_histc_cast
+from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
 
 
 @pytest.mark.parametrize("tensor_list,out_device,out_dtype,will_throw_error", [
@@ -67,3 +68,34 @@ class TestInverseCast(object):
         op = _torch_inverse_cast
         op_jit = torch.jit.script(op)
         assert_allclose(op(x), op_jit(x))
+
+
+class TestHistcCast(object):
+    def test_smoke(self, device, dtype):
+        x = torch.tensor([1., 2., 1.], device=device, dtype=dtype)
+        y_expected = torch.tensor([0., 2., 1., 0.], device=device, dtype=dtype)
+
+        y = _torch_histc_cast(x, bins=4, min=0, max=3)
+
+        assert_allclose(y, y_expected)
+
+
+class TestSvdCast(object):
+    def test_smoke(self, device, dtype):
+        a = torch.randn(5, 3, 3, device=device, dtype=dtype)
+        u, s, v = _torch_svd_cast(a)
+
+        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-3
+        assert_allclose(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
+
+
+class TestSolveCast(object):
+    def test_smoke(self, device, dtype):
+        A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
+        B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
+
+        X, LU = _torch_solve_cast(B, A)
+        error = torch.dist(B, A.matmul(X))
+
+        tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
+        assert_allclose(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)

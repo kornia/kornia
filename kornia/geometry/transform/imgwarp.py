@@ -14,8 +14,8 @@ from kornia.geometry.transform.projwarp import (
     get_projective_transform
 )
 from kornia.utils import create_meshgrid
-from kornia.utils.helpers import _torch_inverse_cast
 from kornia.geometry.linalg import transform_points
+from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 
 __all__ = [
@@ -284,7 +284,7 @@ def get_perspective_transform(src, dst):
     ], dim=1)
 
     # solve the system Ax = b
-    X, LU = torch.solve(b, A)
+    X, LU = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
