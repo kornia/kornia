@@ -32,6 +32,11 @@ class TestRgbToGrayscale(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_grayscale(img)
 
+        with pytest.raises(ValueError):
+            img = torch.ones(3, 1, 1, device=device, dtype=dtype)
+            rgb_weights = torch.tensor([0.2, 0.8])
+            assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
+
     def test_opencv(self, device, dtype):
         data = torch.tensor([
             [[0.3944633, 0.8597369, 0.1670904, 0.2825457, 0.0953912],
@@ -64,6 +69,15 @@ class TestRgbToGrayscale(BaseTester):
 
         img_gray = kornia.rgb_to_grayscale(data)
         assert_allclose(img_gray, expected)
+
+    def test_custom_rgb_weights(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+
+        rgb_weights = torch.tensor([0.5, 0.25, 0.25])
+        img_gray = kornia.rgb_to_grayscale(img, rgb_weights=rgb_weights)
+        assert img_gray.device == device
+        assert img_gray.dtype == dtype
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
