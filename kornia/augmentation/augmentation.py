@@ -703,9 +703,13 @@ class RandomCrop(AugmentationBase2D):
                                       input tensor. If ``False`` and the input is a tuple the applied transformation
                                       wont be concatenated
         same_on_batch (bool): apply the same transformation across the batch. Default: False
-        align_corners(bool): interpolation flag. Default: False.
+        align_corners(bool): interpolation flag. Default: True.
         keepdim (bool): whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False). Default: False.
+        mode (str): The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+                    on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
+                    to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
+                    differentiability. Default: `slice`.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -726,11 +730,19 @@ class RandomCrop(AugmentationBase2D):
     """
 
     def __init__(
-        self, size: Tuple[int, int], padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
-        pad_if_needed: Optional[bool] = False, fill: int = 0, padding_mode: str = 'constant',
+        self,
+        size: Tuple[int, int],
+        padding: Optional[Union[int, Tuple[int, int], Tuple[int, int, int, int]]] = None,
+        pad_if_needed: Optional[bool] = False,
+        fill: int = 0,
+        padding_mode: str = 'constant',
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False, same_on_batch: bool = False, align_corners: bool = False, p: float = 1.0,
-        keepdim: bool = False
+        return_transform: bool = False,
+        same_on_batch: bool = False,
+        align_corners: bool = True,
+        p: float = 1.0,
+        keepdim: bool = False,
+        mode: str = 'slice',
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super(RandomCrop, self).__init__(
@@ -746,6 +758,7 @@ class RandomCrop(AugmentationBase2D):
             interpolation=torch.tensor(self.resample.value),
             align_corners=torch.tensor(align_corners)
         )
+        self.mode = mode
 
     def __repr__(self) -> str:
         repr = (f"crop_size={self.size}, padding={self.padding}, fill={self.fill}, pad_if_needed={self.pad_if_needed}, "
@@ -784,7 +797,23 @@ class RandomCrop(AugmentationBase2D):
         return F.compute_crop_transformation(input, params, self.flags)
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return F.apply_crop(input, params, self.flags)
+        if self.mode == 'resample':  # uses bilinear interpolation to crop
+            return F.apply_crop(input, params, self.flags)
+        elif self.mode == 'slice':   # uses advanced slicing to crop
+            B, C, _, _ = input.shape
+            out = torch.empty(B, C, *self.size, device=input.device, dtype=input.dtype)
+            for i in range(B):
+                x1 = int(params['src'][i, 0, 0])
+                x2 = int(params['src'][i, 1, 0]) + 1
+                y1 = int(params['src'][i, 0, 1])
+                y2 = int(params['src'][i, 3, 1]) + 1
+                out[i] = resize(input[i:i + 1, :, y1:y2, x1:x2],
+                                self.size,
+                                interpolation=(self.resample.name).lower(),
+                                align_corners=self.align_corners)
+            return out
+        else:
+            raise NotImplementedError(f"Not supported type: {self.flags['mode']}.")
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
                 params: Optional[Dict[str, torch.Tensor]] = None, return_transform: Optional[bool] = None

@@ -2126,6 +2126,21 @@ class TestRandomCrop:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        op1 = RandomCrop(size=(2, 2), mode='resample')
+        out = op1(img)
+
+        op2 = RandomCrop(size=(2, 2), mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
