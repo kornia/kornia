@@ -22,6 +22,7 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     r"""Returns the dilated image applying the same kernel in each channel.
 
     The kernel must have 2 dimensions, each one defined by an odd number.
+    Dilation is equivalent to eroding the background thus dilation(x, k) == -erosion(-x, k).
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
@@ -35,35 +36,7 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
         >>> kernel = torch.ones(3, 3)
         >>> dilated_img = dilation(tensor, kernel)
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
-
-    if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
-
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
-
-    if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
-
-    # prepare kernel
-    se_d: torch.Tensor = kernel - 1.
-    kernel_d: torch.Tensor = _se_to_mask(se_d)
-
-    # pad
-    se_h, se_w = kernel.shape
-    pad_d: List[int] = [se_h // 2, se_w // 2]
-
-    output: torch.Tensor = tensor.view(
-        tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
-    output = (F.conv2d(output, kernel_d, padding=pad_d) + se_d.view(1, -1, 1, 1)).max(dim=1)[0]
-
-    return output.view_as(tensor)
+    return -erosion(-tensor, kernel)
 
 
 # erosion
