@@ -85,6 +85,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
     output: torch.Tensor = tensor.view(
         tensor.shape[0] * tensor.shape[1], 1, tensor.shape[2], tensor.shape[3])
     output = F.pad(output, pad_e, mode='constant', value=1.)
-    output = (F.conv2d(output, kernel_e) - se_e.view(1, -1, 1, 1)).min(dim=1)[0]
+    output = F.conv2d(output, kernel_e) - se_e.view(1, -1, 1, 1)
+    output = output.amin(1)
 
     return output.view_as(tensor)
