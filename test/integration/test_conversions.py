@@ -342,7 +342,7 @@ class TestAngleOfRotations:
         return rot_m, axis
 
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
-    def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype):
+    def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
         # Random angle in [-pi..pi]
         angle = torch.tensor((np.random.random(size=(2, 1)) * 2. * np.pi - np.pi), device=device,
                              dtype=dtype)
@@ -374,20 +374,20 @@ class TestAngleOfRotations:
         # Make sure axes are perpendicular
         zero = torch.zeros_like(angle).unsqueeze(-1)
         assert_allclose(rot_m[..., :3, 1:2].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero,
-                        atol=1.e-4, rtol=1.e-4)
+                        atol=atol, rtol=rtol)
         assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 1:2], zero,
-                        atol=1.e-4, rtol=1.e-4)
+                        atol=atol, rtol=rtol)
         assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero,
-                        atol=1.e-4, rtol=1.e-4)
+                        atol=atol, rtol=rtol)
 
         # Make sure axes are unit norm
         one = torch.ones_like(angle)
-        assert_allclose(torch.linalg.norm(rot_m[..., :3, 0], dim=-1, keepdim=True), one, atol=1.e-4,
-                        rtol=1.e-4)
-        assert_allclose(torch.linalg.norm(rot_m[..., :3, 1], dim=-1, keepdim=True), one, atol=1.e-4,
-                        rtol=1.e-4)
-        assert_allclose(torch.linalg.norm(rot_m[..., :3, 2], dim=-1, keepdim=True), one, atol=1.e-4,
-                        rtol=1.e-4)
+        assert_allclose(rot_m[..., :3, 0].norm(p=2, dim=-1, keepdim=True), one,
+                        atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one,
+                        atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one,
+                        atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -135., -90., -45., 0., 45, 90, 135, 179.9))
@@ -417,7 +417,7 @@ class TestAngleOfRotations:
                                                               order=QuaternionCoeffOrder.XYZW)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
-        angle_hat = 2. * torch.atan2(torch.linalg.norm(quaternion[..., :3], dim=-1, keepdim=True),
+        angle_hat = 2. * torch.atan2(quaternion[..., :3].norm(p=2, dim=-1, keepdim=True),
                                      quaternion[..., 3:4])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
@@ -449,7 +449,7 @@ class TestAngleOfRotations:
                                                           order=QuaternionCoeffOrder.WXYZ)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
-        angle_hat = 2. * torch.atan2(torch.linalg.norm(quaternion[..., 1:4], dim=-1, keepdim=True),
+        angle_hat = 2. * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True),
                                      quaternion[..., 0:1])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
@@ -475,7 +475,7 @@ class TestAngleOfRotations:
                                                                              dtype=dtype)
         angle_axis = kornia.rotation_matrix_to_angle_axis(rot_m)
         # compute angle_axis rotation angle
-        angle_hat = torch.linalg.norm(angle_axis, dim=-1, keepdim=True)
+        angle_hat = angle_axis.norm(p=2, dim=-1, keepdim=True)
         # invert angle, if angle_axis axis points in the opposite direction of the original axis
         dots = (angle_axis * axis).sum(dim=-1, keepdim=True)
         angle_hat = torch.where(dots < 0., angle_hat * -1., angle_hat)
@@ -502,7 +502,7 @@ class TestAngleOfRotations:
             log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps,
                                                  order=QuaternionCoeffOrder.XYZW)
         # compute angle_axis rotation angle
-        angle_hat = 2. * torch.linalg.norm(log_q, dim=-1, keepdim=True)
+        angle_hat = 2. * log_q.norm(p=2, dim=-1, keepdim=True)
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):
@@ -532,7 +532,7 @@ class TestAngleOfRotations:
         log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps,
                                              order=QuaternionCoeffOrder.WXYZ)
         # compute angle_axis rotation angle
-        angle_hat = 2. * torch.linalg.norm(log_q, dim=-1, keepdim=True)
+        angle_hat = 2. * log_q.norm(p=2, dim=-1, keepdim=True)
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):

@@ -354,9 +354,7 @@ def rotation_matrix_to_quaternion(
 
     Example:
         >>> input = torch.rand(4, 3, 3)  # Nx3x3
-        >>> output = rotation_matrix_to_quaternion(input, \
-                                                   eps=torch.finfo(input.dtype).eps, \
-                                                   oder=QuaternionCoeffOrder.WXYZ)  # Nx4
+        >>> output = rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps, order=QuaternionCoeffOrder.WXYZ)  # Nx4
     """
     if not isinstance(rotation_matrix, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(rotation_matrix)}")
@@ -487,7 +485,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor([0., 0., 0., 1.])
-        >>> quaternion_to_rotation_matrix(quaternion, oder=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
         tensor([[-1.,  0.,  0.],
                 [ 0., -1.,  0.],
                 [ 0.,  0.,  1.]])
@@ -628,9 +626,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
-        >>> quaternion_log_to_exp(quaternion, \
-                                  eps=torch.finfo(quaternion.dtype).eps, \
-                                  oder=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps, order=QuaternionCoeffOrder.WXYZ)
         tensor([1., 0., 0., 0.])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -680,9 +676,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
-        >>> quaternion_exp_to_log(quaternion, \
-                                  eps=torch.finfo(quaternion.dtype).eps, \
-                                  oder=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps, order=QuaternionCoeffOrder.WXYZ)
         tensor([0., 0., 0.])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -744,8 +738,7 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor,
 
     Example:
         >>> angle_axis = torch.rand(2, 3)  # Nx3
-        >>> quaternion = angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
-        # Nx4
+        >>> quaternion = angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)  # Nx4
     """
     if not torch.is_tensor(angle_axis):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(angle_axis)}")
