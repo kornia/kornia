@@ -2,10 +2,12 @@
 from typing import Tuple, List
 
 import torch
+
 import kornia as K
 from kornia.geometry.conversions import convert_affinematrix_to_homography3d
 from kornia.geometry.transform.homography_warper import normalize_homography3d, homography_warp3d
 from kornia.testing import check_is_tensor
+from kornia.utils.helpers import _torch_solve_cast, _torch_inverse_cast
 
 __all__ = [
     "warp_affine3d",
@@ -57,7 +59,7 @@ def warp_affine3d(src: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
         M_4x4, size_src, size_out)    # Bx4x4
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
 
     # compute meshgrid and apply to input
@@ -127,7 +129,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = from_origin_mat.inverse()
+    to_origin_mat = _torch_inverse_cast(from_origin_mat)
 
     # append tranlation with zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -260,7 +262,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     ], dim=1)
 
     # solve the system Ax = b
-    X, LU = torch.solve(b, A)
+    X, LU = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
