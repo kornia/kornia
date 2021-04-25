@@ -695,8 +695,9 @@ class CenterCrop(AugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         if self.cropping_mode == 'resample':  # uses bilinear interpolation to crop
-          return crop_by_transform_mat(
-            input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners)
+            transform = cast(torch.Tensor, transform)
+            return crop_by_transform_mat(
+                input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners)
         elif self.cropping_mode == 'slice':   # uses advanced slicing to crop
             # TODO: implement as separated function `crop_and_resize_iterative`
             B, C, _, _ = input.shape
