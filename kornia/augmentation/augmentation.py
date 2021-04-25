@@ -751,12 +751,12 @@ class RandomCrop(AugmentationBase2D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
-        >>> rng = torch.manual_seed(0)
-        >>> inputs = torch.randn(1, 1, 3, 3)
+        >>> _ = torch.manual_seed(0)
+        >>> inputs = torch.arange(1*1*3*3.).view(1, 1, 3, 3)
         >>> aug = RandomCrop((2, 2), p=1.)
         >>> aug(inputs)
-        tensor([[[[-0.6562, -1.0009],
-                  [ 0.2223, -0.5507]]]])
+        tensor([[[[3., 4.],
+                  [6., 7.]]]])
     """
 
     def __init__(
