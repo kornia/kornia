@@ -95,7 +95,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor) -> np.array:
+def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -117,7 +117,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
             "Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: np.array = tensor.cpu().detach().numpy()
+    image: np.ndarray = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
