@@ -1780,6 +1780,17 @@ class TestCenterCrop:
         out = kornia.augmentation.CenterCrop((3, 4))(inp)
         assert out.shape == (1, 2, 3, 4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+
+        op1 = CenterCrop(size=(2, 2), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = CenterCrop(size=(2, 2), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2129,6 +2140,21 @@ class TestRandomCrop:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        op1 = RandomCrop(size=(2, 2), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = RandomCrop(size=(2, 2), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
@@ -2263,6 +2289,21 @@ class TestRandomResizedCrop:
         out = rrc(inp)
         assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        op1 = RandomResizedCrop(size=(4, 4), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = RandomResizedCrop(size=(4, 4), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 3), device=device, dtype=dtype)  # 3 x 3
@@ -2274,7 +2315,7 @@ class TestRandomResizedCrop:
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
-    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
     def test_smoke(self, device, dtype):
         f = RandomEqualize(p=0.5)
         repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
