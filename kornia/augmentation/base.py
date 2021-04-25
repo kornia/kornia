@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from torch.distributions import Bernoulli
 
+import kornia
 from . import functional as F
 from .utils import (
     _transform_input,
@@ -65,7 +66,7 @@ class _BasicAugmentationBase(nn.Module):
         raise NotImplementedError
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        raise NotImplementedError
+        return {}
 
     def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
@@ -149,7 +150,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                         to the batch form (False). Default: False.
     """
 
-    def __init__(self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5,
+    def __init__(self, return_transform: bool = None, same_on_batch: bool = False, p: float = 0.5,
                  p_batch: float = 1., keepdim: bool = False) -> None:
         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
@@ -163,6 +164,11 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def __unpack_input__(  # type: ignore
@@ -184,22 +190,18 @@ class _AugmentationBase(_BasicAugmentationBase):
         # if no augmentation needed
         if torch.sum(to_apply) == 0:
             output = in_tensor
-            if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
-            output = self.apply_transform(in_tensor, params)
-            if return_transform:
-                trans_matrix = self.compute_transformation(in_tensor, params)
+            trans_matrix = self.compute_transformation(in_tensor, params)
+            output = self.apply_transform(in_tensor, params, trans_matrix)
         else:
             output = in_tensor.clone()
-            try:
-                output[to_apply] = self.apply_transform(in_tensor[to_apply], params)
-            except Exception as e:
-                raise ValueError(f"{e}, {to_apply}")
-            if return_transform:
-                trans_matrix = self.identity_matrix(in_tensor)
-                trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
+            trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
+            output[to_apply] = self.apply_transform(in_tensor[to_apply], params, trans_matrix[to_apply])
+
+        self._transform_matrix = trans_matrix
 
         if return_transform:
             out_transformation = trans_matrix if in_transform is None else trans_matrix @ in_transform
@@ -222,6 +224,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         if return_transform is None:
             return_transform = self.return_transform
+        return_transform = cast(bool, return_transform)
         if params is None:
             params = self.forward_parameters(batch_shape)
         if 'batch_prob' not in params:
@@ -274,7 +277,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
-        return F.compute_intensity_transformation(input)
+        return kornia.eye_like(3, input)
 
 
 class AugmentationBase3D(_AugmentationBase):
@@ -316,7 +319,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return F.compute_intensity_transformation3d(input)
+        return kornia.eye_like(4, input)
 
 
 class MixAugmentationBase(_BasicAugmentationBase):

@@ -79,5 +79,5 @@ __all__ = [
     "RandomCrop3D",
     "CenterCrop3D",
     "RandomEqualize3D",
-    "VideoSequential",
+    "VideoSequential"
 ]
