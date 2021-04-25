@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.utils import create_meshgrid, create_meshgrid3d
+from kornia.utils.helpers import _torch_inverse_cast
 from kornia.geometry.linalg import transform_points
 from kornia.testing import check_is_tensor
 
@@ -363,7 +364,8 @@ def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(
         src_h, src_w).to(dst_pix_trans_src_pix)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(
         dst_h, dst_w).to(dst_pix_trans_src_pix)
 
@@ -402,7 +404,8 @@ def normalize_homography3d(dst_pix_trans_src_pix: torch.Tensor,
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(
         src_d, src_h, src_w).to(dst_pix_trans_src_pix)
-    src_pix_trans_src_norm = torch.inverse(src_norm_trans_src_pix)
+
+    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(
         dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
