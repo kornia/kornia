@@ -1,5 +1,6 @@
 """Module to perform projective transformations to tensors."""
-from typing import Tuple, List
+from typing import Tuple, List, Optional
+import warnings
 
 import torch
 import kornia as K
@@ -21,7 +22,7 @@ def warp_affine3d(src: torch.Tensor,
                   dsize: Tuple[int, int, int],
                   flags: str = 'bilinear',
                   padding_mode: str = 'zeros',
-                  align_corners: bool = True) -> torch.Tensor:
+                  align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
     .. warning::
@@ -47,6 +48,16 @@ def warp_affine3d(src: torch.Tensor,
     assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
     assert len(dsize) == 3, dsize
     B, C, D, H, W = src.size()
+
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpAffine. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
 
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
