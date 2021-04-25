@@ -10,6 +10,7 @@ from kornia.geometry.transform.projwarp import (
     warp_affine3d, get_projective_transform
 )
 from kornia.utils import _extract_device_dtype
+from kornia.utils.image import _to_bchw
 
 __all__ = [
     "affine",
@@ -544,15 +545,13 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
         return input
 
     # TODO: find a proper way to handle this cases in the future
-    input_tmp = input
-    if len(input.shape) == 3:
-        input_tmp = input_tmp.unsqueeze(0)
+    input_tmp = _to_bchw(input)
 
     output = torch.nn.functional.interpolate(
         input_tmp, size=size, mode=interpolation, align_corners=align_corners)
 
-    if len(input.shape) == 3:
-        output = output.squeeze(0)
+    if len(input.shape) != len(output.shape):
+        output = output.squeeze()
 
     return output
 
