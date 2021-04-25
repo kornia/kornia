@@ -463,6 +463,7 @@ class RandomPerspective(AugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         _, _, height, width = input.shape
+        transform = cast(torch.Tensor, transform)
         return warp_perspective(
             input, transform, (height, width),
             mode=self.resample.name.lower(), align_corners=self.align_corners)
@@ -599,6 +600,7 @@ class RandomAffine(AugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         _, _, height, width = input.shape
+        transform = cast(torch.Tensor, transform)
         return warp_affine(
             input, transform[:, :2, :], (height, width), self.resample.name.lower(),
             align_corners=self.align_corners, padding_mode=self.padding_mode.name.lower())
@@ -678,6 +680,7 @@ class CenterCrop(AugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(
             input, transform[:, :2, :], self.size, self.resample.name.lower(), 'zeros', self.align_corners)
 
@@ -765,6 +768,7 @@ class RandomRotation(AugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return affine(input, transform[..., :2, :3], self.resample.name.lower(), 'zeros', self.align_corners)
 
 
@@ -877,6 +881,7 @@ class RandomCrop(AugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(
             input, transform, self.size, mode=self.resample.name.lower(),
             padding_mode='zeros', align_corners=self.align_corners)
@@ -974,6 +979,7 @@ class RandomResizedCrop(AugmentationBase2D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(
             input, transform, self.size,
             mode=self.resample.name.lower(), padding_mode='zeros', align_corners=self.align_corners)
@@ -1470,7 +1476,7 @@ class GaussianBlur(AugmentationBase2D):
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.kernel_size = kernel_size
         self.sigma = sigma
-        self.border_type = BorderType.get(border_type)
+        self.border_type: BorderType = BorderType.get(border_type)
 
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"

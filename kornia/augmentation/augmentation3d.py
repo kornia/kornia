@@ -374,9 +374,10 @@ class RandomAffine3D(AugmentationBase3D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return warp_affine3d(
-            input, transform[:, :3, :], input.shape[-3:], self.resample.name.lower(),
-            align_corners=self.align_corners)
+            input, transform[:, :3, :], (input.shape[-3], input.shape[-2], input.shape[-1]),
+            self.resample.name.lower(), align_corners=self.align_corners)
 
 
 class RandomRotation3D(AugmentationBase3D):
@@ -482,6 +483,7 @@ class RandomRotation3D(AugmentationBase3D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return affine3d(input, transform[..., :3, :4], self.resample.name.lower(), 'zeros', self.align_corners)
 
 
@@ -678,6 +680,7 @@ class CenterCrop3D(AugmentationBase3D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat3d(
             input, transform, self.size, mode=self.resample.name.lower(), align_corners=self.align_corners)
 
@@ -809,6 +812,7 @@ class RandomCrop3D(AugmentationBase3D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat3d(
             input, transform, self.size,
             mode=self.resample.name.lower(), align_corners=self.align_corners)
@@ -909,8 +913,10 @@ class RandomPerspective3D(AugmentationBase3D):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return warp_perspective3d(
-            input, transform, input.shape[-3:], flags=self.resample.name.lower(), align_corners=self.align_corners)
+            input, transform, (input.shape[-3], input.shape[-2], input.shape[-1]),
+            flags=self.resample.name.lower(), align_corners=self.align_corners)
 
 
 class RandomEqualize3D(AugmentationBase3D):

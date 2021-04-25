@@ -192,11 +192,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             trans_matrix = self.identity_matrix(in_tensor)
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
-            trans_matrix = None
             trans_matrix = self.compute_transformation(in_tensor, params)
             output = self.apply_transform(in_tensor, params, trans_matrix)
         else:
-            trans_matrix = None
             output = in_tensor.clone()
             trans_matrix = self.identity_matrix(in_tensor)
             trans_matrix[to_apply] = self.compute_transformation(in_tensor[to_apply], params)
@@ -225,6 +223,7 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         if return_transform is None:
             return_transform = self.return_transform
+        return_transform = cast(bool, return_transform)
         if params is None:
             params = self.forward_parameters(batch_shape)
         if 'batch_prob' not in params:
