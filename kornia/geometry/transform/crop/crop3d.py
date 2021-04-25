@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 
@@ -9,11 +9,12 @@ from kornia.geometry.transform.projwarp import (
 __all__ = [
     "crop_and_resize3d",
     "crop_by_boxes3d",
+    "crop_by_transform_mat3d",
     "center_crop3d",
     "bbox_to_mask3d",
     "infer_box_shape3d",
     "validate_bboxes3d",
-    "bbox_generator3d"
+    "bbox_generator3d",
 ]
 
 
@@ -304,11 +305,40 @@ def crop_by_boxes3d(tensor: torch.Tensor, src_box: torch.Tensor, dst_box: torch.
     assert (bbox[0] == bbox[0][0]).all() and (bbox[1] == bbox[1][0]).all() and (bbox[2] == bbox[2][0]).all(), (
         "Cropping height, width and depth must be exact same in a batch."
         f"Got height {bbox[0]}, width {bbox[1]} and depth {bbox[2]}.")
-    patches: torch.Tensor = warp_affine3d(
-        tensor, dst_trans_src[:, :3, :],
-        # TODO: It will break the grads
+
+    patches: torch.Tensor = crop_by_transform_mat3d(
+        tensor, dst_trans_src,
         (int(bbox[0][0].item()), int(bbox[1][0].item()), int(bbox[2][0].item())),
-        flags=interpolation, align_corners=align_corners)
+        mode=interpolation, align_corners=align_corners)
+
+    return patches
+
+
+def crop_by_transform_mat3d(
+    tensor: torch.Tensor, transform: torch.Tensor, out_size: Tuple[int, int, int],
+    mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: Optional[bool] = None
+) -> torch.Tensor:
+    """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.
+
+    Args:
+        tensor (torch.Tensor): the 2D image tensor with shape (B, C, H, W).
+        transform (torch.Tensor): a perspective transformation matrix with shape (B, 4, 4).
+        out_size (Tuple[int, int, int]): size of the output image (depth, height, width).
+        mode (str): interpolation mode to calculate output values
+          'bilinear' | 'nearest'. Default: 'bilinear'.
+        padding_mode (str): padding mode for outside grid values
+          'zeros' | 'border' | 'reflection'. Default: 'zeros'.
+        align_corners (bool, optional): mode for grid_generation. Default: None.
+
+    Returns:
+        torch.Tensor: the output tensor with patches.
+    """
+    # simulate broadcasting
+    dst_trans_src = transform.expand(tensor.shape[0], -1, -1)
+
+    patches: torch.Tensor = warp_affine3d(
+        tensor, dst_trans_src[:, :3, :], out_size,
+        flags=mode, padding_mode=padding_mode, align_corners=align_corners)
 
     return patches
 

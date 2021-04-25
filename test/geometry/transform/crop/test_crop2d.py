@@ -394,3 +394,63 @@ class TestCropByBoxes:
         assert gradcheck(kornia.geometry.transform.crop.crop_by_boxes,
                          (inp, src, dst,),
                          raise_exception=True)
+
+
+class TestCropByTransform:
+    def test_crop_by_transform_no_resizing(self, device, dtype):
+        inp = torch.tensor([[[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]]], device=device, dtype=dtype)
+
+        transform = torch.tensor([[
+            [1., 0., -1.],
+            [0., 1., -1.],
+            [0., 0., 1.],
+        ]], device=device, dtype=dtype)  # 1x3x3
+
+        expected = torch.tensor([[[
+            [6., 7.],
+            [10., 11.],
+        ]]], device=device, dtype=dtype)
+
+        patches = kornia.geometry.transform.crop.crop_by_transform_mat(inp, transform, (2, 2))
+        assert_allclose(patches, expected)
+
+    def test_crop_by_boxes_resizing(self, device, dtype):
+        inp = torch.tensor([[[
+            [1., 2., 3., 4.],
+            [5., 6., 7., 8.],
+            [9., 10., 11., 12.],
+            [13., 14., 15., 16.],
+        ]]], device=device, dtype=dtype)
+
+        transform = torch.tensor([[
+            [2., 0., -2.],
+            [0., 1., -1.],
+            [0., 0., 1.],
+        ]], device=device, dtype=dtype)  # 1x3x3
+
+        expected = torch.tensor([[[
+            [6., 6.5, 7.],
+            [10., 10.5, 11.],
+        ]]], device=device, dtype=dtype)
+
+        patches = kornia.geometry.transform.crop.crop_by_transform_mat(inp, transform, (2, 3))
+        assert_allclose(patches, expected, rtol=1e-4, atol=1e-4)
+
+    def test_gradcheck(self, device, dtype):
+        inp = torch.randn((1, 1, 3, 3), device=device, dtype=dtype)
+        transform = torch.tensor([[
+            [2., 0., -2.],
+            [0., 1., -1.],
+            [0., 0., 1.],
+        ]], device=device, dtype=dtype)  # 1x3x3
+
+        inp = utils.tensor_to_gradcheck_var(inp, requires_grad=True)  # to var
+
+        assert gradcheck(kornia.geometry.transform.crop.crop_by_transform_mat,
+                         (inp, transform, (2, 2),),
+                         raise_exception=True)
