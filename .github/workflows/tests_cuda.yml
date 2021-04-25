@@ -7,20 +7,20 @@ on:
   pull_request:
     branches:
       - master
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   tests-cuda:
     container:
-      image: pytorchlightning/pytorch_lightning:base-cuda-py3.7-torch1.8
+      image: pytorchlightning/pytorch_lightning:base-cuda-py${{ matrix.python-version }}-torch${{ matrix.pytorch-version }}
       options: --gpus all
-      #options: --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all
     runs-on: [self-hosted, Linux, x64]
     strategy:
       fail-fast: false
       matrix:
         python-version: [3.7]
-        pytorch-version: [1.8.0]
-        cuda-version: [10.2]
+        pytorch-version: [1.8]
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
