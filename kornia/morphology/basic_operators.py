@@ -26,7 +26,7 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -47,7 +47,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Eroded image with shape :math:`(B, C, H, W)`.
