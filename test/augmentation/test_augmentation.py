@@ -1781,10 +1781,10 @@ class TestCenterCrop:
         torch.manual_seed(0)
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
 
-        op1 = CenterCrop(size=(2, 2), mode='resample')
+        op1 = CenterCrop(size=(2, 2), cropping_mode='resample')
         out = op1(img)
 
-        op2 = CenterCrop(size=(2, 2), mode='slice')
+        op2 = CenterCrop(size=(2, 2), cropping_mode='slice')
 
         assert_allclose(out, op2(img, op1._params))
 
@@ -2145,10 +2145,10 @@ class TestRandomCrop:
             [6., 7., 8.]
         ]], device=device, dtype=dtype)
 
-        op1 = RandomCrop(size=(2, 2), mode='resample')
+        op1 = RandomCrop(size=(2, 2), cropping_mode='resample')
         out = op1(img)
 
-        op2 = RandomCrop(size=(2, 2), mode='slice')
+        op2 = RandomCrop(size=(2, 2), cropping_mode='slice')
 
         assert_allclose(out, op2(img, op1._params))
 
@@ -2294,10 +2294,10 @@ class TestRandomResizedCrop:
             [6., 7., 8.]
         ]], device=device, dtype=dtype)
 
-        op1 = RandomResizedCrop(size=(4, 4), mode='resample')
+        op1 = RandomResizedCrop(size=(4, 4), cropping_mode='resample')
         out = op1(img)
 
-        op2 = RandomResizedCrop(size=(4, 4), mode='slice')
+        op2 = RandomResizedCrop(size=(4, 4), cropping_mode='slice')
 
         assert_allclose(out, op2(img, op1._params))
 
