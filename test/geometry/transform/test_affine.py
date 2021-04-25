@@ -13,6 +13,11 @@ class TestResize:
         out = kornia.resize(inp, (3, 4))
         assert_allclose(inp, out, atol=1e-4, rtol=1e-4)
 
+    def test_no_batch(self, device, dtype):
+        inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
+        out = kornia.resize(inp, (2, 5))
+        assert out.shape == (3, 2, 5)
+
     def test_upsize(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.resize(inp, (6, 8))

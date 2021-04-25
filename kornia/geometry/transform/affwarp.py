@@ -543,7 +543,18 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
     if size == input_size:
         return input
 
-    return torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+    # TODO: find a proper way to handle this cases in the future
+    input_tmp = input
+    if len(input.shape) == 3:
+        input_tmp = input_tmp.unsqueeze(0)
+
+    output = torch.nn.functional.interpolate(
+        input_tmp, size=size, mode=interpolation, align_corners=align_corners)
+
+    if len(input.shape) == 3:
+        output = output.squeeze(0)
+
+    return output
 
 
 def rescale(
