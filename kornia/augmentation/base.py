@@ -276,7 +276,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
-        return torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        return kornia.utils.eye_like(3, input)
 
 
 class AugmentationBase3D(_AugmentationBase):
@@ -318,7 +318,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return torch.eye(4, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        return kornia.utils.eye_like(4, input)
 
 
 class MixAugmentationBase(_BasicAugmentationBase):

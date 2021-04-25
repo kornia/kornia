@@ -364,7 +364,7 @@ class RandomAffine3D(AugmentationBase3D):
             translate, scale, shear, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform = get_affine_matrix3d(
+        transform: torch.Tensor = get_affine_matrix3d(
             params['translations'], params['center'], params['scale'], params['angles'],
             deg2rad(params['sxy']), deg2rad(params['sxz']), deg2rad(params['syx']),
             deg2rad(params['syz']), deg2rad(params['szx']), deg2rad(params['szy'])
