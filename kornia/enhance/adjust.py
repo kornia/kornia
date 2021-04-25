@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
+from kornia.utils.helpers import _torch_histc_cast
 
 
 __all__ = [
@@ -673,7 +674,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
 
     im = im * 255
     # Compute the histogram of the image channel.
-    histo = torch.histc(im, bins=256, min=0, max=255)
+    histo = _torch_histc_cast(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
     nonzero_histo = torch.reshape(histo[histo != 0], [-1])
     step = (torch.sum(nonzero_histo) - nonzero_histo[-1]) // 255

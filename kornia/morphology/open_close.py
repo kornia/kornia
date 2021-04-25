@@ -7,13 +7,13 @@ from kornia.morphology.basic_operators import dilation, erosion
 
 # open
 def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
-    r"""Returns the opened image, (that means, erosion after a dilation) applying the same kernel in each channel.
+    r"""Returns the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions, each one defined by an odd number.
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -45,13 +45,13 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
 # close
 def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
-    r"""Returns the closed image, (that means, dilation after an erosion) applying the same kernel in each channel.
+    r"""Returns the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
     The kernel must have 2 dimensions, each one defined by an odd number.
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.

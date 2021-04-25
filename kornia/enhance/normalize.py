@@ -135,7 +135,7 @@ class Denormalize(nn.Module):
     r"""Denormalize a tensor image with mean and standard deviation.
 
     .. math::
-        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
@@ -182,7 +182,7 @@ def denormalize(
     r"""Denormalize a tensor image with mean and standard deviation.
 
     .. math::
-        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 

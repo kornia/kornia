@@ -42,9 +42,10 @@ from ..utils import (
     _validate_input
 )
 
-from .__temp__ import __deprecation_warning
+from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Horizontally flip on a tensor image or a batch of tensor images with given random parameters.
@@ -61,6 +62,7 @@ def apply_hflip(input: torch.Tensor) -> torch.Tensor:
     return hflip(input)
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the horizontal flip transformation matrix :math: `(*, 3, 3)`.
@@ -80,6 +82,7 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.repeat(input.size(0), 1, 1)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     r"""Apply vertically flip on a tensor image or a batch of tensor images with given random parameters.
@@ -94,6 +97,7 @@ def apply_vflip(input: torch.Tensor) -> torch.Tensor:
     return vflip(input)
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the vertical flip transformation matrix :math: `(*, 3, 3)`.
@@ -113,6 +117,7 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     return flip_mat.repeat(input.size(0), 1, 1)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_color_jitter(
     input: torch.Tensor, params: Dict[str, torch.Tensor]
@@ -148,6 +153,7 @@ def apply_color_jitter(
     return jittered
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_intensity_transformation(input: torch.Tensor):
     r"""Compute the identity matrix :math: `(*, 3, 3)`.
@@ -162,6 +168,7 @@ def compute_intensity_transformation(input: torch.Tensor):
     return identity
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     r"""Apply Gray Scale on a tensor image or a batch of tensor images with given random parameters.
@@ -183,6 +190,7 @@ def apply_grayscale(input: torch.Tensor) -> torch.Tensor:
     return grayscale
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_perspective(
     input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
@@ -222,6 +230,7 @@ def apply_perspective(
     return out_data.view_as(input)
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the perspective transformation matrix :math: `(*, 3, 3)`.
@@ -247,6 +256,7 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Random affine transformation of the image keeping center invariant.
@@ -287,6 +297,7 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
     return out_data.view_as(input)
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the affine transformation matrix :math: `(*, 3, 3)`.
@@ -311,6 +322,7 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_rotation(
     input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
@@ -338,6 +350,7 @@ def apply_rotation(
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute the rotation transformation matrix :math: `(*, 3, 3)`.
@@ -364,6 +377,7 @@ def compute_rotate_tranformation(input: torch.Tensor, params: Dict[str, torch.Te
     return trans_mat
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply cropping by src bounding box and dst bounding box.
@@ -389,6 +403,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
         input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
+@_deprecation_wrapper
 @_validate_input
 def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]):
     r"""Compute the applied transformation matrix :math: `(*, 3, 3)`.
@@ -407,6 +422,7 @@ def compute_crop_transformation(input: torch.Tensor, params: Dict[str, torch.Ten
     return transform
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply rectangle erase by params.
@@ -443,6 +459,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Apply brightness adjustment.
@@ -464,6 +481,7 @@ def apply_adjust_brightness(input: torch.Tensor, params: Dict[str, torch.Tensor]
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Apply contrast adjustment.
@@ -485,6 +503,7 @@ def apply_adjust_contrast(input: torch.Tensor, params: Dict[str, torch.Tensor]) 
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Apply saturation adjustment.
@@ -506,6 +525,7 @@ def apply_adjust_saturation(input: torch.Tensor, params: Dict[str, torch.Tensor]
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     """Apply hue adjustment.
@@ -528,6 +548,7 @@ def apply_adjust_hue(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> to
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Perform gamma correction on an image.
@@ -547,6 +568,7 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     return transformed
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
                       flags: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -578,6 +600,7 @@ def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
     return motion_blur(input, kernel_size, angle, direction, border_type, mode)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Solarize an image.
@@ -600,6 +623,7 @@ def apply_solarize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     return solarize(input, thresholds, additions)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_posterize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Posterize an image.
@@ -617,6 +641,7 @@ def apply_posterize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     return posterize(input, bits)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_sharpness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Sharpen an image.
@@ -634,6 +659,7 @@ def apply_sharpness(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> tor
     return sharpness(input, factor)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Equalize an image.
@@ -647,6 +673,7 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
     return equalize(input)
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
                 params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -699,6 +726,7 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
     return inputs, labels
 
 
+@_deprecation_wrapper
 @_validate_input
 def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
                  params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:

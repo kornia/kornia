@@ -15,6 +15,7 @@ from kornia.geometry.transform.projwarp import (
 )
 from kornia.utils import create_meshgrid
 from kornia.geometry.linalg import transform_points
+from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 
 __all__ = [
@@ -106,7 +107,7 @@ def warp_perspective(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int],
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M, (H, W), (h_out, w_out))  # Bx3x3
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)  # Bx3x3
+    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
 
     # this piece of code substitutes F.affine_grid since it does not support 3x3
     grid = create_meshgrid(h_out, w_out, normalized_coordinates=True,
@@ -193,7 +194,8 @@ def warp_affine(src: torch.Tensor, M: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(
         M_3x3, (H, W), dsize)
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    # src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
 
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :],
                          [B, C, dsize[0], dsize[1]],
@@ -282,7 +284,7 @@ def get_perspective_transform(src, dst):
     ], dim=1)
 
     # solve the system Ax = b
-    X, LU = torch.solve(b, A)
+    X, LU = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -438,7 +440,7 @@ def get_rotation_matrix2d(
 
 def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
           mode: str = 'bilinear', padding_mode: str = 'zeros',
-          align_corners: Optional[bool] = None) -> torch.Tensor:
+          align_corners: Optional[bool] = None, normalized_coordinates: bool = False) -> torch.Tensor:
     r"""Applies a generic geometrical transformation to a tensor.
 
     The function remap transforms the source tensor using the specified map:
@@ -458,6 +460,8 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
         padding_mode (str): padding mode for outside grid values
           'zeros' | 'border' | 'reflection'. Default: 'zeros'.
         align_corners (bool, optional): mode for grid_generation. Default: None.
+        normalized_coordinates (bool): whether the input coordinates are
+           normalised in the range of [-1, 1]. Default: False
 
     Returns:
         torch.Tensor: the warped tensor with same shape as the input grid maps.
@@ -493,11 +497,13 @@ def remap(tensor: torch.Tensor, map_x: torch.Tensor, map_y: torch.Tensor,
 
     # grid_sample need the grid between -1/1
     map_xy: torch.Tensor = torch.stack([map_x, map_y], dim=-1)
-    map_xy_norm: torch.Tensor = normalize_pixel_coordinates(
-        map_xy, height, width)
+
+    # normalize coordinates if not already normalized
+    if not normalized_coordinates:
+        map_xy = normalize_pixel_coordinates(map_xy, height, width)
 
     # simulate broadcasting since grid_sample does not support it
-    map_xy_norm = map_xy_norm.expand(batch_size, -1, -1, -1)
+    map_xy_norm: torch.Tensor = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp ans return
     tensor_warped: torch.Tensor = F.grid_sample(

@@ -33,6 +33,7 @@ from kornia.augmentation import (
 
 from kornia.testing import BaseTester, default_with_one_parameter_changed, cartesian_product_of_parameters
 from kornia.augmentation.base import AugmentationBase2D
+from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
 
@@ -139,7 +140,7 @@ class CommonTests(BaseTester):
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        output = augmentation.apply_transform(test_input, generated_params)
+        output = augmentation.apply_transform(test_input, generated_params, transformation)
         assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
@@ -282,7 +283,9 @@ class CommonTests(BaseTester):
                                          normalized_coordinates=False,
                                          device=self.device)
         output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
-        input_indices = kornia.geometry.transform_points(transform.to(self.dtype).inverse(), output_indices)
+        input_indices = kornia.geometry.transform_points(
+            _torch_inverse_cast(transform.to(self.dtype)),
+            output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
         input_indices = input_indices.round().long().squeeze(0)
