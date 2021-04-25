@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from torch.distributions import Bernoulli
 
+import kornia
 from . import functional as F
 from .utils import (
     _transform_input,
@@ -276,7 +277,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 3x3 identity matrix."""
-        return kornia.utils.eye_like(3, input)
+        return kornia.eye_like(3, input)
 
 
 class AugmentationBase3D(_AugmentationBase):
@@ -318,7 +319,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return kornia.utils.eye_like(4, input)
+        return kornia.eye_like(4, input)
 
 
 class MixAugmentationBase(_BasicAugmentationBase):

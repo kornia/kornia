@@ -241,10 +241,10 @@ class ColorJitter(AugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         transforms = [
-            lambda img: adjust_brightness(img, params['brightness_factor'].to(img.dtype) - 1),
-            lambda img: adjust_contrast(img, params['contrast_factor'].to(img.dtype)),
-            lambda img: adjust_saturation(img, params['saturation_factor'].to(img.dtype)),
-            lambda img: adjust_hue(img, params['hue_factor'].to(img.dtype) * 2 * pi)
+            lambda img: adjust_brightness(img, params['brightness_factor'] - 1),
+            lambda img: adjust_contrast(img, params['contrast_factor']),
+            lambda img: adjust_saturation(img, params['saturation_factor']),
+            lambda img: adjust_hue(img, params['hue_factor'] * 2 * pi)
         ]
 
         jittered = input
@@ -753,6 +753,7 @@ class RandomRotation(AugmentationBase2D):
         return rg.random_rotation_generator(batch_shape[0], degrees, self.same_on_batch, self.device, self.dtype)
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        # TODO: Update to use `get_rotation_matrix2d`
         angles: torch.Tensor = params["degrees"].to(input)
 
         center: torch.Tensor = _compute_tensor_center(input)
@@ -875,7 +876,6 @@ class RandomCrop(AugmentationBase2D):
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         transform: torch.Tensor = get_perspective_transform(
             params['src'].to(input), params['dst'].to(input))
-        transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
@@ -1430,6 +1430,7 @@ class RandomEqualize(AugmentationBase2D):
         return equalize(input)
 
 
+# TODO: Rename to RandomGaussianBlur?
 class GaussianBlur(AugmentationBase2D):
 
     r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
