@@ -18,7 +18,9 @@ from .sampling import (
 from .gradient_estimator import StraightThroughEstimator
 
 from kornia.geometry.transform import (
-    shear
+    shear,
+    get_perspective_transform,
+    warp_perspective,
 )
 
 from kornia.enhance import (
@@ -136,10 +138,77 @@ class ShearX(AugmentOperation):
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
             is_train_dist=is_train_dist, same_on_batch=same_on_batch, gradients_estimation=gradients_estimation
         )
+        self.mode = mode
+        self.padding_mode = padding_mode
+        self.align_corners = align_corners
 
     def apply_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
         magnitudes = torch.stack([magnitudes, torch.zeros_like(magnitudes)], dim=1)
-        return shear(input, magnitudes)
+        return shear(input, magnitudes, mode=self.mode, padding_mode=self.padding_mode,
+                     align_corners=self.align_corners)
+
+
+class Perspective(AugmentOperation):
+    """
+    >>> a = Perspective(p=1.)
+    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out.shape
+    torch.Size([2, 3, 100, 100])
+    >>> loss = out.mean()
+    >>> loss.backward()
+    """
+    def __init__(
+        self, magnitude_mapping: Union[Tuple[float, float], Callable] = (0.3, 0.7), p: float = 0.5,
+        same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
+        magnitude_dist: Optional[SmartSampling] = None, is_train_dist: bool = False,
+        gradients_estimation: Optional[Function] = StraightThroughEstimator
+    ):
+        super().__init__(
+            torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            gradients_estimation=gradients_estimation,
+            is_train_dist=is_train_dist, same_on_batch=same_on_batch
+        )
+        self.mode = mode
+        self.align_corners = align_corners
+        self.rand_val = SmartUniform(torch.tensor(0.), torch.tensor(1.))
+
+    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
+        batch_size, _, height, width = input.shape
+
+        start_points: torch.Tensor = torch.tensor([[
+            [0., 0],
+            [width - 1, 0],
+            [width - 1, height - 1],
+            [0, height - 1],
+        ]], device=input.device, dtype=input.dtype).expand(batch_size, -1, -1)
+
+        # generate random offset not larger than half of the image
+        fx = magnitudes * width / 2
+        fy = magnitudes * height / 2
+
+        factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
+
+        with torch.no_grad():
+            # No need to be trainable here. We wish to keep it as a uniform distribution
+            rand_val = self.rand_val.rsample(input.shape[:1], self.same_on_batch).to(input)
+
+        pts_norm = torch.tensor([[
+            [1, 1],
+            [-1, 1],
+            [-1, -1],
+            [1, -1]
+        ]], device=input.device, dtype=input.dtype)
+        end_points = start_points + factor * rand_val * pts_norm
+
+        transform: torch.Tensor = get_perspective_transform(start_points, end_points)
+        return transform
+
+    def apply_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
+        batch_size, _, height, width = input.shape
+        out_data = warp_perspective(
+            input, transform, (height, width),
+            mode=self.mode, align_corners=self.align_corners)
+        return out_data
 
 
 class Equalize(AugmentOperation):
