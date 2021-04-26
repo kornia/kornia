@@ -40,6 +40,7 @@ from kornia.enhance import (
 )
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
+from kornia.enhance import Invert
 
 from . import random_generator as rg
 from .utils import (
@@ -1625,6 +1626,94 @@ class RandomInvert(AugmentationBase2D):
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return dict()
 
-    def apply_transform(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return self.transform(input)
 
+
+class RandomChannelShuffle(AugmentationBase2D):
+    r"""Shuffles the channels of a batch of multi-dimensional images.
+
+    Args:
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> img = torch.arange(1*2*2*2.).view(1,2,2,2)
+        >>> RandomChannelShuffle()(img)
+        tensor([[[[4., 5.],
+                  [6., 7.]],
+        <BLANKLINE>
+                 [[0., 1.],
+                  [2., 3.]]]])
+    """
+
+    def __init__(self,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomChannelShuffle, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, C, _, _ = shape
+        channels = torch.rand(B, C).argsort(dim=1)
+        return dict(channels=channels)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        out = torch.empty_like(input)
+        for i in range(out.shape[0]):
+            out[i] = input[i, params['channels'][i]]
+        return out
+
+
+class RandomGaussianNoise(AugmentationBase2D):
+    r"""Add gaussian noise to a batch of multi-dimensional images.
+
+    Args:
+        mean (float): The mean of the gaussian distribution. Default: 0.
+        std (float): The standard deviation of the gaussian distribution. Default: 1.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> RandomGaussianNoise(mean=0., std=1., p=1.)(img)
+        tensor([[[[ 2.5410,  0.7066],
+                  [-1.1788,  1.5684]]]])
+    """
+
+    def __init__(self,
+                 mean: float = 0.,
+                 std: float = 1.,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomGaussianNoise, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.mean = mean
+        self.std = std
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        noise = torch.randn(shape)
+        return dict(noise=noise)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return input + params['noise'].to(input.device) * self.std + self.mean
