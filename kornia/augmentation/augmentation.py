@@ -1623,8 +1623,8 @@ class RandomInvert(AugmentationBase2D):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"({super().__repr__()})"
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        return dict()
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1666,6 +1666,9 @@ class RandomChannelShuffle(AugmentationBase2D):
         B, C, _, _ = shape
         channels = torch.rand(B, C).argsort(dim=1)
         return dict(channels=channels)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
@@ -1712,6 +1715,9 @@ class RandomGaussianNoise(AugmentationBase2D):
     def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
         noise = torch.randn(shape)
         return dict(noise=noise)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
