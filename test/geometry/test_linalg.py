@@ -75,34 +75,16 @@ class TestTransformPoints:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(kornia.transform_points, (dst_homo_src, points_src,),
+        assert gradcheck(kornia.geometry.transform_points, (dst_homo_src, points_src,),
                          raise_exception=True)
 
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(transform, points):
-            return kornia.transform_points(transform, points)
-
         points = torch.ones(1, 2, 2, device=device, dtype=dtype)
         transform = kornia.eye_like(3, points)
-        op = kornia.transform_points
+        op = kornia.geometry.transform_points
         op_script = torch.jit.script(op)
         actual = op_script(transform, points)
         expected = op(transform, points)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_trace(self, device, dtype):
-        @torch.jit.script
-        def op_script(transform, points):
-            return kornia.transform_points(transform, points)
-
-        points = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        transform = torch.eye(3)[None].to(device)
-        op_script_trace = torch.jit.trace(op_script, (transform, points,))
-        actual = op_script_trace(transform, points)
-        expected = kornia.transform_points(transform, points)
-
         assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
 
@@ -186,22 +168,15 @@ class TestTransformBoxes:
 
         assert gradcheck(kornia.transform_boxes, (trans_mat, boxes), raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(transform, boxes):
-            return kornia.transform_boxes(transform, boxes)
-
-        boxes = torch.tensor([139.2640, 103.0150, 258.0480, 307.5075], device=device, dtype=dtype)
-
+        boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)
         trans_mat = torch.tensor([[[-1., 0., 512.],
                                    [0., 1., 0.],
                                    [0., 0., 1.]]], device=device, dtype=dtype)
-
-        actual = op_script(trans_mat, boxes)
-        expected = kornia.transform_points(trans_mat, boxes)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        args = (boxes, trans_mat)
+        op = kornia.geometry.transform_points
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(*args), op_jit(*args))
 
 
 class TestComposeTransforms:
