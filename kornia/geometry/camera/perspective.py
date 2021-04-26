@@ -23,11 +23,11 @@ def project_points(
     Returns:
         torch.Tensor: array of (u, v) cam coordinates with shape :math:`(*, 2)`.
     """
-    if not torch.is_tensor(point_3d):
+    if not isinstance(point_3d, torch.Tensor):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}"
                         .format(type(point_3d)))
 
-    if not torch.is_tensor(camera_matrix):
+    if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
 
@@ -88,15 +88,15 @@ def unproject_points(
         torch.Tensor: tensor of (x, y, z) world coordinates with shape
         :math:`(*, 3)`.
     """
-    if not torch.is_tensor(point_2d):
+    if not isinstance(point_2d, torch.Tensor):
         raise TypeError("Input point_2d type is not a torch.Tensor. Got {}"
                         .format(type(point_2d)))
 
-    if not torch.is_tensor(depth):
+    if not isinstance(depth, torch.Tensor):
         raise TypeError("Input depth type is not a torch.Tensor. Got {}"
                         .format(type(depth)))
 
-    if not torch.is_tensor(camera_matrix):
+    if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
 
@@ -137,6 +137,6 @@ def unproject_points(
     xyz = convert_points_to_homogeneous(xyz)
 
     if normalize:
-        xyz = F.normalize(xyz, dim=-1, p=2)
+        xyz = F.normalize(xyz, dim=-1, p=2.)
 
     return xyz * depth

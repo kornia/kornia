@@ -12,19 +12,19 @@ class TestProjectPoints:
     def test_smoke(self, device, dtype):
         point_3d = torch.zeros(1, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        point_2d = kornia.project_points(point_3d, camera_matrix)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         assert point_2d.shape == (1, 2)
 
     def test_smoke_batch(self, device, dtype):
         point_3d = torch.zeros(2, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
-        point_2d = kornia.project_points(point_3d, camera_matrix)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         assert point_2d.shape == (2, 2)
 
     def test_smoke_batch_multi(self, device, dtype):
         point_3d = torch.zeros(2, 4, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 4, -1, -1)
-        point_2d = kornia.project_points(point_3d, camera_matrix)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         assert point_2d.shape == (2, 4, 2)
 
     def test_project_and_unproject(self, device, dtype):
@@ -35,8 +35,8 @@ class TestProjectPoints:
             [0., 2748., 619.],
             [0., 0., 1.],
         ]], device=device, dtype=dtype)
-        point_2d = kornia.project_points(point_3d, camera_matrix)
-        point_3d_hat = kornia.unproject_points(point_2d, depth, camera_matrix)
+        point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
+        point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
         assert_allclose(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -47,22 +47,16 @@ class TestProjectPoints:
         # evaluate function gradient
         points_3d = tensor_to_gradcheck_var(points_3d)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(kornia.project_points,
+        assert gradcheck(kornia.geometry.camera.project_points,
                          (points_3d, camera_matrix),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(points_3d, camera_matrix):
-            return kornia.project_points(points_3d, camera_matrix)
-
         points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        actual = op_script(points_3d, camera_matrix)
-        expected = kornia.project_points(points_3d, camera_matrix)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        op = kornia.geometry.camera.project_points
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
 
 
 class TestUnprojectPoints:
@@ -70,21 +64,21 @@ class TestUnprojectPoints:
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         depth = torch.ones(1, 1, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        point_3d = kornia.unproject_points(points_2d, depth, camera_matrix)
+        point_3d = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
         assert point_3d.shape == (1, 3)
 
     def test_smoke_batch(self, device, dtype):
         points_2d = torch.zeros(2, 2, device=device, dtype=dtype)
         depth = torch.ones(2, 1, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
-        point_3d = kornia.unproject_points(points_2d, depth, camera_matrix)
+        point_3d = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
         assert point_3d.shape == (2, 3)
 
     def test_smoke_multi_batch(self, device, dtype):
         points_2d = torch.zeros(2, 3, 2, device=device, dtype=dtype)
         depth = torch.ones(2, 3, 1, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, 3, -1, -1)
-        point_3d = kornia.unproject_points(points_2d, depth, camera_matrix)
+        point_3d = kornia.geometry.camera.unproject_points(points_2d, depth, camera_matrix)
         assert point_3d.shape == (2, 3, 3)
 
     def test_unproject_center(self, device, dtype):
@@ -96,7 +90,7 @@ class TestUnprojectPoints:
             [0., 0., 1.],
         ], device=device, dtype=dtype)
         expected = torch.tensor([[0., 0., 2.]], device=device, dtype=dtype)
-        actual = kornia.unproject_points(point_2d, depth, camera_matrix)
+        actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
         assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_center_normalize(self, device, dtype):
@@ -108,7 +102,7 @@ class TestUnprojectPoints:
             [0., 0., 1.],
         ], device=device, dtype=dtype)
         expected = torch.tensor([[0., 0., 2.]], device=device, dtype=dtype)
-        actual = kornia.unproject_points(point_2d, depth, camera_matrix, True)
+        actual = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix, True)
         assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
@@ -119,8 +113,8 @@ class TestUnprojectPoints:
             [0., 1., 0.],
             [0., 0., 1.],
         ], device=device, dtype=dtype)
-        point_3d = kornia.unproject_points(point_2d, depth, camera_matrix)
-        point_2d_hat = kornia.project_points(point_3d, camera_matrix)
+        point_3d = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
+        point_2d_hat = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         assert_allclose(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -132,21 +126,15 @@ class TestUnprojectPoints:
         points_2d = tensor_to_gradcheck_var(points_2d)
         depth = tensor_to_gradcheck_var(depth)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(kornia.unproject_points,
+        assert gradcheck(kornia.geometry.camera.unproject_points,
                          (points_2d, depth, camera_matrix),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        @torch.jit.script
-        def op_script(points_2d, depth, camera_matrix):
-            return kornia.unproject_points(
-                points_2d, depth, camera_matrix, False)
-
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         depth = torch.ones(1, 1, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        actual = op_script(points_2d, depth, camera_matrix)
-        expected = kornia.unproject_points(points_2d, depth, camera_matrix)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        args = (points_2d, depth, camera_matrix)
+        op = kornia.geometry.camera.unproject_points
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(*args), op_jit(*args))
