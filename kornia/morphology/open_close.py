@@ -13,7 +13,7 @@ def open(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -51,7 +51,7 @@ def close(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.

@@ -462,7 +462,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
         raise ValueError(
             "Input must be a tensor of shape (*, 4). Got {}".format(
                 quaternion.shape))
-    return F.normalize(quaternion, p=2, dim=-1, eps=eps)
+    return F.normalize(quaternion, p=2.0, dim=-1, eps=eps)
 
 
 # based on:

@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 
 def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
@@ -95,7 +96,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor) -> np.array:
+def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -117,7 +118,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
             "Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: np.array = tensor.cpu().detach().numpy()
+    image: np.ndarray = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -141,3 +142,18 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
             "Cannot process tensor with shape {}".format(input_shape))
 
     return image
+
+
+class ImageToTensor(nn.Module):
+    """Converts a numpy image to a PyTorch 4d tensor image.
+
+    Args:
+        keepdim (bool): If ``False`` unsqueeze the input image to match the shape
+            :math:`(B, H, W, C)`. Default: ``True``
+    """
+    def __init__(self, keepdim: bool = False):
+        super().__init__()
+        self.keepdim = keepdim
+
+    def forward(self, x: np.ndarray) -> torch.Tensor:
+        return image_to_tensor(x, keepdim=self.keepdim)

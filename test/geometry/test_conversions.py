@@ -507,15 +507,13 @@ class TestRotationMatrixToQuaternion:
                          (matrix,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype, atol, rtol):
+    def test_jit(self, device, dtype):
         op = kornia.quaternion_log_to_exp
         op_script = torch.jit.script(op)
-
-        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
+        quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = op(quaternion)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
+        assert_allclose(actual, expected)
 
 
 class TestQuaternionToRotationMatrix:
@@ -642,29 +640,11 @@ class TestQuaternionToRotationMatrix:
                          (quaternion,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_xyzw(self, device, dtype, atol, rtol):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.quaternion_to_rotation_matrix(input, order=QuaternionCoeffOrder.XYZW)
-
-        quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        with pytest.deprecated_call():
-            expected = kornia.quaternion_to_rotation_matrix(quaternion,
-                                                            order=QuaternionCoeffOrder.XYZW)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype, atol, rtol):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.quaternion_to_rotation_matrix(input, order=QuaternionCoeffOrder.WXYZ)
-
-        quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = kornia.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
+    def test_jit(self, device, dtype):
+        op = kornia.geometry.conversions.quaternion_to_rotation_matrix
+        op_jit = torch.jit.script(op)
+        quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
+        assert_allclose(op(quaternion), op_jit(quaternion))
 
 
 class TestQuaternionLogToExp:
@@ -807,27 +787,11 @@ class TestQuaternionLogToExp:
                          (quaternion,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_xyzw(self, device, dtype, atol, rtol):
-        eps = torch.finfo(dtype).eps
-        op = partial(kornia.quaternion_log_to_exp, eps=eps, order=QuaternionCoeffOrder.XYZW)
-        op_script = torch.jit.script(op)
-
-        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = op(quaternion)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
-
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device, dtype, atol, rtol):
-        eps = torch.finfo(dtype).eps
-        op = partial(kornia.quaternion_log_to_exp, eps=eps, order=QuaternionCoeffOrder.WXYZ)
-        op_script = torch.jit.script(op)
-
-        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = op(quaternion)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
+    def test_jit(self, device, dtype):
+        op = kornia.geometry.conversions.quaternion_log_to_exp
+        op_jit = torch.jit.script(op)
+        quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
+        assert_allclose(op(quaternion), op_jit(quaternion))
 
 
 class TestQuaternionExpToLog:
@@ -958,16 +922,11 @@ class TestQuaternionExpToLog:
                          (quaternion,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit_xyzw(self, device, dtype, atol, rtol):
-        eps = torch.finfo(dtype).eps
-        op = partial(kornia.quaternion_exp_to_log, eps=eps, order=QuaternionCoeffOrder.XYZW)
-        op_script = torch.jit.script(op)
-
-        quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = op(quaternion)
-        assert_allclose(actual, expected, atol=atol, rtol=rtol)
+    def test_jit(self, device, dtype):
+        op = kornia.geometry.conversions.quaternion_exp_to_log
+        op_jit = torch.jit.script(op)
+        quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
+        assert_allclose(op(quaternion), op_jit(quaternion))
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype, atol, rtol):
@@ -1191,16 +1150,11 @@ class TestConvertPointsToHomogeneous:
         assert gradcheck(kornia.convert_points_to_homogeneous, (points_h,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = kornia.convert_points_to_homogeneous
-        op_script = torch.jit.script(op)
-
+        op = kornia.geometry.conversions.convert_points_to_homogeneous
+        op_jit = torch.jit.script(op)
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        actual = op_script(points_h)
-        expected = op(points_h)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(op(points_h), op_jit(points_h))
 
 
 class TestConvertAtoH:
@@ -1231,16 +1185,11 @@ class TestConvertAtoH:
         assert gradcheck(kornia.convert_affinematrix_to_homography, (points_h,),
                          raise_exception=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = kornia.convert_affinematrix_to_homography
-        op_script = torch.jit.script(op)
-
+        op = kornia.geometry.conversions.convert_affinematrix_to_homography
+        op_jit = torch.jit.script(op)
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        actual = op_script(points_h)
-        expected = op(points_h)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(op(points_h), op_jit(points_h))
 
 
 class TestConvertPointsFromHomogeneous:
@@ -1318,14 +1267,10 @@ class TestConvertPointsFromHomogeneous:
                          raise_exception=True)
 
     def test_jit(self, device, dtype):
-        op = kornia.convert_points_from_homogeneous
-        op_script = torch.jit.script(op)
-
+        op = kornia.geometry.conversions.convert_points_from_homogeneous
+        op_jit = torch.jit.script(op)
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        actual = op_script(points_h)
-        expected = op(points_h)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(op(points_h), op_jit(points_h))
 
 
 class TestNormalizePixelCoordinates:
@@ -1359,9 +1304,8 @@ class TestNormalizePixelCoordinates:
 
         assert_allclose(grid_norm, expected, atol=atol, rtol=rtol)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = kornia.normalize_pixel_coordinates
+        op = kornia.geometry.conversions.normalize_pixel_coordinates
         op_script = torch.jit.script(op)
 
         height, width = 3, 4
@@ -1370,8 +1314,7 @@ class TestNormalizePixelCoordinates:
 
         actual = op_script(grid, height, width)
         expected = op(grid, height, width)
-
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(actual, expected)
 
 
 class TestDenormalizePixelCoordinates:
@@ -1403,9 +1346,8 @@ class TestDenormalizePixelCoordinates:
 
         assert_allclose(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
-        op = kornia.denormalize_pixel_coordinates
+        op = kornia.geometry.conversions.denormalize_pixel_coordinates
         op_script = torch.jit.script(op)
 
         height, width = 3, 4
@@ -1415,4 +1357,4 @@ class TestDenormalizePixelCoordinates:
         actual = op_script(grid, height, width)
         expected = op(grid, height, width)
 
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(actual, expected)
