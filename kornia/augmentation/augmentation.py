@@ -1101,7 +1101,7 @@ class Normalize(AugmentationBase2D):
     """
 
     def __init__(
-        self, mean: Union[torch.Tensor, Tuple[float], float], std: Union[torch.Tensor, Tuple[float], float],
+        self, mean: Union[torch.Tensor, Tuple[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], float],
         return_transform: bool = False, p: float = 1., keepdim: bool = False
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
