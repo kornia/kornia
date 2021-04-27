@@ -1,6 +1,7 @@
-from typing import Tuple, Union, List, Optional, Dict, cast
+from typing import Callable, Tuple, Union, List, Optional, Dict, cast
 
 import torch
+from torch.functional import Tensor
 import torch.nn as nn
 from torch.nn.functional import pad
 
@@ -11,12 +12,14 @@ from kornia.geometry import (
     affine,
     bbox_generator,
     bbox_to_mask,
+    crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
     get_perspective_transform,
     get_affine_matrix2d,
     hflip,
     vflip,
+    rotate,
     warp_affine,
     warp_perspective,
     resize,
@@ -32,6 +35,8 @@ from kornia.enhance import (
     adjust_contrast,
     adjust_saturation,
     adjust_hue,
+    adjust_gamma,
+    Invert,
 )
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
