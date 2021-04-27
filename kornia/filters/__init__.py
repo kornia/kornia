@@ -7,6 +7,7 @@ from .blur_pool import MaxBlurPool2D, BlurPool2D, max_blur_pool2d, blur_pool2d
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .filter import filter2D, filter3D
+from .unsharp import unsharp_mask, sharpen
 from .kernels import (
     gaussian,
     laplacian_1d,
@@ -39,6 +40,7 @@ __all__ = [
     "gaussian_blur2d",
     "get_motion_kernel2d",
     "laplacian",
+    "unsharp_mask"
     "sobel",
     "spatial_gradient",
     "box_blur",
