@@ -1086,7 +1086,7 @@ class Normalize(AugmentationBase2D):
 
     Args:
         mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
+        std (Union[torch.Tensor, Tuple[float, ...], float]): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
