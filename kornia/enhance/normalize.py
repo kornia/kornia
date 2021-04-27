@@ -24,7 +24,7 @@ class Normalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, Tuple[float], float]): Mean for each channel.
+        mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
         std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
 
     Shape:
