@@ -2463,7 +2463,7 @@ class TestNormalize:
     @pytest.mark.parametrize("mean, std",
                              [
                                  1., .5,
-                                 (1.,), (.5, ),
+                                 ((1.,), (.5, )),
                                  (torch.tensor([1.]), torch.tensor([.5]))
                              ]
                              )
