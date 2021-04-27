@@ -25,7 +25,7 @@ class Normalize(nn.Module):
 
     Args:
         mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
+        std (Union[torch.Tensor, Tuple[float, ...], float]): Standard deviations for each channel.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -45,7 +45,7 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float], float], std: Union[torch.Tensor, Tuple[float], float]) -> None:
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], float]) -> None:
 
         super(Normalize, self).__init__()
 
@@ -100,11 +100,11 @@ def normalize(
         std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
     if isinstance(mean, tuple):
-        assert len(mean) == len(shape)
+        assert len(mean) == len(shape) - 1
         mean = torch.tensor(mean, device=data.device, dtype=data.dtype)
 
     if isinstance(std, tuple):
-        assert len(std) == len(shape)
+        assert len(std) == len(shape) - 1
         std = torch.tensor(std, device=data.device, dtype=data.dtype)
 
     if not isinstance(data, torch.Tensor):
