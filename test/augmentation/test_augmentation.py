@@ -2462,9 +2462,9 @@ class TestNormalize:
 
     @pytest.mark.parametrize("mean, std",
                              [
-                                 1., .5,
-                                 (1.,), (.5, ),
-                                 torch.tensor([1.]), torch.tensor([.5])
+                                 (1., .5,),
+                                 ((1.,), (.5, )),
+                                 (torch.tensor([1.]), torch.tensor([.5]))
                              ]
                              )
     def test_random_normalize(self, device, dtype, mean, std):
