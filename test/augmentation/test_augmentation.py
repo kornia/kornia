@@ -1,4 +1,3 @@
-from unittest.mock import patch
 from typing import Union, Tuple, Dict, Any, Optional, Type
 
 import pytest
@@ -31,7 +30,7 @@ from kornia.augmentation import (
 )
 
 
-from kornia.testing import BaseTester, default_with_one_parameter_changed, cartesian_product_of_parameters
+from kornia.testing import BaseTester, default_with_one_parameter_changed
 from kornia.augmentation.base import AugmentationBase2D
 from kornia.utils.helpers import _torch_inverse_cast
 
@@ -2461,11 +2460,18 @@ class TestNormalize:
                 "same_on_batch=False, return_transform=False)")
         assert str(f) == repr
 
-    def test_random_normalize(self, device, dtype):
-        f = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)
-        f1 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0., return_transform=True)
-        f2 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1.)
-        f3 = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=0.)
+    @pytest.mark.parametrize("mean, std",
+                             [
+                                 1., .5,
+                                 (1.,), (.5, ),
+                                 torch.tensor([1.]), torch.tensor([.5])
+                             ]
+                             )
+    def test_random_normalize(self, device, dtype, mean, std):
+        f = Normalize(mean=mean, std=std, p=1., return_transform=True)
+        f1 = Normalize(mean=mean, std=std, p=0., return_transform=True)
+        f2 = Normalize(mean=mean, std=std, p=1.)
+        f3 = Normalize(mean=mean, std=std, p=0.)
 
         inputs = torch.arange(0., 16., step=1, device=device, dtype=dtype).reshape(1, 4, 4).unsqueeze(0)
 
@@ -2479,6 +2485,7 @@ class TestNormalize:
         assert_allclose(f1(inputs)[1], identity, rtol=1e-4, atol=1e-4)
         assert_allclose(f2(inputs), expected, rtol=1e-4, atol=1e-4)
         assert_allclose(f3(inputs), inputs, rtol=1e-4, atol=1e-4)
+
 
     def test_batch_random_normalize(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.]), std=torch.tensor([.5]), p=1., return_transform=True)

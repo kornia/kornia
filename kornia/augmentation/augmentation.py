@@ -1,7 +1,6 @@
-from typing import Callable, Tuple, Union, List, Optional, Dict, cast
+from typing import Tuple, Union, List, Optional, Dict, cast
 
 import torch
-from torch.functional import Tensor
 import torch.nn as nn
 from torch.nn.functional import pad
 
@@ -12,14 +11,12 @@ from kornia.geometry import (
     affine,
     bbox_generator,
     bbox_to_mask,
-    crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
     get_perspective_transform,
     get_affine_matrix2d,
     hflip,
     vflip,
-    rotate,
     warp_affine,
     warp_perspective,
     resize,
@@ -35,8 +32,6 @@ from kornia.enhance import (
     adjust_contrast,
     adjust_saturation,
     adjust_hue,
-    adjust_gamma,
-    Invert,
 )
 from kornia.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize, denormalize
@@ -1090,8 +1085,8 @@ class Normalize(AugmentationBase2D):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -1106,7 +1101,7 @@ class Normalize(AugmentationBase2D):
     """
 
     def __init__(
-        self, mean: torch.Tensor, std: torch.Tensor,
+        self, mean: Union[torch.Tensor, Tuple[float], float], std: Union[torch.Tensor, Tuple[float], float],
         return_transform: bool = False, p: float = 1., keepdim: bool = False
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,

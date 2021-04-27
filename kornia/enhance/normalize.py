@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import Union
+from typing import Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -24,8 +24,8 @@ class Normalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -45,7 +45,7 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float], float], std: Union[torch.Tensor, Tuple[float], float]) -> None:
 
         super(Normalize, self).__init__()
 
@@ -72,8 +72,8 @@ def normalize(
 
     Args:
         data (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
-        mean (Union[torch.Tensor, float]): Mean for each channel.
-        std (Union[torch.Tensor, float]): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, ...)`.
@@ -98,6 +98,14 @@ def normalize(
 
     if isinstance(std, float):
         std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
+
+    if isinstance(mean, tuple):
+        assert len(mean) == len(shape)
+        mean = torch.tensor(mean, device=data.device, dtype=data.dtype)
+
+    if isinstance(std, tuple):
+        assert len(std) == len(shape)
+        std = torch.tensor(std, device=data.device, dtype=data.dtype)
 
     if not isinstance(data, torch.Tensor):
         raise TypeError("data should be a tensor. Got {}".format(type(data)))
