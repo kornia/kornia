@@ -72,7 +72,7 @@ def normalize(
 
     Args:
         data (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
-        mean (Union[torch.Tensor, Tuple[float], float]): Mean for each channel.
+        mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
         std (Union[torch.Tensor, Tuple[float], float]): Standard deviations for each channel.
 
     Return:
