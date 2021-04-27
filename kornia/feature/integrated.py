@@ -7,6 +7,7 @@ from kornia.feature.laf import raise_error_if_laf_is_not_valid
 from kornia.feature import ScaleSpaceDetector, HardNet, SIFTDescriptor, BlobDoG, LAFOrienter, PassLAF
 from kornia.feature import extract_patches_from_pyramid
 from kornia.geometry import ScalePyramid, ConvQuadInterp3d
+from kornia.color import rgb_to_grayscale
 
 
 def get_laf_descriptors(img: torch.Tensor,
@@ -30,7 +31,7 @@ def get_laf_descriptors(img: torch.Tensor,
     assert dev == lafs.device
     patch_descriptor = patch_descriptor.to(dev)
     if grayscale_descriptor and img.size(1) == 3:
-        timg = kornia.color.rgb_to_grayscale(img)
+        timg = rgb_to_grayscale(img)
     else:
         timg = img
     patch_descriptor.eval()
@@ -83,8 +84,8 @@ class LocalFeature(nn.Module):
     """Module, which combines local feature detector and descriptor, (see :class:`kornia.feature.ScaleSpaceDetector`
         see :class:`kornia.feature.LAFDescriptor`)"""
     def __init__(self,
-                 detector: ScaleSpaceDetector(),
-                 descriptor: LAFDescriptor = LAFDescriptor()):
+                 detector: ScaleSpaceDetector,
+                 descriptor: LAFDescriptor):
         super(LocalFeature, self).__init__()
         self.detector = detector
         self.descriptor = descriptor
