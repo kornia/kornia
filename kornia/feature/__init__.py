@@ -44,7 +44,6 @@ from .matching import match_nn, match_mnn, match_snn, match_smnn
 from .integrated import get_laf_descriptors, LAFDescriptor, LocalFeature, SIFTFeature
 
 
-
 __all__ = [
     "nms2d",
     "nms3d",
@@ -70,7 +69,7 @@ __all__ = [
     "get_laf_scale",
     "get_laf_center",
     "get_laf_orientation",
-    "get_laf_descriptors", 
+    "get_laf_descriptors",
     "set_laf_orientation",
     "scale_laf",
     "SIFTDescriptor",
