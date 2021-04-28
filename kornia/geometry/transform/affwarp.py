@@ -652,7 +652,7 @@ class Resize(nn.Module):
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
         self.side: str = side
-        self.antialias: Optional[bool] = antialias
+        self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return resize(input, self.size, self.interpolation,
