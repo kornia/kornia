@@ -86,7 +86,8 @@ class TestRescale:
                                    [0.0206, 0.0756, 0.1306, 0.1856, 0.2406],
                                    [0.0356, 0.1306, 0.2256, 0.3206, 0.4156],
                                    [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
-                                   [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]]]])
+                                   [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]]]],
+                                device=device, dtype=dtype)
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_downscale_values_AA(self, device, dtype):
@@ -98,7 +99,8 @@ class TestRescale:
                                    [0.0453, 0.0804, 0.1347, 0.1890, 0.2240],
                                    [0.0759, 0.1347, 0.2256, 0.3166, 0.3753],
                                    [0.1065, 0.1890, 0.3166, 0.4442, 0.5266],
-                                   [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]]]])
+                                   [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]]]],
+                                device=device, dtype=dtype)
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
