@@ -3,6 +3,9 @@ from typing import Union, Tuple, Optional
 import torch
 import torch.nn as nn
 
+from math import ceil
+
+import kornia
 from kornia.geometry.transform.imgwarp import (
     warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
@@ -508,7 +511,7 @@ def _side_to_image_size(
 
 def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
            interpolation: str = 'bilinear', align_corners: Optional[bool] = None,
-           side: str = "short") -> torch.Tensor:
+           side: str = "short", antialias: bool = False) -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
@@ -523,6 +526,9 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling. Default: False
+
 
     Returns:
         torch.Tensor: The resized tensor with the shape as the specified size.
@@ -548,6 +554,21 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
     # TODO: find a proper way to handle this cases in the future
     input_tmp = _to_bchw(input)
 
+    factors = (h / size[0], w / size[1])
+
+    # We do bluring only for downscaling
+    antialias = antialias and (max(factors) > 1)
+
+    if antialias:
+        # First, we have to determine sigma
+        sigmas = (max(factors[0], 1.0), max(factors[1], 1.0))
+
+        # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
+        # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
+        # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
+        ks = int(2.0 * 2 * sigmas[0] + 1), int(2.0 * 2 * sigmas[1] + 1)
+        input_tmp = kornia.filters.gaussian_blur2d(input_tmp, ks, sigmas)
+
     output = torch.nn.functional.interpolate(
         input_tmp, size=size, mode=interpolation, align_corners=align_corners)
 
@@ -562,6 +583,7 @@ def rescale(
     factor: Union[float, Tuple[float, float]],
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
+    antialias: bool = False
 ) -> torch.Tensor:
     r"""Rescale the input torch.Tensor with the given factor.
 
@@ -573,6 +595,8 @@ def rescale(
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling. Default: False
 
     Returns:
         torch.Tensor: The rescaled tensor with the shape as the specified size.
@@ -590,7 +614,7 @@ def rescale(
 
     height, width = input.size()[-2:]
     size = (int(height * factor_vert), int(width * factor_horz))
-    return resize(input, size, interpolation=interpolation, align_corners=align_corners)
+    return resize(input, size, interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
 class Resize(nn.Module):
@@ -607,6 +631,8 @@ class Resize(nn.Module):
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling. Default: False
 
     Returns:
         torch.Tensor: The resized tensor with the shape of the given size.
@@ -619,15 +645,18 @@ class Resize(nn.Module):
     """
 
     def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear',
-                 align_corners: Optional[bool] = None, side: str = "short") -> None:
+                 align_corners: Optional[bool] = None, side: str = "short",
+                 antialias: bool = False) -> None:
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
         self.side: str = side
+        self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return resize(input, self.size, self.interpolation, align_corners=self.align_corners, side=self.side)
+        return resize(input, self.size, self.interpolation,
+                      align_corners=self.align_corners, side=self.side, antialias=self.antialias)
 
 
 class Affine(nn.Module):
@@ -736,6 +765,8 @@ class Rescale(nn.Module):
             ``"bicubic"``, ``"trilinear"``, or ``"area"``. Default: ``"bilinear"``.
         align_corners(bool): Interpolation flag. Default: None. See :func:`~torch.nn.functional.interpolate` for
             details.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
+            No effect for upscaling. Default: False
 
     Returns:
         torch.Tensor: The rescaled tensor with the shape according to the given factor.
@@ -751,15 +782,18 @@ class Rescale(nn.Module):
         self,
         factor: Union[float, Tuple[float, float]],
         interpolation: str = "bilinear",
-        align_corners: Optional[bool] = None
+        align_corners: Optional[bool] = None,
+        antialias: bool = False
     ) -> None:
         super().__init__()
         self.factor: Union[float, Tuple[float, float]] = factor
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
+        self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return rescale(input, self.factor, self.interpolation, align_corners=self.align_corners)
+        return rescale(input, self.factor, self.interpolation,
+                       align_corners=self.align_corners, antialias=self.antialias)
 
 
 class Rotate(nn.Module):
