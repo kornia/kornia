@@ -28,6 +28,11 @@ class TestResize:
         out = kornia.resize(inp, (3, 1))
         assert out.shape == (1, 3, 3, 1)
 
+    def test_downsizeAA(self, device, dtype):
+        inp = torch.rand(1, 3, 10, 8, device=device, dtype=dtype)
+        out = kornia.resize(inp, (5, 3), antialias=True)
+        assert out.shape == (1, 3, 5, 3)
+
     def test_one_param(self, device, dtype):
         inp = torch.rand(1, 3, 5, 2, device=device, dtype=dtype)
         out = kornia.resize(inp, 10)
@@ -71,6 +76,32 @@ class TestRescale:
         input = torch.rand(1, 3, 9, 8, device=device, dtype=dtype)
         output = kornia.rescale(input, (1.0 / 3.0, 1.0 / 2.0))
         assert output.shape == (1, 3, 3, 4)
+
+    def test_downscale_values(self, device, dtype):
+        inp_x = torch.arange(20, device=device, dtype=dtype) / 20.
+        inp = inp_x[None].T @ inp_x[None]
+        inp = inp[None, None]
+        out = kornia.rescale(inp, (0.25, 0.25), antialias=False)
+        expected = torch.tensor([[[[0.0056, 0.0206, 0.0356, 0.0506, 0.0656],
+                                   [0.0206, 0.0756, 0.1306, 0.1856, 0.2406],
+                                   [0.0356, 0.1306, 0.2256, 0.3206, 0.4156],
+                                   [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
+                                   [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]]]],
+                                device=device, dtype=dtype)
+        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+
+    def test_downscale_values_AA(self, device, dtype):
+        inp_x = torch.arange(20, device=device, dtype=dtype) / 20.
+        inp = inp_x[None].T @ inp_x[None]
+        inp = inp[None, None]
+        out = kornia.rescale(inp, (0.25, 0.25), antialias=True)
+        expected = torch.tensor([[[[0.0255, 0.0453, 0.0759, 0.1065, 0.1263],
+                                   [0.0453, 0.0804, 0.1347, 0.1890, 0.2240],
+                                   [0.0759, 0.1347, 0.2256, 0.3166, 0.3753],
+                                   [0.1065, 0.1890, 0.3166, 0.4442, 0.5266],
+                                   [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]]]],
+                                device=device, dtype=dtype)
+        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
