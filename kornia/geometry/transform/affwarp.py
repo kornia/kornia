@@ -13,7 +13,7 @@ from kornia.geometry.transform.projwarp import (
     warp_affine3d, get_projective_transform
 )
 from kornia.utils import _extract_device_dtype
-from kornia.utils.image import _to_bchw 
+from kornia.utils.image import _to_bchw
 
 __all__ = [
     "affine",
