@@ -646,7 +646,7 @@ class Resize(nn.Module):
 
     def __init__(self, size: Union[int, Tuple[int, int]], interpolation: str = 'bilinear',
                  align_corners: Optional[bool] = None, side: str = "short",
-                 antialias: Optional[bool] = False) -> None:
+                 antialias: bool = False) -> None:
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
         self.interpolation: str = interpolation
