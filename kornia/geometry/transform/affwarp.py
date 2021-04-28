@@ -511,7 +511,7 @@ def _side_to_image_size(
 
 def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
            interpolation: str = 'bilinear', align_corners: Optional[bool] = None,
-           side: str = "short", antialias: Optional[bool] = False) -> torch.Tensor:
+           side: str = "short", antialias: bool = False) -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
@@ -526,7 +526,7 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
-        antialias(bool): if True, then image will be filtered with Gaussian before downscaling.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling. Default: False
 
 
@@ -583,7 +583,7 @@ def rescale(
     factor: Union[float, Tuple[float, float]],
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
-    antialias: Optional[bool] = False
+    antialias: bool = False
 ) -> torch.Tensor:
     r"""Rescale the input torch.Tensor with the given factor.
 
@@ -595,7 +595,7 @@ def rescale(
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
-        antialias(bool): if True, then image will be filtered with Gaussian before downscaling.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling. Default: False
 
     Returns:
@@ -631,7 +631,7 @@ class Resize(nn.Module):
             https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
         side (str): Corresponding side if ``size`` is an integer. Can be one of ``"short"``, ``"long"``, ``"vert"``,
             or ``"horz"``. Defaults to ``"short"``.
-        antialias(bool): if True, then image will be filtered with Gaussian before downscaling.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling. Default: False
 
     Returns:
@@ -765,7 +765,7 @@ class Rescale(nn.Module):
             ``"bicubic"``, ``"trilinear"``, or ``"area"``. Default: ``"bilinear"``.
         align_corners(bool): Interpolation flag. Default: None. See :func:`~torch.nn.functional.interpolate` for
             details.
-        antialias(bool): if True, then image will be filtered with Gaussian before downscaling.
+        antialias (bool): if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling. Default: False
 
     Returns:
@@ -783,13 +783,13 @@ class Rescale(nn.Module):
         factor: Union[float, Tuple[float, float]],
         interpolation: str = "bilinear",
         align_corners: Optional[bool] = None,
-        antialias: Optional[bool] = False
+        antialias: bool = False
     ) -> None:
         super().__init__()
         self.factor: Union[float, Tuple[float, float]] = factor
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
-        self.antialias: Optional[bool] = antialias
+        self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rescale(input, self.factor, self.interpolation,
