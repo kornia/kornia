@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from math import ceil
 
+import kornia
 from kornia.geometry.transform.imgwarp import (
     warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 )
@@ -12,7 +13,7 @@ from kornia.geometry.transform.projwarp import (
     warp_affine3d, get_projective_transform
 )
 from kornia.utils import _extract_device_dtype
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import _to_bchw 
 
 __all__ = [
     "affine",
@@ -566,7 +567,7 @@ def resize(input: torch.Tensor, size: Union[int, Tuple[int, int]],
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
         ks = int(2.0 * 2 * sigmas[0] + 1), int(2.0 * 2 * sigmas[1] + 1)
-        input_tmp = gaussian_blur2d(input_tmp, ks, sigmas)
+        input_tmp = kornia.filters.gaussian_blur2d(input_tmp, ks, sigmas)
 
     output = torch.nn.functional.interpolate(
         input_tmp, size=size, mode=interpolation, align_corners=align_corners)
