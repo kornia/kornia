@@ -117,6 +117,7 @@ if __name__ == '__main__':
         url='https://github.com/kornia/kornia',
         description='Open Source Differentiable Computer Vision Library for PyTorch',
         long_description=long_description,
+        long_description_content_type='text/markdown',
         license='Apache License 2.0',
         python_requires='>=3.6',
 
