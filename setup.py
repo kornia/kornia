@@ -16,7 +16,7 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.5.1'  # this a tag for the current development version
+version = '0.5.2rc1'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
@@ -25,6 +25,7 @@ version = '0.5.1'  # this a tag for the current development version
 # Once a pytorch version (in the future) breaks a kornia version, we could just
 # add a maximal version.
 kornia_pt_dependencies = {
+    '0.5.1': '>=1.6.0',
     '0.5.0': '>=1.6.0',
     '0.4.2': '>=1.5.1',
     '0.4.1': '>=1.6.0',
@@ -79,10 +80,10 @@ def read(*names, **kwargs):
         return fp.read()
 
 
-# open readme file and remove logo
-readme = open('README.md').read()
-long_description = '\n'.join(readme.split('\n')[7:])
-
+# open readme file and set long description
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+    
 
 class clean(distutils.command.clean.clean):
     def run(self):
