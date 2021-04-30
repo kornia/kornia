@@ -16,7 +16,7 @@ import distutils.command.clean
 
 # NOTE(maintainers): modify this variable each time you do a release
 
-version = '0.6.0dev'  # this a tag for the current development version
+version = '0.5.1'  # this a tag for the current development version
 
 
 # NOTE(maintainers): update this dictionary each time you do a release
