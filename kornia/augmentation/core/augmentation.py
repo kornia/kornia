@@ -18,9 +18,15 @@ from .smart_sampling import (
 from .gradient_estimator import StraightThroughEstimator
 
 from kornia.geometry.transform import (
-    shear,
     get_perspective_transform,
     warp_perspective,
+    bbox_generator,
+    get_perspective_transform,
+    crop_by_transform_mat,
+    affine,
+)
+from kornia.geometry.transform.affwarp import (
+    _compute_shear_matrix
 )
 
 from kornia.enhance import (
@@ -92,24 +98,57 @@ class AugmentOperation(nn.Module):
     def apply_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
+    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
+        raise NotImplementedError
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         params = self.generate_parameters(input.shape)
         if (params['probs'] == 0).all():
             return input
+        if (params['probs'] == 1).all():
+            return self.forwad_transform_impl(input, params)
+        inp = input[params['probs']]
+        out = self.forwad_transform_impl(input, params)
+        input[params['probs']] = out
+        return input
+
+
+class IntensityAugmentOperation(AugmentOperation):
+    """
+    """
+    def __init__(
+        self,
+        p: torch.Tensor,
+        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
+                                 SmartSampling]] = None,
+        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
+        gradients_estimation: Optional[Function] = None,
+        same_on_batch: bool = False
+    ):
+        super().__init__(
+            p=p, magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
+        )
+
+    def compute_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
+        raise NotImplementedError
+
+    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError
+
+    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
         if params['magnitudes'] is None:
             mag = None
         else:
             mag = [_mag[params['probs']] for _mag in params['magnitudes']]
             mag = mag[0] if len(mag) == 1 else mag
-        inp = input[params['probs']]
         if self.gradients_estimation is not None:
             with torch.no_grad():
-                out = self.apply_transform(inp, mag)
-            out = self.gradients_estimation.apply(inp, out)
+                out = self.apply_transform(input, mag)
+            out = self.gradients_estimation.apply(input, out)
         else:
-            out = self.apply_transform(inp, mag)
-        input[params['probs']] = out
-        return input
+            out = self.apply_transform(input, mag)
+        return out
 
 
 class GeometricAugmentOperation(AugmentOperation):
@@ -135,28 +174,24 @@ class GeometricAugmentOperation(AugmentOperation):
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        params = self.generate_parameters(input.shape)
-        if (params['probs'] == 0).all():
-            return input
+    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
         if params['magnitudes'] is None:
             mag = None
         else:
             mag = [_mag[params['probs']] for _mag in params['magnitudes']]
             mag = mag[0] if len(mag) == 1 else mag
-        inp = input[params['probs']]
         if self.gradients_estimation is not None:
             with torch.no_grad():
-                trans_mat = self.compute_transform(inp, mag)
-                out = self.apply_transform(inp, trans_mat)
-            out = self.gradients_estimation.apply(inp, out)
+                trans_mat = self.compute_transform(input, mag)
+                out = self.apply_transform(input, trans_mat)
+            out = self.gradients_estimation.apply(input, out)
         else:
-            out = self.apply_transform(inp, mag)
-        input[params['probs']] = out
-        return input
+            trans_mat = self.compute_transform(input, mag)
+            out = self.apply_transform(input, trans_mat)
+        return out
 
 
-class ShearX(AugmentOperation):
+class ShearX(GeometricAugmentOperation):
     """
     >>> a = ShearX((0., 1.), p=1.)
     >>> out = a(torch.randn(2, 3, 100, 100))
@@ -200,10 +235,13 @@ class ShearX(AugmentOperation):
         self.padding_mode = padding_mode
         self.align_corners = align_corners
 
-    def apply_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
         magnitudes = torch.stack([magnitudes, torch.zeros_like(magnitudes)], dim=1)
-        return shear(input, magnitudes, mode=self.mode, padding_mode=self.padding_mode,
-                     align_corners=self.align_corners)
+        return _compute_shear_matrix(magnitudes)
+
+    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+        return affine(input, transform[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
+                      align_corners=self.align_corners)
 
 
 class Perspective(GeometricAugmentOperation):
@@ -272,36 +310,50 @@ class Perspective(GeometricAugmentOperation):
 
 class Crop(GeometricAugmentOperation):
     """
-    >>> a = Crop((50, 50), p=1.)
-    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> crop = Crop((10, 10), p=1.)
+    >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
-    torch.Size([2, 3, 100, 100])
+    torch.Size([2, 3, 50, 50])
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
         magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
                                  SmartSampling]] = [(0., 1.), (0., 1.)],
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = StraightThroughEstimator
+        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = True,
+        gradients_estimation: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(1.), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
             gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
         )
+        self.size = size
+        _crop_dst = torch.tensor([[
+            [0, 0],
+            [size[1] - 1, 0],
+            [size[1] - 1, size[0] - 1],
+            [0, size[0] - 1],
+        ]])
+        self.register_buffer("crop_dst", _crop_dst)
 
     def compute_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
-        assert False, magnitudes
+        x_diff = input.shape[-2] - self.size[1] + 1
+        y_diff = input.shape[-1] - self.size[0] + 1
+        x_start = torch.floor(magnitudes[0] * x_diff)
+        y_start = torch.floor(magnitudes[1] * y_diff)
+        width = x_start * 0 + self.size[1]
+        height = y_start * 0 + self.size[0]
+        crop_src = bbox_generator(x_start, y_start, width, height)
+        return get_perspective_transform(crop_src, self.crop_dst.expand(batch_size, -1, -1))
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
-        batch_size, _, height, width = input.shape
-        out_data = warp_perspective(
-            input, transform, (height, width),
-            mode=self.mode, align_corners=self.align_corners)
-        return out_data
+        out = crop_by_transform_mat(
+            input, transform, self.size, mode='bilinear',
+            padding_mode='zeros', align_corners=True)
+        return out
 
 
-class Equalize(AugmentOperation):
+class Equalize(IntensityAugmentOperation):
     """
     >>> a = Equalize(1.)
     >>> out = a(torch.ones(2, 3, 100, 100) * 0.5)

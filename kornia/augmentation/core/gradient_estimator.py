@@ -5,24 +5,9 @@ from torch.autograd import Function
 
 
 # https://github.com/moskomule/dda/blob/3ffe718e253a77ecb8b4e638d851f0d3d248c111/dda/functional.py#L56
+# TODO: Does not work with crop functions for now. It would force the shape.
 class StraightThroughEstimator(Function):
     """ StraightThrough Estimator
-    """
-    @staticmethod
-    def forward(ctx,
-                input_forward: torch.Tensor,
-                input_backward: torch.Tensor) -> torch.Tensor:
-        ctx.shape = input_backward.shape
-        return input_forward
-
-    @staticmethod
-    def backward(ctx,
-                 grad_in: torch.Tensor) -> Tuple[None, torch.Tensor]:
-        return None, grad_in.sum_to_size(ctx.shape)
-
-
-class ScoreFunction(Function):
-    """
     """
     @staticmethod
     def forward(ctx,
