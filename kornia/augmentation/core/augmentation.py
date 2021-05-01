@@ -59,14 +59,14 @@ class AugmentOperation(nn.Module):
         else:
             self.magnitude_dist = None
 
-    def _make_magnitude_mapping(self, magnitude_mapping):
+    def _make_magnitude_mapping(self, magnitude_mapping: Union[Callable, List[Callable]]) -> List[Callable]:
         if callable(magnitude_mapping):
             return [magnitude_mapping]
         if isinstance(magnitude_mapping, (tuple, list)):
             return magnitude_mapping
         raise ValueError
 
-    def _make_magnitude_dist_one(self, magnitude_dist) -> Distribution:
+    def _make_magnitude_dist_one(self, magnitude_dist: Union[Tuple[float, float], SmartSampling]) -> Distribution:
         if isinstance(magnitude_dist, (list, tuple)):
             _magnitude_dist = SmartUniform(
                 torch.tensor(magnitude_dist[0]),
@@ -76,7 +76,10 @@ class AugmentOperation(nn.Module):
             _magnitude_dist = magnitude_dist
         return _magnitude_dist
 
-    def _make_magnitude_dist(self, magnitude_dist: Distribution) -> List[Distribution]:
+    def _make_magnitude_dist(
+            self, magnitude_dist: Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
+                                        SmartSampling]
+    ) -> List[Distribution]:
         """Make a list of distributions according to the parameters."""
         if (
             isinstance(magnitude_dist, (list, tuple)) and len(magnitude_dist) == 2 and
@@ -87,7 +90,6 @@ class AugmentOperation(nn.Module):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Optional[torch.Tensor]]:
         probs = self.prob_dist.rsample(batch_shape[:1], self.same_on_batch).squeeze()
-
         mags = None
         if self.magnitude_dist is not None:
             mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.magnitude_dist]
@@ -98,17 +100,20 @@ class AugmentOperation(nn.Module):
     def apply_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
+    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        params = self.generate_parameters(input.shape)
+    def forward(
+        self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
+    ) -> torch.Tensor:
+        if params is None:
+            params = self.generate_parameters(input.shape)
         if (params['probs'] == 0).all():
             return input
         if (params['probs'] == 1).all():
-            return self.forwad_transform_impl(input, params)
+            return self.forwad_transform(input, params)
         inp = input[params['probs']]
-        out = self.forwad_transform_impl(input, params)
+        out = self.forwad_transform(input, params)
         input[params['probs']] = out
         return input
 
@@ -136,7 +141,7 @@ class IntensityAugmentOperation(AugmentOperation):
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
+    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
         if params['magnitudes'] is None:
             mag = None
         else:
@@ -174,7 +179,7 @@ class GeometricAugmentOperation(AugmentOperation):
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform_impl(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
+    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
         if params['magnitudes'] is None:
             mag = None
         else:
@@ -310,16 +315,23 @@ class Perspective(GeometricAugmentOperation):
 
 class Crop(GeometricAugmentOperation):
     """
+    >>> get_perspective_transform(
+    ...     torch.tensor([[[53, 1], [62, 1], [62, 10], [53, 10]]]),
+    ...     torch.tensor([[[0, 0], [9, 0], [9, 9], [0, 9]]]),
+    ... )
+    tensor([[[  0,   0, -52],
+             [  0,   1,  -1],
+             [  0,   0,   1]]])
     >>> crop = Crop((10, 10), p=1.)
     >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
-    torch.Size([2, 3, 50, 50])
+    torch.Size([2, 3, 10, 10])
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
         magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
                                  SmartSampling]] = [(0., 1.), (0., 1.)],
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = True,
+        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
         gradients_estimation: Optional[Function] = None
     ):
         super().__init__(
@@ -337,8 +349,8 @@ class Crop(GeometricAugmentOperation):
 
     def compute_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
-        x_diff = input.shape[-2] - self.size[1] + 1
-        y_diff = input.shape[-1] - self.size[0] + 1
+        x_diff = height - self.size[1] + 1
+        y_diff = width - self.size[0] + 1
         x_start = torch.floor(magnitudes[0] * x_diff)
         y_start = torch.floor(magnitudes[1] * y_diff)
         width = x_start * 0 + self.size[1]
