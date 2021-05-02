@@ -310,7 +310,7 @@ class TestAngleOfRotations:
     def matrix_angle_abs(mx: torch.Tensor):
         """Unsigned rotation matrix angle"""
         trace = torch.diagonal(mx[..., :3, :3], dim1=-1, dim2=-2).sum(-1, keepdim=True)
-        return torch.arccos((trace - 1.) / 2.)
+        return torch.acos((trace - 1.) / 2.)
 
     @staticmethod
     def axis_and_angle_to_rotation_matrix(axis_name: str, angle: torch.Tensor, device, dtype):
