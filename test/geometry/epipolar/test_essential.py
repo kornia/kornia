@@ -324,12 +324,12 @@ class TestMotionFromEssentialChooseSolution:
         assert X.shape == (N-2, 3)
 
         mask = torch.zeros(N, dtype=torch.bool, device=device)
-        mask[:, 1:-1] = True
+        mask[1:-1] = True
         Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
         assert_allclose(R, Rm)
         assert_allclose(t, tm)
-        assert_allclose(X, Xm[:, 1:-1, :])
+        assert_allclose(X, Xm[1:-1, :])
 
     def test_two_view(self, device, dtype):
 
