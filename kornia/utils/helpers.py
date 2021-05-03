@@ -40,12 +40,17 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     The function torch.inverse is only implemented for fp32/64 which makes
     impossible to be used by fp16 or others. What this function does, is cast
     input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+    Additionally, either full ranked or non-full ranked tensors are supported.
     """
     assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
-    return torch.inverse(input.to(dtype)).to(input.dtype)
+    mask = torch.det(input) == 0
+    out = torch.empty_like(input)
+    out[~mask] = torch.inverse(input[~mask].to(dtype)).to(input[~mask].dtype)
+    out[mask] = torch.pinverse(input[mask].to(dtype)).to(input[mask].dtype)
+    return out
 
 
 def _torch_histc_cast(input: torch.Tensor, bins: int, min: int, max: int) -> torch.Tensor:
