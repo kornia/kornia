@@ -507,12 +507,21 @@ class TestRotationMatrixToQuaternion:
                          (matrix,),
                          raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    def test_jit_xyzw(self, device, dtype):
         op = kornia.quaternion_log_to_exp
         op_script = torch.jit.script(op)
-        quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
+        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
         actual = op_script(quaternion)
         expected = op(quaternion)
+        assert_allclose(actual, expected)
+
+    def test_jit(self, device, dtype):
+        eps = torch.finfo(dtype).eps
+        op = kornia.quaternion_log_to_exp
+        op_script = torch.jit.script(op)
+        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
+        actual = op_script(quaternion, eps=eps, order=QuaternionCoeffOrder.WXYZ)
+        expected = op(quaternion, eps=eps, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(actual, expected)
 
 
@@ -640,11 +649,18 @@ class TestQuaternionToRotationMatrix:
                          (quaternion,),
                          raise_exception=True)
 
+    def test_jit_xyzw(self, device, dtype):
+        op = kornia.geometry.conversions.quaternion_to_rotation_matrix
+        op_jit = torch.jit.script(op)
+        quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
+        assert_allclose(op(quaternion), op_jit(quaternion))
+
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_jit = torch.jit.script(op)
-        quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
-        assert_allclose(op(quaternion), op_jit(quaternion))
+        quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
+        assert_allclose(op(quaternion, order=QuaternionCoeffOrder.WXYZ),
+                        op_jit(quaternion, order=QuaternionCoeffOrder.WXYZ))
 
 
 class TestQuaternionLogToExp:
@@ -787,11 +803,19 @@ class TestQuaternionLogToExp:
                          (quaternion,),
                          raise_exception=True)
 
+    def test_jit_xyzw(self, device, dtype):
+        op = kornia.geometry.conversions.quaternion_log_to_exp
+        op_jit = torch.jit.script(op)
+        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
+        assert_allclose(op(quaternion, order=QuaternionCoeffOrder.XYZW),
+                        op_jit(quaternion, order=QuaternionCoeffOrder.XYZW))
+
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_jit = torch.jit.script(op)
-        quaternion = torch.tensor([0., 0., 1.], device=device, dtype=dtype)
-        assert_allclose(op(quaternion), op_jit(quaternion))
+        quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
+        assert_allclose(op(quaternion, order=QuaternionCoeffOrder.WXYZ),
+                        op_jit(quaternion, order=QuaternionCoeffOrder.WXYZ))
 
 
 class TestQuaternionExpToLog:
@@ -922,21 +946,20 @@ class TestQuaternionExpToLog:
                          (quaternion,),
                          raise_exception=True)
 
-    def test_jit(self, device, dtype):
+    # @pytest.mark.skip(reason="turn off all jit for a while")
+    def test_jit_xyzw(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_jit = torch.jit.script(op)
-        quaternion = torch.tensor([0., 0., 1., 0.], device=device, dtype=dtype)
-        assert_allclose(op(quaternion), op_jit(quaternion))
+        quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
+        assert_allclose(op(quaternion), op_jit(quaternion), atol=atol, rtol=rtol)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype, atol, rtol):
-        eps = torch.finfo(dtype).eps
-        op = partial(kornia.quaternion_exp_to_log, eps=eps, order=QuaternionCoeffOrder.WXYZ)
+        op = kornia.quaternion_exp_to_log
         op_script = torch.jit.script(op)
 
         quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = op(quaternion)
+        actual = op_script(quaternion, eps=torch.finfo(dtype).eps, order=QuaternionCoeffOrder.WXYZ)
+        expected = op(quaternion, eps=torch.finfo(dtype).eps, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(actual, expected, atol=atol, rtol=rtol)
 
 
@@ -1252,7 +1275,7 @@ class TestConvertPointsFromHomogeneous:
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
-    @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
+    # @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck_zvec_zeros(self, device, dtype):
         # generate input data
         points_h = torch.tensor([
