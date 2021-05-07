@@ -14,7 +14,6 @@ def unsharp_mask(
         border_type: str = 'reflect') -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
 
-
     Arguments:
         input (torch.Tensor): the input tensor with shape :math:`(B,C,H,W)`.
         kernel_size (Tuple[int, int]): the size of the kernel.
@@ -24,14 +23,13 @@ def unsharp_mask(
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        torch.Tensor
+        torch.Tensor: the blurred tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = unsharp_mask(input, (3, 3), (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
-
     """
     data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
     data_sharpened: torch.Tensor = input + (input - data_blur)
@@ -49,7 +47,11 @@ class UnsharpMask(nn.Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
 
     Returns:
-        Tensor: the sharpened image.
+        Tensor: the sharpened tensor with shape :math:`(B,C,H,W)`.
+    
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
 
     Examples:
 
@@ -58,7 +60,6 @@ class UnsharpMask(nn.Module):
         >>> output = sharpen(input)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
-
     """
 
     def __init__(self, kernel_size: Tuple[int, int],

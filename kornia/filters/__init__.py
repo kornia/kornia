@@ -40,7 +40,7 @@ __all__ = [
     "gaussian_blur2d",
     "get_motion_kernel2d",
     "laplacian",
-    "unsharp_mask"
+    "unsharp_mask",
     "sobel",
     "spatial_gradient",
     "box_blur",
@@ -63,6 +63,5 @@ __all__ = [
     "MotionBlur3D",
     "SpatialGradient3d",
     "spatial_gradient3d",
-    "UnsharpMask"
-    "unsharp_mask"
+    "UnsharpMask",
 ]
