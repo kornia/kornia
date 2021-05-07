@@ -103,7 +103,8 @@ def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> Tuple[torch.Tensor, torch.
     return x, y
 
 
-def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def cart2pol(x: torch.Tensor, y: torch.Tensor,
+             eps: float = 1.e-8) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
@@ -434,8 +435,9 @@ def rotation_matrix_to_quaternion(
 
 
 def normalize_quaternion(quaternion: torch.Tensor,
-                         eps: float = 1e-12) -> torch.Tensor:
+                         eps: float = 1.e-12) -> torch.Tensor:
     r"""Normalizes a quaternion.
+
     The quaternion should be in (x, y, z, w) format.
 
     Args:
@@ -448,7 +450,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
         torch.Tensor: the normalized quaternion of shape :math:`(*, 4)`.
 
     Example:
-        >>> quaternion = torch.tensor([1., 0., 1., 0.])
+        >>> quaternion = torch.tensor((1., 0., 1., 0.))
         >>> normalize_quaternion(quaternion)
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
     """
@@ -467,8 +469,9 @@ def normalize_quaternion(quaternion: torch.Tensor,
 # https://github.com/matthew-brett/transforms3d/blob/8965c48401d9e8e66b6a8c37c65f2fc200a076fa/transforms3d/quaternions.py#L101
 # https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/geometry/transformation/rotation_matrix_3d.py#L247
 
-def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
-                                  order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+def quaternion_to_rotation_matrix(
+        quaternion: torch.Tensor,
+        order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Converts a quaternion to a rotation matrix.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
@@ -528,19 +531,20 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
     tzz: torch.Tensor = tz * z
     one: torch.Tensor = torch.tensor(1.)
 
-    matrix: torch.Tensor = torch.stack([
+    matrix: torch.Tensor = torch.stack((
         one - (tyy + tzz), txy - twz, txz + twy,
         txy + twz, one - (txx + tzz), tyz - twx,
         txz - twy, tyz + twx, one - (txx + tyy)
-    ], dim=-1).view(-1, 3, 3)
+    ), dim=-1).view(-1, 3, 3)
 
     if len(quaternion.shape) == 1:
         matrix = torch.squeeze(matrix, dim=0)
     return matrix
 
 
-def quaternion_to_angle_axis(quaternion: torch.Tensor,
-                             order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+def quaternion_to_angle_axis(
+        quaternion: torch.Tensor,
+        order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
@@ -612,9 +616,10 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor,
     return angle_axis
 
 
-def quaternion_log_to_exp(quaternion: torch.Tensor,
-                          eps: float = 1.e-8,
-                          order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+def quaternion_log_to_exp(
+        quaternion: torch.Tensor,
+        eps: float = 1.e-8,
+        order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Applies exponential map to log quaternion.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
@@ -666,9 +671,10 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
     return quaternion_exp
 
 
-def quaternion_exp_to_log(quaternion: torch.Tensor,
-                          eps: float = 1.e-8,
-                          order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+def quaternion_exp_to_log(
+        quaternion: torch.Tensor,
+        eps: float = 1.e-8,
+        order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Applies the log map to a quaternion.
 
     The quaternion should be in (x, y, z, w) format.
@@ -730,8 +736,9 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def angle_axis_to_quaternion(angle_axis: torch.Tensor,
-                             order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+def angle_axis_to_quaternion(
+        angle_axis: torch.Tensor,
+        order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Convert an angle axis to a quaternion.
 
     The quaternion vector has components in (x, y, z, w) or (w, x, y, z) format.

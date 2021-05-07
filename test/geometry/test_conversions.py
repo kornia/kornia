@@ -768,7 +768,7 @@ class TestQuaternionLogToExp:
         with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log_hat = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                               order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_log, quaternion_log_hat, atol=atol, rtol=rtol)
