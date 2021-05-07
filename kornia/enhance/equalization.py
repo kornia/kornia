@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from kornia.enhance.histogram import histogram
 from kornia.utils.image import _to_bchw
+from kornia.utils.helpers import _torch_histc_cast
 
 
 __all__ = ["equalize_clahe"]
@@ -115,7 +116,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
         for i in range(tiles.shape[0]):
-            histos[i] = torch.histc(tiles[i], bins=num_bins, min=0, max=1)
+            histos[i] = _torch_histc_cast(tiles[i], bins=num_bins, min=0, max=1)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()

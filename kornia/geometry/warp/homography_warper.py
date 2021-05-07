@@ -114,7 +114,7 @@ def normal_transform_pixel3d(
         "Please use `kornia.geometry.transform.normal_transform_pixel3d instead.`",
         DeprecationWarning, stacklevel=2
     )
-    return HMW.normal_transform_pixel3d(height, width, eps, device, dtype)
+    return HMW.normal_transform_pixel3d(depth, height, width, eps, device=device, dtype=dtype)
 
 
 def normalize_homography(dst_pix_trans_src_pix: torch.Tensor,

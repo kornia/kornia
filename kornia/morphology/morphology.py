@@ -15,7 +15,7 @@ def gradient(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Dilated image with shape :math:`(B, C, H, W)`.
@@ -56,7 +56,7 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.
@@ -97,7 +97,7 @@ def black_hat(tensor: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
 
     Args:
        tensor (torch.Tensor): Image with shape :math:`(B, C, H, W)`.
-       kernel (torch.Tensor): Structuring element with shape :math:`(H, W)`.
+       kernel (torch.Tensor): Structuring element with shape :math:`(k_x, k_y)`.
 
     Returns:
        torch.Tensor: Top hat transformated image with shape :math:`(B, C, H, W)`.

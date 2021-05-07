@@ -2,6 +2,7 @@ import pytest
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
+from kornia.utils.helpers import _torch_inverse_cast
 
 import torch
 from torch.autograd import gradcheck
@@ -178,10 +179,10 @@ class TestHomographyWarper:
 
             # transform the points from dst to ref
             patch_dst = warper(patch_src, dst_homo_src_i)
-            patch_dst_to_src = warper(patch_dst, torch.inverse(dst_homo_src_i))
+            patch_dst_to_src = warper(patch_dst, _torch_inverse_cast(dst_homo_src_i))
 
             # same transform precomputing the grid
-            warper.precompute_warp_grid(torch.inverse(dst_homo_src_i))
+            warper.precompute_warp_grid(_torch_inverse_cast(dst_homo_src_i))
             patch_dst_to_src_precomputed = warper(patch_dst)
             assert (patch_dst_to_src_precomputed == patch_dst_to_src).all()
 
@@ -193,7 +194,7 @@ class TestHomographyWarper:
 
             # check functional api
             patch_dst_to_src_functional = kornia.homography_warp(
-                patch_dst, torch.inverse(dst_homo_src_i), (height, width), align_corners=True)
+                patch_dst, _torch_inverse_cast(dst_homo_src_i), (height, width), align_corners=True)
 
             assert_allclose(
                 patch_dst_to_src, patch_dst_to_src_functional, atol=1e-4, rtol=1e-4)

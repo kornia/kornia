@@ -24,12 +24,16 @@ from kornia.augmentation import (
     RandomCrop,
     RandomResizedCrop,
     Normalize,
-    Denormalize
+    Denormalize,
+    RandomInvert,
+    RandomChannelShuffle,
+    RandomGaussianNoise,
 )
 
 
 from kornia.testing import BaseTester, default_with_one_parameter_changed, cartesian_product_of_parameters
 from kornia.augmentation.base import AugmentationBase2D
+from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
 
@@ -136,7 +140,7 @@ class CommonTests(BaseTester):
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        output = augmentation.apply_transform(test_input, generated_params)
+        output = augmentation.apply_transform(test_input, generated_params, transformation)
         assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
@@ -279,7 +283,9 @@ class CommonTests(BaseTester):
                                          normalized_coordinates=False,
                                          device=self.device)
         output_indices = indices.reshape((1, -1, 2)).to(dtype=self.dtype)
-        input_indices = kornia.geometry.transform_points(transform.to(self.dtype).inverse(), output_indices)
+        input_indices = kornia.geometry.transform_points(
+            _torch_inverse_cast(transform.to(self.dtype)),
+            output_indices)
 
         output_indices = output_indices.round().long().squeeze(0)
         input_indices = input_indices.round().long().squeeze(0)
@@ -1777,6 +1783,17 @@ class TestCenterCrop:
         out = kornia.augmentation.CenterCrop((3, 4))(inp)
         assert out.shape == (1, 2, 3, 4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+
+        op1 = CenterCrop(size=(2, 2), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = CenterCrop(size=(2, 2), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1970,7 +1987,11 @@ class TestRandomCrop:
         rc = RandomCrop(size=(2, 3), padding=None, align_corners=True, p=1.)
         out = rc(inp)
 
+        torch.manual_seed(0)
+        out2 = rc(inp.squeeze())
+
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_no_padding_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -1995,6 +2016,26 @@ class TestRandomCrop:
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
+
+    def test_padding(self, device, dtype):
+        torch.manual_seed(42)
+        inp = torch.tensor([[[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[
+            [7., 8., 7.],
+            [4., 5., 4.]
+        ]]], device=device, dtype=dtype)
+        rc = RandomCrop(size=(2, 3), padding=1, padding_mode='reflect', align_corners=True, p=1.)
+        out = rc(inp)
+
+        torch.manual_seed(42)
+        out2 = rc(inp.squeeze())
+
+        assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+        assert_allclose(out2, expected, atol=1e-4, rtol=1e-4)
 
     def test_padding_batch_1(self, device, dtype):
         torch.manual_seed(42)
@@ -2056,6 +2097,36 @@ class TestRandomCrop:
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
+    def test_padding_no_forward(self, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.tensor([[[
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]]], device=device, dtype=dtype)
+        trans = torch.tensor([[
+            [1., 2., 3.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+        # Not return transform
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0.)
+
+        out = rc(inp)
+        assert_allclose(out, inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
+
+        # with return transform
+        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=9, align_corners=True, p=0., return_transform=True)
+        out = rc(inp)
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+
+        out = rc((inp, trans))
+        assert_allclose(out[0], inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(out[1], trans, atol=1e-4, rtol=1e-4)
+
     def test_pad_if_needed(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2
@@ -2071,6 +2142,21 @@ class TestRandomCrop:
         out = rc(inp)
 
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        op1 = RandomCrop(size=(2, 2), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = RandomCrop(size=(2, 2), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
@@ -2165,6 +2251,26 @@ class TestRandomResizedCrop:
         out = rrc(inp)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
+    def test_crop_size_greater_than_input(self, device, dtype):
+        # This is included in doctest
+        torch.manual_seed(0)
+        inp = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        exp = torch.tensor([[[[1.0000, 1.3333, 1.6667, 2.0000],
+                              [3.0000, 3.3333, 3.6667, 4.0000],
+                              [5.0000, 5.3333, 5.6667, 6.0000],
+                              [7.0000, 7.3333, 7.6667, 8.0000]]]], device=device, dtype=dtype)
+
+        rrc = RandomResizedCrop(size=(4, 4), scale=(3., 3.), ratio=(2., 2.))
+        # It will crop a size of (3, 3) from the aspect ratio implementation of torch
+        out = rrc(inp)
+        assert out.shape == torch.Size([1, 1, 4, 4])
+        assert_allclose(out, exp, atol=1e-4, rtol=1e-4)
+
     def test_crop_scale_ratio_batch(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2
@@ -2186,6 +2292,21 @@ class TestRandomResizedCrop:
         out = rrc(inp)
         assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 
+    def test_crop_modes(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.tensor([[
+            [0., 1., 2.],
+            [3., 4., 5.],
+            [6., 7., 8.]
+        ]], device=device, dtype=dtype)
+
+        op1 = RandomResizedCrop(size=(4, 4), cropping_mode='resample')
+        out = op1(img)
+
+        op2 = RandomResizedCrop(size=(4, 4), cropping_mode='slice')
+
+        assert_allclose(out, op2(img, op1._params))
+
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 3), device=device, dtype=dtype)  # 3 x 3
@@ -2197,7 +2318,7 @@ class TestRandomResizedCrop:
 class TestRandomEqualize:
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
-    @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
+    @pytest.mark.xfail(reason="might fail under windows OS due to printing precision.")
     def test_smoke(self, device, dtype):
         f = RandomEqualize(p=0.5)
         repr = "RandomEqualize(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=False)"
@@ -2292,6 +2413,42 @@ class TestGaussianBlur:
         f = GaussianBlur((3, 3), (0.1, 2.0), p=1.)
         repr = "GaussianBlur(p=1.0, p_batch=1.0, same_on_batch=False, return_transform=False)"
         assert str(f) == repr
+
+
+class TestRandomInvert:
+
+    def test_smoke(self, device, dtype):
+        img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
+        assert_allclose(RandomInvert(p=1.0)(img), torch.zeros_like(img))
+
+
+class TestRandomChannelShuffle:
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
+
+        out_expected = torch.tensor([[
+            [[8., 9.],
+             [10., 11.]],
+            [[0., 1.],
+             [2., 3.]],
+            [[4., 5.],
+             [6., 7.]]]
+        ], device=device, dtype=dtype)
+
+        aug = RandomChannelShuffle(p=1.)
+        out = aug(img)
+        assert_allclose(out, out_expected)
+
+
+class TestRandomGaussianNoise:
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomGaussianNoise(p=1.)
+        assert img.shape == aug(img).shape
 
 
 class TestNormalize:
