@@ -330,6 +330,7 @@ def rotation_matrix_to_quaternion(
         eps: float = 1.e-8,
         order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
+
     The quaternion vector has components in (w, x, y, z) or (x, y, z, w) format.
 
     .. note::
@@ -363,11 +364,10 @@ def rotation_matrix_to_quaternion(
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
 
     def safe_zero_division(numerator: torch.Tensor,
                            denominator: torch.Tensor) -> torch.Tensor:
@@ -470,6 +470,7 @@ def normalize_quaternion(quaternion: torch.Tensor,
 def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
                                   order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Converts a quaternion to a rotation matrix.
+
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
@@ -498,11 +499,11 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
+
     # normalize the input quaternion
     quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
 
@@ -541,6 +542,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor,
 def quaternion_to_angle_axis(quaternion: torch.Tensor,
                              order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     """Convert quaternion vector to angle axis of rotation.
+
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
@@ -571,16 +573,16 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor,
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
     # unpack input and compute conversion
-    q1: torch.Tensor
-    q2: torch.Tensor
-    q3: torch.Tensor
-    cos_theta: torch.Tensor
+    q1: torch.Tensor = torch.tensor([])
+    q2: torch.Tensor = torch.tensor([])
+    q3: torch.Tensor = torch.tensor([])
+    cos_theta: torch.Tensor = torch.tensor([])
+
     if order == QuaternionCoeffOrder.XYZW:
         q1 = quaternion[..., 0]
         q2 = quaternion[..., 1]
@@ -591,6 +593,7 @@ def quaternion_to_angle_axis(quaternion: torch.Tensor,
         q1 = quaternion[..., 1]
         q2 = quaternion[..., 2]
         q3 = quaternion[..., 3]
+
     sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
     sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
@@ -613,6 +616,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
                           eps: float = 1.e-8,
                           order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Applies exponential map to log quaternion.
+
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
 
     Args:
@@ -627,7 +631,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
         >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps,
-        ... order=QuaternionCoeffOrder.WXYZ)
+        ...                       order=QuaternionCoeffOrder.WXYZ)
         tensor([1., 0., 0., 0.])
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -640,11 +644,11 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
+
     # compute quaternion norm
     norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
@@ -653,11 +657,12 @@ def quaternion_log_to_exp(quaternion: torch.Tensor,
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    # quaternion_exp: torch.Tensor
+    quaternion_exp: torch.Tensor = torch.tensor([])
     if order == QuaternionCoeffOrder.XYZW:
         quaternion_exp = torch.cat((quaternion_vector, quaternion_scalar), dim=-1)
     else:
         quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
+
     return quaternion_exp
 
 
@@ -665,6 +670,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
                           eps: float = 1.e-8,
                           order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Applies the log map to a quaternion.
+
     The quaternion should be in (x, y, z, w) format.
 
     Args:
@@ -693,12 +699,15 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
+
     # unpack quaternion vector and scalar
+    quaternion_vector: torch.Tensor = torch.tensor([])
+    quaternion_scalar: torch.Tensor = torch.tensor([])
+
     if order == QuaternionCoeffOrder.XYZW:
         quaternion_vector = quaternion[..., 0:3]
         quaternion_scalar = quaternion[..., 3:4]
@@ -713,6 +722,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
     # apply log map
     quaternion_log: torch.Tensor = quaternion_vector * torch.acos(
         torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
+
     return quaternion_log
 
 
@@ -721,8 +731,9 @@ def quaternion_exp_to_log(quaternion: torch.Tensor,
 
 
 def angle_axis_to_quaternion(angle_axis: torch.Tensor,
-                             order=QuaternionCoeffOrder.XYZW) -> torch.Tensor:
+                             order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> torch.Tensor:
     r"""Convert an angle axis to a quaternion.
+
     The quaternion vector has components in (x, y, z, w) or (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
@@ -753,11 +764,11 @@ def angle_axis_to_quaternion(angle_axis: torch.Tensor,
         if order.name not in QuaternionCoeffOrder.__members__.keys():
             raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-        if order == QuaternionCoeffOrder.XYZW:
-            warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
-                          " will be removed after > 0.6. "
-                          "Please use `QuaternionCoeffOrder.WXYZ` instead.",
-                          DeprecationWarning, stacklevel=2)
+    if order == QuaternionCoeffOrder.XYZW:
+        warnings.warn("`XYZW` quaternion coefficient order is deprecated and"
+                      " will be removed after > 0.6. "
+                      "Please use `QuaternionCoeffOrder.WXYZ` instead.")
+
     # unpack input and compute conversion
     a0: torch.Tensor = angle_axis[..., 0:1]
     a1: torch.Tensor = angle_axis[..., 1:2]

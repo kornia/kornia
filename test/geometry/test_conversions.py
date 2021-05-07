@@ -36,7 +36,7 @@ class TestAngleAxisToQuaternion:
 
     def test_smoke_xyzw(self, device, dtype):
         angle_axis = torch.zeros(3, dtype=dtype, device=device)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert quaternion.shape == (4,)
@@ -50,7 +50,7 @@ class TestAngleAxisToQuaternion:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         angle_axis = torch.zeros(batch_size, 3, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert quaternion.shape == (batch_size, 4)
@@ -64,7 +64,7 @@ class TestAngleAxisToQuaternion:
     def test_zero_angle_xyzw(self, device, dtype, atol, rtol):
         angle_axis = torch.tensor((0., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -80,7 +80,7 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.tensor((theta, 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((np.sin(theta / 2.), 0., 0., np.cos(theta / 2.)),
                                 device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -98,7 +98,7 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.tensor((0., theta, 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., np.sin(theta / 2.), 0., np.cos(theta / 2.)),
                                 device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -116,7 +116,7 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.tensor((0., 0., theta), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., np.sin(theta / 2.), np.cos(theta / 2.)),
                                 device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -133,7 +133,7 @@ class TestAngleAxisToQuaternion:
         half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor((kornia.pi / 2., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, 0., 0., half_sqrt2), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -149,7 +149,7 @@ class TestAngleAxisToQuaternion:
         half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor((0., kornia.pi / 2., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., half_sqrt2, 0., half_sqrt2), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -165,7 +165,7 @@ class TestAngleAxisToQuaternion:
         half_sqrt2 = 0.5 * np.sqrt(2.)
         angle_axis = torch.tensor((0., 0., kornia.pi / 2.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., half_sqrt2, half_sqrt2), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.angle_axis_to_quaternion(angle_axis,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -182,7 +182,7 @@ class TestAngleAxisToQuaternion:
         angle_axis = torch.tensor((0., 0., 0.), device=device, dtype=dtype) + eps
         angle_axis = tensor_to_gradcheck_var(angle_axis)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.angle_axis_to_quaternion,
                                      order=QuaternionCoeffOrder.XYZW),
                              (angle_axis,),
@@ -202,7 +202,7 @@ class TestQuaternionToAngleAxis:
 
     def test_smoke_xyzw(self, device, dtype):
         quaternion = torch.zeros(4, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert angle_axis.shape == (3,)
@@ -215,7 +215,7 @@ class TestQuaternionToAngleAxis:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert angle_axis.shape == (batch_size, 3)
@@ -230,7 +230,7 @@ class TestQuaternionToAngleAxis:
     def test_unit_quaternion_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -245,7 +245,7 @@ class TestQuaternionToAngleAxis:
     def test_x_rotation_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1., 0., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi, 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -260,7 +260,7 @@ class TestQuaternionToAngleAxis:
     def test_y_rotation_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0., 1., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., kornia.pi, 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -275,7 +275,7 @@ class TestQuaternionToAngleAxis:
     def test_z_rotation_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0., 0., 0.5, np.sqrt(3.) / 2.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., kornia.pi / 3.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -292,7 +292,7 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor((np.sin(theta / 2.), 0., 0., np.cos(theta / 2.)), device=device,
                                   dtype=dtype)
         expected = torch.tensor((theta, 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -311,7 +311,7 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor((0., np.sin(theta / 2), 0., np.cos(theta / 2)), device=device,
                                   dtype=dtype)
         expected = torch.tensor((0., theta, 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -330,7 +330,7 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor((0., 0., np.sin(theta / 2), np.cos(theta / 2)), device=device,
                                   dtype=dtype)
         expected = torch.tensor((0., 0., theta), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             angle_axis = kornia.quaternion_to_angle_axis(quaternion,
                                                          order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis, expected, atol=atol, rtol=rtol)
@@ -349,7 +349,7 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype) + eps
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.quaternion_to_angle_axis,
                                      order=QuaternionCoeffOrder.XYZW),
                              (quaternion,),
@@ -370,7 +370,7 @@ class TestRotationMatrixToQuaternion:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         matrix = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix,
                                                               order=QuaternionCoeffOrder.XYZW)
         assert quaternion.shape == (batch_size, 4)
@@ -388,7 +388,7 @@ class TestRotationMatrixToQuaternion:
             (0., 0., 1.),
         ), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix,
                                                               order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -411,7 +411,7 @@ class TestRotationMatrixToQuaternion:
         ), device=device, dtype=dtype)
         pi_half2 = torch.cos(kornia.pi / 4.).to(device=device, dtype=dtype)
         expected = torch.tensor((pi_half2, 0., 0., pi_half2), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix,
                                                               order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion, expected, atol=atol, rtol=rtol)
@@ -434,7 +434,7 @@ class TestRotationMatrixToQuaternion:
             (0., 0., -1.),
             (0., 1., 0.),
         ), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix, eps=eps,
                                                               order=QuaternionCoeffOrder.XYZW)
             matrix_hat = kornia.quaternion_to_rotation_matrix(quaternion,
@@ -464,7 +464,7 @@ class TestRotationMatrixToQuaternion:
         quaternion_true = torch.tensor(
             (0.280136495828629, -0.440902262926102, 0.834015488624573, 0.177614107728004),
             device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix,
                                                               eps=eps,
                                                               order=QuaternionCoeffOrder.XYZW)
@@ -491,7 +491,7 @@ class TestRotationMatrixToQuaternion:
         matrix = torch.eye(3, device=device, dtype=dtype)
         matrix = tensor_to_gradcheck_var(matrix)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.rotation_matrix_to_quaternion,
                                      eps=eps, order=QuaternionCoeffOrder.XYZW),
                              (matrix,),
@@ -530,7 +530,7 @@ class TestQuaternionToRotationMatrix:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             matrix = kornia.quaternion_to_rotation_matrix(quaternion,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert matrix.shape == (batch_size, 3, 3)
@@ -548,7 +548,7 @@ class TestQuaternionToRotationMatrix:
             (0., 1., 0.),
             (0., 0., 1.),
         ), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             matrix = kornia.quaternion_to_rotation_matrix(quaternion,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(matrix, expected, atol=atol, rtol=rtol)
@@ -570,7 +570,7 @@ class TestQuaternionToRotationMatrix:
             (0., -1., 0.),
             (0., 0., -1.),
         ), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             matrix = kornia.quaternion_to_rotation_matrix(quaternion,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(matrix, expected, atol=atol, rtol=rtol)
@@ -593,7 +593,7 @@ class TestQuaternionToRotationMatrix:
             (0., 0., -1.),
         ), device=device, dtype=dtype)
 
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             matrix = kornia.quaternion_to_rotation_matrix(quaternion,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(matrix, expected, atol=atol, rtol=rtol)
@@ -615,7 +615,7 @@ class TestQuaternionToRotationMatrix:
             (0., -1., 0.),
             (0., 0., 1.),
         ), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             matrix = kornia.quaternion_to_rotation_matrix(quaternion,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(matrix, expected, atol=atol, rtol=rtol)
@@ -634,7 +634,7 @@ class TestQuaternionToRotationMatrix:
         quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.quaternion_to_rotation_matrix,
                                      order=QuaternionCoeffOrder.XYZW),
                              (quaternion,),
@@ -668,7 +668,7 @@ class TestQuaternionLogToExp:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         quaternion_log = torch.zeros(batch_size, 3, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert quaternion_exp.shape == (batch_size, 4)
@@ -684,7 +684,7 @@ class TestQuaternionLogToExp:
         eps = torch.finfo(dtype).eps
         quaternion_log = torch.tensor((0., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_exp, expected, atol=atol, rtol=rtol)
@@ -703,7 +703,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((1., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((torch.sin(one), 0., 0., torch.cos(one)), device=device,
                                 dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_exp, expected, atol=atol, rtol=rtol)
@@ -724,7 +724,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((0., 1., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., torch.sin(one), 0., torch.cos(one)), device=device,
                                 dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_exp, expected, atol=atol, rtol=rtol)
@@ -745,7 +745,8 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., torch.sin(one), torch.cos(one)), device=device,
                                 dtype=dtype)
-        with pytest.deprecated_call():
+
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_exp, expected, atol=atol, rtol=rtol)
@@ -764,7 +765,7 @@ class TestQuaternionLogToExp:
         eps = torch.finfo(dtype).eps
         quaternion_log = torch.tensor((1., 0., 0.), device=device, dtype=dtype)
 
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         with pytest.deprecated_call():
@@ -787,7 +788,7 @@ class TestQuaternionLogToExp:
         quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.quaternion_log_to_exp, eps=eps,
                                      order=QuaternionCoeffOrder.XYZW),
                              (quaternion,),
@@ -824,7 +825,7 @@ class TestQuaternionExpToLog:
     def test_smoke_batch_xyzw(self, batch_size, device, dtype):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.zeros(batch_size, 4, device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert quaternion_log.shape == (batch_size, 3)
@@ -841,7 +842,7 @@ class TestQuaternionExpToLog:
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_log, expected, atol=atol, rtol=rtol)
@@ -858,7 +859,7 @@ class TestQuaternionExpToLog:
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((1., 0., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi / 2., 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_log, expected, atol=atol, rtol=rtol)
@@ -875,7 +876,7 @@ class TestQuaternionExpToLog:
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0., 1., 0., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., kornia.pi / 2., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_log, expected, atol=atol, rtol=rtol)
@@ -892,7 +893,7 @@ class TestQuaternionExpToLog:
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
         expected = torch.tensor((0., 0., kornia.pi / 2.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_log, expected, atol=atol, rtol=rtol)
@@ -908,10 +909,11 @@ class TestQuaternionExpToLog:
     def test_back_and_forth_xyzw(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((1., 0., 0., 0.), device=device, dtype=dtype)
-        with pytest.deprecated_call():
+
+        with pytest.warns(UserWarning):
             quaternion_log = kornia.quaternion_exp_to_log(quaternion_exp, eps=eps,
                                                           order=QuaternionCoeffOrder.XYZW)
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             quaternion_exp_hat = kornia.quaternion_log_to_exp(quaternion_log, eps=eps,
                                                               order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
@@ -930,7 +932,7 @@ class TestQuaternionExpToLog:
         quaternion = torch.tensor((1., 0., 0., 0.), device=device, dtype=dtype)
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        with pytest.deprecated_call():
+        with pytest.warns(UserWarning):
             assert gradcheck(partial(kornia.quaternion_exp_to_log, eps=eps,
                                      order=QuaternionCoeffOrder.XYZW),
                              (quaternion,),
@@ -946,7 +948,6 @@ class TestQuaternionExpToLog:
                          (quaternion,),
                          raise_exception=True)
 
-    # @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit_xyzw(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_jit = torch.jit.script(op)
@@ -1275,7 +1276,7 @@ class TestConvertPointsFromHomogeneous:
         assert gradcheck(kornia.convert_points_from_homogeneous, (points_h,),
                          raise_exception=True)
 
-    # @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
+    @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck_zvec_zeros(self, device, dtype):
         # generate input data
         points_h = torch.tensor([
