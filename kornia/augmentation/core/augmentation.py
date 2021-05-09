@@ -13,7 +13,9 @@ from kornia.geometry.transform import (
     affine,
 )
 from kornia.geometry.transform.affwarp import (
-    _compute_shear_matrix
+    _compute_shear_matrix,
+    _compute_tensor_center,
+    _compute_rotation_matrix,
 )
 from kornia.enhance import (
     equalize
@@ -22,7 +24,7 @@ from .smart_sampling import (
     SmartSampling,
     SmartUniform,
 )
-from .gradient_estimator import StraightThroughEstimator
+from .gradient_estimator import STEFunction
 from .operation_base import GeometricAugmentOperation, IntensityAugmentOperation
 
 
@@ -55,14 +57,11 @@ class ShearX(GeometricAugmentOperation):
     """
     def __init__(
         self,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                 SmartSampling]] = (0., 1.),
+        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 1.),
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
         gradients_estimation: Optional[Function] = None
     ):
-        if magnitude_dist is None:
-            magnitude_dist = SmartUniform(torch.tensor(0.), torch.tensor(1.))
         super().__init__(
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
             same_on_batch=same_on_batch, gradients_estimation=gradients_estimation
@@ -80,6 +79,47 @@ class ShearX(GeometricAugmentOperation):
                       align_corners=self.align_corners)
 
 
+class Rotation(GeometricAugmentOperation):
+    """
+    >>> a = Rotation(p=1.)
+    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out.shape
+    torch.Size([2, 3, 100, 100])
+    >>> loss = out.mean()
+    >>> loss.backward()
+    """
+    def __init__(
+        self,
+        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 360.),
+        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
+        padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
+        gradients_estimation: Optional[Function] = None
+    ):
+        super().__init__(
+            torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            same_on_batch=same_on_batch, gradients_estimation=gradients_estimation
+        )
+        self.mode = mode
+        self.padding_mode = padding_mode
+        self.align_corners = align_corners
+
+    def compute_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
+
+        center: torch.Tensor = _compute_tensor_center(input)
+        rotation_mat: torch.Tensor = _compute_rotation_matrix(
+            magnitudes, center.expand(magnitudes.shape[0], -1))
+
+        # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
+        trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)
+        trans_mat[:, 0] = rotation_mat[:, 0]
+        trans_mat[:, 1] = rotation_mat[:, 1]
+        return trans_mat
+
+    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+        return affine(input, transform[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
+                      align_corners=self.align_corners)
+
+
 class Perspective(GeometricAugmentOperation):
     """
     >>> a = Perspective(p=1.)
@@ -91,11 +131,10 @@ class Perspective(GeometricAugmentOperation):
     """
     def __init__(
         self,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                 SmartSampling]] = (0.3, 0.7),
+        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
-        gradients_estimation: Optional[Function] = StraightThroughEstimator
+        gradients_estimation: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
@@ -152,16 +191,18 @@ class Crop(GeometricAugmentOperation):
     >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 50, 50])
+    >>> loss = (out - 1).mean()
+    >>> loss.backward()
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                 SmartSampling]] = [(0., 1.), (0., 1.)],
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False
+        magnitude_dist: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
+        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
+        gradients_estimation: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(1.), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            gradients_estimation=None, same_on_batch=same_on_batch
+            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
         )
         self.size = size
         _crop_dst = torch.tensor([[
@@ -198,14 +239,14 @@ class Equalize(IntensityAugmentOperation):
     torch.Size([2, 3, 100, 100])
 
     # Backprop with gradients estimator
-    >>> a = Equalize(1., gradients_estimation=StraightThroughEstimator)
+    >>> a = Equalize(1., gradients_estimation=STEFunction)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> loss = (out - torch.ones(2, 3, 100, 100)).mean()
     >>> loss.backward()
     """
     def __init__(
         self, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = StraightThroughEstimator
+        gradients_estimation: Optional[Function] = STEFunction
     ):
         super().__init__(
             torch.tensor(p), magnitude_dist=None, magnitude_mapping=None, gradients_estimation=gradients_estimation,

@@ -18,8 +18,8 @@ class AugmentOperation(nn.Module):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                       SmartSampling]] = None,
+        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                                 List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimation: Optional[Function] = None,
         same_on_batch: bool = False
@@ -102,8 +102,8 @@ class IntensityAugmentOperation(AugmentOperation):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                 SmartSampling]] = None,
+        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                                 List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimation: Optional[Function] = None,
         same_on_batch: bool = False
@@ -140,8 +140,8 @@ class GeometricAugmentOperation(AugmentOperation):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                 SmartSampling]] = None,
+        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                                 List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimation: Optional[Function] = None,
         same_on_batch: bool = False
