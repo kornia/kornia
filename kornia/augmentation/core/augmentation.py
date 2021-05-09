@@ -24,7 +24,10 @@ from .smart_sampling import (
     SmartSampling,
     SmartUniform,
 )
-from .gradient_estimator import STEFunction
+from .gradient_estimator import (
+    STEFunction,
+    StraightThroughEstimator
+)
 from .operation_base import GeometricAugmentOperation, IntensityAugmentOperation
 
 
@@ -60,11 +63,11 @@ class ShearX(GeometricAugmentOperation):
         magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 1.),
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = None
+        gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            same_on_batch=same_on_batch, gradients_estimation=gradients_estimation
+            same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
         )
         self.mode = mode
         self.padding_mode = padding_mode
@@ -85,19 +88,31 @@ class Rotation(GeometricAugmentOperation):
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 100, 100])
-    >>> loss = out.mean()
-    >>> loss.backward()
+    >>> out.mean().backward()
+
+    Gradients Estimation - 1:
+    >>> a = Rotation(p=1.)
+    >>> input = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
+    >>> with torch.no_grad():
+    ...     out = a(input)
+    >>> out_est = StraightThroughEstimator()(input, out)
+    >>> out_est.mean().backward()
+
+    Gradients Estimation - 2:
+    >>> a = Rotation(p=1., gradients_estimator=STEFunction)
+    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out.mean().backward()
     """
     def __init__(
         self,
         magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 360.),
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = None
+        gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            same_on_batch=same_on_batch, gradients_estimation=gradients_estimation
+            same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
         )
         self.mode = mode
         self.padding_mode = padding_mode
@@ -134,11 +149,11 @@ class Perspective(GeometricAugmentOperation):
         magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
-        gradients_estimation: Optional[Function] = None
+        gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
+            gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.mode = mode
         self.align_corners = align_corners
@@ -185,24 +200,35 @@ class Perspective(GeometricAugmentOperation):
 
 class Crop(GeometricAugmentOperation):
     """
-    Gradient esimator cannot work with cropping functions now due to the gradient shape issue.
-
     >>> crop = Crop((50, 50), p=1.)
     >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 50, 50])
     >>> loss = (out - 1).mean()
     >>> loss.backward()
+
+    Gradients Estimation - 1:
+    >>> crop = Crop((50, 50), p=1.)
+    >>> input = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
+    >>> with torch.no_grad():
+    ...     out = crop(input)
+    >>> out_est = StraightThroughEstimator()(input, out)
+    >>> out_est.mean().backward()
+
+    Gradients Estimation - 2:
+    >>> crop = Crop((50, 50), p=1., gradients_estimator=STEFunction)
+    >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out.mean().backward()
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
         magnitude_dist: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = None
+        gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
             torch.tensor(1.), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
+            gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.size = size
         _crop_dst = torch.tensor([[
@@ -239,17 +265,17 @@ class Equalize(IntensityAugmentOperation):
     torch.Size([2, 3, 100, 100])
 
     # Backprop with gradients estimator
-    >>> a = Equalize(1., gradients_estimation=STEFunction)
+    >>> a = Equalize(1., gradients_estimator=STEFunction)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> loss = (out - torch.ones(2, 3, 100, 100)).mean()
     >>> loss.backward()
     """
     def __init__(
         self, p: float = 0.5, same_on_batch: bool = False,
-        gradients_estimation: Optional[Function] = STEFunction
+        gradients_estimator: Optional[Function] = STEFunction
     ):
         super().__init__(
-            torch.tensor(p), magnitude_dist=None, magnitude_mapping=None, gradients_estimation=gradients_estimation,
+            torch.tensor(p), magnitude_dist=None, magnitude_mapping=None, gradients_estimator=gradients_estimator,
             same_on_batch=same_on_batch
         )
 

@@ -21,7 +21,7 @@ class AugmentOperation(nn.Module):
         magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
                                  List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
-        gradients_estimation: Optional[Function] = None,
+        gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
     ):
         super().__init__()
@@ -29,7 +29,7 @@ class AugmentOperation(nn.Module):
             self.magnitude_mapping = self._make_magnitude_mapping(magnitude_mapping)
         else:
             self.magnitude_mapping = None
-        self.gradients_estimation = gradients_estimation
+        self.gradients_estimator = gradients_estimator
         self.same_on_batch = same_on_batch
         self.prob_dist = SmartBernoulli(p, freeze_dtype=True)
         if magnitude_dist is not None:
@@ -105,12 +105,12 @@ class IntensityAugmentOperation(AugmentOperation):
         magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
                                  List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
-        gradients_estimation: Optional[Function] = None,
+        gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
     ):
         super().__init__(
             p=p, magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
+            gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
     def compute_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
@@ -125,10 +125,10 @@ class IntensityAugmentOperation(AugmentOperation):
         else:
             mag = [_mag[params['probs']] for _mag in params['magnitudes']]
             mag = mag[0] if len(mag) == 1 else mag
-        if self.gradients_estimation is not None:
+        if self.gradients_estimator is not None:
             with torch.no_grad():
                 out = self.apply_transform(input, mag)
-            out = self.gradients_estimation.apply(input, out)
+            out = self.gradients_estimator.apply(input, out)
         else:
             out = self.apply_transform(input, mag)
         return out
@@ -143,12 +143,12 @@ class GeometricAugmentOperation(AugmentOperation):
         magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
                                  List[SmartSampling]]] = None,
         magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
-        gradients_estimation: Optional[Function] = None,
+        gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
     ):
         super().__init__(
             p=p, magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
-            gradients_estimation=gradients_estimation, same_on_batch=same_on_batch
+            gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
     def compute_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
@@ -163,11 +163,11 @@ class GeometricAugmentOperation(AugmentOperation):
         else:
             mag = [_mag[params['probs']] for _mag in params['magnitudes']]
             mag = mag[0] if len(mag) == 1 else mag
-        if self.gradients_estimation is not None:
+        if self.gradients_estimator is not None:
             with torch.no_grad():
                 trans_mat = self.compute_transform(input, mag)
                 out = self.apply_transform(input, trans_mat)
-            out = self.gradients_estimation.apply(input, out)
+            out = self.gradients_estimator.apply(input, out)
         else:
             trans_mat = self.compute_transform(input, mag)
             out = self.apply_transform(input, trans_mat)
