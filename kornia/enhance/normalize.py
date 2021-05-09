@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional
 
 import torch
 import torch.nn as nn
@@ -45,9 +45,21 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], float]) -> None:
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], float], num_channels: Optional[int]) -> None:
 
         super(Normalize, self).__init__()
+
+        if isinstance(mean, float):
+            mean = torch.tensor([mean] * num_channels)
+
+        if isinstance(std, float):
+            std = torch.tensor([std] * num_channels)
+
+        if isinstance(mean, tuple):
+            mean = torch.tensor(mean)
+
+        if isinstance(std, tuple):
+            std = torch.tensor(std)
 
         self.mean = mean
         self.std = std
@@ -61,7 +73,7 @@ class Normalize(nn.Module):
 
 
 def normalize(
-    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
+    data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor
 ) -> torch.Tensor:
     r"""Normalize a tensor image with mean and standard deviation.
 
@@ -92,29 +104,6 @@ def normalize(
         torch.Size([1, 4, 3, 3])
     """
     shape = data.shape
-
-    if isinstance(mean, float):
-        mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
-
-    if isinstance(std, float):
-        std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
-
-    if isinstance(mean, tuple):
-        assert len(mean) == len(shape) - 1
-        mean = torch.tensor(mean, device=data.device, dtype=data.dtype)
-
-    if isinstance(std, tuple):
-        assert len(std) == len(shape) - 1
-        std = torch.tensor(std, device=data.device, dtype=data.dtype)
-
-    if not isinstance(data, torch.Tensor):
-        raise TypeError("data should be a tensor. Got {}".format(type(data)))
-
-    if not isinstance(mean, torch.Tensor):
-        raise TypeError("mean should be a tensor or a float. Got {}".format(type(mean)))
-
-    if not isinstance(std, torch.Tensor):
-        raise TypeError("std should be a tensor or float. Got {}".format(type(std)))
 
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:
