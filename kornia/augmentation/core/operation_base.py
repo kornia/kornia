@@ -157,6 +157,11 @@ class GeometricAugmentOperation(AugmentOperation):
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
+    def inverse_transform(
+        self, input: torch.Tensor, transform: torch.Tensor, output_shape: torch.Size
+    ) -> torch.Tensor:
+        raise NotImplementedError
+
     def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
         if params['magnitudes'] is None:
             mag = None
@@ -167,7 +172,8 @@ class GeometricAugmentOperation(AugmentOperation):
             with torch.no_grad():
                 trans_mat = self.compute_transform(input, mag)
                 out = self.apply_transform(input, trans_mat)
-            out = self.gradients_estimator.apply(input, out)
+            out = self.gradients_estimator.apply(
+                input, out, lambda x, shape: self.inverse_transform(x, trans_mat, shape))
         else:
             trans_mat = self.compute_transform(input, mag)
             out = self.apply_transform(input, trans_mat)

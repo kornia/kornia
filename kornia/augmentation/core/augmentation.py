@@ -6,6 +6,7 @@ from torch.autograd import Function
 from torch.distributions import Distribution
 
 from kornia.geometry.transform import (
+    warp_affine,
     warp_perspective,
     bbox_generator,
     get_perspective_transform,
@@ -134,6 +135,10 @@ class Rotation(GeometricAugmentOperation):
         return affine(input, transform[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
                       align_corners=self.align_corners)
 
+    def inverse_transform(self, input: torch.Tensor, transform: torch.Tensor, output_shape: torch.Size) -> torch.Tensor:
+        return affine(input, transform.inverse()[..., :2, :3], mode=self.mode, padding_mode=self.padding_mode,
+                      align_corners=self.align_corners)
+
 
 class Perspective(GeometricAugmentOperation):
     """
@@ -208,17 +213,11 @@ class Crop(GeometricAugmentOperation):
     >>> loss.backward()
 
     Gradients Estimation - 1:
-    >>> crop = Crop((50, 50), p=1.)
-    >>> input = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
-    >>> with torch.no_grad():
-    ...     out = crop(input)
-    >>> out_est = StraightThroughEstimator()(input, out)
-    >>> out_est.mean().backward()
-
-    Gradients Estimation - 2:
     >>> crop = Crop((50, 50), p=1., gradients_estimator=STEFunction)
-    >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
+    >>> out = crop(inp)
     >>> out.mean().backward()
+    >>> inp.grad
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
@@ -256,6 +255,12 @@ class Crop(GeometricAugmentOperation):
             padding_mode='zeros', align_corners=True)
         return out
 
+    def inverse_transform(self, input: torch.Tensor, transform: torch.Tensor, output_shape: torch.Size) -> torch.Tensor:
+        out = crop_by_transform_mat(
+            input, transform.pinverse(), tuple(output_shape[-2:]), mode='bilinear',
+            padding_mode='zeros', align_corners=True)
+        return out
+
 
 class Equalize(IntensityAugmentOperation):
     """
@@ -265,10 +270,12 @@ class Equalize(IntensityAugmentOperation):
     torch.Size([2, 3, 100, 100])
 
     # Backprop with gradients estimator
+    >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
     >>> a = Equalize(1., gradients_estimator=STEFunction)
-    >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out = a(inp)
     >>> loss = (out - torch.ones(2, 3, 100, 100)).mean()
     >>> loss.backward()
+    >>> inp.grad
     """
     def __init__(
         self, p: float = 0.5, same_on_batch: bool = False,
