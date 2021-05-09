@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch.autograd import Function
 from torch.distributions import Distribution
 
+from kornia import eye_like
 from .smart_sampling import (
     SmartSampling,
     SmartBernoulli,
@@ -18,61 +19,67 @@ class AugmentOperation(nn.Module):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
-                                 List[SmartSampling]]] = None,
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
+        p_batch: torch.Tensor,
+        sampler: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                          List[SmartSampling]]] = None,
+        mapper: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
     ):
         super().__init__()
-        if magnitude_mapping is not None:
-            self.magnitude_mapping = self._make_magnitude_mapping(magnitude_mapping)
+        if mapper is not None:
+            self.mapper = self._make_mapper(mapper)
         else:
-            self.magnitude_mapping = None
+            self.mapper = None
         self.gradients_estimator = gradients_estimator
         self.same_on_batch = same_on_batch
         self.prob_dist = SmartBernoulli(p, freeze_dtype=True)
-        if magnitude_dist is not None:
-            self.magnitude_dist = self._make_magnitude_dist(magnitude_dist)
+        self.prob_batch_dist = SmartBernoulli(p_batch, freeze_dtype=True)
+        if sampler is not None:
+            self.sampler = self._make_sampler(sampler)
         else:
-            self.magnitude_dist = None
+            self.sampler = None
 
-    def _make_magnitude_mapping(self, magnitude_mapping: Union[Callable, List[Callable]]) -> List[Callable]:
-        if callable(magnitude_mapping):
-            return [magnitude_mapping]
-        if isinstance(magnitude_mapping, (tuple, list)):
-            return magnitude_mapping
+    def _make_mapper(self, mapper: Union[Callable, List[Callable]]) -> List[Callable]:
+        if callable(mapper):
+            return [mapper]
+        if isinstance(mapper, (tuple, list)):
+            return mapper
         raise ValueError
 
-    def _make_magnitude_dist_one(self, magnitude_dist: Union[Tuple[float, float], SmartSampling]) -> Distribution:
-        if isinstance(magnitude_dist, (list, tuple)):
-            _magnitude_dist = SmartUniform(
-                torch.tensor(magnitude_dist[0]),
-                torch.tensor(magnitude_dist[1])
+    def _make_sampler_one(self, sampler: Union[Tuple[float, float], SmartSampling]) -> Distribution:
+        if isinstance(sampler, (list, tuple)):
+            _sampler = SmartUniform(
+                torch.tensor(sampler[0]),
+                torch.tensor(sampler[1])
             )
         else:
-            _magnitude_dist = magnitude_dist
-        return _magnitude_dist
+            _sampler = sampler
+        return _sampler
 
-    def _make_magnitude_dist(
-            self, magnitude_dist: Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
-                                        SmartSampling]
+    def _make_sampler(
+            self, sampler: Union[Tuple[float, float], List[Tuple[float, float]], List[SmartSampling],
+                                 SmartSampling]
     ) -> List[Distribution]:
         """Make a list of distributions according to the parameters."""
         if (
-            isinstance(magnitude_dist, (list, tuple)) and len(magnitude_dist) == 2 and
-            isinstance(magnitude_dist[0], (int, float)) and isinstance(magnitude_dist[0], (int, float))
-        ) or isinstance(magnitude_dist, (SmartSampling,)):
-            magnitude_dist = [magnitude_dist]
-        return [self._make_magnitude_dist_one(dist) for dist in magnitude_dist]
+            isinstance(sampler, (list, tuple)) and len(sampler) == 2 and
+            isinstance(sampler[0], (int, float)) and isinstance(sampler[0], (int, float))
+        ) or isinstance(sampler, (SmartSampling,)):
+            sampler = [sampler]
+        return [self._make_sampler_one(dist) for dist in sampler]
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Optional[torch.Tensor]]:
-        probs = self.prob_dist.rsample(batch_shape[:1], self.same_on_batch).squeeze()
+        batch_probs = self.prob_batch_dist.rsample([1], self.same_on_batch).squeeze()
+        if batch_probs.bool().item():
+            probs = self.prob_dist.rsample(batch_shape[:1], self.same_on_batch).squeeze()
+        else:
+            probs = batch_probs.expand(batch_shape[0])
         mags = None
-        if self.magnitude_dist is not None:
-            mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.magnitude_dist]
-        if self.magnitude_mapping is not None:
-            mags = [mapping(mag) for mapping, mag in zip(self.magnitude_mapping, mags)]
+        if self.sampler is not None:
+            mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler]
+        if self.mapper is not None:
+            mags = [mapping(mag) for mapping, mag in zip(self.mapper, mags)]
         return {"probs": probs.bool(), "magnitudes": mags}
 
     def apply_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
@@ -91,7 +98,7 @@ class AugmentOperation(nn.Module):
         if (params['probs'] == 1).all():
             return self.forwad_transform(input, params)
         inp = input[params['probs']]
-        out = self.forwad_transform(input, params)
+        out = self.forwad_transform(inp, params)
         input[params['probs']] = out
         return input
 
@@ -102,14 +109,15 @@ class IntensityAugmentOperation(AugmentOperation):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
-                                 List[SmartSampling]]] = None,
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
+        p_batch: torch.Tensor,
+        sampler: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                          List[SmartSampling]]] = None,
+        mapper: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimator: Optional[Function] = None,
         same_on_batch: bool = False
     ):
         super().__init__(
-            p=p, magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            p=p, p_batch=p_batch, sampler=sampler, mapper=mapper,
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
@@ -140,16 +148,19 @@ class GeometricAugmentOperation(AugmentOperation):
     def __init__(
         self,
         p: torch.Tensor,
-        magnitude_dist: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
-                                 List[SmartSampling]]] = None,
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None,
+        p_batch: torch.Tensor,
+        sampler: Optional[Union[Tuple[float, float], List[Tuple[float, float]], SmartSampling,
+                          List[SmartSampling]]] = None,
+        mapper: Optional[Union[Callable, List[Callable]]] = None,
         gradients_estimator: Optional[Function] = None,
-        same_on_batch: bool = False
+        same_on_batch: bool = False,
+        return_transform: bool = False
     ):
         super().__init__(
-            p=p, magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            p=p, p_batch=p_batch, sampler=sampler, mapper=mapper,
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
+        self.return_transform = return_transform
 
     def compute_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
@@ -162,7 +173,9 @@ class GeometricAugmentOperation(AugmentOperation):
     ) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]):
+    def forwad_transform(
+        self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         if params['magnitudes'] is None:
             mag = None
         else:
@@ -177,4 +190,24 @@ class GeometricAugmentOperation(AugmentOperation):
         else:
             trans_mat = self.compute_transform(input, mag)
             out = self.apply_transform(input, trans_mat)
+        return out, trans_mat
+
+    def forward(
+        self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
+    ) -> torch.Tensor:
+        if params is None:
+            params = self.generate_parameters(input.shape)
+        if (params['probs'] == 0).all():
+            out, trans_mat = input, eye_like(3, input)
+        elif (params['probs'] == 1).all():
+            out, trans_mat = self.forwad_transform(input, params)
+        else:
+            inp = input[params['probs']]
+            in_trans_mat = eye_like(3, input)
+            _out, _trans_mat = self.forwad_transform(inp, params)
+            input[params['probs']] = _out
+            in_trans_mat[params['probs']] = _trans_mat
+            out, trans_mat = input, in_trans_mat
+        if self.return_transform:
+            return out, trans_mat
         return out

@@ -45,7 +45,7 @@ class ShearX(GeometricAugmentOperation):
     tensor(True)
 
     Custom mapping with 'torch.tanh':
-    >>> a = ShearX(magnitude_mapping=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.)
+    >>> a = ShearX(mapper=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.)
     >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
     >>> (out[0] == out[1]).all()
     tensor(True)
@@ -53,21 +53,21 @@ class ShearX(GeometricAugmentOperation):
     Custom mapping:
     >>> from kornia.augmentation.core.smart_sampling import SmartGaussian
     >>> a = ShearX(
-    ... magnitude_mapping=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.,
-    ... magnitude_dist=SmartGaussian(torch.tensor(1.), torch.tensor(1.)))
+    ... mapper=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.,
+    ... sampler=SmartGaussian(torch.tensor(1.), torch.tensor(1.)))
     >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
     >>> (out[0] == out[1]).all()
     tensor(True)
     """
     def __init__(
         self,
-        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 1.),
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
+        sampler: Union[Tuple[float, float], SmartSampling] = (0., 1.),
+        mapper: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
             same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
         )
         self.mode = mode
@@ -106,13 +106,13 @@ class Rotation(GeometricAugmentOperation):
     """
     def __init__(
         self,
-        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0., 360.),
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
+        sampler: Union[Tuple[float, float], SmartSampling] = (0., 360.),
+        mapper: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
             same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
         )
         self.mode = mode
@@ -151,13 +151,13 @@ class Perspective(GeometricAugmentOperation):
     """
     def __init__(
         self,
-        magnitude_dist: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
+        sampler: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
+        mapper: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.mode = mode
@@ -221,12 +221,12 @@ class Crop(GeometricAugmentOperation):
     """
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
-        magnitude_dist: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
-        magnitude_mapping: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
+        sampler: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
+        mapper: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(1.), magnitude_dist=magnitude_dist, magnitude_mapping=magnitude_mapping,
+            torch.tensor(1.), torch.tensor(p), sampler=sampler, mapper=mapper,
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.size = size
@@ -282,7 +282,7 @@ class Equalize(IntensityAugmentOperation):
         gradients_estimator: Optional[Function] = STEFunction
     ):
         super().__init__(
-            torch.tensor(p), magnitude_dist=None, magnitude_mapping=None, gradients_estimator=gradients_estimator,
+            torch.tensor(p), torch.tensor(1.), sampler=None, mapper=None, gradients_estimator=gradients_estimator,
             same_on_batch=same_on_batch
         )
 
