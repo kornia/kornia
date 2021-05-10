@@ -321,7 +321,7 @@ class TestMotionFromEssentialChooseSolution:
         R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
         assert R.shape == (3, 3)
         assert t.shape == (3, 1)
-        assert X.shape == (N-2, 3)
+        assert X.shape == (N - 2, 3)
 
         mask = torch.zeros(N, dtype=torch.bool, device=device)
         mask[1:-1] = True
