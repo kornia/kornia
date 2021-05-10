@@ -309,6 +309,28 @@ class TestMotionFromEssentialChooseSolution:
         assert_allclose(t, tm)
         assert_allclose(X, Xm[:, 1:-1, :])
 
+    @pytest.mark.parametrize("num_points", [10, 15, 20])
+    def test_unbatched(self, num_points, device, dtype):
+        N = num_points
+        E_mat = torch.rand(3, 3, device=device, dtype=dtype)
+        K1 = torch.rand(3, 3, device=device, dtype=dtype)
+        K2 = torch.rand(3, 3, device=device, dtype=dtype)
+        x1 = torch.rand(N, 2, device=device, dtype=dtype)
+        x2 = torch.rand(N, 2, device=device, dtype=dtype)
+
+        R, t, X = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1[1:-1, :], x2[1:-1, :])
+        assert R.shape == (3, 3)
+        assert t.shape == (3, 1)
+        assert X.shape == (N - 2, 3)
+
+        mask = torch.zeros(N, dtype=torch.bool, device=device)
+        mask[1:-1] = True
+        Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
+
+        assert_allclose(R, Rm)
+        assert_allclose(t, tm)
+        assert_allclose(X, Xm[1:-1, :])
+
     def test_two_view(self, device, dtype):
 
         scene = utils.generate_two_view_random_scene(device, dtype)
