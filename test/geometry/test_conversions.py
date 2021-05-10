@@ -507,14 +507,18 @@ class TestRotationMatrixToQuaternion:
                          (matrix,),
                          raise_exception=True)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.quaternion_log_to_exp
         op_script = torch.jit.script(op)
         quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
-        actual = op_script(quaternion)
-        expected = op(quaternion)
+        with pytest.warns(UserWarning):
+            actual = op_script(quaternion)
+        with pytest.warns(UserWarning):
+            expected = op(quaternion)
         assert_allclose(actual, expected)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         eps = torch.finfo(dtype).eps
         op = kornia.quaternion_log_to_exp
@@ -649,12 +653,15 @@ class TestQuaternionToRotationMatrix:
                          (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_jit = torch.jit.script(op)
         quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
-        assert_allclose(op(quaternion), op_jit(quaternion))
+        with pytest.warns(UserWarning):
+            assert_allclose(op(quaternion), op_jit(quaternion))
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_jit = torch.jit.script(op)
@@ -804,13 +811,16 @@ class TestQuaternionLogToExp:
                          (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_jit = torch.jit.script(op)
         quaternion = torch.tensor((0., 0., 1.), device=device, dtype=dtype)
-        assert_allclose(op(quaternion, order=QuaternionCoeffOrder.XYZW),
-                        op_jit(quaternion, order=QuaternionCoeffOrder.XYZW))
+        with pytest.warns(UserWarning):
+            assert_allclose(op(quaternion, order=QuaternionCoeffOrder.XYZW),
+                            op_jit(quaternion, order=QuaternionCoeffOrder.XYZW))
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_jit = torch.jit.script(op)
@@ -948,12 +958,15 @@ class TestQuaternionExpToLog:
                          (quaternion,),
                          raise_exception=True)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit_xyzw(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_jit = torch.jit.script(op)
         quaternion = torch.tensor((0., 0., 1., 0.), device=device, dtype=dtype)
-        assert_allclose(op(quaternion), op_jit(quaternion), atol=atol, rtol=rtol)
+        with pytest.warns(UserWarning):
+            assert_allclose(op(quaternion), op_jit(quaternion), atol=atol, rtol=rtol)
 
+    @pytest.mark.skipif(torch.__version__.startswith('1.6'), reason='JIT Enum not handled.')
     def test_jit(self, device, dtype, atol, rtol):
         op = kornia.quaternion_exp_to_log
         op_script = torch.jit.script(op)
