@@ -184,7 +184,7 @@ def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
 
 
 def get_diff_kernel_3x3() -> torch.Tensor:
-    """Utility function that returns a sobel kernel of 3x3"""
+    """Utility function that returns a first order derivative kernel of 3x3"""
     return torch.tensor([
         [-0., 0., 0.],
         [-1., 0., 1.],
