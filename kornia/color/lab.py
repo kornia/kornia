@@ -97,7 +97,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     fz = fy - (_b / 200.)
 
     # if color data out of range: Z < 0
-    fz = fz.clamp(min=0)
+    fz = fz.clamp(min=0.)
 
     fxyz = torch.stack([fx, fy, fz], dim=-3)
 
