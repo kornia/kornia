@@ -83,7 +83,7 @@ def read(*names, **kwargs):
 # open readme file and set long description
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
-    
+
 
 class clean(distutils.command.clean.clean):
     def run(self):

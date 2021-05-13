@@ -166,7 +166,7 @@ class TestWarpAffine:
         # invert the transform
         aff_ba = kornia.convert_affinematrix_to_homography(aff_ab).inverse()[..., :2, :]
         img_b_hat = kornia.warp_affine(img_a, aff_ba, (h, w))
-        assert_allclose(img_b_hat, img_b)
+        assert_allclose(img_b_hat, img_b, atol=1e-3, rtol=1e-3)
 
     def test_jit(self, device, dtype):
         aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
