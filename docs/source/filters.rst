@@ -14,6 +14,7 @@ Blurring
 .. autofunction:: median_blur
 .. autofunction:: gaussian_blur2d
 .. autofunction:: motion_blur
+.. autofunction:: unsharp_mask
 
 Kernels
 -------
@@ -46,3 +47,4 @@ Module
 .. autoclass:: SpatialGradient
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
+.. autoclass:: UnsharpMask

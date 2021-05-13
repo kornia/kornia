@@ -90,6 +90,7 @@ from kornia.filters import (
     motion_blur,
     filter2D,
     filter3D,
+    unsharp_mask,
 )
 from kornia.losses import (
     ssim,
