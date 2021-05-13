@@ -143,7 +143,9 @@ class IntensityAugmentOperation(AugmentOperation):
 
 
 class GeometricAugmentOperation(AugmentOperation):
-    """
+    """Base class for applying geometric data augmentation methods.
+
+    Allowing apply and inverse transformations made by computed transform matrices.
     """
     def __init__(
         self,

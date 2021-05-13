@@ -75,7 +75,7 @@ class SmartSampling(nn.Module):
             return super().half()
         return self
 
-    def bfloat16(sel):
+    def bfloat16(self):
         if not self.freeze_dtype:
             return super().bfloat16()
         return self
