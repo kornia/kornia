@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.2] - 2021-MM-DD
 
+## Added
+- Added unsharp mask filtering ([#1004](https://github.com/kornia/kornia/pull/1004))
+
+### Fixed
+- Fixed angle axis to quaternion order bug ([#926](https://github.com/kornia/kornia/pull/926)) 
+- Fixed type error for lab_to_rgb conversion when using coremltools. ([#1002](https://github.com/kornia/kornia/pull/1002))
+
+### Changed
+- Mask with unbatched motion from essential choose solution ([#998](https://github.com/kornia/kornia/pull/998)) 
+
+
 ## [0.5.1] - 2021-04-30
 
 ### Added
