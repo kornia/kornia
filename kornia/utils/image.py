@@ -151,6 +151,7 @@ class ImageToTensor(nn.Module):
         keepdim (bool): If ``False`` unsqueeze the input image to match the shape
             :math:`(B, H, W, C)`. Default: ``True``
     """
+
     def __init__(self, keepdim: bool = False):
         super().__init__()
         self.keepdim = keepdim
