@@ -48,7 +48,7 @@ class UnsharpMask(nn.Module):
 
     Returns:
         Tensor: the sharpened tensor with shape :math:`(B,C,H,W)`.
-    
+
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`

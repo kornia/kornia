@@ -53,7 +53,7 @@ class Testunsharp:
     def test_module(self, device, dtype):
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.unsharp_mask
-        op_module = kornia.filters.unsharp_mask(*params)
+        op_module = kornia.filters.UnsharpMask(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         assert_allclose(op(img, *params), op_module(img))
