@@ -121,10 +121,7 @@ class IntensityAugmentOperation(AugmentOperation):
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
-    def compute_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
-        raise NotImplementedError
-
-    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
     def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:

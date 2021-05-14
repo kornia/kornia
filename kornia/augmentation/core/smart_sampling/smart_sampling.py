@@ -6,7 +6,6 @@ import torch.nn as nn
 from torch.distributions import (
     Distribution,
     RelaxedBernoulli,
-    Bernoulli,
     Uniform,
     Normal
 )

@@ -5,6 +5,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 
+__all__ = [
+    "STEFunction",
+    "StraightThroughEstimator",
+]
+
 
 def _identity(input: torch.Tensor, shape: torch.Size) -> torch.Tensor:
     return input
