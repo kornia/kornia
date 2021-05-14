@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import warnings
 
 from kornia.color.rgb import bgr_to_rgb
 
@@ -40,7 +41,8 @@ def rgb_to_grayscale(image: torch.Tensor,
     r: torch.Tensor = image[..., 0:1, :, :]
     g: torch.Tensor = image[..., 1:2, :, :]
     b: torch.Tensor = image[..., 2:3, :, :]
-
+    if image.dtype not in [torch.float16, torch.float32, torch.float64]:
+        warnings.warn("Input image is not of float dtype. Got {}".format(image.dtype))
     w_tmp: torch.Tensor = rgb_weights.to(image.device, image.dtype)
     gray: torch.Tensor = w_tmp[..., 0] * r + w_tmp[..., 1] * g + w_tmp[..., 2] * b
     return gray
