@@ -19,7 +19,8 @@ class Sequential(nn.Sequential):
             to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
     
     Returns:
-        torch.Tensor: the tensor has been sequentially modified by the args.
+        Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: the tensor (, and the transformation matrix)
+            has been sequentially modified by the args.
     
     Examples:
         >>> import kornia
