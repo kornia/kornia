@@ -28,6 +28,7 @@ class VideoSequential(Sequential):
         >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.RandomAffine(360, p=1.0),
         ... data_format="BCTHW",
         ... same_on_frame=True)
@@ -110,13 +111,16 @@ class VideoSequential(Sequential):
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = input.shape
         for aug in self.children():
-            aug = cast(_AugmentationBase, aug)
-            param = aug.forward_parameters(batch_shape)
-            if self.same_on_frame:
-                for k, v in param.items():
-                    # TODO: revise colorjitter order param in the future to align the standard.
-                    if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
-                        param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+            if isinstance(aug, _AugmentationBase):
+                param = aug.forward_parameters(batch_shape)
+                if self.same_on_frame:
+                    for k, v in param.items():
+                        # TODO: revise colorjitter order param in the future to align the standard.
+                        if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
+                            param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+            else:
+                param = None
+
             input = self.forward_one(input, aug, param=param)
 
         if isinstance(input, (tuple, list)):
