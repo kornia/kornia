@@ -5,9 +5,10 @@ import torch.nn as nn
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
+from .sequential import Sequential
 
 
-class VideoSequential(nn.Sequential):
+class VideoSequential(Sequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.
@@ -53,11 +54,8 @@ class VideoSequential(nn.Sequential):
     """
 
     def __init__(self, *args: _AugmentationBase, data_format="BTCHW", same_on_frame: bool = True) -> None:
-        super(VideoSequential, self).__init__(*args)
+        super(VideoSequential, self).__init__(*args, same_on_batch=None, return_transform=None, keepdim=None)
         self.same_on_frame = same_on_frame
-        for aug in args:
-            if isinstance(aug, MixAugmentationBase):
-                raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {aug}.")
         self.data_format = data_format.upper()
         assert self.data_format in ["BCTHW", "BTCHW"], f"Only `BCTHW` and `BTCHW` are supported. Got `{data_format}`."
         self._temporal_channel: int
@@ -119,7 +117,7 @@ class VideoSequential(nn.Sequential):
                     # TODO: revise colorjitter order param in the future to align the standard.
                     if not (k == "order" and isinstance(aug, kornia.augmentation.ColorJitter)):
                         param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-            input = aug(input, params=param)
+            input = self.forward_one(input, aug, param=param)
 
         if isinstance(input, (tuple, list)):
             input[0] = self._input_shape_convert_back(input[0], frame_num)
