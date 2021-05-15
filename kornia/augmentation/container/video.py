@@ -1,10 +1,9 @@
 from typing import Tuple, Union, cast
 
 import torch
-import torch.nn as nn
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 from .sequential import Sequential
 
 
@@ -121,7 +120,7 @@ class VideoSequential(Sequential):
             else:
                 param = None
 
-            input = self.forward_one(input, aug, param=param)
+            input = self.apply_to_input(input, aug, param=param)
 
         if isinstance(input, (tuple, list)):
             input[0] = self._input_shape_convert_back(input[0], frame_num)

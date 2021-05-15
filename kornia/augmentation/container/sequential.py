@@ -1,9 +1,9 @@
-from typing import Dict, Optional, Tuple, Union, cast
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 
-from kornia.augmentation.base import _AugmentationBase, MixAugmentationBase
+from kornia.augmentation.base import _AugmentationBase
 
 
 class Sequential(nn.Sequential):
@@ -17,11 +17,11 @@ class Sequential(nn.Sequential):
             applied to each. If None, it will not overwrite the function-wise settings. Default: None.
         keepdim (bool, optional): whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings. Default: None.
-    
+
     Returns:
         Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]: the tensor (, and the transformation matrix)
             has been sequentially modified by the args.
-    
+
     Examples:
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
@@ -55,8 +55,6 @@ class Sequential(nn.Sequential):
         for arg in args:
             if not isinstance(arg, nn.Module):
                 raise NotImplementedError(f"Only nn.Module are supported at this moment. Got {arg}.")
-            if isinstance(arg, MixAugmentationBase):
-                raise NotImplementedError(f"MixAugmentations are not supported at this moment. Got {arg}.")
             if isinstance(arg, _AugmentationBase):
                 if same_on_batch is not None:
                     arg.same_on_batch = same_on_batch
@@ -73,7 +71,7 @@ class Sequential(nn.Sequential):
         # Also, the intermedia cropping functions can be problematic for this end-to-end functionality.
         raise NotImplementedError
 
-    def forward_one(
+    def apply_to_input(
         self, input, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         func_name = item.__class__.__name__
@@ -100,5 +98,5 @@ class Sequential(nn.Sequential):
         for item in self.children():
             func_name = item.__class__.__name__
             param = params[func_name] if func_name in params else None
-            input = self.forward_one(input, item, param)
+            input = self.apply_to_input(input, item, param)
         return input
