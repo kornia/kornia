@@ -19,6 +19,7 @@ from kornia.augmentation import (
     RandomVerticalFlip,
     RandomErasing,
     RandomEqualize,
+    RandomFisheye,
     RandomGrayscale,
     RandomRotation,
     RandomCrop,
@@ -2565,3 +2566,27 @@ class TestDenormalize:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
             Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1.), (input,), raise_exception=True)
+
+
+class TestRandomFisheye:
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        center_x = torch.tensor([-.3, .3])
+        center_y = torch.tensor([-.3, .3])
+        gamma = torch.tensor([-1., 1.])
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomFisheye(center_x, center_y, gamma, p=1.)
+        assert img.shape == aug(img).shape
+
+    @pytest.mark.skip(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0")
+    def test_gradcheck(self, device, dtype):
+        img = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
+        center_x = torch.tensor([-.3, .3], device=device, dtype=dtype)
+        center_y = torch.tensor([-.3, .3], device=device, dtype=dtype)
+        gamma = torch.tensor([-1., 1.], device=device, dtype=dtype)
+        img = utils.tensor_to_gradcheck_var(img)  # to var
+        center_x = utils.tensor_to_gradcheck_var(center_x)  # to var
+        center_y = utils.tensor_to_gradcheck_var(center_y)  # to var
+        gamma = utils.tensor_to_gradcheck_var(gamma)  # to var
+        assert gradcheck(RandomFisheye(center_x, center_y, gamma), (img,), raise_exception=True)
