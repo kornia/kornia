@@ -3,16 +3,15 @@ name: PyPI Release
 # https://help.github.com/en/actions/reference/events-that-trigger-workflows
 on:  # Trigger the workflow on push or pull request, but only for the master branch
   push:
-    branches: [master]
+    branches: [master, "release/*"]
   release:
     types: [published]
 
 
 jobs:
   # based on https://github.com/pypa/gh-action-pypi-publish
-  build-publish:
+  build-source:
     runs-on: ubuntu-20.04
-
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
@@ -21,15 +20,81 @@ jobs:
 
     - name: Install dependencies
       run: >-
-        python -m pip install --user --upgrade setuptools wheel
-    - name: Build
+        python -m pip install --user --upgrade setuptools
+
+    - name: Build package
       run: |
-        KORNIA_RELEASE=1 python setup.py sdist bdist_wheel
+        python setup.py sdist
         ls -lh dist/
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+
+  build-wheels:
+    needs: build-source
+    # todo: add matrix with parallel 0
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+    - uses: actions/download-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
+
+    - name: Install dependencies
+      run: >-
+        python -m pip install --user --upgrade setuptools wheel
+
+    - name: Build packages
+      run: |
+        python setup.py bdist_wheel
+        ls -lh dist/
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+
+  upload-packages:
+    runs-on: ubuntu-20.04
+    needs: build-wheels
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
+
+    - name: Upload to release
+      if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
+      uses: AButler/upload-release-assets@v2.0
+      with:
+        files: 'dist/*'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-packages:
+    runs-on: ubuntu-20.04
+    needs: build-wheels
+    # fixme: this is temp suspend
+    if: false
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
 
     - name: Publish distribution 📦 to PyPI
       if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
-      uses: pypa/gh-action-pypi-publish@master
+      uses: pypa/gh-action-pypi-publish@v1.4.1
       with:
         user: __token__
         password: ${{ secrets.pypi_password }}
