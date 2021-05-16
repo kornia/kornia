@@ -14,16 +14,12 @@ from kornia.augmentation.core.smart_sampling import (
     SmartSampling,
     SmartUniform,
 )
-from kornia.augmentation.core.gradient_estimator import (
-    STEFunction,
-    StraightThroughEstimator
-)
-from .base import GeometricAugmentOperation
+from .base import CropAugmentOperation
 
 
-class Perspective(GeometricAugmentOperation):
+class PerspectiveAugment(CropAugmentOperation):
     """
-    >>> a = Perspective(p=1.)
+    >>> a = PerspectiveAugment(p=1.)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 100, 100])
@@ -33,19 +29,19 @@ class Perspective(GeometricAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
-        mapper: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
+        mapper: Optional[Callable] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
+            torch.tensor(p), torch.tensor(1.), sampler=[sampler], mapper=None if mapper is None else [mapper],
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.mode = mode
         self.align_corners = align_corners
         self.rand_val = SmartUniform(torch.tensor(0.), torch.tensor(1.))
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[List[torch.Tensor]]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
 
         start_points: torch.Tensor = torch.tensor([[
@@ -56,8 +52,8 @@ class Perspective(GeometricAugmentOperation):
         ]], device=input.device, dtype=input.dtype).expand(batch_size, -1, -1)
 
         # generate random offset not larger than half of the image
-        fx = magnitudes * width / 2
-        fy = magnitudes * height / 2
+        fx = magnitudes[0] * width / 2
+        fy = magnitudes[0] * height / 2
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2)
 
@@ -77,16 +73,16 @@ class Perspective(GeometricAugmentOperation):
         return transform
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
-        batch_size, _, height, width = input.shape
+        _, _, height, width = input.shape
         out_data = warp_perspective(
             input, transform, (height, width),
             mode=self.mode, align_corners=self.align_corners)
         return out_data
 
 
-class Crop(GeometricAugmentOperation):
+class CropAugment(CropAugmentOperation):
     """
-    >>> crop = Crop((50, 50), p=1.)
+    >>> crop = CropAugment((50, 50), p=1.)
     >>> out = crop(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 50, 50])
@@ -94,7 +90,8 @@ class Crop(GeometricAugmentOperation):
     >>> loss.backward()
 
     Gradients Estimation - 1:
-    >>> crop = Crop((50, 50), p=1., gradients_estimator=STEFunction)
+    >>> from kornia.augmentation.core.gradient_estimator import STEFunction
+    >>> crop = CropAugment((50, 50), p=1., gradients_estimator=STEFunction)
     >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
     >>> out = crop(inp)
     >>> out.mean().backward()
@@ -103,7 +100,7 @@ class Crop(GeometricAugmentOperation):
     def __init__(
         self, size: Tuple[int, int], p: float = 0.5,
         sampler: Union[List[Tuple[float, float]], List[SmartSampling]] = [(0., 1.), (0., 1.)],
-        mapper: Optional[Union[Callable, List[Callable]]] = None, same_on_batch: bool = False,
+        mapper: Optional[List[Callable]] = None, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
@@ -119,7 +116,7 @@ class Crop(GeometricAugmentOperation):
         ]])
         self.register_buffer("crop_dst", _crop_dst)
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[torch.Tensor]) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[List[torch.Tensor]]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
         x_diff = height - self.size[1] + 1
         y_diff = width - self.size[0] + 1

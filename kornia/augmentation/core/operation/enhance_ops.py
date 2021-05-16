@@ -17,16 +17,16 @@ from kornia.augmentation.core.gradient_estimator import (
 from .base import IntensityAugmentOperation
 
 
-class Equalize(IntensityAugmentOperation):
+class EqualizeAugment(IntensityAugmentOperation):
     """
-    >>> a = Equalize(1.)
+    >>> a = EqualizeAugment(1.)
     >>> out = a(torch.ones(2, 3, 100, 100) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 100, 100])
 
     # Backprop with gradients estimator
     >>> inp = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
-    >>> a = Equalize(1., gradients_estimator=STEFunction)
+    >>> a = EqualizeAugment(1., gradients_estimator=STEFunction)
     >>> out = a(inp)
     >>> loss = (out - torch.ones(2, 3, 100, 100)).mean()
     >>> loss.backward()
@@ -41,13 +41,13 @@ class Equalize(IntensityAugmentOperation):
             same_on_batch=same_on_batch
         )
 
-    def apply_transform(self, input: torch.Tensor, _: Optional[torch.Tensor]) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
         return equalize(input)
 
 
-class Brightness(IntensityAugmentOperation):
+class BrightnessAugment(IntensityAugmentOperation):
     """
-    >>> a = Brightness(p=1.)
+    >>> a = BrightnessAugment(p=1.)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 100, 100])
@@ -57,16 +57,16 @@ class Brightness(IntensityAugmentOperation):
     def __init__(
         self,
         sampler: Union[Tuple[float, float], SmartSampling] = (0.3, 0.7),
-        mapper: Optional[Union[Callable, List[Callable]]] = None, p: float = 0.5,
+        mapper: Optional[Callable] = None, p: float = 0.5,
         same_on_batch: bool = False, mode: str = 'bilinear', align_corners: bool = True,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
+            torch.tensor(p), torch.tensor(1.), sampler=[sampler], mapper=None if mapper is None else [mapper],
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
         self.mode = mode
         self.align_corners = align_corners
 
-    def apply_transform(self, input: torch.Tensor, magnitude: Optional[torch.Tensor]) -> torch.Tensor:
-        return adjust_brightness(input, magnitude)
+    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+        return adjust_brightness(input, magnitude[0])

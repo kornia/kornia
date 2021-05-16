@@ -14,46 +14,36 @@ from kornia.geometry.transform.affwarp import (
 )
 from kornia.augmentation.core.smart_sampling import (
     SmartSampling,
-    SmartUniform,
-)
-from kornia.augmentation.core.gradient_estimator import (
-    STEFunction,
-    StraightThroughEstimator
 )
 from .base import GeometricAugmentOperation
 
 
-class ShearX(GeometricAugmentOperation):
+class ShearAugment(GeometricAugmentOperation):
     """
-    >>> a = ShearX((0., 1.), p=1.)
+    >>> a = ShearAugment(p=1.)
     >>> out = a(torch.randn(2, 3, 100, 100))
     >>> out.shape
     torch.Size([2, 3, 100, 100])
 
-    >>> a = ShearX((0., 1.), same_on_batch=True, p=1.)
+    >>> a = ShearAugment([(0., 1.), (0.1, .9)], same_on_batch=True, p=1.)
     >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
     >>> (out[0] == out[1]).all()
     tensor(True)
 
-    Custom mapping with 'torch.tanh':
-    >>> a = ShearX(mapper=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.)
-    >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
-    >>> (out[0] == out[1]).all()
-    tensor(True)
-
-    Custom mapping:
+    Custom mapping with 'torch.tanh' and SmartGaussian:
     >>> from kornia.augmentation.core.smart_sampling import SmartGaussian
-    >>> a = ShearX(
-    ... mapper=lambda x: torch.tanh(x) * 100, same_on_batch=True, p=1.,
-    ... sampler=SmartGaussian(torch.tensor(1.), torch.tensor(1.)))
+    >>> a = ShearAugment(
+    ...     sampler=[SmartGaussian(torch.tensor(1.), torch.tensor(1.)), (0., 1.)],
+    ...     mapper=[lambda x: torch.tanh(x) * 100, lambda x: torch.tanh(x) * 100],
+    ...     same_on_batch=True, p=1.)
     >>> out = a(torch.randn(1, 3, 100, 100).repeat(2, 1, 1, 1))
     >>> (out[0] == out[1]).all()
     tensor(True)
     """
     def __init__(
         self,
-        sampler: Union[Tuple[float, float], SmartSampling] = (0., 1.),
-        mapper: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
+        sampler: List[Union[Tuple[float, float], SmartSampling]] = [(0., 1.), (0., 1.)],
+        mapper: Optional[List[Callable]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
@@ -66,7 +56,7 @@ class ShearX(GeometricAugmentOperation):
         self.align_corners = align_corners
 
     def compute_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
-        magnitudes = torch.stack([magnitudes, torch.zeros_like(magnitudes)], dim=1)
+        magnitudes = torch.stack([magnitudes[0], magnitudes[1]], dim=1)
         return _compute_shear_matrix(magnitudes)
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
@@ -74,16 +64,17 @@ class ShearX(GeometricAugmentOperation):
                       align_corners=self.align_corners)
 
 
-class Rotation(GeometricAugmentOperation):
+class RotationAugment(GeometricAugmentOperation):
     """
-    >>> a = Rotation(p=1.)
+    >>> a = RotationAugment(p=1.)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.shape
     torch.Size([2, 3, 100, 100])
     >>> out.mean().backward()
 
     Gradients Estimation - 1:
-    >>> a = Rotation(p=1.)
+    >>> from kornia.augmentation.core.gradient_estimator import StraightThroughEstimator
+    >>> a = RotationAugment(p=1.)
     >>> input = torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5
     >>> with torch.no_grad():
     ...     out = a(input)
@@ -91,19 +82,20 @@ class Rotation(GeometricAugmentOperation):
     >>> out_est.mean().backward()
 
     Gradients Estimation - 2:
-    >>> a = Rotation(p=1., gradients_estimator=STEFunction)
+    >>> from kornia.augmentation.core.gradient_estimator import STEFunction
+    >>> a = RotationAugment(p=1., gradients_estimator=STEFunction)
     >>> out = a(torch.ones(2, 3, 100, 100, requires_grad=True) * 0.5)
     >>> out.mean().backward()
     """
     def __init__(
         self,
         sampler: Union[Tuple[float, float], SmartSampling] = (0., 360.),
-        mapper: Optional[Union[Callable, List[Callable]]] = None, mode: str = 'bilinear',
+        mapper: Optional[List[Callable]] = None, mode: str = 'bilinear',
         padding_mode: str = 'zeros', align_corners: bool = False, p: float = 0.5, same_on_batch: bool = False,
         gradients_estimator: Optional[Function] = None
     ):
         super().__init__(
-            torch.tensor(p), torch.tensor(1.), sampler=sampler, mapper=mapper,
+            torch.tensor(p), torch.tensor(1.), sampler=[sampler], mapper=mapper,
             same_on_batch=same_on_batch, gradients_estimator=gradients_estimator
         )
         self.mode = mode

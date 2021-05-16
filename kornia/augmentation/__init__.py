@@ -43,6 +43,7 @@ from .container import AugmentationSequential, ImageSequential, PatchSequential,
 from .mix_augmentation import RandomCutMix, RandomMixUp
 
 __all__ = [
+    "core",
     "AugmentationBase2D",
     "CenterCrop",
     "ColorJitter",
