@@ -130,7 +130,9 @@ class TestSpatialGradient:
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         actual = kornia.filters.spatial_gradient(inp)
-        assert_allclose(actual, actual)
+
+        assert inp.is_contiguous() is False
+        assert actual.shape == (3, 3, 2, 5, 5)
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 1, 3, 4
@@ -296,9 +298,10 @@ class TestSobel:
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
-        actual = kornia.filters.sobel(inp)
-        expected = actual
-        assert_allclose(actual, actual)
+        sobel = kornia.filters.Sobel()
+
+        assert inp.is_contiguous() is False
+        assert sobel(inp).shape == (3, 3, 5, 5)
 
     def test_gradcheck_unnorm(self, device, dtype):
         if "cuda" in str(device):
