@@ -33,6 +33,7 @@ Edge detection
 
 .. autofunction:: laplacian
 .. autofunction:: sobel
+.. autofunction:: canny
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
 
@@ -44,6 +45,7 @@ Module
 .. autoclass:: GaussianBlur2d
 .. autoclass:: Laplacian
 .. autoclass:: Sobel
+.. autoclass:: Canny
 .. autoclass:: SpatialGradient
 .. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur

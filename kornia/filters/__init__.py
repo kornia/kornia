@@ -2,6 +2,7 @@ from .gaussian import GaussianBlur2d, gaussian_blur2d
 from .laplacian import Laplacian, laplacian
 from .sobel import SpatialGradient, spatial_gradient, SpatialGradient3d, spatial_gradient3d
 from .sobel import Sobel, sobel
+from .canny import Canny, canny
 from .blur import BoxBlur, box_blur
 from .blur_pool import MaxBlurPool2D, BlurPool2D, max_blur_pool2d, blur_pool2d
 from .median import MedianBlur, median_blur
@@ -43,6 +44,7 @@ __all__ = [
     "unsharp_mask",
     "sobel",
     "spatial_gradient",
+    "canny",
     "box_blur",
     "blur_pool2d",
     "max_blur_pool2d",
@@ -55,6 +57,7 @@ __all__ = [
     "Laplacian",
     "SpatialGradient",
     "Sobel",
+    "Canny",
     "BoxBlur",
     "BlurPool2D",
     "MaxBlurPool2D",
