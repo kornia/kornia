@@ -1,4 +1,5 @@
 from typing import Optional
+from numpy.random import sample
 
 import torch
 import torch.nn as nn
@@ -130,6 +131,11 @@ class SmartUniform(SmartSampling):
 
 class SmartGaussian(SmartSampling):
     """
+
+    Whilst augmentating an image, we normally want the scale of a Guassian Distritubion to be
+    as large as possible to keep the maximum sampling range. This can be reflected as to make
+    the second order derivative as low as possilbe.
+
     Example:
         >>> s_dist = SmartGaussian(torch.tensor(0.), torch.tensor(1.))
         >>> s_dist.double().smart_sample((10,)).dtype
@@ -148,10 +154,13 @@ class SmartGaussian(SmartSampling):
         self.register_parameter('scale', nn.Parameter(scale))
         self.dist = self.reconstruct_sampler()
 
-    def reconstruct_sampler(self) -> None:
+    def reconstruct_sampler(self) -> Distribution:
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled.
         """
         return Normal(self.loc, self.scale, validate_args=self.validate_args)
+
+    def entropy(self):
+        return self.dist.entropy()
 
 
 class SmartBernoulli(SmartSampling):

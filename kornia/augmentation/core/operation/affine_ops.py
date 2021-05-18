@@ -72,6 +72,14 @@ class RotationAugment(GeometricAugmentOperation):
     torch.Size([2, 3, 100, 100])
     >>> out.mean().backward()
 
+    Sampling with Gaussian:
+    >>> from kornia.augmentation.core.smart_sampling import SmartGaussian
+    >>> a = RotationAugment(SmartGaussian(torch.tensor(1.), torch.tensor(1.)), p=1.)
+    >>> out = a(torch.ones(20, 3, 100, 100, requires_grad=True) * 0.5)
+    >>> out.shape
+    torch.Size([20, 3, 100, 100])
+    >>> out.mean().backward()
+
     Gradients Estimation - 1:
     >>> from kornia.augmentation.core.gradient_estimator import StraightThroughEstimator
     >>> a = RotationAugment(p=1.)

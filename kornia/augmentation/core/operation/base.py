@@ -45,22 +45,40 @@ class AugmentOperation(nn.Module):
 
     def _make_sampler(
             self, sampler: List[Union[Tuple[float, float], SmartSampling]]
-    ) -> List[SmartSampling]:
-        """Make a list of distributions according to the parameters."""
-        return [self._make_sampler_one(dist) for dist in sampler]
+    ) -> nn.ModuleList:
+        """Make a list of distributions according to the parameters.
+        """
+        return nn.ModuleList([self._make_sampler_one(dist) for dist in sampler])
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Optional[torch.Tensor]]:
+    def get_batch_probabilities(self, input: torch.Tensor) -> torch.Tensor:
+        """Generate batch probabilites.
+        """
+        batch_shape = input.shape
         batch_probs = self.prob_batch_dist.rsample([1], self.same_on_batch).squeeze()
         if batch_probs.bool().item():
             probs = self.prob_dist.rsample(batch_shape[:1], self.same_on_batch).squeeze()
         else:
             probs = batch_probs.expand(batch_shape[0])
+        return probs
+
+    def get_param_magnitudes(self, input: torch.Tensor) -> Optional[torch.Tensor]:
+        """Parameter sampling methods.
+        """
+        batch_shape = input.shape
         mags = None
         if self.sampler is not None:
             mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler]
         if self.mapper is not None:
             mags = [mapping(mag) for mapping, mag in zip(self.mapper, mags)]
-        return {"probs": probs.bool(), "magnitudes": mags}
+        return mags
+
+    def generate_parameters(self, input: torch.Tensor) -> Dict[str, torch.Tensor]:
+        probs = self.get_batch_probabilities(input)
+        mags = self.get_param_magnitudes(input)
+        if mags is None:
+            return {"probs": probs.bool()}
+        else:
+            return {"probs": probs.bool(), "magnitudes": mags}
 
     def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
         raise NotImplementedError
@@ -72,7 +90,7 @@ class AugmentOperation(nn.Module):
         self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
     ) -> torch.Tensor:
         if params is None:
-            params = self.generate_parameters(input.shape)
+            params = self.generate_parameters(input)
         if (params['probs'] == 0).all():
             return input
         if (params['probs'] == 1).all():
@@ -104,7 +122,7 @@ class IntensityAugmentOperation(AugmentOperation):
         raise NotImplementedError
 
     def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
-        if params['magnitudes'] is None:
+        if 'magnitudes' not in params:
             mag = None
         else:
             mag = [_mag[params['probs']] for _mag in params['magnitudes']]
@@ -173,7 +191,7 @@ class GeometricAugmentOperation(AugmentOperation):
         self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
     ) -> torch.Tensor:
         if params is None:
-            params = self.generate_parameters(input.shape)
+            params = self.generate_parameters(input)
         if (params['probs'] == 0).all():
             out, trans_mat = input, eye_like(3, input)
         elif (params['probs'] == 1).all():
