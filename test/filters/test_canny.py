@@ -7,7 +7,6 @@ import torch
 from torch.testing import assert_allclose
 from torch.autograd import gradcheck
 
-import cv2
 
 class TestCanny:
     def test_shape(self, device, dtype):
