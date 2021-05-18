@@ -22,7 +22,11 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
 
     Args:
         input (torch.Tensor): the input image with shape :math:`(B,C,H,W)`.
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
+        low_threshold (int):
+        high_threshold (int):
+        kernel_size (int, int):
+        sigma (float, float):
+        hysteresis (bool):
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Return:
@@ -48,14 +52,14 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
     # Gaussian filter
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
 
-    # comput the x/y gradients
+    # Compute the gradients
     edges: torch.Tensor = spatial_gradient(blurred, normalized=False)
 
-    # unpack the edges
+    # Unpack the edges
     gx: torch.Tensor = edges[:, :, 0]
     gy: torch.Tensor = edges[:, :, 1]
 
-    # compute gradient maginitude
+    # Compute gradient maginitude and angle
     magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
     angle: torch.Tensor = torch.atan2(gy, gx)
 
@@ -69,12 +73,14 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
     nms_kernels: torch.Tensor = get_canny_nms_kernel(device, dtype)
     nms_magnitude: torch.Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1]//2)
 
+    # Get the indices for both directions
     positive_idx: torch.Tensor = (angle / 45) % 8
     positive_idx = positive_idx.long()
 
     negative_idx: torch.Tensor = ((angle / 45) + 4) % 8
     negative_idx = negative_idx.long()
 
+    # Apply the non-maximum suppresion to the different directions
     channel_select_filtered_positive: torch.Tensor = torch.gather(nms_magnitude, 1, positive_idx)
     channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
 
