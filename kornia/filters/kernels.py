@@ -860,3 +860,76 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
     if norm:
         out = out / torch.sum(out)
     return out
+
+def get_canny_nms_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression"""
+    kernel: torch.Tensor = torch.tensor([[[0.0, 0.0, 0.0],
+                                          [0.0, 1.0, -1.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 1.0, 0.0],
+                                          [0.0, 0.0, -1.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 1.0, 0.0],
+                                          [0.0, -1.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 1.0, 0.0],
+                                          [-1.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [-1.0, 1.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[-1.0, 0.0, 0.0],
+                                          [0.0, 1.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, -1.0, 0.0],
+                                          [0.0, 1.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, -1.0],
+                                          [0.0, 1.0, 0.0],
+                                          [0.0, 0.0, 0.0]]
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
+def get_hysteresis_kernel(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
+    """Utility function that returns the 3x3 kernels for the Canny hysteresis"""
+    kernel: torch.Tensor = torch.tensor([[[0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 1.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 1.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0],
+                                          [0.0, 1.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0],
+                                          [1.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, 0.0],
+                                          [1.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[1.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, 1.0, 0.0],
+                                          [0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0]],
+
+                                         [[0.0, 0.0, 1.0],
+                                          [0.0, 0.0, 0.0],
+                                          [0.0, 0.0, 0.0]]
+                                         ], device=device, dtype=dtype)
+    return kernel.unsqueeze(1)
+
