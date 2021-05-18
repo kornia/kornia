@@ -61,33 +61,32 @@ class AugmentOperation(nn.Module):
             probs = batch_probs.expand(batch_shape[0])
         return probs
 
-    def get_param_magnitudes(self, input: torch.Tensor) -> Optional[torch.Tensor]:
+    def get_param_magnitudes(self, input: torch.Tensor) -> List[torch.Tensor]:
         """Parameter sampling methods.
         """
         batch_shape = input.shape
-        mags = None
+        mags: List[torch.Tensor] = []
         if self.sampler is not None:
             mags = [dist.rsample(batch_shape[:1], self.same_on_batch) for dist in self.sampler]
         if self.mapper is not None:
             mags = [mapping(mag) for mapping, mag in zip(self.mapper, mags)]
-        return mags
+        return list(mags)
 
     def generate_parameters(self, input: torch.Tensor) -> Dict[str, torch.Tensor]:
         probs = self.get_batch_probabilities(input)
         mags = self.get_param_magnitudes(input)
-        if mags is None:
-            return {"probs": probs.bool()}
-        else:
-            return {"probs": probs.bool(), "magnitudes": mags}
+        return {"probs": probs.bool(), "magnitudes": mags}
 
-    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
+    def forwad_transform(
+        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
+        self, input: torch.Tensor, params: Optional[Dict[str, Union[torch.Tensor, List[torch.Tensor]]]] = None
     ) -> torch.Tensor:
         if params is None:
             params = self.generate_parameters(input)
@@ -118,15 +117,13 @@ class IntensityAugmentOperation(AugmentOperation):
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
-    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
-    def forwad_transform(self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]) -> torch.Tensor:
-        if 'magnitudes' not in params:
-            mag = None
-        else:
-            mag = [_mag[params['probs']] for _mag in params['magnitudes']]
-            mag = mag[0] if len(mag) == 1 else mag
+    def forwad_transform(
+        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
+    ) -> torch.Tensor:
+        mag = [_mag[params['probs']] for _mag in params['magnitudes']]
         if self.gradients_estimator is not None:
             with torch.no_grad():
                 out = self.apply_transform(input, mag)
@@ -157,7 +154,7 @@ class GeometricAugmentOperation(AugmentOperation):
         )
         self.return_transform = return_transform
 
-    def compute_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         raise NotImplementedError
 
     def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
@@ -169,13 +166,9 @@ class GeometricAugmentOperation(AugmentOperation):
         raise NotImplementedError
 
     def forwad_transform(
-        self, input: torch.Tensor, params: Dict[str, Optional[torch.Tensor]]
+        self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if params['magnitudes'] is None:
-            mag = None
-        else:
-            mag = [_mag[params['probs']] for _mag in params['magnitudes']]
-            mag = mag[0] if len(mag) == 1 else mag
+        mag = [_mag[params['probs']] for _mag in params['magnitudes']]
         if self.gradients_estimator is not None:
             with torch.no_grad():
                 trans_mat = self.compute_transform(input, mag)
@@ -188,7 +181,7 @@ class GeometricAugmentOperation(AugmentOperation):
         return out, trans_mat
 
     def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, Optional[torch.Tensor]]] = None
+        self, input: torch.Tensor, params: Optional[Dict[str, Union[torch.Tensor, List[torch.Tensor]]]] = None
     ) -> torch.Tensor:
         if params is None:
             params = self.generate_parameters(input)

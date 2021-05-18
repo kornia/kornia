@@ -55,7 +55,7 @@ class ShearAugment(GeometricAugmentOperation):
         self.padding_mode = padding_mode
         self.align_corners = align_corners
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
         magnitudes = torch.stack([magnitudes[0], magnitudes[1]], dim=1)
         return _compute_shear_matrix(magnitudes)
 
@@ -110,11 +110,11 @@ class RotationAugment(GeometricAugmentOperation):
         self.padding_mode = padding_mode
         self.align_corners = align_corners
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: torch.Tensor) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
 
         center: torch.Tensor = _compute_tensor_center(input)
         rotation_mat: torch.Tensor = _compute_rotation_matrix(
-            magnitudes, center.expand(magnitudes.shape[0], -1))
+            magnitudes[0], center.expand(magnitudes[0].shape[0], -1))
 
         # rotation_mat is B x 2 x 3 and we need a B x 3 x 3 matrix
         trans_mat: torch.Tensor = torch.eye(3, device=input.device, dtype=input.dtype).repeat(input.shape[0], 1, 1)

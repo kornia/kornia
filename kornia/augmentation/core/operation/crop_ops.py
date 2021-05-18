@@ -41,7 +41,7 @@ class PerspectiveAugment(CropAugmentOperation):
         self.align_corners = align_corners
         self.rand_val = SmartUniform(torch.tensor(0.), torch.tensor(1.))
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
 
         start_points: torch.Tensor = torch.tensor([[
@@ -116,7 +116,7 @@ class CropAugment(CropAugmentOperation):
         ]])
         self.register_buffer("crop_dst", _crop_dst)
 
-    def compute_transform(self, input: torch.Tensor, magnitudes: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def compute_transform(self, input: torch.Tensor, magnitudes: List[torch.Tensor]) -> torch.Tensor:
         batch_size, _, height, width = input.shape
         x_diff = height - self.size[1] + 1
         y_diff = width - self.size[0] + 1

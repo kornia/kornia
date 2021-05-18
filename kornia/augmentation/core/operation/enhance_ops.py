@@ -41,7 +41,7 @@ class EqualizeAugment(IntensityAugmentOperation):
             same_on_batch=same_on_batch
         )
 
-    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         return equalize(input)
 
 
@@ -68,5 +68,5 @@ class BrightnessAugment(IntensityAugmentOperation):
         self.mode = mode
         self.align_corners = align_corners
 
-    def apply_transform(self, input: torch.Tensor, magnitude: Optional[List[torch.Tensor]]) -> torch.Tensor:
+    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
         return adjust_brightness(input, magnitude[0])
