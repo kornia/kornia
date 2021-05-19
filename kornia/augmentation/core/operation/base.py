@@ -50,6 +50,16 @@ class AugmentOperation(nn.Module):
         """
         return nn.ModuleList([self._make_sampler_one(dist) for dist in sampler])
 
+    def distribution_entropy(self, reduce: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
+        dists = [dist.entropy() for dist in self.sampler]
+        if reduce is None:
+            return dists
+        if reduce == "sum":
+            return torch.stack(dists).sum(dim=0).squeeze()
+        if reduce == "mean":
+            return torch.stack(dists).mean(dim=0).squeeze()
+        raise NotImplementedError(f"Not implemented `reduce`: {reduce}.")
+
     def get_batch_probabilities(self, input: torch.Tensor) -> torch.Tensor:
         """Generate batch probabilites.
         """
@@ -117,9 +127,6 @@ class IntensityAugmentOperation(AugmentOperation):
             gradients_estimator=gradients_estimator, same_on_batch=same_on_batch
         )
 
-    def apply_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
-        raise NotImplementedError
-
     def forwad_transform(
         self, input: torch.Tensor, params: Dict[str, Union[torch.Tensor, List[torch.Tensor]]]
     ) -> torch.Tensor:
@@ -155,9 +162,6 @@ class GeometricAugmentOperation(AugmentOperation):
         self.return_transform = return_transform
 
     def compute_transform(self, input: torch.Tensor, magnitude: List[torch.Tensor]) -> torch.Tensor:
-        raise NotImplementedError
-
-    def apply_transform(self, input: torch.Tensor, transform: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError
 
     def inverse_transform(

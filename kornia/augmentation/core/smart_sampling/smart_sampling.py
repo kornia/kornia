@@ -97,6 +97,9 @@ class SmartSampling(nn.Module):
 
         return self._apply(convert)
 
+    def entropy(self):
+        return self.dist.entropy()
+
 
 class SmartUniform(SmartSampling):
     """
@@ -158,9 +161,6 @@ class SmartGaussian(SmartSampling):
         """When .cuda(), .cpu(), .double() is called, the sampler will need to be resampled.
         """
         return Normal(self.loc, self.scale, validate_args=self.validate_args)
-
-    def entropy(self):
-        return self.dist.entropy()
 
 
 class SmartBernoulli(SmartSampling):
