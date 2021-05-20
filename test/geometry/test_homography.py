@@ -1,4 +1,5 @@
 import pytest
+import random
 
 import torch
 from torch.autograd import gradcheck
@@ -64,14 +65,39 @@ class TestFindHomographyDLT:
         assert_allclose(
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
-    @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
     @pytest.mark.grad
-    def test_gradcheck(self, device, dtype):
-        points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points_dst = torch.rand_like(points_src)
-        weights = torch.ones_like(points_src)[..., 0]
-        assert gradcheck(find_homography_dlt, (points_src, points_dst, weights),
-                         rtol=1e-1, atol=1e-5, raise_exception=True)
+    def test_gradcheck(self, device):
+
+        # Save initial seed
+        initial_seed = torch.random.initial_seed()
+        max_number_of_checks = 10
+
+        # Test gradients for a max_number_of_checks times
+        current_seed = initial_seed
+        for i in range(max_number_of_checks):
+            torch.manual_seed(current_seed)
+            points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+            points_dst = torch.rand_like(points_src)
+            weights = torch.ones_like(points_src)[..., 0]
+            try:
+                gradcheck(find_homography_dlt, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6,
+                          raise_exception=True)
+
+            # Gradcheck failed
+            except RuntimeError:
+
+                # All iterations failed
+                if i == max_number_of_checks - 1:
+                    assert gradcheck(find_homography_dlt, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6,
+                                     raise_exception=True)
+                # Next iteration
+                else:
+                    current_seed = random.randrange(0xffffffffffffffff)
+                    continue
+
+            # Gradcheck succeed
+            torch.manual_seed(initial_seed)
+            return
 
 
 class TestFindHomographyDLTIter:
@@ -110,18 +136,41 @@ class TestFindHomographyDLTIter:
         assert_allclose(
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
-    # TODO(ducha-aiki): remove once #795 is fixed
-    @pytest.mark.xfail
     @pytest.mark.grad
-    def test_gradcheck(self, device, dtype):
-        points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points_dst = torch.rand_like(points_src)
-        weights = torch.ones_like(points_src)[..., 0]
-        assert gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights),
-                         rtol=1e-3, atol=1e-4, raise_exception=True)
+    def test_gradcheck(self, device):
 
-    # TODO(ducha-aiki): remove once #795 is fixed
-    @pytest.mark.xfail
+        # Save initial seed
+        initial_seed = torch.random.initial_seed()
+        max_number_of_checks = 10
+
+        # Test gradients for a max_number_of_checks times
+        current_seed = initial_seed
+        for i in range(max_number_of_checks):
+            torch.manual_seed(current_seed)
+            points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+            points_dst = torch.rand_like(points_src)
+            weights = torch.ones_like(points_src)[..., 0]
+            try:
+                gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6,
+                          raise_exception=True)
+
+            # Gradcheck failed
+            except RuntimeError:
+
+                # All iterations failed
+                if i == max_number_of_checks - 1:
+                    assert gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights), rtol=1e-6,
+                                     atol=1e-6, raise_exception=True)
+                # Next iteration
+                else:
+                    current_seed = random.randrange(0xffffffffffffffff)
+                    continue
+
+            # Gradcheck succeed
+            torch.manual_seed(initial_seed)
+            return
+
+    @pytest.mark.grad
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dirty_points_and_gradcheck(self, batch_size, device, dtype):
         # generate input data
