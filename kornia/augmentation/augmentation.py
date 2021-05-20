@@ -1808,11 +1808,11 @@ class RandomElasticTransform(AugmentationBase2D):
     r"""Add random elastic transformation to a tensor image.
 
     Args:
-        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (3, 3).
+        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
         sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
-          respecitvely. Larger sigma results in smaller pixel displacements. Default: (4, 4).
+          respecitvely. Larger sigma results in smaller pixel displacements. Default: (32, 32).
         alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively. Default: 32.
+          in the y and x directions, respectively. Default: 1.
         align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
         mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
         return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
@@ -1828,9 +1828,9 @@ class RandomElasticTransform(AugmentationBase2D):
     """
 
     def __init__(self,
-                 kernel_size: Tuple[int, int] = (3, 3),
-                 sigma: Tuple[float, float] = (4., 4.),
-                 alpha: Tuple[float, float] = (32., 32.),
+                 kernel_size: Tuple[int, int] = (63, 63),
+                 sigma: Tuple[float, float] = (32., 32.),
+                 alpha: Tuple[float, float] = (1., 1.),
                  align_corners: bool = False,
                  mode: str = 'bilinear',
                  return_transform: bool = False,
