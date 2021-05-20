@@ -13,14 +13,9 @@ on:
 jobs:
   tests-cuda:
     container:
-      image: pytorchlightning/pytorch_lightning:base-cuda-py${{ matrix.python-version }}-torch${{ matrix.pytorch-version }}
+      image: pytorch/pytorch:1.7.1-cuda11.0-cudnn8-runtime
       options: --gpus all
     runs-on: [self-hosted, Linux, x64]
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: [3.7]
-        pytorch-version: [1.8]
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
