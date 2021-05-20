@@ -18,6 +18,7 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomVerticalFlip,
     RandomErasing,
+    RandomElasticTransform,
     RandomEqualize,
     RandomFisheye,
     RandomGrayscale,
@@ -2590,3 +2591,11 @@ class TestRandomFisheye:
         center_y = utils.tensor_to_gradcheck_var(center_y)  # to var
         gamma = utils.tensor_to_gradcheck_var(gamma)  # to var
         assert gradcheck(RandomFisheye(center_x, center_y, gamma), (img,), raise_exception=True)
+
+
+class TestRandomElasticTransform:
+
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomElasticTransform()
+        assert img.shape == aug(img).shape

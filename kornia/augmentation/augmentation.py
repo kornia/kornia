@@ -15,6 +15,7 @@ from kornia.geometry import (
     crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
+    elastic_transform2d,
     get_perspective_transform,
     get_affine_matrix2d,
     hflip,
@@ -1801,3 +1802,67 @@ class RandomFisheye(AugmentationBase2D):
         field_x = field_x + field_x * distance ** gamma  # BxHxw
         field_y = field_y + field_y * distance ** gamma  # BxHxW
         return remap(input, field_x, field_y, normalized_coordinates=False)
+
+
+class RandomElasticTransform(AugmentationBase2D):
+    r"""Add random elastic transformation to a tensor image.
+
+    Args:
+        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (3, 3).
+        sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
+          respecitvely. Larger sigma results in smaller pixel displacements. Default: (4, 4).
+        alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
+          in the y and x directions, respectively. Default: 32.
+        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
+        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> out = RandomElasticTransform()(img)
+        >>> out.shape
+        torch.Size([1, 1, 2, 2])
+    """
+
+    def __init__(self,
+                 kernel_size: Tuple[int, int] = (3, 3),
+                 sigma: Tuple[float, float] = (4., 4.),
+                 alpha: Tuple[float, float] = (32., 32.),
+                 align_corners: bool = False,
+                 mode: str = 'bilinear',
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomElasticTransform, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.alpha = alpha
+        self.align_corners = align_corners
+        self.mode = mode
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, _, H, W = shape
+        return dict(noise=torch.rand(B, 2, H, W) * 2 - 1)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return elastic_transform2d(
+            input,
+            params['noise'].to(input),
+            self.kernel_size,
+            self.sigma,
+            self.alpha,
+            self.align_corners,
+            self.mode
+        )
