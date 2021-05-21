@@ -1743,7 +1743,7 @@ class RandomFisheye(AugmentationBase2D):
         >>> img = torch.ones(1, 1, 2, 2)
         >>> center_x = torch.tensor([-.3, .3])
         >>> center_y = torch.tensor([-.3, .3])
-        >>> gamma = torch.tensor([-1., 1.])
+        >>> gamma = torch.tensor([.9, 1.])
         >>> out = RandomFisheye(center_x, center_y, gamma)(img)
         >>> out.shape
         torch.Size([1, 1, 2, 2])
@@ -1790,7 +1790,7 @@ class RandomFisheye(AugmentationBase2D):
     ) -> torch.Tensor:
         # create the initial sampling fields
         B, C, H, W = input.shape
-        grid = create_meshgrid(H, W, normalized_coordinates=False)
+        grid = create_meshgrid(H, W, normalized_coordinates=True)
         field_x = grid[..., 0].to(input.device)  # 1xHxW
         field_y = grid[..., 1].to(input.device)  # 1xHxW
         # vectorize the random parameters
@@ -1801,7 +1801,7 @@ class RandomFisheye(AugmentationBase2D):
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** .5
         field_x = field_x + field_x * distance ** gamma  # BxHxw
         field_y = field_y + field_y * distance ** gamma  # BxHxW
-        return remap(input, field_x, field_y, normalized_coordinates=False)
+        return remap(input, field_x, field_y, normalized_coordinates=True)
 
 
 class RandomElasticTransform(AugmentationBase2D):
