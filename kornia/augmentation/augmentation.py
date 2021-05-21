@@ -18,10 +18,12 @@ from kornia.geometry import (
     elastic_transform2d,
     get_perspective_transform,
     get_affine_matrix2d,
+    get_tps_transform,
     hflip,
     vflip,
     rotate,
     warp_affine,
+    warp_image_tps,
     warp_perspective,
     remap,
     resize,
@@ -1866,3 +1868,38 @@ class RandomElasticTransform(AugmentationBase2D):
             self.align_corners,
             self.mode
         )
+
+class RandomThinPlateSpline(AugmentationBase2D):
+    def __init__(self,
+                scale: float = 0.2,
+                align_corners: bool = False,
+                return_transform: bool = False,
+                same_on_batch: bool = False,
+                p: float = 0.5) -> None:   
+        super(RandomThinPlateSpline, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.align_corners = align_corners
+        self.dist = torch.distributions.Uniform(-scale, scale)
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, _, H, W = shape
+        src = torch.tensor([[
+            [-1., -1.],
+            [-1., 1.],
+            [1., -1.],
+            [1., -1.],
+            [0., 0.],
+        ]]).repeat(B, 1, 1)  # Bx5x2
+        dst = src + self.dist.rsample((B, 5, 2))
+        return dict(src=src, dst=dst)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        src = params['src'].to(input)
+        dst = params['dst'].to(input)
+        kernel, affine = get_tps_transform(dst, src)
+        return warp_image_tps(input, src, kernel, affine, self.align_corners)

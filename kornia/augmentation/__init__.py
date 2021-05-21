@@ -27,6 +27,7 @@ from .augmentation import (
     RandomInvert,
     RandomChannelShuffle,
     RandomGaussianNoise,
+    RandomThinPlateSpline,
 )
 from .augmentation3d import (
     RandomHorizontalFlip3D,
@@ -86,5 +87,6 @@ __all__ = [
     "RandomCrop3D",
     "CenterCrop3D",
     "RandomEqualize3D",
-    "VideoSequential"
+    "VideoSequential",
+    "RandomThinPlateSpline",
 ]

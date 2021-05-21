@@ -30,6 +30,7 @@ from kornia.augmentation import (
     RandomInvert,
     RandomChannelShuffle,
     RandomGaussianNoise,
+    RandomThinPlateSpline,
 )
 
 
@@ -2597,5 +2598,13 @@ class TestRandomElasticTransform:
 
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomElasticTransform()
+        aug = RandomElasticTransform(p=1.)
+        assert img.shape == aug(img).shape
+
+
+class TestRandomThinPlateSpline:
+
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomThinPlateSpline(p=1.)
         assert img.shape == aug(img).shape
