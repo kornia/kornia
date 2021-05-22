@@ -15,6 +15,7 @@ from kornia.augmentation import (
     CenterCrop,
     ColorJitter,
     GaussianBlur,
+    RandomBoxBlur,
     RandomHorizontalFlip,
     RandomVerticalFlip,
     RandomErasing,
@@ -2607,4 +2608,12 @@ class TestRandomThinPlateSpline:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomThinPlateSpline(p=1.)
+        assert img.shape == aug(img).shape
+
+
+class TestRandomBoxBlur:
+
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomBoxBlur(p=1.)
         assert img.shape == aug(img).shape

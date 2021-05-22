@@ -42,6 +42,9 @@ from kornia.enhance import (
     adjust_gamma,
     Invert,
 )
+from kornia.filters import (
+    box_blur,
+)
 from kornia.utils import _extract_device_dtype, create_meshgrid
 from kornia.enhance.normalize import normalize, denormalize
 from kornia.enhance import Invert
@@ -1869,13 +1872,14 @@ class RandomElasticTransform(AugmentationBase2D):
             self.mode
         )
 
+
 class RandomThinPlateSpline(AugmentationBase2D):
     def __init__(self,
-                scale: float = 0.2,
-                align_corners: bool = False,
-                return_transform: bool = False,
-                same_on_batch: bool = False,
-                p: float = 0.5) -> None:   
+                 scale: float = 0.2,
+                 align_corners: bool = False,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
         super(RandomThinPlateSpline, self).__init__(
             p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
         self.align_corners = align_corners
@@ -1903,3 +1907,46 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = params['dst'].to(input)
         kernel, affine = get_tps_transform(dst, src)
         return warp_image_tps(input, src, kernel, affine, self.align_corners)
+
+
+class RandomBoxBlur(AugmentationBase2D):
+    """Adds random blur with a box filter to an image tensor.
+
+    Args:
+        kernel_size (Tuple[int, int]): the blurring kernel size.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): if True, L1 norm of the kernel is set to 1.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 24, 24)
+        >>> out = RandomBoxBlur((7, 7))(img)
+        >>> out.shape
+        torch.Size([1, 1, 24, 24])
+    """
+
+    def __init__(self,
+                 kernel_size: Tuple[int, int] = (3, 3),
+                 border_type: str = 'reflect',
+                 normalized: bool = True,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomBoxBlur, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.kernel_size = kernel_size
+        self.border_type = border_type
+        self.normalized = normalized
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return box_blur(input, self.kernel_size, self.border_type, self.normalized)
