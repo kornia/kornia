@@ -368,7 +368,7 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply], transform[to_apply], size, **kwargs)
-        return _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return cast(torch.Tensor, _transform_output_shape(output, ori_shape)) if self.keepdim else output
 
 
 class AugmentationBase3D(_AugmentationBase):

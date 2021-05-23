@@ -999,13 +999,14 @@ class RandomCrop(GeometricAugmentationBase2D):
         if self.cropping_mode != 'resample':
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {self.cropping_mode}.")
+        size = cast(Tuple[int, int], size)
         mode = self.resample.name.lower() if "mode" not in kwargs else kwargs['mode']
         align_corners = self.align_corners if "align_corners" not in kwargs else kwargs['align_corners']
         padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
         transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, mode, padding_mode, align_corners)
-    
+
     def inverse(
         self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, torch.Tensor]] = None, size: Optional[Tuple[int, int]] = None, **kwargs
@@ -1016,7 +1017,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if 'padding_size' in params:
             padding_size = [-i for i in params['padding_size'].unique(dim=0).squeeze().numpy().tolist()]
         else:
-            padding_size = []
+            padding_size = [0, 0, 0, 0]
         return self.precrop_padding(out, padding_size)
 
     def forward(self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
@@ -1175,6 +1176,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         if self.cropping_mode != 'resample':
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {self.cropping_mode}.")
+        size = cast(Tuple[int, int], size)
         mode = self.resample.name.lower() if "mode" not in kwargs else kwargs['mode']
         align_corners = self.align_corners if "align_corners" not in kwargs else kwargs['align_corners']
         padding_mode = 'zeros' if "padding_mode" not in kwargs else kwargs['padding_mode']
@@ -1666,7 +1668,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
 class GaussianBlur(RandomGaussianBlur):
     import warnings
-    warnings.warn(f"GaussianBlur is no longer maintained and will be removed from the future versions. "
+    warnings.warn("GaussianBlur is no longer maintained and will be removed from the future versions. "
                   f"Please use RandomGaussianBlur instead.", category=DeprecationWarning)
 
 

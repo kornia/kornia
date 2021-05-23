@@ -371,7 +371,9 @@ def random_crop_generator(
                 [[ 0.,  0.],
                  [27.,  0.],
                  [27., 25.],
-                 [ 0., 25.]]])}
+                 [ 0., 25.]]]), 'input_size': tensor([[30, 30],
+                [30, 30],
+                [30, 30]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
