@@ -1669,7 +1669,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 class GaussianBlur(RandomGaussianBlur):
     import warnings
     warnings.warn("GaussianBlur is no longer maintained and will be removed from the future versions. "
-                  f"Please use RandomGaussianBlur instead.", category=DeprecationWarning)
+                  "Please use RandomGaussianBlur instead.", category=DeprecationWarning)
 
 
 class RandomInvert(IntensityAugmentationBase2D):

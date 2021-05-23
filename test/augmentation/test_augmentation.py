@@ -2345,7 +2345,7 @@ class TestRandomResizedCrop:
             size=(2, 3), scale=(1., 1.), ratio=(1.0, 1.0), cropping_mode="resample")
         out = aug(inp)
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
-        assert_allclose(aug.inverse(out), inp, atol=1e-4, rtol=1e-4)
+        assert_allclose(aug.inverse(out), inp[None], atol=1e-4, rtol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomResizedCrop(
