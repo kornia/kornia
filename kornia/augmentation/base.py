@@ -351,7 +351,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             params = self._params
         if size is None and "input_size" in params:
             # Majorly for copping functions
-            size = tuple(params['input_size'].unique(dim=0).squeeze().numpy().tolist())
+            size = params['input_size'].unique(dim=0).squeeze().numpy().tolist()
+            size = (size[0], size[1])
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
