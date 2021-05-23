@@ -90,7 +90,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
                   [1., 1., 0.]]]]), tensor([[[-1.,  0.,  2.],
                  [ 0.,  1.,  0.],
                  [ 0.,  0.,  1.]]]))
-        >>> seq.inverse(seq(input)[0]).equal(input)
+        >>> seq.inverse(seq(input)).equal(input)
         True
     """
 
@@ -144,7 +144,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
                   [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  2.],
                  [ 0.,  0.,  1.]]]))
-        >>> seq.inverse(seq(input)[0]).equal(input)
+        >>> seq.inverse(seq(input)).equal(input)
         True
     """
 
@@ -527,7 +527,7 @@ class RandomAffine(GeometricAugmentationBase2D):
                   [0.4804, 0.8379, 0.4234]]]]), tensor([[[ 0.9923, -0.1241,  0.1319],
                  [ 0.1241,  0.9923, -0.1164],
                  [ 0.0000,  0.0000,  1.0000]]]))
-        >>> aug.inverse(out[0])
+        >>> aug.inverse(out)
         tensor([[[[0.3890, 0.6573, 0.1865],
                   [0.2063, 0.3074, 0.5459],
                   [0.3892, 0.7896, 0.4224]]]])
@@ -658,7 +658,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         >>> out
         tensor([[[[ 0.6920, -0.3160],
                   [-1.2633,  0.3500]]]])
-        >>> aug.inverse(out[0], size=(4, 4), padding_mode="border")
+        >>> aug.inverse(out, padding_mode="border")
         tensor([[[[ 0.6920,  0.6920, -0.3160, -0.3160],
                   [ 0.6920,  0.6920, -0.3160, -0.3160],
                   [-1.2633, -1.2633,  0.3500,  0.3500],
@@ -787,7 +787,7 @@ class RandomRotation(GeometricAugmentationBase2D):
                   [0.0000, 0.0088, 1.0117, 1.9649]]]]), tensor([[[ 1.0000, -0.0059,  0.0088],
                  [ 0.0059,  1.0000, -0.0088],
                  [ 0.0000,  0.0000,  1.0000]]]))
-        >>> aug.inverse(out[0])
+        >>> aug.inverse(out)
         tensor([[[[9.6526e-01, 8.6823e-03, 1.7263e-02, 1.9305e+00],
                   [8.6398e-03, 2.9485e-03, 5.8971e-03, 1.7365e-02],
                   [2.9055e-03, 9.9416e-01, 1.9825e+00, 2.3134e-02],
@@ -890,7 +890,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         >>> out
         tensor([[[[3., 4.],
                   [6., 7.]]]])
-        >>> aug.inverse(out, size=(3, 3), padding_mode="border")
+        >>> aug.inverse(out, padding_mode="border")
         tensor([[[[3., 4., 4.],
                   [3., 4., 4.],
                   [6., 7., 7.]]]])
@@ -1090,7 +1090,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         tensor([[[[1.0000, 1.5000, 2.0000],
                   [4.0000, 4.5000, 5.0000],
                   [7.0000, 7.5000, 8.0000]]]])
-        >>> aug.inverse(out, size=(3, 3), padding_mode="border")
+        >>> aug.inverse(out, padding_mode="border")
         tensor([[[[1., 1., 2.],
                   [4., 4., 5.],
                   [7., 7., 8.]]]])
