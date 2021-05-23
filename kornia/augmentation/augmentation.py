@@ -1015,7 +1015,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if params is None:
             params = self._params
         if 'padding_size' in params:
-            padding_size = [-i for i in params['padding_size'].unique(dim=0).squeeze().numpy().tolist()]
+            padding_size = [-i for i in params['padding_size'].unique(dim=0).cpu().squeeze().numpy().tolist()]
         else:
             padding_size = [0, 0, 0, 0]
         return self.precrop_padding(out, padding_size)
