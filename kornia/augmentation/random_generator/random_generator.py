@@ -431,8 +431,9 @@ def random_crop_generator(
             [0, resize_to[0] - 1],
         ]], device=_device, dtype=_dtype).repeat(batch_size, 1, 1)
 
-    return dict(src=crop_src,
-                dst=crop_dst)
+    _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+
+    return dict(src=crop_src, dst=crop_dst, input_size=_input_size)
 
 
 def random_crop_size_generator(
@@ -680,8 +681,10 @@ def center_crop_generator(
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
-    return dict(src=points_src,
-                dst=points_dst)
+
+    _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
+
+    return dict(src=points_src, dst=points_dst, input_size=_input_size)
 
 
 def random_motion_blur_generator(

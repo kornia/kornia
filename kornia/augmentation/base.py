@@ -7,6 +7,7 @@ import torch.nn as nn
 from torch.distributions import Bernoulli
 
 import kornia
+from kornia.utils.helpers import _torch_inverse_cast
 from . import functional as F
 from .utils import (
     _transform_input,
@@ -323,24 +324,37 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     """
 
     def inverse_transform(
-        self, input: torch.Tensor, transform: Optional[torch.Tensor] = None, size: Optional[Tuple[int, int]] = None, **kwargs
+        self, input: torch.Tensor, transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None, **kwargs
     ) -> torch.Tensor:
-        raise NotImplementedError
+        """By default, the exact transformation as ``apply_transform`` will be used.
+        """
+        return self.apply_transform(input, params=self._params, transform=transform)
+
+    def compute_inverse_transformation(self, transform: torch.Tensor):
+        """Compute the inverse transform of given transformation matrices.
+        """
+        return _torch_inverse_cast(transform)
 
     def inverse(
-        self, input: torch.Tensor, transform: Optional[torch.Tensor] = None,
+        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, torch.Tensor]] = None, size: Optional[Tuple[int, int]] = None, **kwargs
     ) -> torch.Tensor:
+        if isinstance(input, (list, tuple,)):
+            input, transform = input
+        else:
+            transform = self._transform_matrix
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
         if params is None:
             params = self._params
+        if size is None and "input_size" in params:
+            # Majorly for copping functions
+            size = tuple(params['input_size'].unique(dim=0).squeeze().numpy().tolist())
         if 'batch_prob' not in params:
             params['batch_prob'] = torch.tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
-        if transform is None:
-            transform = self._transform_matrix
         output = input.clone()
         to_apply = params['batch_prob']
         # if no augmentation needed
@@ -348,8 +362,10 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             output = in_tensor
         # if all data needs to be augmented
         elif torch.sum(to_apply) == len(to_apply):
+            transform = self.compute_inverse_transformation(transform)
             output = self.inverse_transform(in_tensor, transform, size, **kwargs)
         else:
+            transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply], transform[to_apply], size, **kwargs)
         return _transform_output_shape(output, ori_shape) if self.keepdim else output
