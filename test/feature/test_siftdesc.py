@@ -1,7 +1,7 @@
 import pytest
 import kornia.testing as utils  # test utils
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 from kornia.feature.siftdesc import *
 
@@ -57,7 +57,7 @@ class TestSIFTDescriptor:
                               rootsift=False).to(device)
         out = sift(patch)
         expected = torch.tensor([[0, 0, 1., 0]], device=device)
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')
     def test_gradcheck(self, device):
@@ -74,4 +74,4 @@ class TestSIFTDescriptor:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))

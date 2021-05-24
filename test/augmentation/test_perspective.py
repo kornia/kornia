@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 import kornia
@@ -95,8 +95,8 @@ class TestRandomPerspective:
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
-        assert_allclose(out_perspective[0], x_data)
-        assert_allclose(out_perspective[1], torch.eye(3, device=device)[None])
+        assert_close(out_perspective[0], x_data)
+        assert_close(out_perspective[1], torch.eye(3, device=device)[None])
 
     def test_transform_module_should_return_expected_transform(self, device):
         torch.manual_seed(0)
@@ -124,8 +124,8 @@ class TestRandomPerspective:
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
-        assert_allclose(out_perspective[0], expected_output, atol=1e-4, rtol=1e-4)
-        assert_allclose(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert_close(out_perspective[0], expected_output, atol=1e-4, rtol=1e-4)
+        assert_close(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)

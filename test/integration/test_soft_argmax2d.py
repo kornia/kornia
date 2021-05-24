@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia
 
@@ -61,5 +61,5 @@ class TestIntegrationSoftArgmax2d:
             loss.backward()
             optimizer.step()
 
-        assert_allclose(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
-        assert_allclose(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
+        assert_close(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)

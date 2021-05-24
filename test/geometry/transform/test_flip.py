@@ -4,7 +4,7 @@ import pytest
 
 import kornia.testing as utils  # test utils
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 
@@ -73,7 +73,7 @@ class TestVflip:
 
         actual = op_trace(input)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device, dtype):
 
@@ -152,7 +152,7 @@ class TestHflip:
 
         actual = op_trace(input)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device, dtype):
 
@@ -231,7 +231,7 @@ class TestRot180:
 
         actual = op_trace(input)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_gradcheck(self, device, dtype):
 

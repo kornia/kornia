@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia as kornia
 import kornia.testing as utils  # test utils
@@ -46,7 +46,7 @@ def test_image_to_tensor(input_shape, expected):
     assert isinstance(tensor, torch.Tensor)
 
     to_tensor = kornia.utils.ImageToTensor(keepdim=False)
-    assert_allclose(tensor, to_tensor(image))
+    assert_close(tensor, to_tensor(image))
 
 
 @pytest.mark.parametrize("input_shape, expected",

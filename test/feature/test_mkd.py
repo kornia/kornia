@@ -1,7 +1,7 @@
 import pytest
 import kornia.testing as utils  # test utils
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 from kornia.feature.mkd import *
 from kornia.constants import pi
@@ -51,8 +51,8 @@ class TestMKDGradients:
         expected_mags = expected_mags_1.unsqueeze(0).repeat(6, 1)
         expected_oris_1 = torch.Tensor([-pi, -pi, 0, 0, -pi, -pi]).to(device)
         expected_oris = expected_oris_1.unsqueeze(0).repeat(6, 1)
-        assert_allclose(out[0, 0, :, :], expected_mags, atol=1e-3, rtol=1e-3)
-        assert_allclose(out[0, 1, :, :], expected_oris, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, :], expected_mags, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 1, :, :], expected_oris, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
@@ -72,7 +72,7 @@ class TestMKDGradients:
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = MKDGradients().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(MKDGradients().to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestVonMisesKernel:
@@ -112,17 +112,17 @@ class TestVonMisesKernel:
                             coeffs=[0.38214156, 0.48090413]).to(device)
         out = vm(patch)
         expected = torch.ones_like(out[0, 0, :, :]).to(device)
-        assert_allclose(out[0, 0, :, :], expected * 0.6182, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, :], expected * 0.6182, atol=1e-3, rtol=1e-3)
 
         expected = torch.Tensor([0.3747, 0.3747, 0.3747,
                                  0.6935, 0.6935, 0.6935]).to(device)
         expected = expected.unsqueeze(0).repeat(6, 1)
-        assert_allclose(out[0, 1, :, :], expected, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 1, :, :], expected, atol=1e-3, rtol=1e-3)
 
         expected = torch.Tensor([0.5835, 0.5835, 0.5835,
                                  0.0000, 0.0000, 0.0000]).to(device)
         expected = expected.unsqueeze(0).repeat(6, 1)
-        assert_allclose(out[0, 2, :, :], expected, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 2, :, :], expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, ps = 1, 1, 13
@@ -142,7 +142,7 @@ class TestVonMisesKernel:
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()  # noqa
         model_jit = torch.jit.script(VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestEmbedGradients:
@@ -176,8 +176,8 @@ class TestEmbedGradients:
                                    relative=True).to(device)
         out = emb_grads(grads)
         expected = torch.ones_like(out[0, 0, :, :3]).to(device)
-        assert_allclose(out[0, 0, :, :3], expected * .3787, atol=1e-3, rtol=1e-3)
-        assert_allclose(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, :3], expected * .3787, atol=1e-3, rtol=1e-3)
+        assert_close(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
 
     # TODO: review this test implementation
     @pytest.mark.xfail(
@@ -200,7 +200,7 @@ class TestEmbedGradients:
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 @pytest.mark.parametrize("kernel_type,d,ps", [('cart', 9, 9), ('polar', 25, 9),
@@ -251,7 +251,7 @@ class TestExplicitSpacialEncoding:
         out = cart_ese(inp)
         out_part = out[:, :9]
         expected = torch.zeros_like(out_part).to(device)
-        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
         polar_ese = ExplicitSpacialEncoding(kernel_type='polar',
                                             fmap_size=6,
@@ -259,7 +259,7 @@ class TestExplicitSpacialEncoding:
         out = polar_ese(inp)
         out_part = out[:, :25]
         expected = torch.zeros_like(out_part).to(device)
-        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("kernel_type", ['cart', 'polar'])
     def test_gradcheck(self, kernel_type, device):
@@ -286,7 +286,7 @@ class TestExplicitSpacialEncoding:
         model_jit = torch.jit.script(ExplicitSpacialEncoding(kernel_type='cart',
                                                              fmap_size=W,
                                                              in_dims=2).to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestWhitening:
@@ -330,7 +330,7 @@ class TestWhitening:
         inp = torch.ones(1, 175).to(device).float()
         out = wh(inp)
         expected = torch.ones_like(inp).to(device) * 0.0756
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, in_dims = 1, 175
@@ -356,7 +356,7 @@ class TestWhitening:
         model_jit = torch.jit.script(Whitening(xform='lw',
                                                whitening_model=None,
                                                in_dims=in_dims).to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestMKDDescriptor:
@@ -409,7 +409,7 @@ class TestMKDDescriptor:
         out = mkd(inp)
         out_part = out[0, -28:]
         expected = torch.zeros_like(out_part).to(device)
-        assert_allclose(out_part, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.skip("Just because")
     @pytest.mark.parametrize("whitening", [None, 'lw', 'pca'])
@@ -439,7 +439,7 @@ class TestMKDDescriptor:
                               whitening=wt).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(MKDDescriptor(patch_size=ps, kernel_type=kt,
                                                    whitening=wt).to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestSimpleKD:
@@ -485,4 +485,4 @@ class TestSimpleKD:
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
         model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()  # noqa
         model_jit = torch.jit.script(SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval())  # noqa
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))

@@ -4,7 +4,7 @@ from kornia.morphology.basic_operators import _se_to_mask
 from kornia.morphology.open_close import close
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestClose():
@@ -28,7 +28,7 @@ class TestClose():
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0.7, 1., 0.8], [0.7, 0.7, 0.8], [0.7, 0.9, 0.8]],
                                 device=device, dtype=dtype)[None, None, :, :]
-        assert_allclose(close(input, kernel), expected)
+        assert_close(close(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -65,4 +65,4 @@ class TestClose():
         actual = op_script(input, kernel)
         expected = op(input, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

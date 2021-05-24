@@ -2,7 +2,7 @@ import pytest
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia.geometry.epipolar as epi
 
@@ -33,7 +33,7 @@ class TestEssentialFromFundamental:
         K2 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         E_mat = epi.essential_from_fundamental(F_mat, K1, K2)
         F_hat = epi.fundamental_from_essential(E_mat, K1, K2)
-        assert_allclose(F_mat, F_hat, atol=1e-4, rtol=1e-4)
+        assert_close(F_mat, F_hat, atol=1e-4, rtol=1e-4)
 
     def test_shape_large(self, device, dtype):
         F_mat = torch.rand(1, 2, 3, 3, device=device, dtype=dtype)
@@ -56,7 +56,7 @@ class TestEssentialFromFundamental:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_allclose(F_mat_norm, F_hat_norm)
+        assert_close(F_mat_norm, F_hat_norm)
 
     def test_gradcheck(self, device):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -103,8 +103,8 @@ class TestRelativeCameraMotion:
         t_expected = -t1
 
         R, t = epi.relative_camera_motion(R1, t1, R2, t2)
-        assert_allclose(R_expected, R)
-        assert_allclose(t_expected, t)
+        assert_close(R_expected, R)
+        assert_close(t_expected, t)
 
     def test_rotate_z(self, device, dtype):
         R1 = torch.tensor([[
@@ -126,8 +126,8 @@ class TestRelativeCameraMotion:
         t_expected = t1
 
         R, t = epi.relative_camera_motion(R1, t1, R2, t2)
-        assert_allclose(R_expected, R)
-        assert_allclose(t_expected, t)
+        assert_close(R_expected, R)
+        assert_close(t_expected, t)
 
     def test_gradcheck(self, device):
         R1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -171,7 +171,7 @@ class TestEssentalFromRt:
         E_from_Rt_norm = epi.normalize_transformation(E_from_Rt)
         E_from_F_norm = epi.normalize_transformation(E_from_F)
         # TODO: occasionally failed with error > 0.04
-        assert_allclose(E_from_Rt_norm, E_from_F_norm, rtol=1e-3, atol=1e-3)
+        assert_close(E_from_Rt_norm, E_from_F_norm, rtol=1e-3, atol=1e-3)
 
     def test_gradcheck(self, device):
         R1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -305,9 +305,9 @@ class TestMotionFromEssentialChooseSolution:
         mask[:, 1:-1] = True
         Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
-        assert_allclose(R, Rm)
-        assert_allclose(t, tm)
-        assert_allclose(X, Xm[:, 1:-1, :])
+        assert_close(R, Rm)
+        assert_close(t, tm)
+        assert_close(X, Xm[:, 1:-1, :])
 
     @pytest.mark.parametrize("num_points", [10, 15, 20])
     def test_unbatched(self, num_points, device, dtype):
@@ -327,9 +327,9 @@ class TestMotionFromEssentialChooseSolution:
         mask[1:-1] = True
         Rm, tm, Xm = epi.motion_from_essential_choose_solution(E_mat, K1, K2, x1, x2, mask=mask)
 
-        assert_allclose(R, Rm)
-        assert_allclose(t, tm)
-        assert_allclose(X, Xm[1:-1, :])
+        assert_close(R, Rm)
+        assert_close(t, tm)
+        assert_close(X, Xm[1:-1, :])
 
     def test_two_view(self, device, dtype):
 
@@ -345,8 +345,8 @@ class TestMotionFromEssentialChooseSolution:
         R_hat, t_hat, X_hat = epi.motion_from_essential_choose_solution(
             E_mat, scene['K1'], scene['K2'], scene['x1'], scene['x2'])
 
-        assert_allclose(t, t_hat)
-        assert_allclose(R, R_hat, rtol=1e-4, atol=1e-4)
+        assert_close(t, t_hat)
+        assert_close(R, R_hat, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)

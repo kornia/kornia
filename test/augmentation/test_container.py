@@ -124,4 +124,4 @@ class TestVideoSequential:
         img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
         op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
         op_jit = torch.jit.script(op)
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))

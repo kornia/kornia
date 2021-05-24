@@ -5,7 +5,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 import kornia
@@ -27,7 +27,7 @@ class TestBasicAugmentationBase:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
             output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
-            assert_allclose(input, output[:, :, 0, :, :])
+            assert_close(input, output[:, :, 0, :, :])
 
     @pytest.mark.parametrize("p,p_batch,same_on_batch,num,seed", [
         (1., 1., False, 12, 1),
@@ -70,7 +70,7 @@ class TestBasicAugmentationBase:
             check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
-            assert_allclose(output, expected_output)
+            assert_close(output, expected_output)
 
 
 class TestAugmentationBase2D:
@@ -118,7 +118,7 @@ class TestAugmentationBase2D:
             # return the expected tensor and transformation.
             output, transformation = augmentation(input, return_transform=True)
             assert output is expected_output
-            assert_allclose(transformation, expected_transform)
+            assert_close(transformation, expected_transform)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {'params': {}, 'flags': {'bar': 1}}

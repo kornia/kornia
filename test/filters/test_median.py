@@ -6,7 +6,7 @@ import kornia
 import kornia.testing as utils  # test utils
 
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 
@@ -36,8 +36,8 @@ class TestMedianBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)
-        assert_allclose(actual[0, 0, 2, 2], torch.tensor(3.).to(actual))
-        assert_allclose(actual[0, 1, 1, 1], torch.tensor(14.).to(actual))
+        assert_close(actual[0, 0, 2, 2], torch.tensor(3.).to(actual))
+        assert_close(actual[0, 1, 1, 1], torch.tensor(14.).to(actual))
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -46,7 +46,7 @@ class TestMedianBlur:
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)
         expected = actual
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     @pytest.mark.xfail(reason="this tests is a bit unstable")
     def test_gradcheck(self, device, dtype):
@@ -63,7 +63,7 @@ class TestMedianBlur:
         op_script = torch.jit.script(op)
         actual = op_script(img, kernel_size)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         kernel_size = (3, 5)
@@ -72,4 +72,4 @@ class TestMedianBlur:
         op_module = kornia.filters.MedianBlur((3, 5))
         actual = op_module(img)
         expected = op(img, kernel_size)
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

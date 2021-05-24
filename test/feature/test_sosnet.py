@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 from kornia.feature import SOSNet
@@ -36,4 +36,4 @@ class TestSOSNet:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = SOSNet().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(SOSNet().to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))

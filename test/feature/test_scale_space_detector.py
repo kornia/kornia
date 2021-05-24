@@ -3,7 +3,7 @@ import torch
 import kornia.testing as utils  # test utils
 import kornia
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 from kornia.feature.scale_space_detector import *
 
@@ -39,8 +39,8 @@ class TestScaleSpaceDetector:
         lafs, resps = det(inp)
         expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device)
         expected_resp = torch.tensor([[0.0857]], device=device)
-        assert_allclose(lafs, expected_laf, rtol=0.001, atol=1e-03)
-        assert_allclose(resps, expected_resp, rtol=0.001, atol=1e-03)
+        assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
+        assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
 
     def test_toy_mask(self, device):
         if "cuda" in str(device):
@@ -59,8 +59,8 @@ class TestScaleSpaceDetector:
         lafs, resps = det(inp, mask)
         expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device)
         expected_resp = torch.tensor([[0.0857]], device=device)
-        assert_allclose(lafs, expected_laf, rtol=0.001, atol=1e-03)
-        assert_allclose(resps, expected_resp, rtol=0.001, atol=1e-03)
+        assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
+        assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 31, 21

@@ -5,7 +5,7 @@ from kornia.testing import BaseTester  # test utils
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestRgbToGrayscale(BaseTester):
@@ -68,7 +68,7 @@ class TestRgbToGrayscale(BaseTester):
         ]], device=device, dtype=dtype)
 
         img_gray = kornia.rgb_to_grayscale(data)
-        assert_allclose(img_gray, expected)
+        assert_close(img_gray, expected)
 
     def test_custom_rgb_weights(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -91,7 +91,7 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.rgb_to_grayscale
         op_jit = kornia.jit.rgb_to_grayscale
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -99,7 +99,7 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         gray_ops = kornia.color.RgbToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.rgb_to_grayscale
-        assert_allclose(gray_ops(img), gray_fcn(img))
+        assert_close(gray_ops(img), gray_fcn(img))
 
 
 class TestBgrToGrayscale(BaseTester):
@@ -157,7 +157,7 @@ class TestBgrToGrayscale(BaseTester):
         ]], device=device, dtype=dtype)
 
         img_gray = kornia.bgr_to_grayscale(data)
-        assert_allclose(img_gray, expected)
+        assert_close(img_gray, expected)
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -171,7 +171,7 @@ class TestBgrToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.rgb_to_grayscale
         op_jit = kornia.jit.bgr_to_grayscale
-        assert_allclose(op(img), op_jit(img))
+        assert_close(op(img), op_jit(img))
 
     @pytest.mark.nn
     def test_module(self, device, dtype):
@@ -179,4 +179,4 @@ class TestBgrToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         gray_ops = kornia.color.BgrToGrayscale().to(device, dtype)
         gray_fcn = kornia.color.bgr_to_grayscale
-        assert_allclose(gray_ops(img), gray_fcn(img))
+        assert_close(gray_ops(img), gray_fcn(img))

@@ -6,7 +6,7 @@ import kornia.testing as utils
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestEqualization(BaseTester):
@@ -79,7 +79,7 @@ class TestEqualization(BaseTester):
         inp = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         op = enhance.equalize_clahe
         op_script = torch.jit.script(op)
-        assert_allclose(op(inp), op_script(inp))
+        assert_close(op(inp), op_script(inp))
 
     def test_module(self):
         # equalize_clahe is only a function

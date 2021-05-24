@@ -4,7 +4,7 @@ from kornia.morphology.basic_operators import _se_to_mask
 from kornia.morphology.morphology import gradient
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestGradient():
@@ -28,7 +28,7 @@ class TestGradient():
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0.5, 0.7, 0.7], [0.4, 0.7, 0.6], [0.5, 0.7, 0.7]],
                                 device=device, dtype=dtype)[None, None, :, :]
-        assert_allclose(gradient(input, kernel), expected)
+        assert_close(gradient(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -65,4 +65,4 @@ class TestGradient():
         actual = op_script(input, kernel)
         expected = op(input, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

@@ -2,7 +2,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 from kornia.augmentation import (
     RandomAffine3D,

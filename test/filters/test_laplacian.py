@@ -5,7 +5,7 @@ import kornia.testing as utils  # test utils
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 @pytest.mark.parametrize("window_size", [5])
@@ -31,7 +31,7 @@ def test_get_laplacian_kernel2d(window_size):
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         ]
     )
-    assert_allclose(expected, kernel)
+    assert_close(expected, kernel)
 
 
 class TestLaplacian:
@@ -49,7 +49,7 @@ class TestLaplacian:
 
         kernel_size = 3
         actual = kornia.filters.laplacian(input, kernel_size)
-        assert_allclose(actual, actual)
+        assert_close(actual, actual)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -68,7 +68,7 @@ class TestLaplacian:
         params = [3]
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_allclose(op(img, *params), op_script(img, *params))
+        assert_close(op(img, *params), op_script(img, *params))
 
     def test_module(self, device, dtype):
         params = [3]
@@ -76,4 +76,4 @@ class TestLaplacian:
         op_module = kornia.filters.Laplacian(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_allclose(op(img, *params), op_module(img))
+        assert_close(op(img, *params), op_module(img))

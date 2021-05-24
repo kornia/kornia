@@ -4,7 +4,7 @@ from kornia.morphology.basic_operators import _se_to_mask
 from kornia.morphology.morphology import top_hat
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestTopHat():
@@ -28,7 +28,7 @@ class TestTopHat():
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0., 0.5, 0.], [0.2, 0., 0.5], [0., 0.5, 0.]],
                                 device=device, dtype=dtype)[None, None, :, :]
-        assert_allclose(top_hat(input, kernel), expected)
+        assert_close(top_hat(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -65,4 +65,4 @@ class TestTopHat():
         actual = op_script(input, kernel)
         expected = op(input, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

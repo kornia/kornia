@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 
 import kornia
@@ -44,7 +44,7 @@ class TestHistogram:
         op = TestHistogram.fcn
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*inputs), op_script(*inputs))
+        assert_close(op(*inputs), op_script(*inputs))
 
     def test_uniform_dist(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -53,7 +53,7 @@ class TestHistogram:
 
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
-        assert_allclose(ans, pdf)
+        assert_close(ans, pdf)
 
 
 class TestHistogram2d:
@@ -97,7 +97,7 @@ class TestHistogram2d:
         op = TestHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        assert_allclose(op(*inputs), op_script(*inputs))
+        assert_close(op(*inputs), op_script(*inputs))
 
     def test_uniform_dist(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -107,4 +107,4 @@ class TestHistogram2d:
 
         pdf = TestHistogram2d.fcn(input1, input2, bins, bandwidth)
         ans = 0.1 * kornia.eye_like(10, pdf)
-        assert_allclose(ans, pdf)
+        assert_close(ans, pdf)

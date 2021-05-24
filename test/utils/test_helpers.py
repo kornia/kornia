@@ -1,7 +1,7 @@
 import pytest
 
 import torch
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 from kornia.utils import _extract_device_dtype
 from kornia.utils.helpers import _torch_inverse_cast, _torch_histc_cast
@@ -61,13 +61,13 @@ class TestInverseCast(object):
 
         y = _torch_inverse_cast(x)
 
-        assert_allclose(y, y_expected)
+        assert_close(y, y_expected)
 
     def test_jit(self, device, dtype):
         x = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         op = _torch_inverse_cast
         op_jit = torch.jit.script(op)
-        assert_allclose(op(x), op_jit(x))
+        assert_close(op(x), op_jit(x))
 
 
 class TestHistcCast(object):
@@ -77,7 +77,7 @@ class TestHistcCast(object):
 
         y = _torch_histc_cast(x, bins=4, min=0, max=3)
 
-        assert_allclose(y, y_expected)
+        assert_close(y, y_expected)
 
 
 class TestSvdCast(object):
@@ -86,7 +86,7 @@ class TestSvdCast(object):
         u, s, v = _torch_svd_cast(a)
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-3
-        assert_allclose(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
+        assert_close(a, u @ torch.diag_embed(s) @ v.transpose(-2, -1), atol=tol_val, rtol=tol_val)
 
 
 class TestSolveCast(object):
@@ -98,4 +98,4 @@ class TestSolveCast(object):
         error = torch.dist(B, A.matmul(X))
 
         tol_val: float = 1e-1 if dtype == torch.float16 else 1e-4
-        assert_allclose(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)
+        assert_close(error, torch.zeros_like(error), atol=tol_val, rtol=tol_val)

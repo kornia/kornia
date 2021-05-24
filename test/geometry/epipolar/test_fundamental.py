@@ -2,7 +2,7 @@ import pytest
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia.geometry.epipolar as epi
 
@@ -35,7 +35,7 @@ class TestNormalizePoints:
         points_norm, trans = epi.normalize_points(points)
         points_std, points_mean = torch.std_mean(points_norm, dim=1)
 
-        assert_allclose(points_mean, torch.zeros_like(points_mean))
+        assert_close(points_mean, torch.zeros_like(points_mean))
         assert (points_std < 2.).all()
 
     def test_gradcheck(self, device):
@@ -73,7 +73,7 @@ class TestNormalizeTransformation:
         ]], device=device, dtype=dtype)
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_allclose(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
+        assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_check_corner_case(self, device, dtype):
         trans = torch.tensor([[
@@ -85,7 +85,7 @@ class TestNormalizeTransformation:
         trans_expected = trans.clone()
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_allclose(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
+        assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         trans = torch.rand(2, 3, 3,
@@ -151,7 +151,7 @@ class TestFindFundamental:
             [-0.36690215, -1.08143769, 1.]]], device=device, dtype=dtype)
 
         F_mat = epi.find_fundamental(points1, points2, weights)
-        assert_allclose(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
+        assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.xfail(reason="TODO: fix #685")
     def test_synthetic_sampson(self, device, dtype):
@@ -165,7 +165,7 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        assert_allclose(error, torch.tensor(0., device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        assert_close(error, torch.tensor(0., device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -219,7 +219,7 @@ class TestComputeCorrespondEpilimes:
         ]], device=device, dtype=dtype)
 
         lines_est = epi.compute_correspond_epilines(point, F_mat)
-        assert_allclose(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
+        assert_close(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         point = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -261,7 +261,7 @@ class TestFundamentlFromEssential:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_allclose(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -311,7 +311,7 @@ class TestFundamentalFromProjections:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_allclose(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         P1 = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)

@@ -2,7 +2,7 @@ import pytest
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia
 import kornia.testing as utils  # test utils
@@ -39,7 +39,7 @@ class TestWarpAffine3d:
         P = kornia.geometry.convert_affinematrix_to_homography3d(P)
         P_hat = (P.inverse() @ P)[:, :3]
         output = proj.warp_affine3d(input, P_hat, out_shape, flags='nearest')
-        assert_allclose(output, input, rtol=1e-4, atol=1e-4)
+        assert_close(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
         input = torch.tensor([[[[
@@ -79,7 +79,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_y(self, device, dtype):
         input = torch.tensor([[[[
@@ -119,7 +119,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_z(self, device, dtype):
         input = torch.tensor([[[[
@@ -159,7 +159,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_y_large(self, device, dtype):
         """Rotates 90deg anti-clockwise."""
@@ -224,7 +224,7 @@ class TestWarpAffine3d:
         scales: torch.Tensor = torch.ones_like(angles, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angles, scales)
         output = proj.warp_affine3d(input, P, (3, 3, 3))
-        assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
+        assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
 
 class TestGetRotationMatrix3d:
@@ -254,7 +254,7 @@ class TestGetRotationMatrix3d:
             [0., 1., 0., 0.],
             [0., 0., 1., 0.],
         ], device=device, dtype=dtype).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90x(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -266,7 +266,7 @@ class TestGetRotationMatrix3d:
             [0., 0., -1., 0.],
             [0., 1., 0., 0.],
         ], device=device, dtype=dtype).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90y(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -278,7 +278,7 @@ class TestGetRotationMatrix3d:
             [0., 1., 0., 0.],
             [-1., 0., 0., 0.],
         ], device=device, dtype=dtype).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90z(self, device, dtype):
         center = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -290,7 +290,7 @@ class TestGetRotationMatrix3d:
             [1., 0., 0., 0.],
             [0., 0., 1., 0.],
         ], device=device, dtype=dtype).unsqueeze(0)
-        assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
+        assert_close(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # generate input data
@@ -319,7 +319,7 @@ class TestPerspectiveTransform3D:
 
         # TODO: get_perspective_transform3d seems to be correct since it would result in the
         # expected output for cropping volumes. Not sure what is going on here.
-        assert_allclose(
+        assert_close(
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-4, atol=1e-4)
 
         # compute gradient check
@@ -371,7 +371,7 @@ class TestPerspectiveTransform3D:
                  [0.0000, 0.0000, 0.0000, 1.0000]],
             ], device=device, dtype=dtype)
 
-        assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
+        assert_close(out, expected, rtol=1e-4, atol=1e-4)
 
         # compute gradient check
         points_src = utils.tensor_to_gradcheck_var(src)  # to var

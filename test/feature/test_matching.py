@@ -1,7 +1,7 @@
 import pytest
 import kornia.testing as utils  # test utils
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 from kornia.feature.matching import *
 
@@ -26,8 +26,8 @@ class TestMatchNN:
         dists, idxs = match_nn(desc1, desc2)
         expected_dists = torch.tensor([0, 0, 0.5, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -60,8 +60,8 @@ class TestMatchMNN:
         dists, idxs = match_mnn(desc1, desc2)
         expected_dists = torch.tensor([0, 0, 0.5, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -94,8 +94,8 @@ class TestMatchSNN:
         dists, idxs = match_snn(desc1, desc2, 0.8)
         expected_dists = torch.tensor([0, 0, 0.35355339059327373, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_matching2(self, device):
         desc1 = torch.tensor([[0, 0.], [1, 1], [2, 2], [3, 3.], [5, 5.]], device=device)
@@ -104,8 +104,8 @@ class TestMatchSNN:
         dists, idxs = match_snn(desc1, desc2, 0.1)
         expected_dists = torch.tensor([0., 0, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
@@ -139,8 +139,8 @@ class TestMatchSMNN:
         dists, idxs = match_smnn(desc1, desc2, 0.8)
         expected_dists = torch.tensor([0, 0, 0.5423, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_matching2(self, device):
         desc1 = torch.tensor([[0, 0.], [1, 1], [2, 2], [3, 3.], [5, 5.]], device=device)
@@ -149,8 +149,8 @@ class TestMatchSMNN:
         dists, idxs = match_smnn(desc1, desc2, 0.1)
         expected_dists = torch.tensor([0., 0, 0, 0], device=device).view(-1, 1)
         expected_idx = torch.tensor([[0, 4], [1, 3], [3, 1], [4, 0]], device=device)
-        assert_allclose(dists, expected_dists)
-        assert_allclose(idxs, expected_idx)
+        assert_close(dists, expected_dists)
+        assert_close(idxs, expected_idx)
 
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)

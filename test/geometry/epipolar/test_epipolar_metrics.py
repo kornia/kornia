@@ -2,7 +2,7 @@ import pytest
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia.geometry.epipolar as epi
 import kornia.testing as utils

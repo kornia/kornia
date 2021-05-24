@@ -3,7 +3,7 @@ import torch
 from kornia.morphology.basic_operators import _se_to_mask, erosion
 import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestErode():
@@ -27,7 +27,7 @@ class TestErode():
         kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
         expected = torch.tensor([[0.5, 0.3, 0.3], [0.3, 0.3, 0.2], [0.4, 0.2, 0.2]],
                                 device=device, dtype=dtype)[None, None, :, :]
-        assert_allclose(erosion(input, kernel), expected)
+        assert_close(erosion(input, kernel), expected)
 
     def test_exception(self, device, dtype):
         input = torch.ones(1, 1, 3, 4, device=device, dtype=dtype)
@@ -64,4 +64,4 @@ class TestErode():
         actual = op_script(input, kernel)
         expected = op(input, kernel)
 
-        assert_allclose(actual, expected)
+        assert_close(actual, expected)

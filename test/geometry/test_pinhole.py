@@ -5,7 +5,7 @@ import kornia.testing as utils  # test utils
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestPinholeCamera:
@@ -139,22 +139,22 @@ class TestPinholeCamera:
         pinhole = kornia.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.scale(scale_factor)
 
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 0, 0],
             pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 1, 1],
             pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 0, 2],
             pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 1, 2],
             pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
-        assert_allclose(
+        assert_close(
             pinhole_scale.height,
             pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_allclose(
+        assert_close(
             pinhole_scale.width,
             pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
@@ -175,21 +175,21 @@ class TestPinholeCamera:
         pinhole_scale = pinhole.clone()
         pinhole_scale.scale_(scale_factor)
 
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 0, 0],
             pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 1, 1],
             pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 0, 2],
             pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
-        assert_allclose(
+        assert_close(
             pinhole_scale.intrinsics[..., 1, 2],
             pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
-        assert_allclose(
+        assert_close(
             pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_allclose(
+        assert_close(
             pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
 
@@ -201,7 +201,7 @@ def test_scale_pinhole(batch_size, device_type):
     scales = torch.rand(batch_size, device=device, dtype=dtype)
 
     pinholes_scale = kornia.scale_pinhole(pinholes, scales)
-    assert_allclose(
+    assert_close(
         pinholes_scale[..., :6] / scales.unsqueeze(-1), pinholes[..., :6])
 
     # evaluate function gradient
@@ -261,11 +261,11 @@ def test_inverse_pinhole_matrix(batch_size, device_type):
     pinhole_matrix = kornia.inverse_pinhole_matrix(pinhole)
 
     ones = torch.ones(batch_size)
-    assert_allclose(pinhole_matrix[:, 0, 0], (1. / fx) * ones)
-    assert_allclose(pinhole_matrix[:, 1, 1], (1. / fy) * ones)
-    assert_allclose(
+    assert_close(pinhole_matrix[:, 0, 0], (1. / fx) * ones)
+    assert_close(pinhole_matrix[:, 1, 1], (1. / fy) * ones)
+    assert_close(
         pinhole_matrix[:, 0, 2], (-1. * cx / fx) * ones)
-    assert_allclose(
+    assert_close(
         pinhole_matrix[:, 1, 2], (-1. * cy / fx) * ones)
 
     # functional
@@ -314,7 +314,7 @@ def test_homography_i_H_ref(batch_size, device_type):
 
     # compute homography from i to ref
     ref_H_i = kornia.homography_i_H_ref(pinhole_ref, pinhole_i) + eps
-    assert_allclose(i_H_ref_inv, ref_H_i)
+    assert_close(i_H_ref_inv, ref_H_i)
 
     # evaluate function gradient
     assert gradcheck(kornia.homography_i_H_ref,

@@ -2,7 +2,7 @@ import pytest
 import kornia.testing as utils  # test utils
 import kornia
 
-from torch.testing import assert_allclose
+from test.utils import assert_close
 from torch.autograd import gradcheck
 from kornia.feature.orientation import *
 
@@ -31,7 +31,7 @@ class TestPassLAF:
         laf = torch.rand(1, 1, 2, 3, device=device)
         ori = PassLAF().to(device)
         out = ori(laf, inp)
-        assert_allclose(out, laf)
+        assert_close(out, laf)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 21, 21
@@ -65,7 +65,7 @@ class TestPatchDominantGradientOrientation:
         inp[:, :, :10, :] = 1
         ang = ori(inp)
         expected = torch.tensor([90.], device=device)
-        assert_allclose(kornia.rad2deg(ang), expected)
+        assert_close(kornia.rad2deg(ang), expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
@@ -82,7 +82,7 @@ class TestPatchDominantGradientOrientation:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(PatchDominantGradientOrientation(13).to(patches.device, patches.dtype).eval())
-        assert_allclose(model(patches), model_jit(patches))
+        assert_close(model(patches), model_jit(patches))
 
 
 class TestOriNet:
@@ -114,7 +114,7 @@ class TestOriNet:
         ori = OriNet(True).to(device=device, dtype=inp.dtype).eval()
         ang = ori(inp)
         expected = torch.tensor([70.58], device=device)
-        assert_allclose(kornia.rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
+        assert_close(kornia.rad2deg(ang), expected, atol=1e-2, rtol=1e-3)
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
@@ -130,7 +130,7 @@ class TestOriNet:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         tfeat = OriNet(True).to(patches.device, patches.dtype).eval()
         tfeat_jit = torch.jit.script(OriNet(True).to(patches.device, patches.dtype).eval())
-        assert_allclose(tfeat_jit(patches), tfeat(patches))
+        assert_close(tfeat_jit(patches), tfeat(patches))
 
 
 class TestLAFOrienter:
@@ -159,7 +159,7 @@ class TestLAFOrienter:
         laf = torch.tensor([[[[0, 5., 8.], [5.0, 0., 8.]]]], device=device)
         new_laf = ori(laf, inp)
         expected = torch.tensor([[[[0., 5., 8.], [-5.0, 0, 8.]]]], device=device)
-        assert_allclose(new_laf, expected)
+        assert_close(new_laf, expected)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 21, 21

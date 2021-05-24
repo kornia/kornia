@@ -4,14 +4,14 @@ import kornia.testing as utils  # test utils
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 
 class TestResize:
     def test_smoke(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.resize(inp, (3, 4))
-        assert_allclose(inp, out, atol=1e-4, rtol=1e-4)
+        assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
     def test_no_batch(self, device, dtype):
         inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
@@ -65,7 +65,7 @@ class TestRescale:
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         output = kornia.rescale(input, (1.0, 1.0))
-        assert_allclose(input, output, atol=1e-4, rtol=1e-4)
+        assert_close(input, output, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -88,7 +88,7 @@ class TestRescale:
                                    [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
                                    [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]]]],
                                 device=device, dtype=dtype)
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_downscale_values_AA(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.
@@ -101,7 +101,7 @@ class TestRescale:
                                    [0.1065, 0.1890, 0.3166, 0.4442, 0.5266],
                                    [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]]]],
                                 device=device, dtype=dtype)
-        assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
+        assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -132,7 +132,7 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90.], device=device, dtype=dtype)
         transform = kornia.Rotate(angle, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_angle90_batch2(self, device, dtype):
         # prepare input data
@@ -156,7 +156,7 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90., -90.], device=device, dtype=dtype)
         transform = kornia.Rotate(angle, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_angle90_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -180,7 +180,7 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90.], device=device, dtype=dtype)
         transform = kornia.Rotate(angle, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -201,7 +201,7 @@ class TestRotate:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         rot = kornia.Rotate(angle)
         rot_traced = torch.jit.trace(kornia.Rotate(angle), img)
-        assert_allclose(rot(img), rot_traced(img))
+        assert_close(rot(img), rot_traced(img))
 
 
 class TestTranslate:
@@ -222,7 +222,7 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1., 0.]], device=device, dtype=dtype)
         transform = kornia.Translate(translation, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_dxdy_batch(self, device, dtype):
         # prepare input data
@@ -246,7 +246,7 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1., 0.], [1., 1.]], device=device, dtype=dtype)
         transform = kornia.Translate(translation, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_dxdy_batch_broadcast(self, device, dtype):
         # prepare input data
@@ -270,7 +270,7 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1., 0.]], device=device, dtype=dtype)
         transform = kornia.Translate(translation, align_corners=True)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -292,7 +292,7 @@ class TestTranslate:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.Translate(translation)
         trans_traced = torch.jit.trace(kornia.Translate(translation), img)
-        assert_allclose(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
 class TestScale:
@@ -307,7 +307,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[2., 2.]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
-        assert_allclose(transform(inp).sum().item(), 12.25, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp).sum().item(), 12.25, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05(self, device, dtype):
         # prepare input data
@@ -326,7 +326,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05_batch2(self, device, dtype):
         # prepare input data
@@ -345,7 +345,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -364,7 +364,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -386,7 +386,7 @@ class TestScale:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.Scale(scale_factor)
         trans_traced = torch.jit.trace(kornia.Scale(scale_factor), img)
-        assert_allclose(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
 class TestShear:
@@ -407,7 +407,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         transform = kornia.Shear(shear)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_y(self, device, dtype):
         # prepare input data
@@ -426,7 +426,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]], device=device, dtype=dtype)
         transform = kornia.Shear(shear)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2(self, device, dtype):
         # prepare input data
@@ -450,7 +450,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
         transform = kornia.Shear(shear)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -470,7 +470,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         transform = kornia.Shear(shear)
-        assert_allclose(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # test parameters
@@ -491,7 +491,7 @@ class TestShear:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.Shear(shear)
         trans_traced = torch.jit.trace(kornia.Shear(shear), img)
-        assert_allclose(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
 class TestAffine2d:
@@ -519,7 +519,7 @@ class TestAffine2d:
         transform = kornia.Affine(angle=angle).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.rotate(input, angle)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -535,7 +535,7 @@ class TestAffine2d:
         transform = kornia.Affine(translation=translation).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.translate(input, translation)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_scale(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -552,7 +552,7 @@ class TestAffine2d:
         transform = kornia.Affine(scale_factor=scale_factor).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.scale(input, scale_factor)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(
         "_compute_shear_matrix and get_affine_matrix2d yield different results. "
@@ -566,7 +566,7 @@ class TestAffine2d:
         transform = kornia.Affine(shear=shear, device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.shear(input, shear)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_rotate_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -593,7 +593,7 @@ class TestAffine2d:
         transform = kornia.Affine(
             angle=angle, translation=translation, align_corners=True).to(device=device, dtype=dtype)
         actual = transform(input)
-        assert_allclose(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_compose_affine_matrix_3x3(self, device, dtype):
         """ To get parameters:
@@ -641,4 +641,4 @@ class TestAffine2d:
             T([math.radians(shear[0])]).view(-1, 1),
             T([math.radians(shear[1])]).view(-1, 1))
         matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
-        assert_allclose(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
+        assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)

@@ -2,7 +2,7 @@ import pytest
 
 import torch
 from torch.autograd import gradcheck
-from torch.testing import assert_allclose
+from test.utils import assert_close
 
 import kornia
 from kornia.geometry.transform import elastic_transform2d
@@ -70,7 +70,7 @@ class TestElasticTransform:
         ]], device=device, dtype=dtype)
 
         actual = elastic_transform2d(image, noise)
-        assert_allclose(actual, expected, atol=1e-3, rtol=1e-3)
+        assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, device, dtype, requires_grad):
@@ -85,4 +85,4 @@ class TestElasticTransform:
         op = kornia.geometry.transform.elastic_transform2d
         op_jit = torch.jit.script(op)
 
-        assert_allclose(op(image, noise), op_jit(image, noise))
+        assert_close(op(image, noise), op_jit(image, noise))
