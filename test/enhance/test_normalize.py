@@ -121,6 +121,28 @@ class TestNormalize:
 
         assert_allclose(op(*inputs), op_module(data))
 
+    @pytest.mark.parametrize("mean, std",
+                             [
+                                 ((1., 1., 1.), (.5, .5, .5)),
+                                 (1, .5),
+                                 (torch.tensor([1.]), torch.tensor([.5]))
+                             ])
+    def test_random_normalize_different_parameter_types(self, mean, std):
+        f = kornia.enhance.Normalize(mean=mean, std=std)
+        inputs = torch.arange(0., 16., step=1).reshape(1, 4, 4).unsqueeze(0)
+        assert_allclose(f(inputs), inputs, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("mean, std",
+                             [
+                                 ((1., 1., 1., 1.), (.5, .5, .5, .5)),
+                                 ((1., 1.), (.5, .5)),
+                             ])
+    def test_random_normalize_invalid_parameter_shape(self, mean, std):
+        f = kornia.enhance.Normalize(mean=mean, std=std)
+        inputs = torch.arange(0., 16., step=1).reshape(1, 4, 4).unsqueeze(0)
+        with pytest.raises(AssertionError):
+            f(inputs)
+
 
 class TestDenormalize:
     def test_smoke(self, device, dtype):
