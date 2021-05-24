@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, List
 
 import torch
 import torch.nn as nn
@@ -26,7 +26,6 @@ class Normalize(nn.Module):
     Args:
         mean (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Mean for each channel.
         std (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Standard deviations for each channel.
-        num_channels (Optional[int]): Number of channels expected to be used for. Needed when mean and std are floats and need to be expanded.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -46,21 +45,15 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], float], num_channels: Optional[int] = 3) -> None:
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]) -> None:
 
         super(Normalize, self).__init__()
 
         if isinstance(mean, float):
-            if num_channels is not None:
-                mean = torch.tensor([mean] * num_channels)
-            else:
-                raise ValueError(f"If mean provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
+            mean = torch.tensor([mean])
 
         if isinstance(std, float):
-            if num_channels is not None:
-                std = torch.tensor([std] * num_channels)
-            else:
-                raise ValueError(f"If std provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
+            std = torch.tensor([std])
 
         if isinstance(mean, tuple) or isinstance(mean, list):
             mean = torch.tensor(mean)
@@ -111,6 +104,12 @@ def normalize(
         torch.Size([1, 4, 3, 3])
     """
     shape = data.shape
+
+    if len(mean.shape) == 1:
+        mean = torch.expand(mean, shape[1])
+
+    if len(std.shape) == 1:
+        std = torch.expand(std, shape[1])
 
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:

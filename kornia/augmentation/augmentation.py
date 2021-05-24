@@ -1090,9 +1090,8 @@ class Normalize(AugmentationBase2D):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (torch.Tensor): Mean for each channel.
-        std (torch.Tensor): Standard deviations for each channel.
-        num_channels (Optional[int]): Number of channels expected to be used for. Needed when mean and std are floats and need to be expanded.
+        mean (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -1107,26 +1106,17 @@ class Normalize(AugmentationBase2D):
     """
 
     def __init__(
-        self, mean: Union[torch.Tensor, Tuple[float, ...], float],
-        std: Union[torch.Tensor, Tuple[float, ...], float],
-        num_channels: Optional[int] = 3,
+        self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
+        std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
         return_transform: bool = False, p: float = 1., keepdim: bool = False
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
                                         keepdim=keepdim)
         if isinstance(mean, float):
-            if num_channels is not None:
-                mean = torch.tensor([mean] * num_channels)
-            else:
-                raise ValueError(
-                    f"If mean provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
+            mean = torch.tensor([mean])
 
         if isinstance(std, float):
-            if num_channels is not None:
-                std = torch.tensor([std] * num_channels)
-            else:
-                raise ValueError(
-                    f"If std provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
+            std = torch.tensor([std])
 
         if isinstance(mean, tuple) or isinstance(mean, list):
             mean = torch.tensor(mean)
