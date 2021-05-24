@@ -24,8 +24,9 @@ class Normalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float, ...], float]): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Standard deviations for each channel.
+        num_channels (Optional[int]): Number of channels expected to be used for. Needed when mean and std are floats and need to be expanded.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -50,15 +51,21 @@ class Normalize(nn.Module):
         super(Normalize, self).__init__()
 
         if isinstance(mean, float):
-            mean = torch.tensor([mean] * num_channels)
+            if num_channels is not None:
+                mean = torch.tensor([mean] * num_channels)
+            else:
+                raise ValueError(f"If mean provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
 
         if isinstance(std, float):
-            std = torch.tensor([std] * num_channels)
+            if num_channels is not None:
+                std = torch.tensor([std] * num_channels)
+            else:
+                raise ValueError(f"If std provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
 
-        if isinstance(mean, tuple):
+        if isinstance(mean, tuple) or isinstance(mean, list):
             mean = torch.tensor(mean)
 
-        if isinstance(std, tuple):
+        if isinstance(std, tuple) or isinstance(std, list):
             std = torch.tensor(std)
 
         self.mean = mean

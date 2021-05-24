@@ -1092,6 +1092,7 @@ class Normalize(AugmentationBase2D):
     Args:
         mean (torch.Tensor): Mean for each channel.
         std (torch.Tensor): Standard deviations for each channel.
+        num_channels (Optional[int]): Number of channels expected to be used for. Needed when mean and std are floats and need to be expanded.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -1114,15 +1115,23 @@ class Normalize(AugmentationBase2D):
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
                                         keepdim=keepdim)
         if isinstance(mean, float):
-            mean = torch.tensor([mean] * num_channels)
+            if num_channels is not None:
+                mean = torch.tensor([mean] * num_channels)
+            else:
+                raise ValueError(
+                    f"If mean provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
 
         if isinstance(std, float):
-            std = torch.tensor([std] * num_channels)
+            if num_channels is not None:
+                std = torch.tensor([std] * num_channels)
+            else:
+                raise ValueError(
+                    f"If std provided as float, need to set `num_channels` to be able to properly expand it to a torch tensor")
 
-        if isinstance(mean, tuple):
+        if isinstance(mean, tuple) or isinstance(mean, list):
             mean = torch.tensor(mean)
 
-        if isinstance(std, tuple):
+        if isinstance(std, tuple) or isinstance(std, list):
             std = torch.tensor(std)
 
         self.mean = mean
