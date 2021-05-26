@@ -20,6 +20,8 @@ jobs:
     - name: Install dependencies
       run: python -m pip install --user --upgrade setuptools wheel
     - name: Build source
+      env:
+        KORNIA_RELEASE: 1
       run: |
         python setup.py sdist
         ls -lh dist/
@@ -48,6 +50,7 @@ jobs:
     - name: Building wheels
       uses: pypa/cibuildwheel@v1.11.0
       env:
+        KORNIA_RELEASE: 1
         # Disable building PyPy wheels on all platforms
         CIBW_SKIP: pp*
       with:
