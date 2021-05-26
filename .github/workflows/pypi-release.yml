@@ -52,7 +52,7 @@ jobs:
       env:
         KORNIA_RELEASE: 1
         # Disable building PyPy wheels on all platforms
-        CIBW_SKIP: pp*
+        CIBW_SKIP: cp27-* pp*
       with:
         output-dir: dist
 
