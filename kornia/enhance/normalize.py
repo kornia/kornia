@@ -45,8 +45,8 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float], std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]) -> None:
-
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
+                 std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]) -> None:
         super(Normalize, self).__init__()
 
         if isinstance(mean, float):
