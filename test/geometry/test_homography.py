@@ -66,8 +66,8 @@ class TestFindHomographyDLT:
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad
+    @pytest.mark.skipif(torch.__version__ < '1.7', reason="pytorch bug of incopatible types: #33546 fixed in v1.7")
     def test_gradcheck(self, device):
-
         # Save initial seed
         initial_seed = torch.random.initial_seed()
         max_number_of_checks = 10
@@ -137,6 +137,7 @@ class TestFindHomographyDLTIter:
             kornia.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad
+    @pytest.mark.skipif(torch.__version__ < '1.7', reason="pytorch bug of incopatible types: #33546 fixed in v1.7")
     def test_gradcheck(self, device):
 
         # Save initial seed
