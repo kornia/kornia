@@ -71,7 +71,7 @@ class TestFindHomographyDLT:
         # Test omitted if torch version < 1.7
         if tuple([int(s) for s in torch.__version__.split('.')[:2]]) < (1, 7):
             return
-
+ 
         # Save initial seed
         initial_seed = torch.random.initial_seed()
         max_number_of_checks = 10
