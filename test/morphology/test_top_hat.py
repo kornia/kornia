@@ -1,17 +1,15 @@
 import pytest
 import torch
-from kornia.morphology.basic_operators import _se_to_mask
 from kornia.morphology.morphology import top_hat
-import kornia.testing as utils  # test utils
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
-class TestTopHat():
+class TestTopHat:
 
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
-        assert _se_to_mask(kernel) is not None
+        assert kernel is not None
 
     @pytest.mark.parametrize(
         "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
@@ -25,7 +23,7 @@ class TestTopHat():
     def test_value(self, device, dtype):
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
                              device=device, dtype=dtype)[None, None, :, :]
-        kernel = torch.tensor([[0., 1., 0.], [1., 1., 1.], [0., 1., 0.]], device=device, dtype=dtype)
+        kernel = torch.tensor([[-1., 0., -1.], [0., 0., 0.], [-1., 0., -1.]], device=device, dtype=dtype)
         expected = torch.tensor([[0., 0.5, 0.], [0.2, 0., 0.5], [0., 0.5, 0.]],
                                 device=device, dtype=dtype)[None, None, :, :]
         assert_allclose(top_hat(input, kernel), expected)
