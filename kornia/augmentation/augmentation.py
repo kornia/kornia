@@ -936,29 +936,29 @@ class RandomCrop(GeometricAugmentationBase2D):
         return rg.random_crop_generator(batch_shape[0], (batch_shape[-2], batch_shape[-1]), self.size,
                                         same_on_batch=self.same_on_batch, device=self.device, dtype=self.dtype)
 
-    def compute_padding(self, shape: torch.Size) -> Tuple[int, int, int, int]:
+    def compute_padding(self, shape: torch.Size) -> List[int]:
         assert len(shape) == 4, f"Expected BCHW. Got {shape}."
-        padding = (0, 0, 0, 0)
+        padding = [0, 0, 0, 0]
         if self.padding is not None:
             if isinstance(self.padding, int):
                 self.padding = cast(int, self.padding)
-                padding = (self.padding, self.padding, self.padding, self.padding)
+                padding = [self.padding, self.padding, self.padding, self.padding]
             elif isinstance(self.padding, tuple) and len(self.padding) == 2:
                 self.padding = cast(Tuple[int, int], self.padding)
-                padding = (self.padding[1], self.padding[1], self.padding[0], self.padding[0])
+                padding = [self.padding[1], self.padding[1], self.padding[0], self.padding[0]]
             elif isinstance(self.padding, tuple) and len(self.padding) == 4:
                 self.padding = cast(Tuple[int, int, int, int], self.padding)
-                padding = (self.padding[3], self.padding[2], self.padding[1], self.padding[0])
+                padding = [self.padding[3], self.padding[2], self.padding[1], self.padding[0]]
 
         if self.pad_if_needed and shape[-2] < self.size[0]:
-            padding = (0, 0, (self.size[0] - shape[-2]), self.size[0] - shape[-2])
+            padding = [0, 0, (self.size[0] - shape[-2]), self.size[0] - shape[-2]]
 
         if self.pad_if_needed and shape[-1] < self.size[1]:
-            padding = (self.size[1] - shape[-1], self.size[1] - shape[-1], 0, 0)
+            padding = [self.size[1] - shape[-1], self.size[1] - shape[-1], 0, 0]
 
         return padding
 
-    def precrop_padding(self, input: torch.Tensor, padding: Tuple[int, int, int, int] = None) -> torch.Tensor:
+    def precrop_padding(self, input: torch.Tensor, padding: List[int] = None) -> torch.Tensor:
         if padding is None:
             padding = self.compute_padding(input.shape)
 
