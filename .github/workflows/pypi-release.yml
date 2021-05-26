@@ -4,7 +4,6 @@ name: PyPI Release
 on:  # Trigger the workflow on push or pull request, but only for the master branch
   push:
     branches: [master]
-  pull_request: {} # fixme
   release:
     types: [published]
 
@@ -23,7 +22,7 @@ jobs:
       env:
         KORNIA_RELEASE: 1
       run: |
-        python setup.py sdist
+        python setup.py sdist bdist_wheel
         ls -lh dist/
 
     - uses: actions/upload-artifact@v2
@@ -31,39 +30,39 @@ jobs:
         name: pypi-packages-${{ github.sha }}
         path: dist
 
-  build-wheels:
-    runs-on: ${{ matrix.os }}
-    needs: build-sdist
-    strategy:
-      fail-fast: true
-      max-parallel: 1
-      matrix:
-        os: [ubuntu-20.04, macOS-10.15, windows-2019]
-        #python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
-    steps:
-    - uses: actions/checkout@master
-    - uses: actions/download-artifact@v2
-      with:
-        name: pypi-packages-${{ github.sha }}
-        path: dist
-
-    - name: Building wheels
-      uses: pypa/cibuildwheel@v1.11.0
-      env:
-        KORNIA_RELEASE: 1
-        # Disable building PyPy wheels on all platforms
-        CIBW_SKIP: cp27-* cp35-* pp*
-      with:
-        output-dir: dist
-
-    - uses: actions/upload-artifact@v2
-      with:
-        name: pypi-packages-${{ github.sha }}
-        path: dist
+  #build-wheels:
+  #  runs-on: ${{ matrix.os }}
+  #  needs: build-sdist
+  #  strategy:
+  #    fail-fast: true
+  #    max-parallel: 1
+  #    matrix:
+  #      os: [ubuntu-20.04, macOS-10.15, windows-2019]
+  #      #python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
+  #  steps:
+  #  - uses: actions/checkout@master
+  #  - uses: actions/download-artifact@v2
+  #    with:
+  #      name: pypi-packages-${{ github.sha }}
+  #      path: dist
+  #
+  #  - name: Building wheels
+  #    uses: pypa/cibuildwheel@v1.11.0
+  #    env:
+  #      KORNIA_RELEASE: 1
+  #      # Disable building PyPy wheels on all platforms
+  #      CIBW_SKIP: cp27-* cp35-* pp*
+  #    with:
+  #      output-dir: dist
+  #
+  #  - uses: actions/upload-artifact@v2
+  #    with:
+  #      name: pypi-packages-${{ github.sha }}
+  #      path: dist
 
   upload-packages:
     runs-on: ubuntu-20.04
-    needs: build-wheels
+    needs: build-sdist
     steps:
     - uses: actions/checkout@v2
     - uses: actions/download-artifact@v2
@@ -81,7 +80,7 @@ jobs:
 
   publish-pypi:
     runs-on: ubuntu-20.04
-    needs: build-wheels
+    needs: build-sdist
     if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     steps:
     - uses: actions/checkout@master
