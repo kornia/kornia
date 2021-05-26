@@ -24,8 +24,8 @@ class Normalize(nn.Module):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float], List[float], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float], List[float], float]): Standard deviations for each channel.
 
     Shape:
         - Input: Image tensor of size :math:`(*, C, ...)`.
@@ -45,8 +45,8 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
-                 std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]) -> None:
+    def __init__(self, mean: Union[torch.Tensor, Tuple[float], List[float], float],
+                 std: Union[torch.Tensor, Tuple[float], List[float], float]) -> None:
         super(Normalize, self).__init__()
 
         if isinstance(mean, float):
@@ -84,8 +84,8 @@ def normalize(
 
     Args:
         data (torch.Tensor): Image tensor of size :math:`(*, C, ...)`.
-        mean (Union[torch.Tensor, Tuple[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float, ...], float]): Standard deviations for each channel.
+        mean (torch.Tensor): Mean for each channel.
+        std (torch.Tensor): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, ...)`.
@@ -106,10 +106,10 @@ def normalize(
     shape = data.shape
 
     if len(mean.shape) == 1:
-        mean = torch.expand(mean, shape[1])
+        mean = mean.expand(shape[1])
 
     if len(std.shape) == 1:
-        std = torch.expand(std, shape[1])
+        std = std.expand(shape[1])
 
     # Allow broadcast on channel dimension
     if mean.shape and mean.shape[0] != 1:

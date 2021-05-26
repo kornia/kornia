@@ -1090,8 +1090,8 @@ class Normalize(AugmentationBase2D):
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        mean (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Mean for each channel.
-        std (Union[torch.Tensor, Tuple[float, ...], List[float, ...], float]): Standard deviations for each channel.
+        mean (Union[torch.Tensor, Tuple[float], List[float], float]): Mean for each channel.
+        std (Union[torch.Tensor, Tuple[float], List[float], float]): Standard deviations for each channel.
 
     Return:
         torch.Tensor: Normalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -1106,8 +1106,8 @@ class Normalize(AugmentationBase2D):
     """
 
     def __init__(
-        self, mean: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
-        std: Union[torch.Tensor, Tuple[float, ...], List[float, ...], float],
+        self, mean: Union[torch.Tensor, Tuple[float], List[float], float],
+        std: Union[torch.Tensor, Tuple[float], List[float], float],
         return_transform: bool = False, p: float = 1., keepdim: bool = False
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True,
