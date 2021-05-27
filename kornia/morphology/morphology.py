@@ -52,7 +52,8 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
 
     # computation
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output = torch.amax(output + kernel.flip((0, 1)), (4, 5))
+    output, _ = torch.max(output + kernel.flip((0, 1)), 4)
+    output, _ = torch.max(output, 4)
 
     return output
 
@@ -105,7 +106,8 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
 
     # computation
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-    output = torch.amin(output - kernel, (4, 5))
+    output, _ = torch.min(output - kernel, 4)
+    output, _ = torch.min(output, 4)
 
     return output
 
