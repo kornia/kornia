@@ -2,6 +2,7 @@ build/
 dist/
 *version.py
 kornia.egg-info/
+.idea
 */**/__pycache__
 */**/*.pyc
 */**/*~
