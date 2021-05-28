@@ -169,8 +169,21 @@ def motion_from_essential_choose_solution(
     assert len(x2.shape) >= 2 and x2.shape[-1] == 2, x2.shape
     assert len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
     if mask is not None:
-        assert len(mask.shape) >= 2, mask.shape
+        assert len(mask.shape) >= 1, mask.shape
         assert mask.shape == x1.shape[:-1], mask.shape
+
+    unbatched = len(E_mat.shape) == 2
+
+    if unbatched:
+        # add a leading batch dimension. We will remove it at the end, before
+        # returning the results
+        E_mat = E_mat[None]
+        K1 = K1[None]
+        K2 = K2[None]
+        x1 = x1[None]
+        x2 = x2[None]
+        if mask is not None:
+            mask = mask[None]
 
     # compute four possible pose solutions
     Rs, ts = motion_from_essential(E_mat)
@@ -211,6 +224,11 @@ def motion_from_essential_choose_solution(
     R_out = Rs[:, mask_indices][:, 0, 0]
     t_out = ts[:, mask_indices][:, 0, 0]
     points3d_out = X[:, mask_indices][:, 0, 0]
+
+    if unbatched:
+        R_out = R_out[0]
+        t_out = t_out[0]
+        points3d_out = points3d_out[0]
 
     return R_out, t_out, points3d_out
 

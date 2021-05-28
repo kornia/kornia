@@ -10,6 +10,53 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 
+class TestInvert:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        assert kornia.enhance.invert(img) is not None
+
+    @pytest.mark.parametrize("shape", [
+        (3, 4, 4), (2, 4, 3, 3), (1, 3, 2, 1, 1)
+    ])
+    def test_cardinality(self, device, dtype, shape):
+        img = torch.rand(shape, device=device, dtype=dtype)
+        out = kornia.enhance.invert(img, torch.tensor(1.))
+        assert out.shape == shape
+
+    def test_max_val_1(self, device, dtype):
+        img = torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
+        out = kornia.enhance.invert(img, torch.tensor(1.0))
+        assert_allclose(out, torch.zeros_like(out))
+
+    def test_max_val_255(self, device, dtype):
+        img = 255. * torch.ones(1, 3, 4, 4, device=device, dtype=dtype)
+        out = kornia.enhance.invert(img, torch.tensor(255.))
+        assert_allclose(out, torch.zeros_like(out))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 1, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        max_val = torch.tensor(1., device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kornia.enhance.invert, (img, max_val), raise_exception=True)
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.invert
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(img), op_jit(img))
+
+    @pytest.mark.nn
+    def test_module(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.invert
+        op_mod = kornia.enhance.Invert()
+        assert_allclose(op(img), op_mod(img))
+
+
 class TestAdjustSaturation:
     def test_saturation_one(self, device, dtype):
         data = torch.tensor([[[.5, .5],

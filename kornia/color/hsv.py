@@ -15,6 +15,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 
     Returns:
         torch.Tensor: HSV version of the image with shape of :math:`(*, 3, H, W)`.
+        The H channel values are in the range 0..2pi. S and V are in the range 0..1.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -69,7 +70,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an image from HSV to RGB.
 
-    The image data is assumed to be in the range of (0, 1).
+    The H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
     Args:
         image (torch.Tensor): HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
@@ -144,7 +145,7 @@ class RgbToHsv(nn.Module):
 class HsvToRgb(nn.Module):
     r"""Convert an image from HSV to RGB.
 
-    The image data is assumed to be in the range of (0, 1).
+    H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
     Returns:
         torch.Tensor: RGB version of the image.

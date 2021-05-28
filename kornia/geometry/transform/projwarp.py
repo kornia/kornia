@@ -1,11 +1,14 @@
 """Module to perform projective transformations to tensors."""
-from typing import Tuple, List
+from typing import Tuple, List, Optional
+import warnings
 
 import torch
+
 import kornia as K
 from kornia.geometry.conversions import convert_affinematrix_to_homography3d
 from kornia.geometry.transform.homography_warper import normalize_homography3d, homography_warp3d
 from kornia.testing import check_is_tensor
+from kornia.utils.helpers import _torch_solve_cast, _torch_inverse_cast
 
 __all__ = [
     "warp_affine3d",
@@ -21,7 +24,7 @@ def warp_affine3d(src: torch.Tensor,
                   dsize: Tuple[int, int, int],
                   flags: str = 'bilinear',
                   padding_mode: str = 'zeros',
-                  align_corners: bool = True) -> torch.Tensor:
+                  align_corners: Optional[bool] = None) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
     .. warning::
@@ -40,11 +43,23 @@ def warp_affine3d(src: torch.Tensor,
     Returns:
         torch.Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
     assert len(src.shape) == 5, src.shape
     assert len(M.shape) == 3 and M.shape[-2:] == (3, 4), M.shape
     assert len(dsize) == 3, dsize
     B, C, D, H, W = src.size()
+
+    # TODO: remove the statement below in kornia v0.6
+    if align_corners is None:
+        message: str = (
+            "The align_corners default value has been changed. By default now is set True "
+            "in order to match cv2.warpAffine. In case you want to keep your previous "
+            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+        warnings.warn(message)
+        # set default value for align corners
+        align_corners = True
 
     size_src: Tuple[int, int, int] = (D, H, W)
     size_out: Tuple[int, int, int] = dsize
@@ -55,7 +70,7 @@ def warp_affine3d(src: torch.Tensor,
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
         M_4x4, size_src, size_out)    # Bx4x4
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
 
     # compute meshgrid and apply to input
@@ -105,6 +120,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     Returns:
         torch.Tensor: the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`warp_affine3d`.
     """
     assert len(center.shape) == 2 and center.shape[-1] == 3, center.shape
     assert len(angles.shape) == 2 and angles.shape[-1] == 3, angles.shape
@@ -123,7 +140,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     from_origin_mat[..., :3, -1] += center
 
     to_origin_mat = from_origin_mat.clone()
-    to_origin_mat = from_origin_mat.inverse()
+    to_origin_mat = _torch_inverse_cast(from_origin_mat)
 
     # append tranlation with zeros
     proj_mat = projection_from_Rt(rmat, torch.zeros_like(center)[..., None])  # Bx3x4
@@ -194,32 +211,36 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         \end{pmatrix}
 
     Args:
-        src (Tensor): coordinates of quadrangle vertices in the source image.
-        dst (Tensor): coordinates of the corresponding quadrangle vertices in
-            the destination image.
+        src (torch.Tensor): coordinates of quadrangle vertices in the source image with shape :math:`(B, 8, 3)`.
+        dst (torch.Tensor): coordinates of the corresponding quadrangle vertices in
+            the destination image with shape :math:`(B, 8, 3)`.
 
     Returns:
-        Tensor: the perspective transformation.
+        torch.Tensor: the perspective transformation with shape :math:`(B, 4, 4)`.
 
-    Shape:
-        - Input: :math:`(B, 8, 3)` and :math:`(B, 8, 3)`
-        - Output: :math:`(B, 4, 4)`
+    .. note::
+        This function is often used in conjuntion with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(src)))
+
     if not isinstance(dst, (torch.Tensor)):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
                         .format(type(dst)))
+
     if not src.shape[-2:] == (8, 3):
         raise ValueError("Inputs must be a Bx8x3 tensor. Got {}"
                          .format(src.shape))
+
     if not src.shape == dst.shape:
         raise ValueError("Inputs must have the same shape. Got {}"
                          .format(dst.shape))
+
     if not (src.shape[0] == dst.shape[0]):
         raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
                          .format(src.shape, dst.shape))
+
     assert src.device == dst.device and src.dtype == dst.dtype, (
         f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
         f"with the same dtype (Got {src.dtype}, {dst.dtype})."
@@ -252,7 +273,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     ], dim=1)
 
     # solve the system Ax = b
-    X, LU = torch.solve(b, A)
+    X, LU = _torch_solve_cast(b, A)
 
     # create variable to return
     batch_size = src.shape[0]
@@ -319,6 +340,8 @@ def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int
     Returns:
         torch.Tensor: the warped input image :math:`(B, C, D, H, W)`.
 
+    .. note::
+        This function is often used in conjuntion with :func:`get_perspective_transform3d`.
     """
     check_is_tensor(src)
     check_is_tensor(M)

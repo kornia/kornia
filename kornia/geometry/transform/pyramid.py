@@ -54,23 +54,10 @@ class PyrDown(nn.Module):
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
         super(PyrDown, self).__init__()
         self.border_type: str = border_type
-        self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
         self.align_corners: bool = align_corners
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(input.shape))
-        # blur image
-        x_blur: torch.Tensor = filter2D(input, self.kernel, self.border_type)
-
-        # downsample.
-        out: torch.Tensor = F.interpolate(x_blur, scale_factor=0.5, mode='bilinear',
-                                          align_corners=self.align_corners)
-        return out
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return pyrdown(input, self.border_type, self.align_corners)
 
 
 class PyrUp(nn.Module):
@@ -98,24 +85,10 @@ class PyrUp(nn.Module):
     def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
         super(PyrUp, self).__init__()
         self.border_type: str = border_type
-        self.kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
         self.align_corners: bool = align_corners
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not len(input.shape) == 4:
-            raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                             .format(input.shape))
-        # upsample tensor
-        b, c, height, width = input.shape
-        x_up: torch.Tensor = F.interpolate(input, size=(height * 2, width * 2),
-                                           mode='bilinear', align_corners=self.align_corners)
-
-        # blurs upsampled tensor
-        x_blur: torch.Tensor = filter2D(x_up, self.kernel, self.border_type)
-        return x_blur
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return pyrup(input, self.border_type, self.align_corners)
 
 
 class ScalePyramid(nn.Module):
@@ -231,7 +204,8 @@ class ScalePyramid(nn.Module):
                 pyr[-1].append(cur_level)
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            nextOctaveFirstLevel = F.interpolate(pyr[-1][-self.extra_levels], scale_factor=0.5,
+            _pyr = pyr[-1][-self.extra_levels]
+            nextOctaveFirstLevel = F.interpolate(_pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2),
                                                  mode='nearest')  # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
@@ -254,23 +228,74 @@ class ScalePyramid(nn.Module):
         return pyr, sigmas, pixel_dists
 
 
-# functional api
 def pyrdown(
         input: torch.Tensor,
         border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
-    See :class:`~kornia.transform.PyrDown` for details.
+    Args:
+        input (tensor): the tensor to be downsampled.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+
+    Return:
+        torch.Tensor: the downsampled tensor.
+
+    Examples:
+        >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
+        >>> pyrdown(input, align_corners=True)
+        tensor([[[[ 3.7500,  5.2500],
+                  [ 9.7500, 11.2500]]]])
     """
-    return PyrDown(border_type, align_corners)(input)
+    if not len(input.shape) == 4:
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+    b, c, height, width = input.shape
+    # blur image
+    x_blur: torch.Tensor = filter2D(input, kernel, border_type)
+
+    # downsample.
+    out: torch.Tensor = F.interpolate(x_blur, size=(height // 2, width // 2), mode='bilinear',
+                                      align_corners=align_corners)
+    return out
 
 
 def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Upsamples a tensor and then blurs it.
 
-    See :class:`~kornia.transform.PyrUp` for details.
+    Args:
+        input (tensor): the tensor to be downsampled.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        align_corners(bool): interpolation flag. Default: False. See
+        https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail.
+
+    Return:
+        torch.Tensor: the downsampled tensor.
+
+    Examples:
+        >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
+        >>> pyrup(input, align_corners=True)
+        tensor([[[[0.7500, 0.8750, 1.1250, 1.2500],
+                  [1.0000, 1.1250, 1.3750, 1.5000],
+                  [1.5000, 1.6250, 1.8750, 2.0000],
+                  [1.7500, 1.8750, 2.1250, 2.2500]]]])
     """
-    return PyrUp(border_type, align_corners)(input)
+    if not len(input.shape) == 4:
+        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
+    # upsample tensor
+    b, c, height, width = input.shape
+    x_up: torch.Tensor = F.interpolate(input, size=(height * 2, width * 2),
+                                       mode='bilinear', align_corners=align_corners)
+
+    # blurs upsampled tensor
+    x_blur: torch.Tensor = filter2D(x_up, kernel, border_type)
+    return x_blur
 
 
 def build_pyramid(

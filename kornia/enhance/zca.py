@@ -4,6 +4,8 @@ from functools import reduce
 import torch
 import torch.nn as nn
 
+from kornia.utils.helpers import _torch_svd_cast
+
 
 __all__ = [
     "zca_mean",
@@ -248,7 +250,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     else:
         cov = cov / float(N)
 
-    U, S, _ = torch.svd(cov)
+    U, S, _ = _torch_svd_cast(cov)
 
     S = S.reshape(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)

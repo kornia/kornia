@@ -8,6 +8,7 @@ import torch.nn.functional as F
 
 from kornia.enhance.histogram import histogram
 from kornia.utils.image import _to_bchw
+from kornia.utils.helpers import _torch_histc_cast
 
 
 __all__ = ["equalize_clahe"]
@@ -115,7 +116,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     histos: torch.Tensor = torch.empty((tiles.shape[0], num_bins), device=tiles.device)
     if not diff:
         for i in range(tiles.shape[0]):
-            histos[i] = torch.histc(tiles[i], bins=num_bins, min=0, max=1)
+            histos[i] = _torch_histc_cast(tiles[i], bins=num_bins, min=0, max=1)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
@@ -228,7 +229,8 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles, dtype=torch.long)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
-    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(2. * th - 1)[None].T.expand(2 * th, tw)
+    ih = torch.arange(2 * th - 1, -1, -1, device=interp_tiles.device).div(
+        2. * th - 1)[None].transpose(-2, -1).expand(2 * th, tw)
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
     iw = torch.arange(2 * tw - 1, -1, -1, device=interp_tiles.device).div(2. * tw - 1).expand(th, 2 * tw)
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW

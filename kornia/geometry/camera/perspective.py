@@ -23,11 +23,11 @@ def project_points(
     Returns:
         torch.Tensor: array of (u, v) cam coordinates with shape :math:`(*, 2)`.
     """
-    if not torch.is_tensor(point_3d):
+    if not isinstance(point_3d, torch.Tensor):
         raise TypeError("Input point_3d type is not a torch.Tensor. Got {}"
                         .format(type(point_3d)))
 
-    if not torch.is_tensor(camera_matrix):
+    if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
 
@@ -79,7 +79,7 @@ def unproject_points(
         depth (torch.Tensor): tensor containing the depth value of each 2d
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.
         camera_matrix (torch.Tensor): tensor containing the intrinsics camera
-            matrix. The tensor shape must be Bx4x4.
+            matrix. The tensor shape must be :math:`(*, 3, 3)`.
         normalize (bool, optional): whether to normalize the pointcloud. This
             must be set to `True` when the depth is represented as the Euclidean
             ray length from the camera position. Default is `False`.
@@ -88,15 +88,15 @@ def unproject_points(
         torch.Tensor: tensor of (x, y, z) world coordinates with shape
         :math:`(*, 3)`.
     """
-    if not torch.is_tensor(point_2d):
+    if not isinstance(point_2d, torch.Tensor):
         raise TypeError("Input point_2d type is not a torch.Tensor. Got {}"
                         .format(type(point_2d)))
 
-    if not torch.is_tensor(depth):
+    if not isinstance(depth, torch.Tensor):
         raise TypeError("Input depth type is not a torch.Tensor. Got {}"
                         .format(type(depth)))
 
-    if not torch.is_tensor(camera_matrix):
+    if not isinstance(camera_matrix, torch.Tensor):
         raise TypeError("Input camera_matrix type is not a torch.Tensor. Got {}"
                         .format(type(camera_matrix)))
 
@@ -114,6 +114,7 @@ def unproject_points(
     if not camera_matrix.shape[-2:] == (3, 3):
         raise ValueError(
             "Input camera_matrix must be in the shape of (*, 3, 3).")
+
     # projection eq. K_inv * [u v 1]'
     # x = (u - cx) * Z / fx
     # y = (v - cy) * Z / fy
@@ -136,6 +137,6 @@ def unproject_points(
     xyz = convert_points_to_homogeneous(xyz)
 
     if normalize:
-        xyz = F.normalize(xyz, dim=-1, p=2)
+        xyz = F.normalize(xyz, dim=-1, p=2.)
 
     return xyz * depth

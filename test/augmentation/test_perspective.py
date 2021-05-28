@@ -56,47 +56,57 @@ class TestRandomPerspective:
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
 
-        out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, p=0.5, return_transform=False)(x_data)
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
+
+        out_perspective = aug(x_data)
 
         assert out_perspective.shape == x_data.shape
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
 
-        out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, p=0.5, return_transform=False)(x_data)
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=False)
+
+        out_perspective = aug(x_data)
 
         assert out_perspective.shape == x_data.shape
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        out_perspective = kornia.augmentation.RandomPerspective(
-            0.5, p=0.5, return_transform=True)(x_data)
+        aug = kornia.augmentation.RandomPerspective(0.5, p=0.5, return_transform=True)
+
+        out_perspective = aug(x_data)
 
         assert isinstance(out_perspective, tuple)
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_no_transform_module(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
-        out_perspective = kornia.augmentation.RandomPerspective()(x_data)
+        aug = kornia.augmentation.RandomPerspective()
+        out_perspective = aug(x_data)
         assert out_perspective.shape == x_data.shape
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_identity(self, device):
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        out_perspective = kornia.augmentation.RandomPerspective(p=0.0,
-                                                                return_transform=True)(x_data)
+        aug = kornia.augmentation.RandomPerspective(p=0., return_transform=True)
+
+        out_perspective = aug(x_data)
         assert isinstance(out_perspective, tuple)
         assert len(out_perspective) == 2
         assert out_perspective[0].shape == x_data.shape
         assert out_perspective[1].shape == (1, 3, 3)
         assert_allclose(out_perspective[0], x_data)
         assert_allclose(out_perspective[1], torch.eye(3, device=device)[None])
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_expected_transform(self, device):
         torch.manual_seed(0)
@@ -117,8 +127,9 @@ class TestRandomPerspective:
                                             [0.0351, 0.1213, 1.0000]]],
                                           device=device, dtype=x_data.dtype)
 
-        out_perspective = kornia.augmentation.RandomPerspective(p=.99999999,  # step one the random state
-                                                                return_transform=True)(x_data)
+        aug = kornia.augmentation.RandomPerspective(p=.99999999, return_transform=True)  # step one the random state
+
+        out_perspective = aug(x_data)
 
         assert isinstance(out_perspective, tuple)
         assert len(out_perspective) == 2
@@ -126,6 +137,7 @@ class TestRandomPerspective:
         assert out_perspective[1].shape == (1, 3, 3)
         assert_allclose(out_perspective[0], expected_output, atol=1e-4, rtol=1e-4)
         assert_allclose(out_perspective[1], expected_transform, atol=1e-4, rtol=1e-4)
+        assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
@@ -140,13 +152,17 @@ class TestRandomAffine:
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
-        out = kornia.augmentation.RandomAffine(0.)(x_data)
+        aug = kornia.augmentation.RandomAffine(0.)
+        out = aug(x_data)
         assert out.shape == x_data.shape
+        assert aug.inverse(out).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
-        out = kornia.augmentation.RandomAffine(0.)(x_data)
+        aug = kornia.augmentation.RandomAffine(0.)
+        out = aug(x_data)
         assert out.shape == x_data.shape
+        assert aug.inverse(out).shape == x_data.shape
 
     @pytest.mark.parametrize("degrees", [45., (-45., 45.), torch.tensor([45., 45.])])
     @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])
@@ -158,18 +174,22 @@ class TestRandomAffine:
     ])
     def test_batch_multi_params(self, degrees, translate, scale, shear, device, dtype):
         x_data = torch.rand(2, 2, 8, 9).to(device)
-        out = kornia.augmentation.RandomAffine(
-            degrees=degrees, translate=translate, scale=scale, shear=shear)(x_data)
+        aug = kornia.augmentation.RandomAffine(
+            degrees=degrees, translate=translate, scale=scale, shear=shear)
+        out = aug(x_data)
         assert out.shape == x_data.shape
+        assert aug.inverse(out).shape == x_data.shape
 
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
-        out = kornia.augmentation.RandomAffine(0., return_transform=True)(x_data)
+        aug = kornia.augmentation.RandomAffine(0., return_transform=True)
+        out = aug(x_data)
 
         assert isinstance(out, tuple)
         assert len(out) == 2
         assert out[0].shape == x_data.shape
         assert out[1].shape == (1, 3, 3)
+        assert aug.inverse(out).shape == x_data.shape
 
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)

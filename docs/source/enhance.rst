@@ -18,6 +18,7 @@ The functions in this section perform normalisations and intensity transformatio
 .. autofunction:: zca_mean
 .. autofunction:: zca_whiten
 .. autofunction:: linear_transform
+.. autofunction:: invert
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
@@ -44,3 +45,5 @@ Modules
 .. autoclass:: AdjustHue
 .. autoclass:: AdjustGamma
 .. autoclass:: AddWeighted
+
+.. autoclass:: Invert

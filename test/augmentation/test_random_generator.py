@@ -434,9 +434,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize('input_size,size,resize_to', [
         ((-300, 300), (200, 200), (100, 100)),
-        ((100, 100), (200, 200), (100, 100)),
         ((200, 200), torch.tensor([50, 50]), (100, 100)),
-        ((100, 100), torch.tensor([[200, 200], [200, 200]]), (100, 100)),
     ])
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
@@ -472,6 +470,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [199, 0],
                  [199, 199],
                  [0, 199]]], device=device, dtype=dtype),
+            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
@@ -503,6 +502,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                  [199, 0],
                  [199, 199],
                  [0, 199]]], device=device, dtype=dtype),
+            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
@@ -726,6 +726,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
                  [149, 0],
                  [149, 119],
                  [0, 119]]], device=device, dtype=torch.long),
+            input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'].to(device=device), expected['src'])

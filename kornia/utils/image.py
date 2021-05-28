@@ -2,6 +2,7 @@ from typing import Optional
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 
 def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
@@ -45,14 +46,12 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
+def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Converts a PyTorch tensor image to BCHW format.
 
     Args:
         tensor (torch.Tensor): image of the form :math:`(H, W)`, :math:`(C, H, W)`, :math:`(H, W, C)` or
             :math:`(B, C, H, W)`.
-        color_channel_num (Optional[int]): Color channel of the input tensor.
-            If None, it will not alter the input channel.
 
     Returns:
         torch.Tensor: input tensor of the form :math:`(B, C, H, W)`.
@@ -69,22 +68,15 @@ def _to_bchw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> t
     if len(tensor.shape) == 3:
         tensor = tensor.unsqueeze(0)
 
-    # TODO(jian): this function is never used. Besides is not feasible for torchscript.
-    # In addition, the docs must be updated. I don't understand what is doing.
-    # if color_channel_num is not None and color_channel_num != 1:
-    #    channel_list = [0, 1, 2, 3]
-    #    channel_list.insert(1, channel_list.pop(color_channel_num))
-    #    tensor = tensor.permute(*channel_list)
     return tensor
 
 
-def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> torch.Tensor:
-    """Converts a PyTorch tensor image to BCHW format.
+def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
+    """Converts a PyTorch tensor image to BCDHW format.
+
     Args:
         tensor (torch.Tensor): image of the form :math:`(D, H, W)`, :math:`(C, D, H, W)`, :math:`(D, H, W, C)` or
             :math:`(B, C, D, H, W)`.
-        color_channel_num (Optional[int]): Color channel of the input tensor.
-            If None, it will not alter the input channel.
 
     Returns:
         torch.Tensor: input tensor of the form :math:`(B, C, D, H, W)`.
@@ -101,16 +93,10 @@ def _to_bcdhw(tensor: torch.Tensor, color_channel_num: Optional[int] = None) -> 
     if len(tensor.shape) == 4:
         tensor = tensor.unsqueeze(0)
 
-    # TODO(jian): this function is never used. Besides is not feasible for torchscript.
-    # In addition, the docs must be updated. I don't understand what is doing.
-    # if color_channel_num is not None and color_channel_num != 1:
-    #    channel_list = [0, 1, 2, 3, 4]
-    #    channel_list.insert(1, channel_list.pop(color_channel_num))
-    #    tensor = tensor.permute(*channel_list)
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor) -> np.array:
+def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -132,7 +118,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
             "Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: np.array = tensor.cpu().detach().numpy()
+    image: np.ndarray = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -156,3 +142,19 @@ def tensor_to_image(tensor: torch.Tensor) -> np.array:
             "Cannot process tensor with shape {}".format(input_shape))
 
     return image
+
+
+class ImageToTensor(nn.Module):
+    """Converts a numpy image to a PyTorch 4d tensor image.
+
+    Args:
+        keepdim (bool): If ``False`` unsqueeze the input image to match the shape
+            :math:`(B, H, W, C)`. Default: ``True``
+    """
+
+    def __init__(self, keepdim: bool = False):
+        super().__init__()
+        self.keepdim = keepdim
+
+    def forward(self, x: np.ndarray) -> torch.Tensor:
+        return image_to_tensor(x, keepdim=self.keepdim)

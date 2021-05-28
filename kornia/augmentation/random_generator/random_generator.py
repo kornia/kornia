@@ -244,7 +244,8 @@ def random_affine_generator(
 
     if translate is not None:
         translate = translate.to(device=device, dtype=dtype)
-        _joint_range_check(cast(torch.Tensor, translate), "translate")
+        assert 0. <= translate[0] <= 1. and 0. <= translate[1] <= 1. and translate.shape == torch.Size([2]), \
+            f"Expect translate contains two elements and ranges are in [0, 1]. Got {translate}."
         max_dx: torch.Tensor = translate[0] * width
         max_dy: torch.Tensor = translate[1] * height
         translations = torch.stack([
@@ -370,7 +371,9 @@ def random_crop_generator(
                 [[ 0.,  0.],
                  [27.,  0.],
                  [27., 25.],
-                 [ 0., 25.]]])}
+                 [ 0., 25.]]]), 'input_size': tensor([[30, 30],
+                [30, 30],
+                [30, 30]])}
     """
     _common_param_check(batch_size, same_on_batch)
     _device, _dtype = _extract_device_dtype([size if isinstance(size, torch.Tensor) else None])
@@ -383,14 +386,16 @@ def random_crop_generator(
     assert size.shape == torch.Size([batch_size, 2]), (
         "If `size` is a tensor, it must be shaped as (B, 2). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}.")
+    assert input_size[0] > 0 and input_size[1] > 0 and (size > 0).all(), \
+        f"Got non-positive input size or size. {input_size}, {size}."
     size = size.floor()
 
     x_diff = input_size[1] - size[:, 1] + 1
     y_diff = input_size[0] - size[:, 0] + 1
 
-    if (x_diff < 0).any() or (y_diff < 0).any():
-        raise ValueError("input_size %s cannot be smaller than crop size %s in any dimension."
-                         % (str(input_size), str(size)))
+    # Start point will be 0 if diff < 0
+    x_diff = x_diff.clamp(0)
+    y_diff = y_diff.clamp(0)
 
     if batch_size == 0:
         return dict(
@@ -408,15 +413,15 @@ def random_crop_generator(
     crop_src = bbox_generator(
         x_start.view(-1).to(device=_device, dtype=_dtype),
         y_start.view(-1).to(device=_device, dtype=_dtype),
-        size[:, 1].to(device=_device, dtype=_dtype),
-        size[:, 0].to(device=_device, dtype=_dtype))
+        torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
+        torch.where(size[:, 0] == 0, torch.tensor(input_size[0], device=_device, dtype=_dtype), size[:, 0]))
 
     if resize_to is None:
         crop_dst = bbox_generator(
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-            size[:, 1].to(device=_device, dtype=_dtype),
-            size[:, 0].to(device=_device, dtype=_dtype))
+            size[:, 1],
+            size[:, 0])
     else:
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
@@ -428,8 +433,9 @@ def random_crop_generator(
             [0, resize_to[0] - 1],
         ]], device=_device, dtype=_dtype).repeat(batch_size, 1, 1)
 
-    return dict(src=crop_src,
-                dst=crop_dst)
+    _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+
+    return dict(src=crop_src, dst=crop_dst, input_size=_input_size)
 
 
 def random_crop_size_generator(
@@ -489,7 +495,7 @@ def random_crop_size_generator(
     w = torch.sqrt(area * aspect_ratio).round().floor()
     h = torch.sqrt(area / aspect_ratio).round().floor()
     # Element-wise w, h condition
-    cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
+    cond = ((0 < w) * (w < size[0]) * (0 < h) * (h < size[1])).int()
 
     # torch.argmax is not reproducible accross devices: https://github.com/pytorch/pytorch/issues/17738
     # Here, we will select the first occurance of the duplicated elements.
@@ -677,8 +683,10 @@ def center_crop_generator(
         [dst_w - 1, dst_h - 1],
         [0, dst_h - 1],
     ]], device=device, dtype=torch.long).expand(batch_size, -1, -1)
-    return dict(src=points_src,
-                dst=points_dst)
+
+    _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
+
+    return dict(src=points_src, dst=points_dst, input_size=_input_size)
 
 
 def random_motion_blur_generator(

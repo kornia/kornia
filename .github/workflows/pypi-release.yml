@@ -1,0 +1,100 @@
+name: PyPI Release
+
+# https://help.github.com/en/actions/reference/events-that-trigger-workflows
+on:  # Trigger the workflow on push or pull request, but only for the master branch
+  push:
+    branches: [master]
+  release:
+    types: [published]
+
+jobs:
+  build-sdist:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@master
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+
+    - name: Install dependencies
+      run: python -m pip install --user --upgrade setuptools wheel
+    - name: Build source
+      env:
+        KORNIA_RELEASE: 1
+      run: |
+        python setup.py sdist bdist_wheel
+        ls -lh dist/
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+
+  #build-wheels:
+  #  runs-on: ${{ matrix.os }}
+  #  needs: build-sdist
+  #  strategy:
+  #    fail-fast: true
+  #    max-parallel: 1
+  #    matrix:
+  #      os: [ubuntu-20.04, macOS-10.15, windows-2019]
+  #      #python-version: [2.7, 3.6, 3.7, 3.8, 3.9]
+  #  steps:
+  #  - uses: actions/checkout@master
+  #  - uses: actions/download-artifact@v2
+  #    with:
+  #      name: pypi-packages-${{ github.sha }}
+  #      path: dist
+  #
+  #  - name: Building wheels
+  #    uses: pypa/cibuildwheel@v1.11.0
+  #    env:
+  #      KORNIA_RELEASE: 1
+  #      # Disable building PyPy wheels on all platforms
+  #      CIBW_SKIP: cp27-* cp35-* pp*
+  #    with:
+  #      output-dir: dist
+  #
+  #  - uses: actions/upload-artifact@v2
+  #    with:
+  #      name: pypi-packages-${{ github.sha }}
+  #      path: dist
+
+  upload-packages:
+    runs-on: ubuntu-20.04
+    needs: build-sdist
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+    - run: ls -lh dist/
+
+    - name: Upload to release
+      uses: AButler/upload-release-assets@v2.0
+      if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
+      with:
+        files: 'dist/*'
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-pypi:
+    runs-on: ubuntu-20.04
+    needs: build-sdist
+    if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
+    steps:
+    - uses: actions/checkout@master
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.7
+    - uses: actions/download-artifact@v2
+      with:
+        name: pypi-packages-${{ github.sha }}
+        path: dist
+    - run: ls -l dist/
+
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@v1.4.1
+      with:
+        user: __token__
+        password: ${{ secrets.pypi_password }}

@@ -25,10 +25,15 @@ Set of operators to perform data augmentation on 2D image tensors.
 .. autoclass:: RandomEqualize
 .. autoclass:: RandomMixUp
 .. autoclass:: RandomCutMix
+.. autoclass:: RandomInvert
+.. autoclass:: RandomChannelShuffle
+.. autoclass:: RandomGaussianNoise
 
 .. automodule:: kornia.augmentation.functional.functional
     :members:
 
+
+.. currentmodule:: kornia.augmentation
 
 Transforms3D
 ============
@@ -48,6 +53,8 @@ Set of operators to perform data augmentation on 3D volumetric tensors.
 .. automodule:: kornia.augmentation.functional.functional3d
     :members:
 
+
+.. currentmodule:: kornia.augmentation
 
 Normalizations
 ==============
