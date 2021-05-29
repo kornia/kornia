@@ -93,6 +93,10 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
     return interp_tiles
 
 
+def _my_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
+    return _torch_histc_cast(tiles, bins=bins, min=0, max=1)
+
+
 def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40., diff: bool = False) -> torch.Tensor:
     r"""Compute luts for a batched set of tiles.
 
@@ -114,7 +118,10 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
-        histos = torch.stack(list(map(lambda p: _torch_histc_cast(p, bins=num_bins, min=0, max=1), tiles)))
+        if torch.jit.is_scripting():
+            histos = torch.stack([_torch_histc_cast(tile, bins=num_bins, min=0, max=1) for tile in tiles])
+        else:
+            histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
