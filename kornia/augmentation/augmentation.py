@@ -1809,7 +1809,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         return input + params['noise'].to(input.device) * self.std + self.mean
 
 
-class RandomFisheye(AugmentationBase2D):
+class RandomFisheye(GeometricAugmentationBase2D):
     r"""Add random camera radial distortion.
 
     Args:
@@ -1886,7 +1886,7 @@ class RandomFisheye(AugmentationBase2D):
         return remap(input, field_x, field_y, normalized_coordinates=True)
 
 
-class RandomElasticTransform(AugmentationBase2D):
+class RandomElasticTransform(GeometricAugmentationBase2D):
     r"""Add random elastic transformation to a tensor image.
 
     Args:
@@ -1950,7 +1950,27 @@ class RandomElasticTransform(AugmentationBase2D):
         )
 
 
-class RandomThinPlateSpline(AugmentationBase2D):
+class RandomThinPlateSpline(GeometricAugmentationBase2D):
+    r"""Add random noise to the Thin Plate Spline algorithm.
+
+    Args:
+        scale (float): the scale factor to apply to the destionation points. Default: 0.2.
+        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
+        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> out = RandomThinPlateSpline()(img)
+        >>> out.shape
+        torch.Size([1, 1, 2, 2])
+
+    .. note::
+        This function internally uses :func:`warp_image_tps` to perform the warping.
+    """
     def __init__(self,
                  scale: float = 0.2,
                  align_corners: bool = False,
@@ -1986,7 +2006,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         return warp_image_tps(input, src, kernel, affine, self.align_corners)
 
 
-class RandomBoxBlur(AugmentationBase2D):
+class RandomBoxBlur(GeometricAugmentationBase2D):
     """Adds random blur with a box filter to an image tensor.
 
     Args:
