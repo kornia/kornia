@@ -114,9 +114,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
     pixels: int = th * tw
     tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
     if not diff:
-        def myhistc(tiles):
-            return _torch_histc_cast(tiles, bins=num_bins, min=0, max=1)
-        histos = torch.stack(list(map(myhistc, tiles)))
+        histos = torch.stack(list(map(lambda p: _torch_histc_cast(p, bins=num_bins, min=0, max=1), tiles)))
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
@@ -126,12 +124,12 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
         histos.clamp_(max=max(clip * pixels // num_bins, 1))
         clipped: torch.Tensor = pixels - histos.sum(1)
         redist: torch.Tensor = clipped // num_bins
-        histos += redist[None].T
+        histos += redist[None].transpose(0, 1)
         residual: torch.Tensor = clipped - redist * num_bins
         # trick to avoid using a loop to assign the residual
         v_range: torch.Tensor = torch.arange(num_bins, device=histos.device)
         mat_range: torch.Tensor = v_range.repeat(histos.shape[0], 1)
-        histos += mat_range < residual[None].T
+        histos += mat_range < residual[None].transpose(0, 1)
 
     lut_scale: float = (num_bins - 1) / pixels
     luts: torch.Tensor = torch.cumsum(histos, 1) * lut_scale
@@ -159,19 +157,23 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     num_imgs, gh, gw, c, th, tw = interp_tiles.shape
 
     # precompute idxs for non corner regions (doing it in cpu seems sligthly faster)
-    j_floor = torch.arange(1, gh - 1).view(gh - 2, 1) // 2
-    j_idxs = torch.tensor([[0, 0, 1, 1], [-1, -1, 0, 0]] * ((gh - 2) // 2))  # reminder + j_idxs[:, 0:2] -= 1
-    j_idxs += j_floor
+    j_idxs = torch.empty(0, 4, dtype=torch.long)
+    if gh > 2:
+        j_floor = torch.arange(1, gh - 1).view(gh - 2, 1) // 2
+        j_idxs = torch.tensor([[0, 0, 1, 1], [-1, -1, 0, 0]] * ((gh - 2) // 2))  # reminder + j_idxs[:, 0:2] -= 1
+        j_idxs += j_floor
 
-    i_floor = torch.arange(1, gw - 1).view(gw - 2, 1) // 2
-    i_idxs = torch.tensor([[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2))  # reminder + i_idxs[:, [0, 2]] -= 1
-    i_idxs += i_floor
+    i_idxs = torch.empty(0, 4, dtype=torch.long)
+    if gw > 2:
+        i_floor = torch.arange(1, gw - 1).view(gw - 2, 1) // 2
+        i_idxs = torch.tensor([[0, 1, 0, 1], [-1, 0, -1, 0]] * ((gw - 2) // 2))  # reminder + i_idxs[:, [0, 2]] -= 1
+        i_idxs += i_floor
 
     # selection of luts to interpolate each patch
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
     # the tensor is init to -1 to denote non init hists
-    luts_x_interp_tiles: torch.Tensor = torch.full(
-        (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, device=interp_tiles.device)  # B x GH x GW x 4 x C x 256
+    luts_x_interp_tiles: torch.Tensor = torch.full(  # B x GH x GW x 4 x C x 256
+        (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
     # corner regions
     luts_x_interp_tiles[:, 0::gh - 1, 0::gw - 1, 0] = luts[:, 0::max(gh // 2 - 1, 1), 0::max(gw // 2 - 1, 1)]
     # border region (h)
