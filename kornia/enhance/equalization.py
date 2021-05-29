@@ -128,7 +128,8 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
         histos *= pixels
 
     if clip > 0.:
-        histos.clamp_(max=max(clip * pixels // num_bins, 1))
+        max_val: float = max(clip * pixels // num_bins, 1)
+        histos.clamp_(max=max_val)
         clipped: torch.Tensor = pixels - histos.sum(1)
         redist: torch.Tensor = clipped // num_bins
         histos += redist[None].transpose(0, 1)
