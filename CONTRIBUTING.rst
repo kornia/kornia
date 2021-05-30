@@ -158,14 +158,12 @@ This section provides general guidance for developing code for the project. The 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
-  - Use ``yapf`` to autoformat: https://github.com/google/yapf
-    For doing so, just run the following from the repository root
+  - Use ``pre-commit`` to autoformat each commit before push: https://pre-commit.com/.
+    For doing so, just install it for this repository:
 
   .. code:: bash
 
-    make yapf
-    # OR for specific folder/path
-    yapf kornia/jit -rip
+    pre-commit install
 
 - Changes to PEP8:
 
