@@ -45,12 +45,9 @@ def load_image(file_name):
 def load_data(root_path, sequence_name, frame_id):
     # index paths
     file_name = 'frame_%04d' % (frame_id)
-    image_file = os.path.join(root_path, 'clean', sequence_name,
-                              file_name + '.png')
-    depth_file = os.path.join(root_path, 'depth', sequence_name,
-                              file_name + '.dpt')
-    camera_file = os.path.join(root_path, 'camdata_left', sequence_name,
-                               file_name + '.cam')
+    image_file = os.path.join(root_path, 'clean', sequence_name, file_name + '.png')
+    depth_file = os.path.join(root_path, 'depth', sequence_name, file_name + '.dpt')
+    camera_file = os.path.join(root_path, 'camdata_left', sequence_name, file_name + '.cam')
     # load the actual data
     image = load_image(image_file)
     depth = load_depth(depth_file)
@@ -62,27 +59,16 @@ def load_data(root_path, sequence_name, frame_id):
 
 
 def DepthWarperApp():
-    parser = argparse.ArgumentParser(
-        description='Warp images by depth application.')
+    parser = argparse.ArgumentParser(description='Warp images by depth application.')
     # data parameters
-    parser.add_argument('--input-dir', type=str, required=True,
-                        help='the path to the directory with the input data.')
-    parser.add_argument('--output-dir', type=str, required=True,
-                        help='the path to output the results.')
-    parser.add_argument('--sequence-name', type=str, default='alley_1',
-                        help='the name of the sequence.')
-    parser.add_argument('--frame-ref-id', type=int, default=1,
-                        help='the id for the reference image in the sequence.')
-    parser.add_argument(
-        '--frame-i-id',
-        type=int,
-        default=2,
-        help='the id for the image i in the sequence.')
+    parser.add_argument('--input-dir', type=str, required=True, help='the path to the directory with the input data.')
+    parser.add_argument('--output-dir', type=str, required=True, help='the path to output the results.')
+    parser.add_argument('--sequence-name', type=str, default='alley_1', help='the name of the sequence.')
+    parser.add_argument('--frame-ref-id', type=int, default=1, help='the id for the reference image in the sequence.')
+    parser.add_argument('--frame-i-id', type=int, default=2, help='the id for the image i in the sequence.')
     # device parameters
-    parser.add_argument('--cuda', action='store_true', default=False,
-                        help='enables CUDA training')
-    parser.add_argument('--seed', type=int, default=666, metavar='S',
-                        help='random seed (default: 666)')
+    parser.add_argument('--cuda', action='store_true', default=False, help='enables CUDA training')
+    parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     args = parser.parse_args()
 
     # define the device to use for inference
@@ -97,10 +83,8 @@ def DepthWarperApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name,
-                                            args.frame_ref_id)
-    img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name,
-                                      args.frame_i_id)
+    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
+    img_i, depth_i, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the homography warper from `kornia`
     warper = dgm.DepthWarper(cam_i)
@@ -117,14 +101,10 @@ def DepthWarperApp():
     img_vis_warped_masked = mask * (0.5 * img_i_to_ref + img_ref)
 
     # save warped image to disk
-    file_name = os.path.join(
-        args.output_dir,
-        'warped_{0}_to_{1}.png'.format(
-            args.frame_i_id, args.frame_ref_id))
+    file_name = os.path.join(args.output_dir, 'warped_{0}_to_{1}.png'.format(args.frame_i_id, args.frame_ref_id))
     cv2.imwrite(file_name, dgm.utils.tensor_to_image(255. * img_vis_warped))
     cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255. * mask))
-    cv2.imwrite(file_name + 'warpedmask.png',
-                dgm.utils.tensor_to_image(255. * img_vis_warped_masked))
+    cv2.imwrite(file_name + 'warpedmask.png', dgm.utils.tensor_to_image(255. * img_vis_warped_masked))
 
 
 if __name__ == "__main__":
