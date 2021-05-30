@@ -191,7 +191,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             in_tensor = input
             return in_tensor, None
 
-    def apply_func(
+    def apply_func(  # type: ignore
         self,
         in_tensor: torch.Tensor,
         in_transform: Optional[torch.Tensor],  # type: ignore
@@ -480,7 +480,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
-    def apply_func(
+    def apply_func(  # type: ignore
         self,
         in_tensor: torch.Tensor,
         label: torch.Tensor,  # type: ignore
@@ -501,7 +501,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
 
         return output, label
 
-    def forward(
+    def forward(  # type: ignore
         self,
         input: torch.Tensor,
         label: torch.Tensor,  # type: ignore

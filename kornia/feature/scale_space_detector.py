@@ -160,8 +160,8 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(  # type: ignore
-                max_coords_best, sigmas_oct, self.scale_pyr.n_levels
+            max_coords_best = _scale_index_to_scale(
+                max_coords_best, sigmas_oct, int(self.scale_pyr.n_levels)
             )
 
             # Create local affine frames (LAFs)

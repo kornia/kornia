@@ -850,7 +850,7 @@ class RandomCrop3D(AugmentationBase3D):
                     self.padding[1],
                     self.padding[2],
                     self.padding[3],  # type: ignore
-                    self.padding[4],
+                    self.padding[4],  # type: ignore
                     self.padding[5],  # type: ignore
                 ]
             else:
