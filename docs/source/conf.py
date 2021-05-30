@@ -4,7 +4,6 @@ import sys
 import torch
 import kornia
 
-import sphinx_gallery
 import sphinx_rtd_theme
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -36,7 +35,6 @@ extensions = [
     'sphinx.ext.githubpages',
     'nbsphinx',
     'sphinxcontrib.bibtex',
-    # 'sphinx_gallery.gen_gallery',
 ]
 
 napoleon_use_ivar = True
@@ -194,69 +192,11 @@ intersphinx_mapping = {
     'torch': ('http://pytorch.org/docs/stable/', None),
 }
 
-# examples_dir = os.path.join(current_path, "tutorials")
-# sphinx_gallery_conf = {
-#     'doc_module': 'kornia',
-#     'examples_dirs': [examples_dir],   # path to your example scripts
-#     'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
-#     'filename_pattern': './',
-# }
+examples_dir = os.path.join(current_path, "tutorials")
+sphinx_gallery_conf = {
+    'doc_module': 'kornia',
+    'examples_dirs': [examples_dir],   # path to your example scripts
+    'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
+    'filename_pattern': './',
+}
 
-
-# -- A patch that prevents Sphinx from cross-referencing ivar tags -------
-# See http://stackoverflow.com/a/41184353/3343043
-
-from docutils import nodes
-from sphinx.util.docfields import TypedField
-from sphinx import addnodes
-
-
-def patched_make_field(self, types, domain, items, **kw):
-    # `kw` catches `env=None` needed for newer sphinx while maintaining
-    #  backwards compatibility when passed along further down!
-
-    # type: (List, unicode, Tuple) -> nodes.field
-    def handle_item(fieldarg, content):
-        par = nodes.paragraph()
-        par += addnodes.literal_strong('', fieldarg)  # Patch: this line added
-        # par.extend(self.make_xrefs(self.rolename, domain, fieldarg,
-        #                           addnodes.literal_strong))
-        if fieldarg in types:
-            par += nodes.Text(' (')
-            # NOTE: using .pop() here to prevent a single type node to be
-            # inserted twice into the doctree, which leads to
-            # inconsistencies later when references are resolved
-            fieldtype = types.pop(fieldarg)
-            if len(fieldtype) == 1 and isinstance(fieldtype[0], nodes.Text):
-                typename = u''.join(n.astext() for n in fieldtype)
-                typename = typename.replace('int', 'python:int')
-                typename = typename.replace('long', 'python:long')
-                typename = typename.replace('float', 'python:float')
-                typename = typename.replace('type', 'python:type')
-                par.extend(self.make_xrefs(self.typerolename, domain, typename,
-                                           addnodes.literal_emphasis, **kw))
-            else:
-                par += fieldtype
-            par += nodes.Text(')')
-        par += nodes.Text(' -- ')
-        par += content
-        return par
-
-    fieldname = nodes.field_name('', self.label)
-    if len(items) == 1 and self.can_collapse:
-        fieldarg, content = items[0]
-        bodynode = handle_item(fieldarg, content)
-    else:
-        bodynode = self.list_type()
-        for fieldarg, content in items:
-            bodynode += nodes.list_item('', handle_item(fieldarg, content))
-    fieldbody = nodes.field_body('', bodynode)
-    return nodes.field('', fieldname, fieldbody)
-
-
-TypedField.make_field = patched_make_field
-
-
-# @jpchen's hack to get rtd builder to install latest pytorch
-if 'READTHEDOCS' in os.environ:
-    os.system('pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl')

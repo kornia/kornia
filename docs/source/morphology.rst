@@ -5,8 +5,8 @@ kornia.morphology
 
 .. autofunction::  dilation
 .. autofunction::  erosion
-.. autofunction::  open
-.. autofunction::  close
+.. autofunction::  opening
+.. autofunction::  closing
 .. autofunction::  gradient
 .. autofunction::  top_hat
-.. autofunction::  black_hat
+.. autofunction::  bottom_hat
