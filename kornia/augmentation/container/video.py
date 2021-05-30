@@ -7,6 +7,7 @@ from kornia.augmentation.base import _AugmentationBase
 from .sequential import Sequential
 
 
+# TODO: Rewrite this to support inverse operation by having a generic AugmentationSequential.
 class VideoSequential(Sequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
@@ -99,6 +100,8 @@ class VideoSequential(Sequential):
         return input
 
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Define the video computation performed.
+        """
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         # Size of T
         frame_num = input.size(self._temporal_channel)

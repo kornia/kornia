@@ -20,8 +20,7 @@ class AugmentationSequential(Sequential):
     Args:
         *args (_AugmentationBase): a list of augmentation module.
         input_types (List[str]): the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints",
-            in which "bbox" is equivalent to "bbox_xyxy".
+            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         same_on_batch (bool, optional): apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings. Default: None.
         return_transform (bool, optional): if ``True`` return the matrix describing the transformation
@@ -172,6 +171,11 @@ class AugmentationSequential(Sequential):
         self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
         input_types: Optional[List[str]] = None
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
+        """Reverse the transformation applied.
+
+        Number of input tensors must align with the number of``input_types``. If ``input_types``
+        is not set, use ``self.input_types`` by default.
+        """
         if input_types is None:
             input_types = self.input_types
         assert len(args) == len(input_types), (
@@ -209,6 +213,8 @@ class AugmentationSequential(Sequential):
     def forward(
         self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
+        """Compute multiple tensors simultaneously according to ``self.input_types``.
+        """
         assert len(args) == len(self.input_types) and self.input_types[0] in ['input'], (
             "The number of inputs must align with the number of input_types, "
             f"and the first element must be input. Got {len(args)} and {len(self.input_types)}."

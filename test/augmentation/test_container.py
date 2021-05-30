@@ -1,7 +1,10 @@
 import pytest
 import torch
 
+from torch.testing import assert_allclose
+
 import kornia.augmentation as K
+from kornia.geometry.transform import bbox_to_mask
 
 
 class TestVideoSequential:
@@ -115,5 +118,50 @@ class TestVideoSequential:
         B, C, D, H, W = 2, 3, 5, 4, 4
         img = torch.ones(B, C, D, H, W, device=device, dtype=dtype)
         op = K.VideoSequential(K.ColorJitter(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
+        op_jit = torch.jit.script(op)
+        assert_allclose(op(img), op_jit(img))
+
+
+class TestAugmentationSequential:
+
+    @pytest.mark.parametrize('input_types', [
+        "input",
+        ["mask", "input"],
+        ["input", "bbox_yxyx"]
+    ])
+    @pytest.mark.parametrize("augmentation_list", [
+        [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)]
+    ])
+    def test_exception(self, augmentation_list, input_types, device, dtype):
+        with pytest.raises(Exception):  # AssertError and NotImplementedError
+            K.AugmentationSequential(augmentation_list, input_types=input_types)
+
+    @pytest.mark.parametrize("augmentation_list", [
+        [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.), K.RandomAffine(360, p=1.)]
+    ])
+    def test_forward_and_inverse(self, augmentation_list, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype),
+            1000, 500
+        )[:, None].float()
+        aug = K.AugmentationSequential(augmentation_list, input_types=["input", "mask", "bbox", "keypoints"])
+        out = aug(inp, mask, bbox, keypoints)
+        assert out[0].shape == inp.shape
+        assert out[1].shape == mask.shape
+        assert out[2].shape == bbox.shape
+        assert out[3].shape == keypoints.shape
+
+    @pytest.mark.jit
+    @pytest.mark.skip(reason="turn off due to Union Type")
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = K.AugmentationSequential([
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
+            K.RandomAffine(360, p=1.)
+        ], same_on_batch=True)
         op_jit = torch.jit.script(op)
         assert_allclose(op(img), op_jit(img))
