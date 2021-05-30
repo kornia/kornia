@@ -163,7 +163,7 @@ This section provides general guidance for developing code for the project. The 
 
   .. code:: bash
 
-    make autopep8
+    make yapf
     # OR for specific folder/path
     yapf kornia/jit -rip
 
