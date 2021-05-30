@@ -9,7 +9,7 @@ Kornia Documentation
 
    introduction
    installation
-   tutorials/index
+   Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
 
 .. toctree::
    :maxdepth: 2
