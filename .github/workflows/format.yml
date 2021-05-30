@@ -20,7 +20,9 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
         restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      run: pip install -r requirements-dev.txt
+      run: |
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+        pip install -r requirements-dev.txt
 
     - name: Run linter
       run: make lint
@@ -36,7 +38,9 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
         restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      run: pip install -r requirements-dev.txt
+      run: |
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+        pip install -r requirements-dev.txt
 
     - name: Run mypy
       run: make mypy
@@ -52,7 +56,9 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
         restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      run: pip install -r requirements-dev.txt
+      run: |
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
+        pip install -r requirements-dev.txt
 
     - name: Run doctest
       run: make doctest
