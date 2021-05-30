@@ -114,11 +114,13 @@ class RandomMixUp(MixAugmentationBase):
 
         lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(label.device)
         inputs = input * (1 - lam) + input_permute * lam
-        out_labels = torch.stack([
-            label.to(input.dtype),
-            labels_permute.to(input.dtype), params['mixup_lambdas'].to(label.device, input.dtype)
-        ],
-                                 dim=-1).to(label.device)
+        out_labels = torch.stack(
+            [
+                label.to(input.dtype),
+                labels_permute.to(input.dtype), params['mixup_lambdas'].to(label.device, input.dtype)
+            ],
+            dim=-1
+        ).to(label.device)
         return inputs, out_labels
 
 

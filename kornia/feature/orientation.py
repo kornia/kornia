@@ -93,8 +93,9 @@ class PatchDominantGradientOrientation(nn.Module):
         wo1_big = wo1_big * mag
         ang_bins_list = []
         for i in range(0, self.num_ang_bins):
-            ang_bins_i = F.adaptive_avg_pool2d((bo0_big == i).to(patch.dtype) * wo0_big +
-                                               (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1))
+            ang_bins_i = F.adaptive_avg_pool2d(
+                (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
+            )
             ang_bins_list.append(ang_bins_i)
         ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
         ang_bins = self.angular_smooth(ang_bins)

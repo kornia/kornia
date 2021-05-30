@@ -21,12 +21,20 @@ class TestMedianBlur:
         assert kornia.filters.median_blur(inp, (3, 3)).shape == (2, 6, 4, 4)
 
     def test_kernel_3x3(self, device, dtype):
-        inp = torch.tensor([[[0., 0., 0., 0., 0.], [0., 3., 7., 5., 0.], [0., 3., 1., 1., 0.], [0., 6., 9., 2., 0.],
-                             [0., 0., 0., 0., 0.]],
-                            [[36., 7.0, 25., 0., 0.], [3.0, 14., 1.0, 0., 0.], [65., 59., 2.0, 0., 0.],
-                             [0.0, 0.0, 0.0, 0., 0.], [0.0, 0.0, 0.0, 0., 0.]]],
-                           device=device,
-                           dtype=dtype).repeat(2, 1, 1, 1)
+        inp = torch.tensor(
+            [
+                [
+                    [0., 0., 0., 0., 0.], [0., 3., 7., 5., 0.], [0., 3., 1., 1., 0.], [0., 6., 9., 2., 0.],
+                    [0., 0., 0., 0., 0.]
+                ],
+                [
+                    [36., 7.0, 25., 0., 0.], [3.0, 14., 1.0, 0., 0.], [65., 59., 2.0, 0., 0.], [0.0, 0.0, 0.0, 0., 0.],
+                    [0.0, 0.0, 0.0, 0., 0.]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)

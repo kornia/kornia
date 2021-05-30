@@ -108,11 +108,10 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
     raise_error_if_laf_is_not_valid(LAF)
     B, N = LAF.shape[:2]
     rotmat: torch.Tensor = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
-    laf_out: torch.Tensor = torch.cat([
-        torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat),
-        LAF.view(B * N, 2, 3)[:, :2, 2:]
-    ],
-                                      dim=2).view(B, N, 2, 3)
+    laf_out: torch.Tensor = torch.cat(
+        [torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat),
+         LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2
+    ).view(B, N, 2, 3)
     return laf_out
 
 
@@ -202,9 +201,13 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2]**2 + laf[..., 0:1, 0:1]**2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
-    laf2_ell = torch.cat([((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) /
-                           (b2a2 * det)), (det / b2a2).contiguous()],
-                         dim=3)  # type: ignore
+    laf2_ell = torch.cat(
+        [
+            ((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) / (b2a2 * det)),
+            (det / b2a2).contiguous()
+        ],
+        dim=3
+    )  # type: ignore
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
     return scale_laf(laf_unit_scale, scale)
 
@@ -276,12 +279,14 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """
     raise_error_if_laf_is_not_valid(LAF)
     B, N, _, _ = LAF.size()
-    pts = torch.cat([
-        torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-        torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-        torch.ones(n_pts - 1, 1)
-    ],
-                    dim=1)
+    pts = torch.cat(
+        [
+            torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            torch.ones(n_pts - 1, 1)
+        ],
+        dim=1
+    )
     # Add origin to draw also the orientation
     pts = torch.cat([torch.tensor([0., 0., 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
@@ -550,8 +555,7 @@ def laf_from_three_points(threepts: torch.Tensor):
     Returns:
         laf (torch.Tensor):  :math:`(B, N, 2, 3)`
     """
-    laf: torch.Tensor = torch.stack([
-        threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]
-    ],
-                                    dim=-1)
+    laf: torch.Tensor = torch.stack(
+        [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
+    )
     return laf

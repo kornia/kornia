@@ -510,11 +510,13 @@ def quaternion_to_rotation_matrix(
     tzz: torch.Tensor = tz * z
     one: torch.Tensor = torch.tensor(1.)
 
-    matrix: torch.Tensor = torch.stack((
-        one - (tyy + tzz), txy - twz, txz + twy, txy + twz, one - (txx + tzz), tyz - twx, txz - twy, tyz + twx, one -
-        (txx + tyy)
-    ),
-                                       dim=-1).view(-1, 3, 3)
+    matrix: torch.Tensor = torch.stack(
+        (
+            one - (tyy + tzz), txy - twz, txz + twy, txy + twz, one -
+            (txx + tzz), tyz - twx, txz - twy, tyz + twx, one - (txx + tyy)
+        ),
+        dim=-1
+    ).view(-1, 3, 3)
 
     if len(quaternion.shape) == 1:
         matrix = torch.squeeze(matrix, dim=0)
@@ -822,10 +824,12 @@ def normalize_pixel_coordinates(
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
     # compute normalization factor
-    hw: torch.Tensor = torch.stack([
-        torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-        torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
-    ])
+    hw: torch.Tensor = torch.stack(
+        [
+            torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
+            torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype)
+        ]
+    )
 
     factor: torch.Tensor = torch.tensor(2., device=pixel_coordinates.device,
                                         dtype=pixel_coordinates.dtype) / (hw - 1).clamp(eps)

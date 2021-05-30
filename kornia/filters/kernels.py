@@ -161,14 +161,22 @@ def get_sobel_kernel_3x3() -> torch.Tensor:
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5"""
-    return torch.tensor([[-1., 0., 2., 0., -1.], [-4., 0., 8., 0., -4.], [-6., 0., 12., 0., -6.],
-                         [-4., 0., 8., 0., -4.], [-1., 0., 2., 0., -1.]])
+    return torch.tensor(
+        [
+            [-1., 0., 2., 0., -1.], [-4., 0., 8., 0., -4.], [-6., 0., 12., 0., -6.], [-4., 0., 8., 0., -4.],
+            [-1., 0., 2., 0., -1.]
+        ]
+    )
 
 
 def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5"""
-    return torch.tensor([[-1., -2., 0., 2., 1.], [-2., -4., 0., 4., 2.], [0., 0., 0., 0., 0.], [2., 4., 0., -4., -2.],
-                         [1., 2., 0., -2., -1.]])
+    return torch.tensor(
+        [
+            [-1., -2., 0., 2., 1.], [-2., -4., 0., 4., 2.], [0., 0., 0., 0., 0.], [2., 4., 0., -4., -2.],
+            [1., 2., 0., -2., -1.]
+        ]
+    )
 
 
 def get_diff_kernel_3x3() -> torch.Tensor:
@@ -182,64 +190,68 @@ def get_diff_kernel_3x3() -> torch.Tensor:
 
 def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3"""
-    kernel: torch.Tensor = torch.tensor([
+    kernel: torch.Tensor = torch.tensor(
         [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [-0.5, 0.0, 0.5], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [-0.5, 0.0, 0.5], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, -0.5, 0.0], [0.0, 0.0, 0.0], [0.0, 0.5, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [0.0, -0.5, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.0]],
+            ],
         ],
-        [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, -0.5, 0.0], [0.0, 0.0, 0.0], [0.0, 0.5, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-        ],
-        [
-            [[0.0, 0.0, 0.0], [0.0, -0.5, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.5, 0.0], [0.0, 0.0, 0.0]],
-        ],
-    ],
-                                        device=device,
-                                        dtype=dtype)
+        device=device,
+        dtype=dtype
+    )
     return kernel.unsqueeze(1)
 
 
 def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3"""
-    kernel: torch.Tensor = torch.tensor([
+    kernel: torch.Tensor = torch.tensor(
         [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 1.0, 0.0], [0.0, -2.0, 0.0], [0.0, 1.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 1.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            ],
+            [
+                [[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, -1.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, -1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            ],
+            [
+                [[0.0, 0.0, 0.0], [1.0, 0.0, -1.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                [[0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 0.0, 0.0]],
+            ],
         ],
-        [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 1.0, 0.0], [0.0, -2.0, 0.0], [0.0, 1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-        ],
-        [
-            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-        ],
-        [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, 1.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-        ],
-        [
-            [[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, -1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, -1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-        ],
-        [
-            [[0.0, 0.0, 0.0], [1.0, 0.0, -1.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 0.0, 0.0]],
-        ],
-    ],
-                                        device=device,
-                                        dtype=dtype)
+        device=device,
+        dtype=dtype
+    )
     return kernel.unsqueeze(1)
 
 
@@ -544,10 +556,12 @@ def get_motion_kernel2d(
                  [0.0000, 0.3333, 0.0000],
                  [0.5000, 0.0000, 0.0000]]])
     """
-    device, dtype = _extract_device_dtype([
-        angle if isinstance(angle, torch.Tensor) else None,
-        direction if isinstance(direction, torch.Tensor) else None,
-    ])
+    device, dtype = _extract_device_dtype(
+        [
+            angle if isinstance(angle, torch.Tensor) else None,
+            direction if isinstance(direction, torch.Tensor) else None,
+        ]
+    )
 
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
@@ -648,10 +662,12 @@ def get_motion_kernel3d(
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError(f"ksize must be an odd integer >= than 3. Got {kernel_size}.")
 
-    device, dtype = _extract_device_dtype([
-        angle if isinstance(angle, torch.Tensor) else None,
-        direction if isinstance(direction, torch.Tensor) else None,
-    ])
+    device, dtype = _extract_device_dtype(
+        [
+            angle if isinstance(angle, torch.Tensor) else None,
+            direction if isinstance(direction, torch.Tensor) else None,
+        ]
+    )
 
     if not isinstance(angle, torch.Tensor):
         angle = torch.tensor([angle], device=device, dtype=dtype)

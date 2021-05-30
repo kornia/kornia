@@ -20,8 +20,14 @@ __all__ = [
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
-    return torch.tensor([[[1., 4., 6., 4., 1.], [4., 16., 24., 16., 4.], [6., 24., 36., 24., 6.],
-                          [4., 16., 24., 16., 4.], [1., 4., 6., 4., 1.]]]) / 256.
+    return torch.tensor(
+        [
+            [
+                [1., 4., 6., 4., 1.], [4., 16., 24., 16., 4.], [6., 24., 36., 24., 6.], [4., 16., 24., 16., 4.],
+                [1., 4., 6., 4., 1.]
+            ]
+        ]
+    ) / 256.
 
 
 class PyrDown(nn.Module):

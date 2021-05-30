@@ -52,9 +52,9 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
 
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]],
-                                          device=input.device,
-                                          dtype=input.dtype)
+    flip_mat: torch.Tensor = torch.tensor(
+        [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
+    )
 
     return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -87,9 +87,9 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
 
     h: int = input.shape[-2]
-    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]],
-                                          device=input.device,
-                                          dtype=input.dtype)
+    flip_mat: torch.Tensor = torch.tensor(
+        [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
+    )
 
     return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -694,11 +694,13 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
 
     lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(labels.device)
     inputs = input * (1 - lam) + input_permute * lam
-    labels = torch.stack([
-        labels.to(input.dtype),
-        labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device, input.dtype)
-    ],
-                         dim=-1).to(labels.device)
+    labels = torch.stack(
+        [
+            labels.to(input.dtype),
+            labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device, input.dtype)
+        ],
+        dim=-1
+    ).to(labels.device)
     return inputs, labels
 
 

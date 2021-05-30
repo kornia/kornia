@@ -266,19 +266,23 @@ class TestHomographyNormalTransform:
 
     expected_2d_1 = torch.tensor([[[0.5, 0.0, -1.], [0.0, 2e14, -1.], [0.0, 0.0, 1.]]])
 
-    expected_3d_0 = expected = torch.tensor([[
-        [0.4, 0.0, 0.0, -1.],
-        [0.0, 2.0, 0.0, -1.],
-        [0.0, 0.0, 0.6667, -1.],
-        [0.0, 0.0, 0.0, 1.],
-    ]])
+    expected_3d_0 = expected = torch.tensor(
+        [[
+            [0.4, 0.0, 0.0, -1.],
+            [0.0, 2.0, 0.0, -1.],
+            [0.0, 0.0, 0.6667, -1.],
+            [0.0, 0.0, 0.0, 1.],
+        ]]
+    )
 
-    expected_3d_1 = torch.tensor([[
-        [0.4, 0.0, 0.0, -1.],
-        [0.0, 2e14, 0.0, -1.],
-        [0.0, 0.0, 0.6667, -1.],
-        [0.0, 0.0, 0.0, 1.],
-    ]])
+    expected_3d_1 = torch.tensor(
+        [[
+            [0.4, 0.0, 0.0, -1.],
+            [0.0, 2e14, 0.0, -1.],
+            [0.0, 0.0, 0.6667, -1.],
+            [0.0, 0.0, 0.0, 1.],
+        ]]
+    )
 
     @pytest.mark.parametrize("height,width,expected", [(2, 5, expected_2d_0), (1, 5, expected_2d_1)])
     def test_transform2d(self, height, width, expected, device, dtype):
@@ -331,10 +335,11 @@ class TestHomographyWarper3D:
         input_shape = (4, 8, 5)
         dst_homo_src = utils.create_eye_batch(batch_size=batch_size, eye_size=4).to(device=device, dtype=dtype)
 
-        res = torch.tensor([[[0.5000, 0.0, 0.0, -1.0], [0.0, 0.2857, 0.0, -1.0], [0.0, 0.0, 0.6667, -1.0],
-                             [0.0, 0.0, 0.0, 1.0]]],
-                           device=device,
-                           dtype=dtype)
+        res = torch.tensor(
+            [[[0.5000, 0.0, 0.0, -1.0], [0.0, 0.2857, 0.0, -1.0], [0.0, 0.0, 0.6667, -1.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype
+        )
         norm = kornia.normal_transform_pixel3d(input_shape[0], input_shape[1],
                                                input_shape[2]).to(device=device, dtype=dtype)
         assert_allclose(norm, res, rtol=1e-4, atol=1e-4)
@@ -349,10 +354,11 @@ class TestHomographyWarper3D:
         norm_homo = kornia.normalize_homography3d(
             dst_homo_src, input_shape, (input_shape[0] // 2, input_shape[1] * 2, input_shape[2] // 2)
         ).to(device=device, dtype=dtype)
-        res = torch.tensor([[[4.0, 0.0, 0.0, 3.0], [0.0, 0.4667, 0.0, -0.5333], [0.0, 0.0, 3.0, 2.0],
-                             [0.0, 0.0, 0.0, 1.0]]],
-                           device=device,
-                           dtype=dtype).repeat(batch_size, 1, 1)
+        res = torch.tensor(
+            [[[4.0, 0.0, 0.0, 3.0], [0.0, 0.4667, 0.0, -0.5333], [0.0, 0.0, 3.0, 2.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype
+        ).repeat(batch_size, 1, 1)
         assert_allclose(norm_homo, res, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -368,9 +374,11 @@ class TestHomographyWarper3D:
         dst_homo_src = dst_homo_src.expand(batch_size, -1, -1)
 
         norm_homo = kornia.normalize_homography3d(dst_homo_src, (2, 2, 5), (2, 2, 5))
-        res = torch.tensor([[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
-                           device=device,
-                           dtype=dtype)
+        res = torch.tensor(
+            [[[0.5, 0.0, 0.0, 0.0], [0.0, 0.5, 0.0, 3.5], [0.0, 0.0, 2.0, 7.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype
+        )
         assert (norm_homo == res).all()
 
     @pytest.mark.parametrize("offset", [1, 3, 7])

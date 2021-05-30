@@ -50,13 +50,13 @@ class TestRgbToBgr(BaseTester):
         assert_allclose(data_bgr, data_bgr_new)
 
     def test_unit(self, device, dtype):
-        data = torch.tensor([[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]],
-                            device=device,
-                            dtype=dtype)  # 3x2x2
+        data = torch.tensor(
+            [[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]], device=device, dtype=dtype
+        )  # 3x2x2
 
-        expected = torch.tensor([[[3., 3.], [3., 3.]], [[2., 2.], [2., 2.]], [[1., 1.], [1., 1.]]],
-                                device=device,
-                                dtype=dtype)  # 3x2x2
+        expected = torch.tensor(
+            [[[3., 3.], [3., 3.]], [[2., 2.], [2., 2.]], [[1., 1.], [1., 1.]]], device=device, dtype=dtype
+        )  # 3x2x2
 
         f = kornia.color.rgb_to_bgr
         assert_allclose(f(data), expected)
@@ -155,27 +155,39 @@ class TestRgbToRgba(BaseTester):
 
     @pytest.mark.parametrize("aval", [0.4, 45.])
     def test_unit(self, device, dtype, aval):
-        data = torch.tensor([[[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]]],
-                            device=device,
-                            dtype=dtype)  # Bx3x2x2
+        data = torch.tensor(
+            [[[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]]], device=device, dtype=dtype
+        )  # Bx3x2x2
 
-        expected = torch.tensor([[[[1.0, 1.0], [1.0, 1.0]], [[2.0, 2.0], [2.0, 2.0]], [[3.0, 3.0], [3.0, 3.0]],
-                                  [[aval, aval], [aval, aval]]]],
-                                device=device,
-                                dtype=dtype)  # Bx4x2x2
+        expected = torch.tensor(
+            [
+                [
+                    [[1.0, 1.0], [1.0, 1.0]], [[2.0, 2.0], [2.0, 2.0]], [[3.0, 3.0], [3.0, 3.0]],
+                    [[aval, aval], [aval, aval]]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )  # Bx4x2x2
 
         assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
 
     @pytest.mark.parametrize("aval", [0.4, 45.])
     def test_unit_aval_th(self, device, dtype, aval):
-        data = torch.tensor([[[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]]],
-                            device=device,
-                            dtype=dtype)  # Bx3x2x2
+        data = torch.tensor(
+            [[[[1., 1.], [1., 1.]], [[2., 2.], [2., 2.]], [[3., 3.], [3., 3.]]]], device=device, dtype=dtype
+        )  # Bx3x2x2
 
-        expected = torch.tensor([[[[1.0, 1.0], [1.0, 1.0]], [[2.0, 2.0], [2.0, 2.0]], [[3.0, 3.0], [3.0, 3.0]],
-                                  [[aval, aval], [aval, aval]]]],
-                                device=device,
-                                dtype=dtype)  # Bx4x2x2
+        expected = torch.tensor(
+            [
+                [
+                    [[1.0, 1.0], [1.0, 1.0]], [[2.0, 2.0], [2.0, 2.0]], [[3.0, 3.0], [3.0, 3.0]],
+                    [[aval, aval], [aval, aval]]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )  # Bx4x2x2
 
         aval = torch.full_like(data[:, :1], aval)  # Bx1xHxW
         assert_allclose(kornia.rgb_to_rgba(data, aval), expected)
@@ -281,13 +293,16 @@ class TestLinearRgb(BaseTester):
         assert_allclose(data_bgr, data_bgr_new)
 
     def test_unit(self, device, dtype):
-        data = torch.tensor([[[1., 0.], [0.5, 0.1]], [[1., 0.], [0.5, 0.2]], [[1., 0.], [0.5, 0.3]]],
-                            device=device,
-                            dtype=dtype)  # 3x2x2
+        data = torch.tensor(
+            [[[1., 0.], [0.5, 0.1]], [[1., 0.], [0.5, 0.2]], [[1., 0.], [0.5, 0.3]]], device=device, dtype=dtype
+        )  # 3x2x2
 
         expected = torch.tensor(
-            [[[1.00000000, 0.00000000], [0.21404116, 0.01002283]], [[1.00000000, 0.00000000], [0.21404116, 0.03310477]],
-             [[1.00000000, 0.00000000], [0.21404116, 0.07323898]]],
+            [
+                [[1.00000000, 0.00000000], [0.21404116, 0.01002283]],
+                [[1.00000000, 0.00000000], [0.21404116, 0.03310477]],
+                [[1.00000000, 0.00000000], [0.21404116, 0.07323898]]
+            ],
             device=device,
             dtype=dtype
         )  # 3x2x2
@@ -297,15 +312,18 @@ class TestLinearRgb(BaseTester):
 
     def test_unit_linear(self, device, dtype):
         data = torch.tensor(
-            [[[1.00000000, 0.00000000], [0.21404116, 0.01002283]], [[1.00000000, 0.00000000], [0.21404116, 0.03310477]],
-             [[1.00000000, 0.00000000], [0.21404116, 0.07323898]]],
+            [
+                [[1.00000000, 0.00000000], [0.21404116, 0.01002283]],
+                [[1.00000000, 0.00000000], [0.21404116, 0.03310477]],
+                [[1.00000000, 0.00000000], [0.21404116, 0.07323898]]
+            ],
             device=device,
             dtype=dtype
         )  # 3x2x2
 
-        expected = torch.tensor([[[1., 0.], [0.5, 0.1]], [[1., 0.], [0.5, 0.2]], [[1., 0.], [0.5, 0.3]]],
-                                device=device,
-                                dtype=dtype)  # 3x2x2
+        expected = torch.tensor(
+            [[[1., 0.], [0.5, 0.1]], [[1., 0.], [0.5, 0.2]], [[1., 0.], [0.5, 0.3]]], device=device, dtype=dtype
+        )  # 3x2x2
 
         f = kornia.color.linear_rgb_to_rgb
         assert_allclose(f(data), expected)

@@ -83,14 +83,14 @@ def crop_and_resize(
 
     # [x, y] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0],
-        [dst_w - 1, 0],
-        [dst_w - 1, dst_h - 1],
-        [0, dst_h - 1],
-    ]],
-                                            device=tensor.device,
-                                            dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [[
+            [0, 0],
+            [dst_w - 1, 0],
+            [dst_w - 1, dst_h - 1],
+            [0, dst_h - 1],
+        ]], device=tensor.device, dtype=tensor.dtype
+    ).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes(tensor, points_src, points_dst, mode, padding_mode, align_corners)
 
@@ -157,25 +157,27 @@ def center_crop(
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = torch.tensor([[
-        [start_x, start_y],
-        [end_x, start_y],
-        [end_x, end_y],
-        [start_x, end_y],
-    ]],
-                                            device=tensor.device,
-                                            dtype=tensor.dtype)
+    points_src: torch.Tensor = torch.tensor(
+        [[
+            [start_x, start_y],
+            [end_x, start_y],
+            [end_x, end_y],
+            [start_x, end_y],
+        ]],
+        device=tensor.device,
+        dtype=tensor.dtype
+    )
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0],
-        [dst_w - 1, 0],
-        [dst_w - 1, dst_h - 1],
-        [0, dst_h - 1],
-    ]],
-                                            device=tensor.device,
-                                            dtype=tensor.dtype).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [[
+            [0, 0],
+            [dst_w - 1, 0],
+            [dst_w - 1, dst_h - 1],
+            [0, dst_h - 1],
+        ]], device=tensor.device, dtype=tensor.dtype
+    ).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes(tensor, points_src, points_dst, mode, padding_mode, align_corners)
 

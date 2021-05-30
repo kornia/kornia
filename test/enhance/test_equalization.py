@@ -44,9 +44,10 @@ class TestEqualization(BaseTester):
         assert res.shape == img.shape
 
     @pytest.mark.parametrize(
-        "B, clip, grid, exception_type", [(0, 1., (2, 2), ValueError), (1, 1, (2, 2), TypeError), (1, 2., 2, TypeError),
-                                          (1, 2., (2, 2, 2), TypeError), (1, 2., (2, 2.), TypeError),
-                                          (1, 2., (2, 0), ValueError)]
+        "B, clip, grid, exception_type", [
+            (0, 1., (2, 2), ValueError), (1, 1, (2, 2), TypeError), (1, 2., 2, TypeError),
+            (1, 2., (2, 2, 2), TypeError), (1, 2., (2, 2.), TypeError), (1, 2., (2, 0), ValueError)
+        ]
     )
     def test_exception(self, B, clip, grid, exception_type):
         C, H, W = 1, 10, 20
@@ -101,12 +102,18 @@ class TestEqualization(BaseTester):
         # and test with a better image
         assert torch.allclose(
             res[..., 0, :],
-            torch.tensor([[[
-                0.0471, 0.0980, 0.1490, 0.2000, 0.2471, 0.2980, 0.3490, 0.3490, 0.4471, 0.4471, 0.5490, 0.5490, 0.6471,
-                0.6471, 0.6980, 0.7490, 0.8000, 0.8471, 0.8980, 1.0000
-            ]]],
-                         dtype=res.dtype,
-                         device=res.device),
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.0471, 0.0980, 0.1490, 0.2000, 0.2471, 0.2980, 0.3490, 0.3490, 0.4471, 0.4471, 0.5490,
+                            0.5490, 0.6471, 0.6471, 0.6980, 0.7490, 0.8000, 0.8471, 0.8980, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
             atol=1e-04,
             rtol=1e-04
         )
@@ -119,12 +126,18 @@ class TestEqualization(BaseTester):
         # and test with a better image
         assert torch.allclose(
             res[..., 0, :],
-            torch.tensor([[[
-                0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4993, 0.4980, 0.2471, 0.7490, 0.4993, 0.4980,
-                0.2471, 0.4980, 0.4993, 0.3333, 0.2471, 0.4980, 1.0000
-            ]]],
-                         dtype=res.dtype,
-                         device=res.device),
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4993, 0.4980, 0.2471, 0.7490,
+                            0.4993, 0.4980, 0.2471, 0.4980, 0.4993, 0.3333, 0.2471, 0.4980, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
             atol=1e-04,
             rtol=1e-04
         )
@@ -137,12 +150,18 @@ class TestEqualization(BaseTester):
         # and test with a better image
         assert torch.allclose(
             res[..., 0, :],
-            torch.tensor([[[
-                0.1216, 0.8745, 0.9373, 0.9163, 0.8745, 0.8745, 0.9373, 0.8745, 0.8745, 0.8118, 0.9373, 0.8745, 0.8745,
-                0.8118, 0.8745, 0.8745, 0.8327, 0.8118, 0.8745, 1.0000
-            ]]],
-                         dtype=res.dtype,
-                         device=res.device),
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.1216, 0.8745, 0.9373, 0.9163, 0.8745, 0.8745, 0.9373, 0.8745, 0.8745, 0.8118, 0.9373,
+                            0.8745, 0.8745, 0.8118, 0.8745, 0.8745, 0.8327, 0.8118, 0.8745, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
             atol=1e-04,
             rtol=1e-04
         )

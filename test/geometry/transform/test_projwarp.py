@@ -43,37 +43,53 @@ class TestWarpAffine3d:
         assert_allclose(output, input, rtol=1e-4, atol=1e-4)
 
     def test_rotate_x(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 2., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 2., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 1., 0.],
-            [0., 2., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 1., 0.],
+                            [0., 2., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         _, _, D, H, W = input.shape
         center = torch.tensor([[(W - 1) / 2, (H - 1) / 2, (D - 1) / 2]], device=device, dtype=dtype)
@@ -86,37 +102,53 @@ class TestWarpAffine3d:
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_y(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 2., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 2., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [2., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [2., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         _, _, D, H, W = input.shape
         center = torch.tensor([[(W - 1) / 2, (H - 1) / 2, (D - 1) / 2]], device=device, dtype=dtype)
@@ -129,37 +161,53 @@ class TestWarpAffine3d:
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
     def test_rotate_z(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 2., 0.],
-            [0., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 2., 0.],
+                            [0., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 1., 2.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 1., 2.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         _, _, D, H, W = input.shape
         center = torch.tensor([[(W - 1) / 2, (H - 1) / 2, (D - 1) / 2]], device=device, dtype=dtype)
@@ -173,63 +221,83 @@ class TestWarpAffine3d:
 
     def test_rotate_y_large(self, device, dtype):
         """Rotates 90deg anti-clockwise."""
-        input = torch.tensor([[[[
-            [0., 4., 0.],
-            [0., 3., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 2., 0.],
-            [0., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]],
-                               [[
-                                   [0., 0., 0.],
-                                   [0., 0., 0.],
-                                   [0., 9., 0.],
-                               ], [
-                                   [0., 0., 0.],
-                                   [0., 6., 7.],
-                                   [0., 0., 0.],
-                               ], [
-                                   [0., 0., 0.],
-                                   [0., 8., 0.],
-                                   [0., 0., 0.],
-                               ]]]],
-                             device=device,
-                             dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 4., 0.],
+                            [0., 3., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 2., 0.],
+                            [0., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ],
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 9., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 6., 7.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 8., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ], [
-            [4., 2., 0.],
-            [3., 1., 0.],
-            [0., 0., 0.],
-        ], [
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 0.],
-        ]],
-                                  [[
-                                      [0., 0., 0.],
-                                      [0., 7., 0.],
-                                      [0., 0., 0.],
-                                  ], [
-                                      [0., 0., 0.],
-                                      [0., 6., 8.],
-                                      [9., 0., 0.],
-                                  ], [
-                                      [0., 0., 0.],
-                                      [0., 0., 0.],
-                                      [0., 0., 0.],
-                                  ]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [4., 2., 0.],
+                            [3., 1., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ],
+                    [
+                        [
+                            [0., 0., 0.],
+                            [0., 7., 0.],
+                            [0., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 6., 8.],
+                            [9., 0., 0.],
+                        ], [
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                            [0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         _, _, D, H, W = input.shape
         center = torch.tensor([[(W - 1) / 2, (H - 1) / 2, (D - 1) / 2]], device=device, dtype=dtype)
@@ -277,11 +345,13 @@ class TestGetRotationMatrix3d:
         angle = torch.tensor([[90., 0., 0.]], device=device, dtype=dtype)
         scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angle, scales)
-        P_expected = torch.tensor([
-            [1., 0., 0., 0.],
-            [0., 0., -1., 0.],
-            [0., 1., 0., 0.],
-        ], device=device, dtype=dtype).unsqueeze(0)
+        P_expected = torch.tensor(
+            [
+                [1., 0., 0., 0.],
+                [0., 0., -1., 0.],
+                [0., 1., 0., 0.],
+            ], device=device, dtype=dtype
+        ).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90y(self, device, dtype):
@@ -289,11 +359,13 @@ class TestGetRotationMatrix3d:
         angle = torch.tensor([[0., 90., 0.]], device=device, dtype=dtype)
         scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angle, scales)
-        P_expected = torch.tensor([
-            [0., 0., 1., 0.],
-            [0., 1., 0., 0.],
-            [-1., 0., 0., 0.],
-        ], device=device, dtype=dtype).unsqueeze(0)
+        P_expected = torch.tensor(
+            [
+                [0., 0., 1., 0.],
+                [0., 1., 0., 0.],
+                [-1., 0., 0., 0.],
+            ], device=device, dtype=dtype
+        ).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_rot90z(self, device, dtype):
@@ -301,11 +373,13 @@ class TestGetRotationMatrix3d:
         angle = torch.tensor([[0., 0., 90.]], device=device, dtype=dtype)
         scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=dtype)
         P = proj.get_projective_transform(center, angle, scales)
-        P_expected = torch.tensor([
-            [0., -1., 0., 0.],
-            [1., 0., 0., 0.],
-            [0., 0., 1., 0.],
-        ], device=device, dtype=dtype).unsqueeze(0)
+        P_expected = torch.tensor(
+            [
+                [0., -1., 0., 0.],
+                [1., 0., 0., 0.],
+                [0., 0., 1., 0.],
+            ], device=device, dtype=dtype
+        ).unsqueeze(0)
         assert_allclose(P, P_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
@@ -367,19 +441,31 @@ class TestPerspectiveTransform3D:
         ).to(device=device, dtype=dtype)
         out = kornia.get_perspective_transform3d(src, dst)
         if batch_size == 1:
-            expected = torch.tensor([[[3.3000, 0.0000, 0.0000, -118.2000], [0.0000, 0.0769, 0.0000, 0.0000],
-                                      [0.0000, 0.0000, 0.5517, 28.7930], [0.0000, 0.0000, 0.0000, 1.0000]]],
-                                    device=device,
-                                    dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [
+                        [3.3000, 0.0000, 0.0000, -118.2000], [0.0000, 0.0769, 0.0000, 0.0000],
+                        [0.0000, 0.0000, 0.5517, 28.7930], [0.0000, 0.0000, 0.0000, 1.0000]
+                    ]
+                ],
+                device=device,
+                dtype=dtype
+            )
         if batch_size == 2:
-            expected = torch.tensor([
-                [[0.9630, 0.0000, 0.0000, -9.3702], [0.0000, 2.0000, 0.0000, -49.9999],
-                 [0.0000, 0.0000, 0.3830, 44.0213], [0.0000, 0.0000, 0.0000, 1.0000]],
-                [[0.9630, 0.0000, 0.0000, -36.5555], [0.0000, 2.0000, 0.0000, -14.0000],
-                 [0.0000, 0.0000, 0.3830, 16.8940], [0.0000, 0.0000, 0.0000, 1.0000]],
-            ],
-                                    device=device,
-                                    dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [
+                        [0.9630, 0.0000, 0.0000, -9.3702], [0.0000, 2.0000, 0.0000, -49.9999],
+                        [0.0000, 0.0000, 0.3830, 44.0213], [0.0000, 0.0000, 0.0000, 1.0000]
+                    ],
+                    [
+                        [0.9630, 0.0000, 0.0000, -36.5555], [0.0000, 2.0000, 0.0000, -14.0000],
+                        [0.0000, 0.0000, 0.3830, 16.8940], [0.0000, 0.0000, 0.0000, 1.0000]
+                    ],
+                ],
+                device=device,
+                dtype=dtype
+            )
 
         assert_allclose(out, expected, rtol=1e-4, atol=1e-4)
 

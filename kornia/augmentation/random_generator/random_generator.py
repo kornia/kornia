@@ -148,14 +148,16 @@ def random_perspective_generator(
     assert type(height) == int and height > 0 and type(width) == int and width > 0, \
         f"'height' and 'width' must be integers. Got {height}, {width}."
 
-    start_points: torch.Tensor = torch.tensor([[
-        [0., 0],
-        [width - 1, 0],
-        [width - 1, height - 1],
-        [0, height - 1],
-    ]],
-                                              device=distortion_scale.device,
-                                              dtype=distortion_scale.dtype).expand(batch_size, -1, -1)
+    start_points: torch.Tensor = torch.tensor(
+        [[
+            [0., 0],
+            [width - 1, 0],
+            [width - 1, height - 1],
+            [0, height - 1],
+        ]],
+        device=distortion_scale.device,
+        dtype=distortion_scale.dtype
+    ).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
     fx = distortion_scale * width / 2
@@ -169,9 +171,9 @@ def random_perspective_generator(
         same_on_batch
     ).to(device=distortion_scale.device, dtype=distortion_scale.dtype)
 
-    pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]],
-                            device=distortion_scale.device,
-                            dtype=distortion_scale.dtype)
+    pts_norm = torch.tensor(
+        [[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=distortion_scale.device, dtype=distortion_scale.dtype
+    )
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(start_points=start_points, end_points=end_points)
@@ -251,11 +253,13 @@ def random_affine_generator(
             f"Expect translate contains two elements and ranges are in [0, 1]. Got {translate}."
         max_dx: torch.Tensor = translate[0] * width
         max_dy: torch.Tensor = translate[1] * height
-        translations = torch.stack([
-            _adapted_uniform((batch_size, ), -max_dx, max_dx, same_on_batch),
-            _adapted_uniform((batch_size, ), -max_dy, max_dy, same_on_batch)
-        ],
-                                   dim=-1)
+        translations = torch.stack(
+            [
+                _adapted_uniform((batch_size, ), -max_dx, max_dx, same_on_batch),
+                _adapted_uniform((batch_size, ), -max_dy, max_dy, same_on_batch)
+            ],
+            dim=-1
+        )
         translations = translations.to(device=_device, dtype=_dtype)
     else:
         translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
@@ -303,8 +307,10 @@ def random_rotation_generator(
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(degrees, "degrees")
 
-    _degrees = _adapted_uniform((batch_size, ), degrees[0].to(device=device, dtype=dtype),
-                                degrees[1].to(device=device, dtype=dtype), same_on_batch)
+    _degrees = _adapted_uniform(
+        (batch_size, ), degrees[0].to(device=device, dtype=dtype), degrees[1].to(device=device, dtype=dtype),
+        same_on_batch
+    )
     _degrees = _degrees.to(device=degrees.device, dtype=degrees.dtype)
 
     return dict(degrees=_degrees)
@@ -425,14 +431,16 @@ def random_crop_generator(
         assert len(resize_to) == 2 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and resize_to[0] > 0 and resize_to[1] > 0, \
             f"`resize_to` must be a tuple of 2 positive integers. Got {resize_to}."
-        crop_dst = torch.tensor([[
-            [0, 0],
-            [resize_to[1] - 1, 0],
-            [resize_to[1] - 1, resize_to[0] - 1],
-            [0, resize_to[0] - 1],
-        ]],
-                                device=_device,
-                                dtype=_dtype).repeat(batch_size, 1, 1)
+        crop_dst = torch.tensor(
+            [[
+                [0, 0],
+                [resize_to[1] - 1, 0],
+                [resize_to[1] - 1, resize_to[0] - 1],
+                [0, resize_to[0] - 1],
+            ]],
+            device=_device,
+            dtype=_dtype
+        ).repeat(batch_size, 1, 1)
 
     _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
@@ -568,26 +576,33 @@ def random_rectangles_params_generator(
     _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
 
     images_area = height * width
-    target_areas = _adapted_uniform((batch_size, ), scale[0].to(device=device, dtype=dtype),
-                                    scale[1].to(device=device, dtype=dtype), same_on_batch) * images_area
+    target_areas = _adapted_uniform(
+        (batch_size, ), scale[0].to(device=device, dtype=dtype), scale[1].to(device=device, dtype=dtype), same_on_batch
+    ) * images_area
 
     if ratio[0] < 1. and ratio[1] > 1.:
         aspect_ratios1 = _adapted_uniform((batch_size, ), ratio[0].to(device=device, dtype=dtype), 1, same_on_batch)
         aspect_ratios2 = _adapted_uniform((batch_size, ), 1, ratio[1].to(device=device, dtype=dtype), same_on_batch)
         if same_on_batch:
             rand_idxs = torch.round(
-                _adapted_uniform((1, ), torch.tensor(0, device=device, dtype=dtype),
-                                 torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+                _adapted_uniform(
+                    (1, ), torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype),
+                    same_on_batch
+                )
             ).repeat(batch_size).bool()
         else:
             rand_idxs = torch.round(
-                _adapted_uniform((batch_size, ), torch.tensor(0, device=device, dtype=dtype),
-                                 torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+                _adapted_uniform(
+                    (batch_size, ), torch.tensor(0, device=device, dtype=dtype),
+                    torch.tensor(1, device=device, dtype=dtype), same_on_batch
+                )
             ).bool()
         aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
     else:
-        aspect_ratios = _adapted_uniform((batch_size, ), ratio[0].to(device=device, dtype=dtype),
-                                         ratio[1].to(device=device, dtype=dtype), same_on_batch)
+        aspect_ratios = _adapted_uniform(
+            (batch_size, ), ratio[0].to(device=device, dtype=dtype), ratio[1].to(device=device, dtype=dtype),
+            same_on_batch
+        )
 
     # based on target areas and aspect ratios, rectangle params are computed
     heights = torch.min(
@@ -600,10 +615,14 @@ def random_rectangles_params_generator(
         torch.tensor(width, device=device, dtype=dtype)
     )
 
-    xs_ratio = _adapted_uniform((batch_size, ), torch.tensor(0, device=device, dtype=dtype),
-                                torch.tensor(1, device=device, dtype=dtype), same_on_batch)
-    ys_ratio = _adapted_uniform((batch_size, ), torch.tensor(0, device=device, dtype=dtype),
-                                torch.tensor(1, device=device, dtype=dtype), same_on_batch)
+    xs_ratio = _adapted_uniform(
+        (batch_size, ), torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype),
+        same_on_batch
+    )
+    ys_ratio = _adapted_uniform(
+        (batch_size, ), torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype),
+        same_on_batch
+    )
 
     xs = xs_ratio * (torch.tensor(width, device=device, dtype=dtype) - widths + 1)
     ys = ys_ratio * (torch.tensor(height, device=device, dtype=dtype) - heights + 1)
@@ -666,25 +685,25 @@ def center_crop_generator(
 
     # [y, x] origin
     # top-left, top-right, bottom-right, bottom-left
-    points_src: torch.Tensor = torch.tensor([[
-        [start_x, start_y],
-        [end_x, start_y],
-        [end_x, end_y],
-        [start_x, end_y],
-    ]],
-                                            device=device,
-                                            dtype=torch.long).expand(batch_size, -1, -1)
+    points_src: torch.Tensor = torch.tensor(
+        [[
+            [start_x, start_y],
+            [end_x, start_y],
+            [end_x, end_y],
+            [start_x, end_y],
+        ]], device=device, dtype=torch.long
+    ).expand(batch_size, -1, -1)
 
     # [y, x] destination
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0],
-        [dst_w - 1, 0],
-        [dst_w - 1, dst_h - 1],
-        [0, dst_h - 1],
-    ]],
-                                            device=device,
-                                            dtype=torch.long).expand(batch_size, -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [[
+            [0, 0],
+            [dst_w - 1, 0],
+            [dst_w - 1, dst_h - 1],
+            [0, dst_h - 1],
+        ]], device=device, dtype=torch.long
+    ).expand(batch_size, -1, -1)
 
     _input_size = torch.tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
 
@@ -741,11 +760,14 @@ def random_motion_blur_generator(
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
-    angle_factor = _adapted_uniform((batch_size, ), angle[0].to(device=device, dtype=dtype),
-                                    angle[1].to(device=device, dtype=dtype), same_on_batch)
+    angle_factor = _adapted_uniform(
+        (batch_size, ), angle[0].to(device=device, dtype=dtype), angle[1].to(device=device, dtype=dtype), same_on_batch
+    )
 
-    direction_factor = _adapted_uniform((batch_size, ), direction[0].to(device=device, dtype=dtype),
-                                        direction[1].to(device=device, dtype=dtype), same_on_batch)
+    direction_factor = _adapted_uniform(
+        (batch_size, ), direction[0].to(device=device, dtype=dtype), direction[1].to(device=device, dtype=dtype),
+        same_on_batch
+    )
 
     return dict(
         ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
@@ -790,11 +812,15 @@ def random_solarize_generator(
 
     _device, _dtype = _extract_device_dtype([thresholds, additions])
 
-    thresholds_factor = _adapted_uniform((batch_size, ), thresholds[0].to(device=device, dtype=dtype),
-                                         thresholds[1].to(device=device, dtype=dtype), same_on_batch)
+    thresholds_factor = _adapted_uniform(
+        (batch_size, ), thresholds[0].to(device=device, dtype=dtype), thresholds[1].to(device=device, dtype=dtype),
+        same_on_batch
+    )
 
-    additions_factor = _adapted_uniform((batch_size, ), additions[0].to(device=device, dtype=dtype),
-                                        additions[1].to(device=device, dtype=dtype), same_on_batch)
+    additions_factor = _adapted_uniform(
+        (batch_size, ), additions[0].to(device=device, dtype=dtype), additions[1].to(device=device, dtype=dtype),
+        same_on_batch
+    )
 
     return dict(
         thresholds_factor=thresholds_factor.to(device=_device, dtype=_dtype),
@@ -827,8 +853,9 @@ def random_posterize_generator(
     """
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(bits, 'bits', (0, 8))
-    bits_factor = _adapted_uniform((batch_size, ), bits[0].to(device=device, dtype=dtype),
-                                   bits[1].to(device=device, dtype=dtype), same_on_batch).int()
+    bits_factor = _adapted_uniform(
+        (batch_size, ), bits[0].to(device=device, dtype=dtype), bits[1].to(device=device, dtype=dtype), same_on_batch
+    ).int()
 
     return dict(bits_factor=bits_factor.to(device=bits.device, dtype=torch.int32))
 
@@ -859,8 +886,10 @@ def random_sharpness_generator(
     _common_param_check(batch_size, same_on_batch)
     _joint_range_check(sharpness, 'sharpness', bounds=(0, float('inf')))
 
-    sharpness_factor = _adapted_uniform((batch_size, ), sharpness[0].to(device=device, dtype=dtype),
-                                        sharpness[1].to(device=device, dtype=dtype), same_on_batch)
+    sharpness_factor = _adapted_uniform(
+        (batch_size, ), sharpness[0].to(device=device, dtype=dtype), sharpness[1].to(device=device, dtype=dtype),
+        same_on_batch
+    )
 
     return dict(sharpness_factor=sharpness_factor.to(device=sharpness.device, dtype=sharpness.dtype))
 
@@ -906,10 +935,9 @@ def random_mixup_generator(
         batch_size, p, same_on_batch=same_on_batch, device=device, dtype=dtype
     )
     mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=device, dtype=dtype).long()
-    mixup_lambdas: torch.Tensor = _adapted_uniform((batch_size, ),
-                                                   lambda_val[0],
-                                                   lambda_val[1],
-                                                   same_on_batch=same_on_batch)
+    mixup_lambdas: torch.Tensor = _adapted_uniform(
+        (batch_size, ), lambda_val[0], lambda_val[1], same_on_batch=same_on_batch
+    )
     mixup_lambdas = mixup_lambdas * batch_probs
 
     return dict(

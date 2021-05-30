@@ -112,12 +112,14 @@ def random_affine_generator3d(
     if scale is not None:
         assert scale.shape == torch.Size([3, 2]), f"'scale' must be the shape of (3, 2). Got {scale.shape}."
         scale = scale.to(device=device, dtype=dtype)
-        scale = torch.stack([
-            _adapted_uniform((batch_size, ), scale[0, 0], scale[0, 1], same_on_batch),
-            _adapted_uniform((batch_size, ), scale[1, 0], scale[1, 1], same_on_batch),
-            _adapted_uniform((batch_size, ), scale[2, 0], scale[2, 1], same_on_batch),
-        ],
-                            dim=1)
+        scale = torch.stack(
+            [
+                _adapted_uniform((batch_size, ), scale[0, 0], scale[0, 1], same_on_batch),
+                _adapted_uniform((batch_size, ), scale[1, 0], scale[1, 1], same_on_batch),
+                _adapted_uniform((batch_size, ), scale[2, 0], scale[2, 1], same_on_batch),
+            ],
+            dim=1
+        )
     else:
         scale = torch.ones(batch_size, device=device, dtype=dtype).repeat(1, 3)
 
@@ -128,12 +130,14 @@ def random_affine_generator3d(
         max_dy: torch.Tensor = translate[1] * height
         max_dz: torch.Tensor = translate[2] * depth
         # translations should be in x,y,z
-        translations = torch.stack([
-            _adapted_uniform((batch_size, ), -max_dx, max_dx, same_on_batch),
-            _adapted_uniform((batch_size, ), -max_dy, max_dy, same_on_batch),
-            _adapted_uniform((batch_size, ), -max_dz, max_dz, same_on_batch)
-        ],
-                                   dim=1)
+        translations = torch.stack(
+            [
+                _adapted_uniform((batch_size, ), -max_dx, max_dx, same_on_batch),
+                _adapted_uniform((batch_size, ), -max_dy, max_dy, same_on_batch),
+                _adapted_uniform((batch_size, ), -max_dz, max_dz, same_on_batch)
+            ],
+            dim=1
+        )
     else:
         translations = torch.zeros((batch_size, 3), device=device, dtype=dtype)
 
@@ -295,34 +299,42 @@ def center_crop_generator3d(
     # [x, y, z] origin
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_src: torch.Tensor = torch.tensor([[
-        [start_x, start_y, start_z],
-        [end_x, start_y, start_z],
-        [end_x, end_y, start_z],
-        [start_x, end_y, start_z],
-        [start_x, start_y, end_z],
-        [end_x, start_y, end_z],
-        [end_x, end_y, end_z],
-        [start_x, end_y, end_z],
-    ]],
-                                            device=device,
-                                            dtype=torch.long).expand(batch_size, -1, -1)
+    points_src: torch.Tensor = torch.tensor(
+        [
+            [
+                [start_x, start_y, start_z],
+                [end_x, start_y, start_z],
+                [end_x, end_y, start_z],
+                [start_x, end_y, start_z],
+                [start_x, start_y, end_z],
+                [end_x, start_y, end_z],
+                [end_x, end_y, end_z],
+                [start_x, end_y, end_z],
+            ]
+        ],
+        device=device,
+        dtype=torch.long
+    ).expand(batch_size, -1, -1)
 
     # [x, y, z] destination
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0, 0],
-        [dst_w - 1, 0, 0],
-        [dst_w - 1, dst_h - 1, 0],
-        [0, dst_h - 1, 0],
-        [0, 0, dst_d - 1],
-        [dst_w - 1, 0, dst_d - 1],
-        [dst_w - 1, dst_h - 1, dst_d - 1],
-        [0, dst_h - 1, dst_d - 1],
-    ]],
-                                            device=device,
-                                            dtype=torch.long).expand(batch_size, -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [
+            [
+                [0, 0, 0],
+                [dst_w - 1, 0, 0],
+                [dst_w - 1, dst_h - 1, 0],
+                [0, dst_h - 1, 0],
+                [0, 0, dst_d - 1],
+                [dst_w - 1, 0, dst_d - 1],
+                [dst_w - 1, dst_h - 1, dst_d - 1],
+                [0, dst_h - 1, dst_d - 1],
+            ]
+        ],
+        device=device,
+        dtype=torch.long
+    ).expand(batch_size, -1, -1)
     return dict(src=points_src, dst=points_dst)
 
 
@@ -412,18 +424,22 @@ def random_crop_generator3d(
         assert len(resize_to) == 3 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
             and isinstance(resize_to[2], (int,)) and resize_to[0] > 0 and resize_to[1] > 0 and resize_to[2] > 0, \
             f"`resize_to` must be a tuple of 3 positive integers. Got {resize_to}."
-        crop_dst = torch.tensor([[
-            [0, 0, 0],
-            [resize_to[-1] - 1, 0, 0],
-            [resize_to[-1] - 1, resize_to[-2] - 1, 0],
-            [0, resize_to[-2] - 1, 0],
-            [0, 0, resize_to[-3] - 1],
-            [resize_to[-1] - 1, 0, resize_to[-3] - 1],
-            [resize_to[-1] - 1, resize_to[-2] - 1, resize_to[-3] - 1],
-            [0, resize_to[-2] - 1, resize_to[-3] - 1],
-        ]],
-                                device=_device,
-                                dtype=_dtype).repeat(batch_size, 1, 1)
+        crop_dst = torch.tensor(
+            [
+                [
+                    [0, 0, 0],
+                    [resize_to[-1] - 1, 0, 0],
+                    [resize_to[-1] - 1, resize_to[-2] - 1, 0],
+                    [0, resize_to[-2] - 1, 0],
+                    [0, 0, resize_to[-3] - 1],
+                    [resize_to[-1] - 1, 0, resize_to[-3] - 1],
+                    [resize_to[-1] - 1, resize_to[-2] - 1, resize_to[-3] - 1],
+                    [0, resize_to[-2] - 1, resize_to[-3] - 1],
+                ]
+            ],
+            device=_device,
+            dtype=_dtype
+        ).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src.to(device=_device), dst=crop_dst.to(device=_device))
 
@@ -463,18 +479,22 @@ def random_perspective_generator3d(
     _device, _dtype = _extract_device_dtype([distortion_scale])
     distortion_scale = distortion_scale.to(device=device, dtype=dtype)
 
-    start_points: torch.Tensor = torch.tensor([[
-        [0., 0, 0],
-        [width - 1, 0, 0],
-        [width - 1, height - 1, 0],
-        [0, height - 1, 0],
-        [0., 0, depth - 1],
-        [width - 1, 0, depth - 1],
-        [width - 1, height - 1, depth - 1],
-        [0, height - 1, depth - 1],
-    ]],
-                                              device=device,
-                                              dtype=dtype).expand(batch_size, -1, -1)
+    start_points: torch.Tensor = torch.tensor(
+        [
+            [
+                [0., 0, 0],
+                [width - 1, 0, 0],
+                [width - 1, height - 1, 0],
+                [0, height - 1, 0],
+                [0., 0, depth - 1],
+                [width - 1, 0, depth - 1],
+                [width - 1, height - 1, depth - 1],
+                [0, height - 1, depth - 1],
+            ]
+        ],
+        device=device,
+        dtype=dtype
+    ).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
     fx = distortion_scale * width / 2
@@ -488,18 +508,20 @@ def random_perspective_generator3d(
         same_on_batch
     )
 
-    pts_norm = torch.tensor([[
-        [1, 1, 1],
-        [-1, 1, 1],
-        [-1, -1, 1],
-        [1, -1, 1],
-        [1, 1, -1],
-        [-1, 1, -1],
-        [-1, -1, -1],
-        [1, -1, -1],
-    ]],
-                            device=device,
-                            dtype=dtype)
+    pts_norm = torch.tensor(
+        [[
+            [1, 1, 1],
+            [-1, 1, 1],
+            [-1, -1, 1],
+            [1, -1, 1],
+            [1, 1, -1],
+            [-1, 1, -1],
+            [-1, -1, -1],
+            [1, -1, -1],
+        ]],
+        device=device,
+        dtype=dtype
+    )
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(

@@ -253,17 +253,19 @@ def get_perspective_transform(src, dst):
     A = torch.stack(p, dim=1)
 
     # b is a Bx8x1
-    b = torch.stack([
-        dst[:, 0:1, 0],
-        dst[:, 0:1, 1],
-        dst[:, 1:2, 0],
-        dst[:, 1:2, 1],
-        dst[:, 2:3, 0],
-        dst[:, 2:3, 1],
-        dst[:, 3:4, 0],
-        dst[:, 3:4, 1],
-    ],
-                    dim=1)
+    b = torch.stack(
+        [
+            dst[:, 0:1, 0],
+            dst[:, 0:1, 1],
+            dst[:, 1:2, 0],
+            dst[:, 1:2, 1],
+            dst[:, 2:3, 0],
+            dst[:, 2:3, 1],
+            dst[:, 3:4, 0],
+            dst[:, 3:4, 1],
+        ],
+        dim=1
+    )
 
     # solve the system Ax = b
     X, LU = _torch_solve_cast(b, A)
@@ -280,16 +282,14 @@ def _build_perspective_param(p: torch.Tensor, q: torch.Tensor, axis: str) -> tor
     ones = torch.ones_like(p)[..., 0:1]
     zeros = torch.zeros_like(p)[..., 0:1]
     if axis == 'x':
-        return torch.cat([
-            p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros, -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]
-        ],
-                         dim=1)
+        return torch.cat(
+            [p[:, 0:1], p[:, 1:2], ones, zeros, zeros, zeros, -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1]], dim=1
+        )
 
     if axis == 'y':
-        return torch.cat([
-            zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones, -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]
-        ],
-                         dim=1)
+        return torch.cat(
+            [zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], ones, -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2]], dim=1
+        )
 
     raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 

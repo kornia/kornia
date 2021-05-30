@@ -142,18 +142,18 @@ def _tuple_range_reader(
         if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = input_range.repeat(2) * torch.tensor([-1., 1.],
-                                                                   device=input_range.device,
-                                                                   dtype=input_range.dtype)
+            input_range_tmp = input_range.repeat(2) * torch.tensor(
+                [-1., 1.], device=input_range.device, dtype=input_range.dtype
+            )
             input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
 
         elif len(input_range.shape) == 1 and len(input_range) == 2:
             input_range_tmp = input_range.repeat(target_shape[0], 1)
 
         elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
-            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * torch.tensor([-1, 1],
-                                                                                   device=input_range.device,
-                                                                                   dtype=input_range.dtype)
+            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * torch.tensor(
+                [-1, 1], device=input_range.device, dtype=input_range.dtype
+            )
 
         elif input_range.shape == target_shape:
             input_range_tmp = input_range

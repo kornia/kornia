@@ -297,25 +297,31 @@ def _build_perspective_param3d(p: torch.Tensor, q: torch.Tensor, axis: str) -> t
     zeros = torch.zeros_like(p)[..., 0:1]
 
     if axis == 'x':
-        return torch.cat([
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros,
-            -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
-        ],
-                         dim=1)
+        return torch.cat(
+            [
+                p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros,
+                -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
+            ],
+            dim=1
+        )
 
     if axis == 'y':
-        return torch.cat([
-            zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros,
-            -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
-        ],
-                         dim=1)
+        return torch.cat(
+            [
+                zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros,
+                -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
+            ],
+            dim=1
+        )
 
     if axis == 'z':
-        return torch.cat([
-            zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
-        ],
-                         dim=1)
+        return torch.cat(
+            [
+                zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+                -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
+            ],
+            dim=1
+        )
 
     raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 

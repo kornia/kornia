@@ -32,10 +32,9 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     L: int = sigmas.size(1)
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
-    out = torch.cat([
-        sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]
-    ],
-                    dim=2)
+    out = torch.cat(
+        [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], dim=2
+    )
     return out
 
 
@@ -78,9 +77,9 @@ class ScaleSpaceDetector(nn.Module):
         mr_size: float = 6.0,
         scale_pyr_module: nn.Module = ScalePyramid(3, 1.6, 15),
         resp_module: nn.Module = BlobHessian(),
-        nms_module: nn.Module = ConvSoftArgmax3d((3, 3, 3), (1, 1, 1), (1, 1, 1),
-                                                 normalized_coordinates=False,
-                                                 output_value=True),
+        nms_module: nn.Module = ConvSoftArgmax3d(
+            (3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True
+        ),
         ori_module: nn.Module = PassLAF(),
         aff_module: nn.Module = PassLAF(),
         minima_are_also_good: bool = False,
@@ -167,11 +166,13 @@ class ScaleSpaceDetector(nn.Module):
 
             # Create local affine frames (LAFs)
             rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-            current_lafs = torch.cat([
-                self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
-                max_coords_best[:, :, 1:3].view(B, N, 2, 1)
-            ],
-                                     dim=3)
+            current_lafs = torch.cat(
+                [
+                    self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
+                    max_coords_best[:, :, 1:3].view(B, N, 2, 1)
+                ],
+                dim=3
+            )
 
             # Zero response lafs, which touch the boundary
             good_mask = laf_is_inside_image(current_lafs, octave[:, 0])

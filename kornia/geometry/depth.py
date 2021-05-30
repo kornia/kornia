@@ -261,9 +261,9 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x, y, invd):
-        point = torch.tensor([[[x], [y], [1.0], [invd]]],
-                             device=self._dst_proj_src.device,
-                             dtype=self._dst_proj_src.dtype)
+        point = torch.tensor(
+            [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
+        )
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1. / flow[:, 2]
         x = (flow[:, 0] * z)

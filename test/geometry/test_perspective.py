@@ -31,13 +31,13 @@ class TestProjectPoints:
     def test_project_and_unproject(self, device, dtype):
         point_3d = torch.tensor([[10., 2., 30.]], device=device, dtype=dtype)
         depth = point_3d[..., -1:]
-        camera_matrix = torch.tensor([[
-            [2746., 0., 991.],
-            [0., 2748., 619.],
-            [0., 0., 1.],
-        ]],
-                                     device=device,
-                                     dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[
+                [2746., 0., 991.],
+                [0., 2748., 619.],
+                [0., 0., 1.],
+            ]], device=device, dtype=dtype
+        )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
         assert_allclose(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)

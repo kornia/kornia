@@ -237,10 +237,12 @@ def _adapted_uniform(
     By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen
     in the same device/dtype as low/high tensor.
     """
-    device, dtype = _extract_device_dtype([
-        low if isinstance(low, torch.Tensor) else None,
-        high if isinstance(high, torch.Tensor) else None,
-    ])
+    device, dtype = _extract_device_dtype(
+        [
+            low if isinstance(low, torch.Tensor) else None,
+            high if isinstance(high, torch.Tensor) else None,
+        ]
+    )
     low = torch.as_tensor(low, device=device, dtype=dtype)
     high = torch.as_tensor(high, device=device, dtype=dtype)
     # validate_args=False to fix pytorch 1.7.1 error:
@@ -263,10 +265,12 @@ def _adapted_beta(
     By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
     in the same device/dtype as a/b tensor.
     """
-    device, dtype = _extract_device_dtype([
-        a if isinstance(a, torch.Tensor) else None,
-        b if isinstance(b, torch.Tensor) else None,
-    ])
+    device, dtype = _extract_device_dtype(
+        [
+            a if isinstance(a, torch.Tensor) else None,
+            b if isinstance(b, torch.Tensor) else None,
+        ]
+    )
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)

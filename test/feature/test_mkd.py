@@ -273,8 +273,10 @@ class TestExplicitSpacialEncoding:
 class TestWhitening:
 
     @pytest.mark.parametrize(
-        "kernel_type,xform,output_dims", [('cart', None, 3), ('polar', None, 3), ('cart', 'lw', 7), ('polar', 'lw', 7),
-                                          ('cart', 'pca', 9), ('polar', 'pca', 9)]
+        "kernel_type,xform,output_dims", [
+            ('cart', None, 3), ('polar', None, 3), ('cart', 'lw', 7), ('polar', 'lw', 7), ('cart', 'pca', 9),
+            ('polar', 'pca', 9)
+        ]
     )
     def test_shape(self, kernel_type, xform, output_dims, device):
         in_dims = 63 if kernel_type == 'cart' else 175
@@ -337,8 +339,10 @@ class TestMKDDescriptor:
         assert out.shape == (1, self.dims[kernel_type])
 
     @pytest.mark.parametrize(
-        "ps,kernel_type,whitening", [(9, 'concat', 'lw'), (9, 'cart', 'lw'), (9, 'polar', 'lw'), (9, 'concat', 'pcawt'),
-                                     (9, 'cart', 'pcawt'), (9, 'polar', 'pcawt')]
+        "ps,kernel_type,whitening", [
+            (9, 'concat', 'lw'), (9, 'cart', 'lw'), (9, 'polar', 'lw'), (9, 'concat', 'pcawt'), (9, 'cart', 'pcawt'),
+            (9, 'polar', 'pcawt')
+        ]
     )
     def test_whitened_shape(self, ps, kernel_type, whitening, device):
         mkd = MKDDescriptor(patch_size=ps, kernel_type=kernel_type, whitening=whitening).to(device)

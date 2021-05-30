@@ -113,8 +113,9 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.utils.metrics.confusion_matrix(predicted, actual, num_classes, normalized)
 
-        conf_mat_real = torch.tensor([[[0.5000, 0.3333, 0.4000], [0.3750, 0.0000, 0.4000], [0.1250, 0.6667, 0.2000]]],
-                                     dtype=torch.float32)
+        conf_mat_real = torch.tensor(
+            [[[0.5000, 0.3333, 0.4000], [0.3750, 0.0000, 0.4000], [0.1250, 0.6667, 0.2000]]], dtype=torch.float32
+        )
         assert_allclose(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_perfect(self):

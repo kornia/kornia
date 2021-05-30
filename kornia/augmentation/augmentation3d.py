@@ -80,9 +80,9 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         w: int = input.shape[-1]
-        flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
-                                              device=input.device,
-                                              dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        )
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
@@ -156,9 +156,9 @@ class RandomVerticalFlip3D(AugmentationBase3D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         h: int = input.shape[-2]
-        flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]],
-                                              device=input.device,
-                                              dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        )
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(
@@ -233,9 +233,9 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         d: int = input.shape[-3]
-        flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]],
-                                              device=input.device,
-                                              dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
+        )
         return flip_mat.repeat(input.size(0), 1, 1)
 
     def apply_transform(

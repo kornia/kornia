@@ -418,14 +418,17 @@ class TestRotationMatrixToQuaternion:
 
     def test_corner_case_xyzw(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
-        matrix = torch.tensor(((-0.7799533010, -0.5432914495, 0.3106555045),
-                               (0.0492402576, -0.5481169224, -0.8349509239),
-                               (0.6238971353, -0.6359263659, 0.4542570710)),
-                              device=device,
-                              dtype=dtype)
-        quaternion_true = torch.tensor((0.280136495828629, -0.440902262926102, 0.834015488624573, 0.177614107728004),
-                                       device=device,
-                                       dtype=dtype)
+        matrix = torch.tensor(
+            (
+                (-0.7799533010, -0.5432914495, 0.3106555045), (0.0492402576, -0.5481169224, -0.8349509239),
+                (0.6238971353, -0.6359263659, 0.4542570710)
+            ),
+            device=device,
+            dtype=dtype
+        )
+        quaternion_true = torch.tensor(
+            (0.280136495828629, -0.440902262926102, 0.834015488624573, 0.177614107728004), device=device, dtype=dtype
+        )
         with pytest.warns(UserWarning):
             quaternion = kornia.rotation_matrix_to_quaternion(matrix, eps=eps, order=QuaternionCoeffOrder.XYZW)
         torch.set_printoptions(precision=10)
@@ -433,14 +436,17 @@ class TestRotationMatrixToQuaternion:
 
     def test_corner_case(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
-        matrix = torch.tensor(((-0.7799533010, -0.5432914495, 0.3106555045),
-                               (0.0492402576, -0.5481169224, -0.8349509239),
-                               (0.6238971353, -0.6359263659, 0.4542570710)),
-                              device=device,
-                              dtype=dtype)
-        quaternion_true = torch.tensor((0.177614107728004, 0.280136495828629, -0.440902262926102, 0.834015488624573),
-                                       device=device,
-                                       dtype=dtype)
+        matrix = torch.tensor(
+            (
+                (-0.7799533010, -0.5432914495, 0.3106555045), (0.0492402576, -0.5481169224, -0.8349509239),
+                (0.6238971353, -0.6359263659, 0.4542570710)
+            ),
+            device=device,
+            dtype=dtype
+        )
+        quaternion_true = torch.tensor(
+            (0.177614107728004, 0.280136495828629, -0.440902262926102, 0.834015488624573), device=device, dtype=dtype
+        )
         quaternion = kornia.rotation_matrix_to_quaternion(matrix, eps=eps, order=QuaternionCoeffOrder.WXYZ)
         torch.set_printoptions(precision=10)
         assert_allclose(quaternion_true, quaternion, atol=atol, rtol=rtol)
@@ -919,16 +925,24 @@ class TestAngleAxisToRotationMatrix:
         assert gradcheck(kornia.angle_axis_to_rotation_matrix, (angle_axis, ), raise_exception=True)
 
     def test_angle_axis_to_rotation_matrix(self, device, dtype, atol, rtol):
-        rmat_1 = torch.tensor(((-0.30382753, -0.95095137, -0.05814062), (-0.71581715, 0.26812278, -0.64476041),
-                               (0.62872461, -0.15427791, -0.76217038)),
-                              device=device,
-                              dtype=dtype)
+        rmat_1 = torch.tensor(
+            (
+                (-0.30382753, -0.95095137, -0.05814062), (-0.71581715, 0.26812278, -0.64476041),
+                (0.62872461, -0.15427791, -0.76217038)
+            ),
+            device=device,
+            dtype=dtype
+        )
         rvec_1 = torch.tensor((1.50485376, -2.10737739, 0.7214174), device=device, dtype=dtype)
 
-        rmat_2 = torch.tensor(((0.6027768, -0.79275544, -0.09054801), (-0.67915707, -0.56931658, 0.46327563),
-                               (-0.41881476, -0.21775548, -0.88157628)),
-                              device=device,
-                              dtype=dtype)
+        rmat_2 = torch.tensor(
+            (
+                (0.6027768, -0.79275544, -0.09054801), (-0.67915707, -0.56931658, 0.46327563),
+                (-0.41881476, -0.21775548, -0.88157628)
+            ),
+            device=device,
+            dtype=dtype
+        )
         rvec_2 = torch.tensor((-2.44916812, 1.18053411, 0.4085298), device=device, dtype=dtype)
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
@@ -955,16 +969,24 @@ class TestRotationMatrixToAngleAxis:
         assert gradcheck(kornia.rotation_matrix_to_angle_axis, (rotation_matrix, ), raise_exception=True)
 
     def test_rotation_matrix_to_angle_axis(self, device, dtype, atol, rtol):
-        rmat_1 = torch.tensor(((-0.30382753, -0.95095137, -0.05814062), (-0.71581715, 0.26812278, -0.64476041),
-                               (0.62872461, -0.15427791, -0.76217038)),
-                              device=device,
-                              dtype=dtype)
+        rmat_1 = torch.tensor(
+            (
+                (-0.30382753, -0.95095137, -0.05814062), (-0.71581715, 0.26812278, -0.64476041),
+                (0.62872461, -0.15427791, -0.76217038)
+            ),
+            device=device,
+            dtype=dtype
+        )
         rvec_1 = torch.tensor((1.50485376, -2.10737739, 0.7214174), device=device, dtype=dtype)
 
-        rmat_2 = torch.tensor(((0.6027768, -0.79275544, -0.09054801), (-0.67915707, -0.56931658, 0.46327563),
-                               (-0.41881476, -0.21775548, -0.88157628)),
-                              device=device,
-                              dtype=dtype)
+        rmat_2 = torch.tensor(
+            (
+                (0.6027768, -0.79275544, -0.09054801), (-0.67915707, -0.56931658, 0.46327563),
+                (-0.41881476, -0.21775548, -0.88157628)
+            ),
+            device=device,
+            dtype=dtype
+        )
         rvec_2 = torch.tensor((-2.44916812, 1.18053411, 0.4085298), device=device, dtype=dtype)
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
@@ -1083,25 +1105,27 @@ class TestConvertPointsToHomogeneous:
 
     def test_convert_points(self, device, dtype):
         # generate input data
-        points_h = torch.tensor([
-            [1., 2., 1.],
-            [0., 1., 2.],
-            [2., 1., 0.],
-            [-1., -2., -1.],
-            [0., 1., -2.],
-        ],
-                                device=device,
-                                dtype=dtype)
+        points_h = torch.tensor(
+            [
+                [1., 2., 1.],
+                [0., 1., 2.],
+                [2., 1., 0.],
+                [-1., -2., -1.],
+                [0., 1., -2.],
+            ], device=device, dtype=dtype
+        )
 
-        expected = torch.tensor([
-            [1., 2., 1., 1.],
-            [0., 1., 2., 1.],
-            [2., 1., 0., 1.],
-            [-1., -2., -1., 1.],
-            [0., 1., -2., 1.],
-        ],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [1., 2., 1., 1.],
+                [0., 1., 2., 1.],
+                [2., 1., 0., 1.],
+                [-1., -2., -1., 1.],
+                [0., 1., -2., 1.],
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)
@@ -1117,15 +1141,15 @@ class TestConvertPointsToHomogeneous:
             [0., 1., -2.],
         ]], device=device, dtype=dtype)
 
-        expected = torch.tensor([[
-            [2., 1., 0., 1.],
-        ], [
-            [0., 1., 2., 1.],
-        ], [
-            [0., 1., -2., 1.],
-        ]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[
+                [2., 1., 0., 1.],
+            ], [
+                [0., 1., 2., 1.],
+            ], [
+                [0., 1., -2., 1.],
+            ]], device=device, dtype=dtype
+        )
 
         # to euclidean
         points = kornia.convert_points_to_homogeneous(points_h)
@@ -1200,15 +1224,15 @@ class TestConvertPointsFromHomogeneous:
 
     def test_points(self, device, dtype):
         # generate input data
-        points_h = torch.tensor([
-            [1., 2., 1.],
-            [0., 1., 2.],
-            [2., 1., 0.],
-            [-1., -2., -1.],
-            [0., 1., -2.],
-        ],
-                                device=device,
-                                dtype=dtype)
+        points_h = torch.tensor(
+            [
+                [1., 2., 1.],
+                [0., 1., 2.],
+                [2., 1., 0.],
+                [-1., -2., -1.],
+                [0., 1., -2.],
+            ], device=device, dtype=dtype
+        )
 
         expected = torch.tensor([
             [1., 2.],

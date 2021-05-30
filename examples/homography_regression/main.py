@@ -124,12 +124,14 @@ def HomographyRegressionApp():
 
         def draw_rectangle(image, dst_homo_src):
             height, width = image.shape[:2]
-            pts_src = torch.FloatTensor([[
-                [-1, -1],  # top-left
-                [1, -1],  # bottom-left
-                [1, 1],  # bottom-right
-                [-1, 1],  # top-right
-            ]]).to(dst_homo_src.device)
+            pts_src = torch.FloatTensor(
+                [[
+                    [-1, -1],  # top-left
+                    [1, -1],  # bottom-left
+                    [1, 1],  # bottom-right
+                    [-1, 1],  # top-right
+                ]]
+            ).to(dst_homo_src.device)
             # transform points
             pts_dst = dgm.transform_points(torch.inverse(dst_homo_src), pts_src)
 

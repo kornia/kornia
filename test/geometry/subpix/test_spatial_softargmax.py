@@ -18,11 +18,14 @@ class TestCenterKernel2d:
 
     def test_odd(self, device, dtype):
         kernel = _get_center_kernel2d(3, 3, device=device).to(dtype=dtype)
-        expected = torch.tensor([[[[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 0., 0.], [
-            0., 0., 0.
-        ]]], [[[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [[[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]]],
+                [[[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]]]
+            ],
+            device=device,
+            dtype=dtype
+        )
         assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
@@ -195,19 +198,24 @@ class TestConvSoftArgmax2d:
         assert gradcheck(kornia.conv_soft_argmax2d, (input), raise_exception=True)
 
     def test_cold_diag(self, device, dtype):
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 1., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 1., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax2d(
+            (3, 3), (2, 2), (0, 0), temperature=0.05, normalized_coordinates=False, output_value=True
+        )
         expected_val = torch.tensor([[[[1., 0.], [0., 1.]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor([[[[[1., 3.], [1., 3.]], [[1., 1.], [3., 3.]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
@@ -215,19 +223,24 @@ class TestConvSoftArgmax2d:
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 1., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 1., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax2d(
+            (3, 3), (2, 2), (0, 0), temperature=10., normalized_coordinates=False, output_value=True
+        )
         expected_val = torch.tensor([[[[0.1214, 0.], [0., 0.1214]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor([[[[[1., 3.], [1., 3.]], [[1., 1.], [3., 3.]]]]], device=device, dtype=dtype)
         coords, val = softargmax(input)
@@ -235,45 +248,55 @@ class TestConvSoftArgmax2d:
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 1., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 1., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax2d(
+            (3, 3), (2, 2), (0, 0), temperature=0.05, normalized_coordinates=True, output_value=True
+        )
         expected_val = torch.tensor([[[[1., 0.], [0., 1.]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax2d((3, 3), (2, 2), (0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 1., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 1., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax2d(
+            (3, 3), (2, 2), (0, 0), temperature=10., normalized_coordinates=True, output_value=True
+        )
         expected_val = torch.tensor([[[[0.1214, 0.], [0., 0.1214]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
@@ -299,91 +322,121 @@ class TestConvSoftArgmax3d:
         assert gradcheck(kornia.conv_soft_argmax3d, (input), raise_exception=True)
 
     def test_cold_diag(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 1., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 1., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax3d(
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=0.05, normalized_coordinates=False, output_value=True
+        )
         expected_val = torch.tensor([[[[[1., 0.], [0., 1.]]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=False,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 1., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 1., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax3d(
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10., normalized_coordinates=False, output_value=True
+        )
         expected_val = torch.tensor([[[[[0.1214, 0.], [0., 0.1214]]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=0.05,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 1., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 1., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax3d(
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=0.05, normalized_coordinates=True, output_value=True
+        )
         expected_val = torch.tensor([[[[[1., 0.], [0., 1.]]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]],
-                                         [[[-0.5, -0.5], [0.5, 0.5]]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            device=device,
+            dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 1., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]],
-                             device=device,
-                             dtype=dtype)
-        softargmax = kornia.ConvSoftArgmax3d((1, 3, 3), (1, 2, 2), (0, 0, 0),
-                                             temperature=10.,
-                                             normalized_coordinates=True,
-                                             output_value=True)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 1., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 1., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        softargmax = kornia.ConvSoftArgmax3d(
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10., normalized_coordinates=True, output_value=True
+        )
         expected_val = torch.tensor([[[[[0.1214, 0.], [0., 0.1214]]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]],
-                                         [[[-0.5, -0.5], [0.5, 0.5]]]]]],
-                                      device=device,
-                                      dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            device=device,
+            dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
@@ -411,53 +464,108 @@ class TestConvQuadInterp3d:
         )
 
     def test_diag(self, device, dtype):
-        input = torch.tensor([[[
-            [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.], [0., 0., 0., 0, 0.]
-        ], [[0., 0., 0., 0, 0], [0., 0., 1, 0, 0.], [0., 1, 1.2, 1.1, 0.], [0., 0., 1., 0, 0.], [0., 0., 0., 0, 0.]],
-                               [
-                                   [0., 0., 0., 0, 0],
-                                   [0., 0., 0.0, 0, 0.],
-                                   [0., 0, 0., 0, 0.],
-                                   [0., 0., 0, 0, 0.],
-                                   [0., 0., 0., 0, 0.],
-                               ]]],
-                             device=device,
-                             dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
+                        [0., 0., 0., 0, 0.]
+                    ],
+                    [
+                        [0., 0., 0., 0, 0], [0., 0., 1, 0, 0.], [0., 1, 1.2, 1.1, 0.], [0., 0., 1., 0, 0.],
+                        [0., 0., 0., 0, 0.]
+                    ],
+                    [
+                        [0., 0., 0., 0, 0],
+                        [0., 0., 0.0, 0, 0.],
+                        [0., 0, 0., 0, 0.],
+                        [0., 0., 0, 0, 0.],
+                        [0., 0., 0., 0, 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         input = kornia.gaussian_blur2d(input, (5, 5), (0.5, 0.5)).unsqueeze(0)
         softargmax = kornia.geometry.ConvQuadInterp3d(10)
-        expected_val = torch.tensor([
-            [[[[0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.], [0., 0., 0., 0, 0.]],
-              [[2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
-               [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
-               [1.6807e-01, 7.4227e-01, 1.1086e+01, 8.0414e-01, 1.8482e-01],
-               [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
-               [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04]],
-              [[0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.], [0., 0., 0., 0, 0.]]]]
-        ],
-                                    device=device,
-                                    dtype=dtype)
-        expected_coord = torch.tensor([
-            [[[[[0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0]],
-               [[1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0],
-                [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0]],
-               [[2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0]]],
-              [[[0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]],
-               [[0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]],
-               [[0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]]],
-              [[[0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]],
-               [[0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0495, 2.0, 2.0],
-                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]],
-               [[0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]]]]]
-        ],
-                                      device=device,
-                                      dtype=dtype)
+        expected_val = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
+                            [0., 0., 0., 0, 0.]
+                        ],
+                        [
+                            [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
+                            [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
+                            [1.6807e-01, 7.4227e-01, 1.1086e+01, 8.0414e-01, 1.8482e-01],
+                            [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
+                            [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04]
+                        ],
+                        [
+                            [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
+                            [0., 0., 0., 0, 0.]
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        expected_coord = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [
+                                [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0]
+                            ],
+                            [
+                                [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0]
+                            ],
+                            [
+                                [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0]
+                            ]
+                        ],
+                        [
+                            [
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
+                            ],
+                            [
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
+                            ],
+                            [
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
+                            ]
+                        ],
+                        [
+                            [
+                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
+                            ],
+                            [
+                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0495, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
+                            ],
+                            [
+                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
+                            ]
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)

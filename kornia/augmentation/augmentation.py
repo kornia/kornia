@@ -102,9 +102,9 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         w: int = input.shape[-1]
-        flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]],
-                                              device=input.device,
-                                              dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]], device=input.device, dtype=input.dtype
+        )
 
         return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -158,9 +158,9 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         h: int = input.shape[-2]
-        flip_mat: torch.Tensor = torch.tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]],
-                                              device=input.device,
-                                              dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
+        )
 
         return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -637,39 +637,43 @@ class RandomAffine(GeometricAugmentationBase2D):
                     scale, 'scale', bounds=(0, float('inf')), check='singular', device=self._device, dtype=self._dtype
                 )
             elif len(scale) == 4:
-                scale = torch.cat([
-                    _range_bound(
-                        scale[:2],
-                        'scale_x',
-                        bounds=(0, float('inf')),
-                        check='singular',
-                        device=self._device,
-                        dtype=self._dtype
-                    ),
-                    _range_bound(
-                        scale[2:],
-                        'scale_y',
-                        bounds=(0, float('inf')),
-                        check='singular',
-                        device=self._device,
-                        dtype=self._dtype
-                    )
-                ])
+                scale = torch.cat(
+                    [
+                        _range_bound(
+                            scale[:2],
+                            'scale_x',
+                            bounds=(0, float('inf')),
+                            check='singular',
+                            device=self._device,
+                            dtype=self._dtype
+                        ),
+                        _range_bound(
+                            scale[2:],
+                            'scale_y',
+                            bounds=(0, float('inf')),
+                            check='singular',
+                            device=self._device,
+                            dtype=self._dtype
+                        )
+                    ]
+                )
             else:
                 raise ValueError(f"'scale' expected to be either 2 or 4 elements. Got {scale}")
         if self.shear is not None:
             shear = torch.as_tensor(self.shear, device=self._device, dtype=self._dtype)
-            shear = torch.stack([
-                _range_bound(
-                    shear if shear.dim() == 0 else shear[:2],
-                    'shear-x',
-                    0, (-360, 360),
-                    device=self._device,
-                    dtype=self._dtype
-                ),
-                torch.tensor([0, 0], device=self._device, dtype=self._dtype) if shear.dim() == 0 or len(shear) == 2 else
-                _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=self._device, dtype=self._dtype)
-            ])
+            shear = torch.stack(
+                [
+                    _range_bound(
+                        shear if shear.dim() == 0 else shear[:2],
+                        'shear-x',
+                        0, (-360, 360),
+                        device=self._device,
+                        dtype=self._dtype
+                    ),
+                    torch.tensor([0, 0], device=self._device, dtype=self._dtype) if shear.dim() == 0 or len(shear) == 2
+                    else _range_bound(shear[2:], 'shear-y', 0, (-360, 360), device=self._device, dtype=self._dtype)
+                ]
+            )
         return rg.random_affine_generator(
             batch_shape[0], batch_shape[-2], batch_shape[-1], degrees, translate, scale, shear, self.same_on_batch,
             self.device, self.dtype

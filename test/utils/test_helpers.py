@@ -18,12 +18,18 @@ from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
         ([torch.tensor(0, device='cpu', dtype=torch.float16)] * 2, torch.device('cpu'), torch.float16, False),
         ([torch.tensor(0, device='cpu', dtype=torch.float32)] * 2, torch.device('cpu'), torch.float32, False),
         ([torch.tensor(0, device='cpu', dtype=torch.float64)] * 2, torch.device('cpu'), torch.float64, False),
-        ([torch.tensor(0, device='cpu', dtype=torch.float16),
-          torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True),
-        ([torch.tensor(0, device='cpu', dtype=torch.float32),
-          torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True),
-        ([torch.tensor(0, device='cpu', dtype=torch.float16),
-          torch.tensor(0, device='cpu', dtype=torch.float32)], None, None, True),
+        (
+            [torch.tensor(0, device='cpu', dtype=torch.float16),
+             torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True
+        ),
+        (
+            [torch.tensor(0, device='cpu', dtype=torch.float32),
+             torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True
+        ),
+        (
+            [torch.tensor(0, device='cpu', dtype=torch.float16),
+             torch.tensor(0, device='cpu', dtype=torch.float32)], None, None, True
+        ),
     ]
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):

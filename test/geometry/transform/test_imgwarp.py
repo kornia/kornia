@@ -265,38 +265,38 @@ class TestWarpPerspective:
 
         # [x, y] origin
         # top-left, top-right, bottom-right, bottom-left
-        points_src = torch.tensor([[
-            [0, 0],
-            [0, src_w - 1],
-            [src_h - 1, src_w - 1],
-            [src_h - 1, 0],
-        ]],
-                                  device=device,
-                                  dtype=dtype)
+        points_src = torch.tensor(
+            [[
+                [0, 0],
+                [0, src_w - 1],
+                [src_h - 1, src_w - 1],
+                [src_h - 1, 0],
+            ]], device=device, dtype=dtype
+        )
 
         # [x, y] destination
         # top-left, top-right, bottom-right, bottom-left
-        points_dst = torch.tensor([[
-            [0, 0],
-            [0, dst_w - 1],
-            [dst_h - 1, dst_w - 1],
-            [dst_h - 1, 0],
-        ]],
-                                  device=device,
-                                  dtype=dtype)
+        points_dst = torch.tensor(
+            [[
+                [0, 0],
+                [0, dst_w - 1],
+                [dst_h - 1, dst_w - 1],
+                [dst_h - 1, 0],
+            ]], device=device, dtype=dtype
+        )
 
         # compute transformation between points
         dst_trans_src = kornia.get_perspective_transform(points_src, points_dst).expand(batch_size, -1, -1)
 
         # warp tensor
-        patch = torch.tensor([[[
-            [1, 2, 3, 4],
-            [5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16],
-        ]]],
-                             device=device,
-                             dtype=dtype).expand(batch_size, channels, -1, -1)
+        patch = torch.tensor(
+            [[[
+                [1, 2, 3, 4],
+                [5, 6, 7, 8],
+                [9, 10, 11, 12],
+                [13, 14, 15, 16],
+            ]]], device=device, dtype=dtype
+        ).expand(batch_size, channels, -1, -1)
 
         expected = patch[..., :3, :3]
 
@@ -319,32 +319,40 @@ class TestWarpPerspective:
 
         # [x, y] destination
         # top-left, top-right, bottom-right, bottom-left
-        points_dst = torch.tensor([[
-            [0, 0],
-            [0, dst_w - 1],
-            [dst_h - 1, dst_w - 1],
-            [dst_h - 1, 0],
-        ]],
-                                  device=device,
-                                  dtype=dtype)
+        points_dst = torch.tensor(
+            [[
+                [0, 0],
+                [0, dst_w - 1],
+                [dst_h - 1, dst_w - 1],
+                [dst_h - 1, 0],
+            ]], device=device, dtype=dtype
+        )
 
         # compute transformation between points
         dst_trans_src = kornia.get_perspective_transform(points_src, points_dst)
 
         # warp tensor
-        patch = torch.tensor([[[
-            [1, 2, 3, 4],
-            [5, 6, 7, 8],
-            [9, 10, 11, 12],
-            [13, 14, 15, 16],
-        ]]],
-                             device=device,
-                             dtype=dtype)
+        patch = torch.tensor(
+            [[[
+                [1, 2, 3, 4],
+                [5, 6, 7, 8],
+                [9, 10, 11, 12],
+                [13, 14, 15, 16],
+            ]]], device=device, dtype=dtype
+        )
 
-        expected = torch.tensor([[[[6.0000, 6.3333, 6.6667, 7.0000], [7.3333, 7.6667, 8.0000, 8.3333],
-                                   [8.6667, 9.0000, 9.3333, 9.6667], [10.0000, 10.3333, 10.6667, 11.0000]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [6.0000, 6.3333, 6.6667, 7.0000], [7.3333, 7.6667, 8.0000, 8.3333],
+                        [8.6667, 9.0000, 9.3333, 9.6667], [10.0000, 10.3333, 10.6667, 11.0000]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         # warp and assert
         patch_warped = kornia.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
@@ -388,13 +396,13 @@ class TestRemap:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
         ]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[
-            [1., 1., 1., 0.],
-            [1., 1., 1., 0.],
-            [0., 0., 0., 0.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[
+                [1., 1., 1., 0.],
+                [1., 1., 1., 0.],
+                [0., 0., 0., 0.],
+            ]]], device=device, dtype=dtype
+        )
 
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.  # apply shift in both x/y direction
@@ -410,17 +418,21 @@ class TestRemap:
             [1., 1., 1., 1.],
         ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
 
-        expected = torch.tensor([[[
-            [1., 1., 1., 0.],
-            [1., 1., 1., 0.],
-            [1., 1., 1., 0.],
-        ]], [[
-            [1., 1., 1., 1.],
-            [1., 1., 1., 1.],
-            [0., 0., 0., 0.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [[
+                    [1., 1., 1., 0.],
+                    [1., 1., 1., 0.],
+                    [1., 1., 1., 0.],
+                ]], [[
+                    [1., 1., 1., 1.],
+                    [1., 1., 1., 1.],
+                    [0., 0., 0., 0.],
+                ]]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         # generate a batch of grids
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
@@ -438,13 +450,13 @@ class TestRemap:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
         ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [1., 1., 1., 0.],
-            [1., 1., 1., 0.],
-            [0., 0., 0., 0.],
-        ]]],
-                                device=device,
-                                dtype=dtype).repeat(2, 1, 1, 1)
+        expected = torch.tensor(
+            [[[
+                [1., 1., 1., 0.],
+                [1., 1., 1., 0.],
+                [0., 0., 0., 0.],
+            ]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.  # apply shift in both x/y direction
@@ -460,13 +472,13 @@ class TestRemap:
             [1., 1., 1., 1.],
             [1., 1., 1., 1.],
         ]]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [1., 1., 1., 1.],
-            [1., 1., 1., 1.],
-            [1., 1., 1., 1.],
-        ]]],
-                                device=device,
-                                dtype=dtype).repeat(2, 1, 1, 1)
+        expected = torch.tensor(
+            [[[
+                [1., 1., 1., 1.],
+                [1., 1., 1., 1.],
+                [1., 1., 1., 1.],
+            ]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
         grid = kornia.utils.create_meshgrid(
             height, width, normalized_coordinates=normalized_coordinates, device=device

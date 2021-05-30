@@ -372,13 +372,15 @@ class TestRandomResizedCropBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
-        aug = RandomResizedCrop((8, 8),
-                                _scale,
-                                _ratio,
-                                resample=resample,
-                                return_transform=return_transform,
-                                same_on_batch=same_on_batch,
-                                align_corners=align_corners)
+        aug = RandomResizedCrop(
+            (8, 8),
+            _scale,
+            _ratio,
+            resample=resample,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            align_corners=align_corners
+        )
 
         if return_transform:
             output, _ = aug(input)

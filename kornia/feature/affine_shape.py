@@ -55,11 +55,13 @@ class PatchAffineShapeEstimator(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
         # abc == 1st axis, mixture, 2nd axis. Ellipse_shape is a 2nd moment matrix.
-        ellipse_shape = torch.cat([
-            gx.pow(2).mean(dim=2).mean(dim=2, keepdim=True), (gx * gy).mean(dim=2).mean(dim=2, keepdim=True),
-            gy.pow(2).mean(dim=2).mean(dim=2, keepdim=True)
-        ],
-                                  dim=2)
+        ellipse_shape = torch.cat(
+            [
+                gx.pow(2).mean(dim=2).mean(dim=2, keepdim=True), (gx * gy).mean(dim=2).mean(dim=2, keepdim=True),
+                gy.pow(2).mean(dim=2).mean(dim=2, keepdim=True)
+            ],
+            dim=2
+        )
 
         # Now lets detect degenerate cases: when 2 or 3 elements are close to zero (e.g. if patch is completely black
         bad_mask = ((ellipse_shape < self.eps).float().sum(dim=2, keepdim=True) >= 2).to(ellipse_shape.dtype)

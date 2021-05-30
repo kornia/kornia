@@ -100,18 +100,22 @@ def crop_and_resize3d(
     # [x, y, z] destination
     # from front to back
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0, 0],
-        [dst_w - 1, 0, 0],
-        [dst_w - 1, dst_h - 1, 0],
-        [0, dst_h - 1, 0],
-        [0, 0, dst_d - 1],
-        [dst_w - 1, 0, dst_d - 1],
-        [dst_w - 1, dst_h - 1, dst_d - 1],
-        [0, dst_h - 1, dst_d - 1],
-    ]],
-                                            dtype=tensor.dtype,
-                                            device=tensor.device).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [
+            [
+                [0, 0, 0],
+                [dst_w - 1, 0, 0],
+                [dst_w - 1, dst_h - 1, 0],
+                [0, dst_h - 1, 0],
+                [0, 0, dst_d - 1],
+                [dst_w - 1, 0, dst_d - 1],
+                [dst_w - 1, dst_h - 1, dst_d - 1],
+                [0, dst_h - 1, dst_d - 1],
+            ]
+        ],
+        dtype=tensor.dtype,
+        device=tensor.device
+    ).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes3d(tensor, points_src, points_dst, interpolation, align_corners)
 
@@ -197,32 +201,40 @@ def center_crop3d(
     # [x, y, z] origin
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_src: torch.Tensor = torch.tensor([[
-        [start_x, start_y, start_z],
-        [end_x, start_y, start_z],
-        [end_x, end_y, start_z],
-        [start_x, end_y, start_z],
-        [start_x, start_y, end_z],
-        [end_x, start_y, end_z],
-        [end_x, end_y, end_z],
-        [start_x, end_y, end_z],
-    ]],
-                                            device=tensor.device)
+    points_src: torch.Tensor = torch.tensor(
+        [
+            [
+                [start_x, start_y, start_z],
+                [end_x, start_y, start_z],
+                [end_x, end_y, start_z],
+                [start_x, end_y, start_z],
+                [start_x, start_y, end_z],
+                [end_x, start_y, end_z],
+                [end_x, end_y, end_z],
+                [start_x, end_y, end_z],
+            ]
+        ],
+        device=tensor.device
+    )
 
     # [x, y, z] destination
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: torch.Tensor = torch.tensor([[
-        [0, 0, 0],
-        [dst_w - 1, 0, 0],
-        [dst_w - 1, dst_h - 1, 0],
-        [0, dst_h - 1, 0],
-        [0, 0, dst_d - 1],
-        [dst_w - 1, 0, dst_d - 1],
-        [dst_w - 1, dst_h - 1, dst_d - 1],
-        [0, dst_h - 1, dst_d - 1],
-    ]],
-                                            device=tensor.device).expand(points_src.shape[0], -1, -1)
+    points_dst: torch.Tensor = torch.tensor(
+        [
+            [
+                [0, 0, 0],
+                [dst_w - 1, 0, 0],
+                [dst_w - 1, dst_h - 1, 0],
+                [0, dst_h - 1, 0],
+                [0, 0, dst_d - 1],
+                [dst_w - 1, 0, dst_d - 1],
+                [dst_w - 1, dst_h - 1, dst_d - 1],
+                [0, dst_h - 1, dst_d - 1],
+            ]
+        ],
+        device=tensor.device
+    ).expand(points_src.shape[0], -1, -1)
 
     return crop_by_boxes3d(
         tensor, points_src.to(tensor.dtype), points_dst.to(tensor.dtype), interpolation, align_corners

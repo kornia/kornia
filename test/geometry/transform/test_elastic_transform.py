@@ -56,15 +56,19 @@ class TestElasticTransform:
         assert elastic_transform2d(image, noise, kernel_size, sigma, alpha) is not None
 
     def test_values(self, device, dtype):
-        image = torch.tensor([[[[0.0018, 0.7521, 0.7550], [0.2053, 0.4249, 0.1369], [0.1027, 0.3992, 0.8773]]]],
-                             device=device,
-                             dtype=dtype)
+        image = torch.tensor(
+            [[[[0.0018, 0.7521, 0.7550], [0.2053, 0.4249, 0.1369], [0.1027, 0.3992, 0.8773]]]],
+            device=device,
+            dtype=dtype
+        )
 
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
 
-        expected = torch.tensor([[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
+            device=device,
+            dtype=dtype
+        )
 
         actual = elastic_transform2d(image, noise)
         assert_allclose(actual, expected, atol=1e-3, rtol=1e-3)

@@ -38,23 +38,25 @@ class TestZCA:
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if dim == 1:
-            expected = torch.tensor([
-                [-0.35360718, 0.35360718],
-                [0.35351562, -0.35351562],
-                [-0.35353088, 0.35353088],
-                [0.35353088, -0.35353088],
-            ],
-                                    device=device,
-                                    dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [-0.35360718, 0.35360718],
+                    [0.35351562, -0.35351562],
+                    [-0.35353088, 0.35353088],
+                    [0.35353088, -0.35353088],
+                ],
+                device=device,
+                dtype=dtype
+            )
         elif dim == 0:
-            expected = torch.tensor([
-                [0., 1.2247448],
-                [1.2247448, 0.],
-                [-1.2247448, 0.],
-                [0., -1.2247448],
-            ],
-                                    device=device,
-                                    dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [0., 1.2247448],
+                    [1.2247448, 0.],
+                    [-1.2247448, 0.],
+                    [0., -1.2247448],
+                ], device=device, dtype=dtype
+            )
 
         zca = kornia.enhance.ZCAWhitening(dim=dim)
         actual = zca(data, True)

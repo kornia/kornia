@@ -84,11 +84,19 @@ class TestRescale:
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
         out = kornia.rescale(inp, (0.25, 0.25), antialias=False)
-        expected = torch.tensor([[[[0.0056, 0.0206, 0.0356, 0.0506, 0.0656], [0.0206, 0.0756, 0.1306, 0.1856, 0.2406],
-                                   [0.0356, 0.1306, 0.2256, 0.3206, 0.4156], [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
-                                   [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0056, 0.0206, 0.0356, 0.0506, 0.0656], [0.0206, 0.0756, 0.1306, 0.1856, 0.2406],
+                        [0.0356, 0.1306, 0.2256, 0.3206, 0.4156], [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
+                        [0.0656, 0.2406, 0.4156, 0.5906, 0.7656]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_downscale_values_AA(self, device, dtype):
@@ -96,11 +104,19 @@ class TestRescale:
         inp = inp_x[None].T @ inp_x[None]
         inp = inp[None, None]
         out = kornia.rescale(inp, (0.25, 0.25), antialias=True)
-        expected = torch.tensor([[[[0.0255, 0.0453, 0.0759, 0.1065, 0.1263], [0.0453, 0.0804, 0.1347, 0.1890, 0.2240],
-                                   [0.0759, 0.1347, 0.2256, 0.3166, 0.3753], [0.1065, 0.1890, 0.3166, 0.4442, 0.5266],
-                                   [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0255, 0.0453, 0.0759, 0.1065, 0.1263], [0.0453, 0.0804, 0.1347, 0.1890, 0.2240],
+                        [0.0759, 0.1347, 0.2256, 0.3166, 0.3753], [0.1065, 0.1890, 0.3166, 0.4442, 0.5266],
+                        [0.1263, 0.2240, 0.3753, 0.5266, 0.6244]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
@@ -143,19 +159,21 @@ class TestRotate:
             [5., 6.],
             [7., 8.],
         ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [0., 0.],
-            [4., 6.],
-            [3., 5.],
-            [0., 0.],
-        ]], [[
-            [0., 0.],
-            [5., 3.],
-            [6., 4.],
-            [0., 0.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[
+                [0., 0.],
+                [4., 6.],
+                [3., 5.],
+                [0., 0.],
+            ]], [[
+                [0., 0.],
+                [5., 3.],
+                [6., 4.],
+                [0., 0.],
+            ]]],
+            device=device,
+            dtype=dtype
+        )
         # prepare transformation
         angle = torch.tensor([90., -90.], device=device, dtype=dtype)
         transform = kornia.Rotate(angle, align_corners=True)
@@ -169,19 +187,21 @@ class TestRotate:
             [5., 6.],
             [7., 8.],
         ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [0., 0.],
-            [4., 6.],
-            [3., 5.],
-            [0., 0.],
-        ]], [[
-            [0., 0.],
-            [4., 6.],
-            [3., 5.],
-            [0., 0.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[
+                [0., 0.],
+                [4., 6.],
+                [3., 5.],
+                [0., 0.],
+            ]], [[
+                [0., 0.],
+                [4., 6.],
+                [3., 5.],
+                [0., 0.],
+            ]]],
+            device=device,
+            dtype=dtype
+        )
         # prepare transformation
         angle = torch.tensor([90.], device=device, dtype=dtype)
         transform = kornia.Rotate(angle, align_corners=True)
@@ -240,19 +260,21 @@ class TestTranslate:
             [5., 6.],
             [7., 8.],
         ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [0., 1.],
-            [0., 3.],
-            [0., 5.],
-            [0., 7.],
-        ]], [[
-            [0., 0.],
-            [0., 1.],
-            [0., 3.],
-            [0., 5.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[
+                [0., 1.],
+                [0., 3.],
+                [0., 5.],
+                [0., 7.],
+            ]], [[
+                [0., 0.],
+                [0., 1.],
+                [0., 3.],
+                [0., 5.],
+            ]]],
+            device=device,
+            dtype=dtype
+        )
         # prepare transformation
         translation = torch.tensor([[1., 0.], [1., 1.]], device=device, dtype=dtype)
         transform = kornia.Translate(translation, align_corners=True)
@@ -266,19 +288,21 @@ class TestTranslate:
             [5., 6.],
             [7., 8.],
         ]], device=device, dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[
-            [0., 1.],
-            [0., 3.],
-            [0., 5.],
-            [0., 7.],
-        ]], [[
-            [0., 1.],
-            [0., 3.],
-            [0., 5.],
-            [0., 7.],
-        ]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [[[
+                [0., 1.],
+                [0., 3.],
+                [0., 5.],
+                [0., 7.],
+            ]], [[
+                [0., 1.],
+                [0., 3.],
+                [0., 5.],
+                [0., 7.],
+            ]]],
+            device=device,
+            dtype=dtype
+        )
         # prepare transformation
         translation = torch.tensor([[1., 0.]], device=device, dtype=dtype)
         transform = kornia.Translate(translation, align_corners=True)
@@ -312,9 +336,9 @@ class TestScale:
 
     def test_scale_factor_2(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]],
-                           device=device,
-                           dtype=dtype)
+        inp = torch.tensor(
+            [[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]], device=device, dtype=dtype
+        )
         # prepare transformation
         scale_factor = torch.tensor([[2., 2.]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -322,12 +346,12 @@ class TestScale:
 
     def test_scale_factor_05(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype)
-        expected = torch.tensor([[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]],
-                                device=device,
-                                dtype=dtype)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor(
+            [[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]], device=device, dtype=dtype
+        )
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -335,12 +359,12 @@ class TestScale:
 
     def test_scale_factor_05_batch2(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]],
-                                device=device,
-                                dtype=dtype).repeat(2, 1, 1, 1)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
+        expected = torch.tensor(
+            [[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -348,12 +372,12 @@ class TestScale:
 
     def test_scale_factor_05_batch2_broadcast(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype).repeat(2, 1, 1, 1)
-        expected = torch.tensor([[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]],
-                                device=device,
-                                dtype=dtype).repeat(2, 1, 1, 1)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
+        expected = torch.tensor(
+            [[[0., 0., 0., 0.], [0., 1., 1., 0.], [0., 1., 1., 0.], [0., 0., 0., 0.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.Scale(scale_factor)
@@ -387,12 +411,14 @@ class TestShear:
 
     def test_shear_x(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype)
-        expected = torch.tensor([[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]],
-                                device=device,
-                                dtype=dtype)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor(
+            [[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]],
+            device=device,
+            dtype=dtype
+        )
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
@@ -401,12 +427,14 @@ class TestShear:
 
     def test_shear_y(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype)
-        expected = torch.tensor([[[0.75, 0.25, 0., 0.], [1., 1., 0.75, 0.25], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                                device=device,
-                                dtype=dtype)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        )
+        expected = torch.tensor(
+            [[[0.75, 0.25, 0., 0.], [1., 1., 0.75, 0.25], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
+            device=device,
+            dtype=dtype
+        )
 
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]], device=device, dtype=dtype)
@@ -415,14 +443,18 @@ class TestShear:
 
     def test_shear_batch2(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype).repeat(2, 1, 1, 1)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
-        expected = torch.tensor([[[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]],
-                                 [[[0.75, 0.25, 0., 0.], [1., 1., 0.75, 0.25], [1., 1., 1., 1.], [1., 1., 1., 1.]]]],
-                                device=device,
-                                dtype=dtype)
+        expected = torch.tensor(
+            [
+                [[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]],
+                [[[0.75, 0.25, 0., 0.], [1., 1., 0.75, 0.25], [1., 1., 1., 1.], [1., 1., 1., 1.]]]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
@@ -431,13 +463,15 @@ class TestShear:
 
     def test_shear_batch2_broadcast(self, device, dtype):
         # prepare input data
-        inp = torch.tensor([[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]],
-                           device=device,
-                           dtype=dtype).repeat(2, 1, 1, 1)
+        inp = torch.tensor(
+            [[[1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.], [1., 1., 1., 1.]]], device=device, dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
-        expected = torch.tensor([[[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]]],
-                                device=device,
-                                dtype=dtype).repeat(2, 1, 1, 1)
+        expected = torch.tensor(
+            [[[[0.75, 1., 1., 1.], [0.25, 1., 1., 1.], [0., 0.75, 1., 1.], [0., 0.25, 1., 1.]]]],
+            device=device,
+            dtype=dtype
+        ).repeat(2, 1, 1, 1)
 
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
@@ -540,17 +574,20 @@ class TestAffine2d:
             pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
         batch_size = 2
 
-        input = torch.tensor([[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
-                             device=device,
-                             dtype=dtype).repeat(batch_size, 1, 1, 1)
+        input = torch.tensor(
+            [[[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]],
+            device=device,
+            dtype=dtype
+        ).repeat(batch_size, 1, 1, 1)
 
         angle = torch.tensor(180.0, device=device, dtype=dtype).repeat(batch_size)
         translation = torch.tensor([1.0, 0.0], device=device, dtype=dtype).repeat(batch_size, 1)
 
-        expected = torch.tensor([[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0],
-                                  [0.0, 1.0, 0.0, 0.0]]],
-                                device=device,
-                                dtype=dtype).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor(
+            [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 0.0]]],
+            device=device,
+            dtype=dtype
+        ).repeat(batch_size, 1, 1, 1)
 
         transform = kornia.Affine(angle=angle, translation=translation,
                                   align_corners=True).to(device=device, dtype=dtype)
