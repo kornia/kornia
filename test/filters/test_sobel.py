@@ -9,6 +9,7 @@ from torch.autograd import gradcheck
 
 
 class TestSpatialGradient:
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
         sobel = kornia.filters.SpatialGradient()
@@ -26,7 +27,9 @@ class TestSpatialGradient:
             [0., 1., 1., 1., 0.],
             [0., 0., 1., 0., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
         expected = torch.tensor([[[[
             [0., 1., 0., -1., 0.],
@@ -34,13 +37,16 @@ class TestSpatialGradient:
             [2., 4., 0., -4., -2.],
             [1., 3., 0., -3., -1.],
             [0., 1., 0., -1., 0.],
-        ], [
-            [0., 1., 2., 1., 0.],
-            [1., 3., 4., 3., 1.],
-            [0., 0., 0., 0., 0],
-            [-1., -3., -4., -3., -1],
-            [0., -1., -2., -1., 0.],
-        ]]]], device=device, dtype=dtype)
+        ],
+                                   [
+                                       [0., 1., 2., 1., 0.],
+                                       [1., 3., 4., 3., 1.],
+                                       [0., 0., 0., 0., 0],
+                                       [-1., -3., -4., -3., -1],
+                                       [0., -1., -2., -1., 0.],
+                                   ]]]],
+                                device=device,
+                                dtype=dtype)
 
         edges = kornia.filters.spatial_gradient(inp, normalized=False)
         assert_allclose(edges, expected)
@@ -52,7 +58,9 @@ class TestSpatialGradient:
             [0., 1., 1., 1., 0.],
             [0., 0., 1., 0., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
         expected = torch.tensor([[[[
             [0., 1., 0., -1., 0.],
@@ -60,13 +68,16 @@ class TestSpatialGradient:
             [2., 4., 0., -4., -2.],
             [1., 3., 0., -3., -1.],
             [0., 1., 0., -1., 0.],
-        ], [
-            [0., 1., 2., 1., 0.],
-            [1., 3., 4., 3., 1.],
-            [0., 0., 0., 0., 0],
-            [-1., -3., -4., -3., -1],
-            [0., -1., -2., -1., 0.],
-        ]]]], device=device, dtype=dtype) / 8.0
+        ],
+                                   [
+                                       [0., 1., 2., 1., 0.],
+                                       [1., 3., 4., 3., 1.],
+                                       [0., 0., 0., 0., 0],
+                                       [-1., -3., -4., -3., -1],
+                                       [0., -1., -2., -1., 0.],
+                                   ]]]],
+                                device=device,
+                                dtype=dtype) / 8.0
 
         edges = kornia.filters.spatial_gradient(inp, normalized=True)
         assert_allclose(edges, expected)
@@ -78,24 +89,18 @@ class TestSpatialGradient:
             [0., 1., 1., 1., 0.],
             [0., 0., 1., 0., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., -1., 0.],
-            [1., 1., 0., -1., -1.],
-            [0., 1., 0., -1., 0.],
-            [0., 0., 0., 0., 0.]
-        ], [
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., -1., -1., -1., 0.],
-            [0., 0., -1., 0., 0.]
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[[0., 0., 0., 0., 0.], [0., 1., 0., -1., 0.], [1., 1., 0., -1., -1.],
+                                    [0., 1., 0., -1., 0.], [0., 0., 0., 0., 0.]],
+                                   [[0., 0., 1., 0., 0.], [0., 1., 1., 1., 0.], [0., 0., 0., 0., 0.],
+                                    [0., -1., -1., -1., 0.], [0., 0., -1., 0., 0.]]]]],
+                                device=device,
+                                dtype=dtype)
 
-        edges = kornia.filters.spatial_gradient(inp, 'diff',
-                                                normalized=False)
+        edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=False)
         assert_allclose(edges, expected)
 
     def test_edges_sep_norm(self, device, dtype):
@@ -105,24 +110,18 @@ class TestSpatialGradient:
             [0., 1., 1., 1., 0.],
             [0., 0., 1., 0., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 1., 0., -1., 0.],
-            [1., 1., 0., -1., -1.],
-            [0., 1., 0., -1., 0.],
-            [0., 0., 0., 0., 0.]
-        ], [
-            [0., 0., 1., 0., 0.],
-            [0., 1., 1., 1., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., -1., -1., -1., 0.],
-            [0., 0., -1., 0., 0.]
-        ]]]], device=device, dtype=dtype) / 2.0
+        expected = torch.tensor([[[[[0., 0., 0., 0., 0.], [0., 1., 0., -1., 0.], [1., 1., 0., -1., -1.],
+                                    [0., 1., 0., -1., 0.], [0., 0., 0., 0., 0.]],
+                                   [[0., 0., 1., 0., 0.], [0., 1., 1., 1., 0.], [0., 0., 0., 0., 0.],
+                                    [0., -1., -1., -1., 0.], [0., 0., -1., 0., 0.]]]]],
+                                device=device,
+                                dtype=dtype) / 2.0
 
-        edges = kornia.filters.spatial_gradient(inp, 'diff',
-                                                normalized=True)
+        edges = kornia.filters.spatial_gradient(inp, 'diff', normalized=True)
         assert_allclose(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
@@ -139,8 +138,7 @@ class TestSpatialGradient:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.spatial_gradient, (img,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.spatial_gradient, (img, ), raise_exception=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -160,6 +158,7 @@ class TestSpatialGradient:
 
 
 class TestSpatialGradient3d:
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 5, 6, device=device, dtype=dtype)
         sobel = kornia.filters.SpatialGradient3d()
@@ -173,69 +172,47 @@ class TestSpatialGradient3d:
     @pytest.mark.skip("fix due to bug in kernel_flip")
     def test_edges(self, device, dtype):
         inp = torch.tensor([[[
-            [[0., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 0.],
-             [0., 0., 1., 0., 0.],
-             [0., 0., 0., 0., 0.],
+            [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.], [0., 0., 1., 0., 0.], [0., 0., 0., 0., 0.],
              [0., 0., 0., 0., 0.]],
-            [[0., 0., 0., 0., 0.],
-             [0., 0., 1., 0., 0.],
-             [0., 1., 1., 1., 0.],
-             [0., 0., 1., 0., 0.],
+            [[0., 0., 0., 0., 0.], [0., 0., 1., 0., 0.], [0., 1., 1., 1., 0.], [0., 0., 1., 0., 0.],
              [0., 0., 0., 0., 0.]],
-            [[0., 0., 0., 0., 0.],
-             [0., 0., 0., 0., 0.],
-             [0., 0., 1., 0., 0.],
-             [0., 0., 0., 0., 0.],
+            [[0., 0., 0., 0., 0.], [0., 0., 0., 0., 0.], [0., 0., 1., 0., 0.], [0., 0., 0., 0., 0.],
              [0., 0., 0., 0., 0.]],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
         expected = torch.tensor([
-            [[[[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
-                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+            [[[[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.5000, 0.0000, -0.5000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
-                 [0.5000, 0.5000, 0.0000, -0.5000, -0.5000],
-                 [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
-                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
-                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
-                [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                 [[0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.5000, 0.5000, 0.5000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, -0.5000, -0.5000, -0.5000, 0.0000],
-                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000]],
-                 [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
-                [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                  [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.5000, 0.0000, 0.5000, 0.0000],
-                    [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                 [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
-                 [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
-                    [0.0000, -0.5000, 0.0000, -0.5000, 0.0000],
-                    [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
-                    [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]]]], device=device, dtype=dtype)
+               [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                [0.5000, 0.5000, 0.0000, -0.5000, -0.5000], [0.0000, 0.5000, 0.0000, -0.5000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+               [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.5000, 0.0000, -0.5000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
+              [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+               [[0.0000, 0.0000, 0.5000, 0.0000, 0.0000], [0.0000, 0.5000, 0.5000, 0.5000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, -0.5000, -0.5000, -0.5000, 0.0000],
+                [0.0000, 0.0000, -0.5000, 0.0000, 0.0000]],
+               [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]],
+              [[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                [0.0000, 0.5000, 0.0000, 0.5000, 0.0000], [0.0000, 0.0000, 0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+               [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]],
+               [[0.0000, 0.0000, 0.0000, 0.0000, 0.0000], [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                [0.0000, -0.5000, 0.0000, -0.5000, 0.0000], [0.0000, 0.0000, -0.5000, 0.0000, 0.0000],
+                [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]]]]
+        ],
+                                device=device,
+                                dtype=dtype)
 
         edges = kornia.filters.spatial_gradient3d(inp)
         assert_allclose(edges, expected)
@@ -243,8 +220,7 @@ class TestSpatialGradient3d:
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.spatial_gradient3d, (img,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.spatial_gradient3d, (img, ), raise_exception=True)
 
     @pytest.mark.skip("issue with device in kernel generation")
     def test_jit(self, device, dtype):
@@ -265,6 +241,7 @@ class TestSpatialGradient3d:
 
 
 class TestSobel:
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
         sobel = kornia.filters.Sobel()
@@ -282,7 +259,9 @@ class TestSobel:
             [0., 1., 1., 1., 0.],
             [0., 0., 1., 0., 0.],
             [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                           device=device,
+                           dtype=dtype)
 
         expected = torch.tensor([[[
             [0., 1.4142, 2.0, 1.4142, 0.],
@@ -290,7 +269,9 @@ class TestSobel:
             [2.0, 4.0000, 0.00, 4.0000, 2.0],
             [1.4142, 4.2426, 4.00, 4.2426, 1.4142],
             [0., 1.4142, 2.0, 1.4142, 0.],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                                device=device,
+                                dtype=dtype)
 
         edges = kornia.filters.sobel(inp, normalized=False, eps=0.)
         assert_allclose(edges, expected)
@@ -312,8 +293,7 @@ class TestSobel:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, False),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, False), raise_exception=True)
 
     def test_gradcheck(self, device, dtype):
         if "cuda" in str(device):
@@ -321,8 +301,7 @@ class TestSobel:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, True),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)

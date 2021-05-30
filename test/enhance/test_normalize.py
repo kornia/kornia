@@ -25,8 +25,7 @@ class TestNormalize:
         std = torch.tensor([2.0], device=device, dtype=dtype)
 
         # expected output
-        expected = torch.tensor([0.25],
-                                device=device, dtype=dtype).repeat(1, 2, 2).view_as(data)
+        expected = torch.tensor([0.25], device=device, dtype=dtype).repeat(1, 2, 2).view_as(data)
 
         f = kornia.enhance.Normalize(mean, std)
         assert_allclose(f(data), expected)
@@ -97,7 +96,7 @@ class TestNormalize:
         mean = utils.tensor_to_gradcheck_var(mean)  # to var
         std = utils.tensor_to_gradcheck_var(std)  # to var
 
-        assert gradcheck(kornia.enhance.Normalize(mean, std), (data,), raise_exception=True)
+        assert gradcheck(kornia.enhance.Normalize(mean, std), (data, ), raise_exception=True)
 
     def test_single_value(self, device, dtype):
         # prepare input data
@@ -123,6 +122,7 @@ class TestNormalize:
 
 
 class TestDenormalize:
+
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
@@ -210,7 +210,7 @@ class TestDenormalize:
         mean = utils.tensor_to_gradcheck_var(mean)  # to var
         std = utils.tensor_to_gradcheck_var(std)  # to var
 
-        assert gradcheck(kornia.enhance.Denormalize(mean, std), (data,), raise_exception=True)
+        assert gradcheck(kornia.enhance.Denormalize(mean, std), (data, ), raise_exception=True)
 
     def test_single_value(self, device, dtype):
 
@@ -237,6 +237,7 @@ class TestDenormalize:
 
 
 class TestNormalizeMinMax(BaseTester):
+
     def test_smoke(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         assert kornia.normalize_min_max(x) is not None
@@ -253,14 +254,12 @@ class TestNormalizeMinMax(BaseTester):
         with pytest.raises(TypeError):
             assert kornia.normalize_min_max(x, 2., '')
 
-    @pytest.mark.parametrize("input_shape", [
-        (1, 2, 3, 4), (2, 1, 4, 3), (1, 3, 2, 1)])
+    @pytest.mark.parametrize("input_shape", [(1, 2, 3, 4), (2, 1, 4, 3), (1, 3, 2, 1)])
     def test_cardinality(self, device, dtype, input_shape):
         x = torch.rand(input_shape, device=device, dtype=dtype)
         assert kornia.normalize_min_max(x).shape == input_shape
 
-    @pytest.mark.parametrize("min_val, max_val", [
-        (1., 2.), (2., 3.), (5., 20.), (40., 1000.)])
+    @pytest.mark.parametrize("min_val, max_val", [(1., 2.), (2., 3.), (5., 20.), (40., 1000.)])
     def test_range(self, device, dtype, min_val, max_val):
         x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
         out = kornia.normalize_min_max(x, min_val=min_val, max_val=max_val)
@@ -278,7 +277,9 @@ class TestNormalizeMinMax(BaseTester):
             [-0.8, -0.6, -0.2],
             [-1., 0., -0.2],
             [1., 0.2, -0.4],
-        ]]], device=device, dtype=dtype)
+        ]]],
+                                device=device,
+                                dtype=dtype)
 
         actual = kornia.normalize_min_max(x, min_val=-1., max_val=1.)
         assert_allclose(actual, expected, atol=1e-6, rtol=1e-6)
@@ -293,7 +294,7 @@ class TestNormalizeMinMax(BaseTester):
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.normalize_min_max, (x,), raise_exception=True)
+        assert gradcheck(kornia.normalize_min_max, (x, ), raise_exception=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     @pytest.mark.nn

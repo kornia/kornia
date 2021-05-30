@@ -26,11 +26,11 @@ def rtol(device, dtype):
 
 
 class TestAngleAxisToQuaternionToAngleAxis:
+
     def test_zero_angle(self, device, dtype, atol, rtol):
         angle_axis = torch.tensor((0., 0., 0.), device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
-        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -40,8 +40,7 @@ class TestAngleAxisToQuaternionToAngleAxis:
         array[axis] = theta
         angle_axis = torch.tensor(array, device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
-        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -51,27 +50,24 @@ class TestAngleAxisToQuaternionToAngleAxis:
         array[axis] = kornia.pi / 2.
         angle_axis = torch.tensor(array, device=device, dtype=dtype)
         quaternion = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
-        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
 
 class TestQuaternionToAngleAxisToQuaternion:
+
     def test_unit_quaternion_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0., 0., 0., 1.), device=device, dtype=dtype)
         with pytest.warns(UserWarning):
-            angle_axis = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.XYZW)
         with pytest.warns(UserWarning):
-            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                             order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1., 0., 0., 0.), device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -80,11 +76,9 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[axis] = 1.
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         with pytest.warns(UserWarning):
-            angle_axis = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.XYZW)
         with pytest.warns(UserWarning):
-            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                             order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -93,14 +87,12 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[1 + axis] = 1.
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
         # just to be sure, check that mixing orders fails
         with pytest.warns(UserWarning):
-            quaternion_hat_wrong = kornia.angle_axis_to_quaternion(angle_axis,
-                                                                   order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat_wrong = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert not torch.allclose(quaternion_hat_wrong, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -110,11 +102,9 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[axis] = np.sin(theta / 2.)
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         with pytest.warns(UserWarning):
-            angle_axis = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.XYZW)
         with pytest.warns(UserWarning):
-            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                             order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -124,18 +114,17 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[1 + axis] = np.sin(theta / 2.)
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
         # just to be sure, check that mixing orders fails
         with pytest.warns(UserWarning):
-            quaternion_hat_wrong = kornia.angle_axis_to_quaternion(angle_axis,
-                                                                   order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat_wrong = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert not torch.allclose(quaternion_hat_wrong, quaternion, atol=atol, rtol=rtol)
 
 
 class TestQuaternionToRotationMatrixToAngleAxis:
+
     @pytest.mark.parametrize("axis", (0, 1, 2))
     def test_triplet_qma_xyzw(self, axis, device, dtype, atol, rtol):
         array = [[0., 0., 0., 0.]]
@@ -156,8 +145,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert_allclose(angle_axis, angle_axis_expected, atol=atol, rtol=rtol)
 
         with pytest.warns(UserWarning):
-            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                             order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -178,8 +166,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         angle_axis_expected = torch.tensor(angle_axis_expected, device=device, dtype=dtype)
         assert_allclose(angle_axis, angle_axis_expected, atol=atol, rtol=rtol)
 
-        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        quaternion_hat = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -190,8 +177,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert quaternion.shape[-1] == 4
 
         with pytest.warns(UserWarning):
-            angle_axis = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            angle_axis = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.XYZW)
         assert angle_axis.shape[-1] == 3
 
         rot_m = kornia.angle_axis_to_rotation_matrix(angle_axis)
@@ -199,8 +185,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert rot_m.shape[-2] == 3
 
         with pytest.warns(UserWarning):
-            quaternion_hat = kornia.rotation_matrix_to_quaternion(rot_m,
-                                                                  order=QuaternionCoeffOrder.XYZW)
+            quaternion_hat = kornia.rotation_matrix_to_quaternion(rot_m, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -217,8 +202,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
 
-        quaternion_hat = kornia.rotation_matrix_to_quaternion(rot_m,
-                                                              order=QuaternionCoeffOrder.WXYZ)
+        quaternion_hat = kornia.rotation_matrix_to_quaternion(rot_m, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -233,13 +217,11 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert rot_m.shape[-2] == 3
 
         with pytest.warns(UserWarning):
-            quaternion = kornia.rotation_matrix_to_quaternion(rot_m,
-                                                              order=QuaternionCoeffOrder.XYZW)
+            quaternion = kornia.rotation_matrix_to_quaternion(rot_m, order=QuaternionCoeffOrder.XYZW)
         assert quaternion.shape[-1] == 4
 
         with pytest.warns(UserWarning):
-            angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion,
-                                                             order=QuaternionCoeffOrder.XYZW)
+            angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.XYZW)
         assert_allclose(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -253,12 +235,10 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
 
-        quaternion = kornia.rotation_matrix_to_quaternion(rot_m,
-                                                          order=QuaternionCoeffOrder.WXYZ)
+        quaternion = kornia.rotation_matrix_to_quaternion(rot_m, order=QuaternionCoeffOrder.WXYZ)
         assert quaternion.shape[-1] == 4
 
-        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion,
-                                                         order=QuaternionCoeffOrder.WXYZ)
+        angle_axis_hat = kornia.quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
         assert_allclose(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -269,13 +249,11 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert angle_axis.shape[-1] == 3
 
         with pytest.warns(UserWarning):
-            quaternion = kornia.angle_axis_to_quaternion(angle_axis,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            quaternion = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.XYZW)
         assert quaternion.shape[-1] == 4
 
         with pytest.warns(UserWarning):
-            rot_m = kornia.quaternion_to_rotation_matrix(quaternion,
-                                                         order=QuaternionCoeffOrder.XYZW)
+            rot_m = kornia.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.XYZW)
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
 
@@ -289,12 +267,10 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         angle_axis = torch.tensor(array, device=device, dtype=dtype)
         assert angle_axis.shape[-1] == 3
 
-        quaternion = kornia.angle_axis_to_quaternion(angle_axis,
-                                                     order=QuaternionCoeffOrder.WXYZ)
+        quaternion = kornia.angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
         assert quaternion.shape[-1] == 4
 
-        rot_m = kornia.quaternion_to_rotation_matrix(quaternion,
-                                                     order=QuaternionCoeffOrder.WXYZ)
+        rot_m = kornia.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
 
@@ -344,10 +320,10 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
         # Random angle in [-pi..pi]
-        angle = torch.tensor((np.random.random(size=(2, 1)) * 2. * np.pi - np.pi), device=device,
-                             dtype=dtype)
+        angle = torch.tensor((np.random.random(size=(2, 1)) * 2. * np.pi - np.pi), device=device, dtype=dtype)
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
-            axis_name=axis_name, angle=angle, device=device, dtype=dtype)
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
         assert rot_m.dim() == 3
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
@@ -357,46 +333,36 @@ class TestAngleOfRotations:
 
         # Make sure the returned axis matches the named one, and the appropriate column
         if axis_name == 'x':
-            assert_allclose(axis, torch.tensor(((1., 0., 0.),) * angle.numel(), device=device,
-                                               dtype=dtype))
+            assert_allclose(axis, torch.tensor(((1., 0., 0.), ) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 0])
         elif axis_name == 'y':
-            assert_allclose(axis, torch.tensor(((0., 1., 0.),) * angle.numel(), device=device,
-                                               dtype=dtype))
+            assert_allclose(axis, torch.tensor(((0., 1., 0.), ) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 1])
         elif axis_name == 'z':
-            assert_allclose(axis, torch.tensor(((0., 0., 1.),) * angle.numel(), device=device,
-                                               dtype=dtype))
+            assert_allclose(axis, torch.tensor(((0., 0., 1.), ) * angle.numel(), device=device, dtype=dtype))
             assert_allclose(axis, rot_m[..., :3, 2])
         else:
             raise NotImplementedError(f'Not prepared for axis_name {axis_name}')
 
         # Make sure axes are perpendicular
         zero = torch.zeros_like(angle).unsqueeze(-1)
-        assert_allclose(rot_m[..., :3, 1:2].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero,
-                        atol=atol, rtol=rtol)
-        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 1:2], zero,
-                        atol=atol, rtol=rtol)
-        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero,
-                        atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 1:2].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero, atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 1:2], zero, atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 2:3].permute((0, 2, 1)) @ rot_m[..., :3, 0:1], zero, atol=atol, rtol=rtol)
 
         # Make sure axes are unit norm
         one = torch.ones_like(angle)
-        assert_allclose(rot_m[..., :3, 0].norm(p=2, dim=-1, keepdim=True), one,
-                        atol=atol, rtol=rtol)
-        assert_allclose(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one,
-                        atol=atol, rtol=rtol)
-        assert_allclose(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one,
-                        atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 0].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
+        assert_allclose(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
     @pytest.mark.parametrize("angle_deg", (-179.9, -135., -90., -45., 0., 45, 90, 135, 179.9))
     def test_matrix_angle(self, axis_name, angle_deg, device, dtype):
         angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).view(1, 1)
-        rot_m, _ = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                          angle=angle,
-                                                                          device=device,
-                                                                          dtype=dtype)
+        rot_m, _ = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         assert_allclose(torch.abs(angle), matrix_angle_abs)
 
@@ -408,17 +374,14 @@ class TestAngleOfRotations:
             .repeat(2, 1)
         pi = torch.ones_like(angle) * kornia.pi
         assert 2 <= len(angle.shape)
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                             angle=angle,
-                                                                             device=device,
-                                                                             dtype=dtype)
+        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
         with pytest.warns(UserWarning):
-            quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps,
-                                                              order=QuaternionCoeffOrder.XYZW)
+            quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps, order=QuaternionCoeffOrder.XYZW)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
-        angle_hat = 2. * torch.atan2(quaternion[..., :3].norm(p=2, dim=-1, keepdim=True),
-                                     quaternion[..., 3:4])
+        angle_hat = 2. * torch.atan2(quaternion[..., :3].norm(p=2, dim=-1, keepdim=True), quaternion[..., 3:4])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):
@@ -441,16 +404,13 @@ class TestAngleOfRotations:
             .repeat(2, 1)
         pi = torch.ones_like(angle) * kornia.pi
         assert 2 <= len(angle.shape)
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                             angle=angle,
-                                                                             device=device,
-                                                                             dtype=dtype)
-        quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps,
-                                                          order=QuaternionCoeffOrder.WXYZ)
+        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
+        quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps, order=QuaternionCoeffOrder.WXYZ)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
-        angle_hat = 2. * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True),
-                                     quaternion[..., 0:1])
+        angle_hat = 2. * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True), quaternion[..., 0:1])
         # make sure it lands between [-pi..pi)
         mask = pi < angle_hat
         while torch.any(mask):
@@ -469,10 +429,9 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize("angle_deg", (-179.9, -90., -45., 0, 45, 90, 179.9))
     def test_angle_axis(self, axis_name, angle_deg, device, dtype, atol, rtol):
         angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).repeat(2, 1)
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                             angle=angle,
-                                                                             device=device,
-                                                                             dtype=dtype)
+        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
         angle_axis = kornia.rotation_matrix_to_angle_axis(rot_m)
         # compute angle_axis rotation angle
         angle_hat = angle_axis.norm(p=2, dim=-1, keepdim=True)
@@ -491,16 +450,13 @@ class TestAngleOfRotations:
         eps = torch.finfo(dtype).eps
         angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).repeat(2, 1)
         pi = torch.ones_like(angle) * kornia.pi
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                             angle=angle,
-                                                                             device=device,
-                                                                             dtype=dtype)
+        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
         with pytest.warns(UserWarning):
-            quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps,
-                                                              order=QuaternionCoeffOrder.XYZW)
+            quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps, order=QuaternionCoeffOrder.XYZW)
         with pytest.warns(UserWarning):
-            log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps,
-                                                 order=QuaternionCoeffOrder.XYZW)
+            log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps, order=QuaternionCoeffOrder.XYZW)
         # compute angle_axis rotation angle
         angle_hat = 2. * log_q.norm(p=2, dim=-1, keepdim=True)
         # make sure it lands between [-pi..pi)
@@ -523,14 +479,11 @@ class TestAngleOfRotations:
         eps = torch.finfo(dtype).eps
         angle = (angle_deg * kornia.pi / 180.).to(dtype).to(device).repeat(2, 1)
         pi = torch.ones_like(angle) * kornia.pi
-        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(axis_name=axis_name,
-                                                                             angle=angle,
-                                                                             device=device,
-                                                                             dtype=dtype)
-        quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps,
-                                                          order=QuaternionCoeffOrder.WXYZ)
-        log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps,
-                                             order=QuaternionCoeffOrder.WXYZ)
+        rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
+            axis_name=axis_name, angle=angle, device=device, dtype=dtype
+        )
+        quaternion = kornia.rotation_matrix_to_quaternion(rot_m, eps=eps, order=QuaternionCoeffOrder.WXYZ)
+        log_q = kornia.quaternion_exp_to_log(quaternion, eps=eps, order=QuaternionCoeffOrder.WXYZ)
         # compute angle_axis rotation angle
         angle_hat = 2. * log_q.norm(p=2, dim=-1, keepdim=True)
         # make sure it lands between [-pi..pi)

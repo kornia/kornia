@@ -4,35 +4,43 @@ import torch.nn as nn
 
 from torch.testing import assert_allclose
 
-from kornia.augmentation import (
-    RandomAffine3D,
-    RandomRotation3D,
-    RandomPerspective3D,
-    RandomMotionBlur3D
-)
+from kornia.augmentation import (RandomAffine3D, RandomRotation3D, RandomPerspective3D, RandomMotionBlur3D)
 
 
 class TestRandomAffine3DBackward:
 
-    @pytest.mark.parametrize("degrees", [
-        10, [10., 20.], [10., 20., 30.], [(10, 20), (10, 20), (10, 20)],
-        torch.tensor(10.), torch.tensor([10., 20.]), torch.tensor([10, 20, 30]),
-        torch.tensor([(10, 20), (10, 20), (10, 20)])])
+    @pytest.mark.parametrize(
+        "degrees", [
+            10, [10., 20.], [10., 20., 30.], [(10, 20), (10, 20), (10, 20)],
+            torch.tensor(10.),
+            torch.tensor([10., 20.]),
+            torch.tensor([10, 20, 30]),
+            torch.tensor([(10, 20), (10, 20), (10, 20)])
+        ]
+    )
     @pytest.mark.parametrize("translate", [[0.1, 0.2, 0.3], torch.tensor([0.1, 0.2, 0.3])])
-    @pytest.mark.parametrize("scale", [
-        [0.1, 0.2], [(0.1, 0.2), (0.1, 0.2), (0.1, 0.2)],
-        torch.tensor([0.1, 0.2]), torch.tensor([(0.1, 0.2), (0.1, 0.2), (0.1, 0.2)])])
-    @pytest.mark.parametrize("shear", [
-        10., [10., 20.], [10., 20., 30., 40., 50., 60.],
-        [(-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.)],
-        torch.tensor(10), torch.tensor([10, 20]), torch.tensor([10., 20., 30., 40., 50., 60.]),
-        torch.tensor([(-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.)])])
+    @pytest.mark.parametrize(
+        "scale", [[0.1, 0.2], [(0.1, 0.2), (0.1, 0.2), (0.1, 0.2)],
+                  torch.tensor([0.1, 0.2]),
+                  torch.tensor([(0.1, 0.2), (0.1, 0.2), (0.1, 0.2)])]
+    )
+    @pytest.mark.parametrize(
+        "shear", [
+            10., [10., 20.], [10., 20., 30., 40., 50., 60.],
+            [(-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.)],
+            torch.tensor(10),
+            torch.tensor([10, 20]),
+            torch.tensor([10., 20., 30., 40., 50., 60.]),
+            torch.tensor([(-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.), (-10., 10.)])
+        ]
+    )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, degrees, translate, scale, shear, resample, align_corners, return_transform,
-                   same_on_batch, device, dtype):
+    def test_param(
+        self, degrees, translate, scale, shear, resample, align_corners, return_transform, same_on_batch, device, dtype
+    ):
 
         _degrees = degrees if isinstance(degrees, (int, float, list, tuple)) else \
             nn.Parameter(degrees.clone().to(device=device, dtype=dtype))
@@ -46,8 +54,16 @@ class TestRandomAffine3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomAffine3D(
-            _degrees, _translate, _scale, _shear, resample, align_corners=align_corners,
-            return_transform=return_transform, same_on_batch=same_on_batch, p=1.)
+            _degrees,
+            _translate,
+            _scale,
+            _shear,
+            resample,
+            align_corners=align_corners,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            p=1.
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -113,10 +129,15 @@ class TestRandomAffine3DBackward:
 
 class TestRandomRotation3DBackward:
 
-    @pytest.mark.parametrize("degrees", [
-        10, [10., 20.], [10., 20., 30.], [(10, 20), (10, 20), (10, 20)],
-        torch.tensor(10.), torch.tensor([10., 20.]), torch.tensor([10, 20, 30]),
-        torch.tensor([(10, 20), (10, 20), (10, 20)])])
+    @pytest.mark.parametrize(
+        "degrees", [
+            10, [10., 20.], [10., 20., 30.], [(10, 20), (10, 20), (10, 20)],
+            torch.tensor(10.),
+            torch.tensor([10., 20.]),
+            torch.tensor([10, 20, 30]),
+            torch.tensor([(10, 20), (10, 20), (10, 20)])
+        ]
+    )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
@@ -129,8 +150,13 @@ class TestRandomRotation3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomRotation3D(
-            _degrees, resample, align_corners=align_corners,
-            return_transform=return_transform, same_on_batch=same_on_batch, p=1.)
+            _degrees,
+            resample,
+            align_corners=align_corners,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            p=1.
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -173,8 +199,13 @@ class TestRandomPerspective3DBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomPerspective3D(
-            _distortion_scale, resample=resample, return_transform=return_transform,
-            same_on_batch=same_on_batch, align_corners=align_corners, p=1.)
+            _distortion_scale,
+            resample=resample,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            align_corners=align_corners,
+            p=1.
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -220,8 +251,14 @@ class TestRandomMotionBlur3DBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10, 10), device=device, dtype=dtype) / 255.
-        aug = RandomMotionBlur3D(
-            (3, 3), _angle, _direction, border_type, resample, return_transform, same_on_batch, p=1.)
+        aug = RandomMotionBlur3D((3, 3),
+                                 _angle,
+                                 _direction,
+                                 border_type,
+                                 resample,
+                                 return_transform,
+                                 same_on_batch,
+                                 p=1.)
 
         if return_transform:
             output, _ = aug(input)

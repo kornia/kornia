@@ -7,6 +7,7 @@ from torch.testing import assert_allclose
 
 
 class TestSaveLoadPointCloud:
+
     def test_save_pointcloud(self):
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)

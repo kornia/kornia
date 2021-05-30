@@ -9,6 +9,7 @@ from torch.testing import assert_allclose
 
 
 class Testunsharp:
+
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
         kernel_size = (5, 7)
