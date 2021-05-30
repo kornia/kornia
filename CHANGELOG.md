@@ -4,7 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.2] - 2021-MM-DD
+## [0.5.3] - 2021-05-29
+
+### Added
+- Added inverse for augmentations ([#1013](https://github.com/kornia/kornia/pull/1013))
+- Add advanced augmentations: RandomFisheye, RandomElasticTransform, RandomThinPlateSpline, RandomBloxBlur ([#1015](https://github.com/kornia/kornia/pull/1015)
+
+### Fixed
+- Correct Sobel test_noncontiguous. Nothing was tested before. ([#1018](https://github.com/kornia/kornia/pull/1018))
+- Fixing #795: find_homography_dlt_iterated sometimes fails ([#1022](https://github.com/kornia/kornia/pull/1022))
+
+### Changed
+- Refactorization of the morphology package ([#1034](https://github.com/kornia/kornia/pull/1034))
+- Optimised clipping in clahe and some other minor optimisation ([#1035](https://github.com/kornia/kornia/pull/1035))
+
+
+## [0.5.2] - 2021-05-14
 
 ## Added
 - Added unsharp mask filtering ([#1004](https://github.com/kornia/kornia/pull/1004))
