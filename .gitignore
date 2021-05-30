@@ -10,6 +10,7 @@ kornia.egg-info/
 *.swp
 *.swo
 *.swn
+*.swm
 .eggs/*
 .cache/*
 .pytest_cache/*
