@@ -17,13 +17,17 @@ from kornia.geometry import (
     crop_by_boxes,
     crop_by_transform_mat,
     deg2rad,
+    elastic_transform2d,
     get_perspective_transform,
     get_affine_matrix2d,
+    get_tps_transform,
     hflip,
     vflip,
     rotate,
     warp_affine,
+    warp_image_tps,
     warp_perspective,
+    remap,
     resize,
 )
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
@@ -40,7 +44,10 @@ from kornia.enhance import (
     adjust_gamma,
     Invert,
 )
-from kornia.utils import _extract_device_dtype
+from kornia.filters import (
+    box_blur,
+)
+from kornia.utils import _extract_device_dtype, create_meshgrid
 from kornia.enhance.normalize import normalize, denormalize
 from kornia.enhance import Invert
 
@@ -1800,3 +1807,244 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         return input + params['noise'].to(input.device) * self.std + self.mean
+
+
+class RandomFisheye(GeometricAugmentationBase2D):
+    r"""Add random camera radial distortion.
+
+    Args:
+        center_x (torch.Tensor): Ranges to sample respect to x-coordinate center with shape (2,).
+        center_y (torch.Tensor): Ranges to sample respect to y-coordinate center with shape (2,).
+        gamma (torch.Tensor): Ranges to sample for the gamma values respect to optical center with shape (2,).
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> center_x = torch.tensor([-.3, .3])
+        >>> center_y = torch.tensor([-.3, .3])
+        >>> gamma = torch.tensor([.9, 1.])
+        >>> out = RandomFisheye(center_x, center_y, gamma)(img)
+        >>> out.shape
+        torch.Size([1, 1, 2, 2])
+    """
+
+    def __init__(self,
+                 center_x: torch.Tensor,
+                 center_y: torch.Tensor,
+                 gamma: torch.Tensor,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomFisheye, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.center_x = self._check_tensor(center_x)
+        self.center_y = self._check_tensor(center_y)
+        self.gamma = self._check_tensor(gamma)
+        self.dist = torch.distributions.Uniform
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def _check_tensor(self, data: torch.Tensor) -> torch.Tensor:
+        if not isinstance(data, torch.Tensor):
+            raise TypeError(f"Invalid input type. Expected torch.Tensor - got: {type(data)}")
+
+        if len(data.shape) != 1 and data.shape[0] != 2:
+            raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
+
+        return data
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, _, _, _ = shape  # batch_size
+        center_x = self.dist(self.center_x[:1], self.center_x[1:]).rsample(shape[:1])
+        center_y = self.dist(self.center_y[:1], self.center_y[1:]).rsample(shape[:1])
+        gamma = self.dist(self.gamma[:1], self.gamma[1:]).rsample(shape[:1])
+        return dict(center_x=center_x, center_y=center_y, gamma=gamma)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        # create the initial sampling fields
+        B, C, H, W = input.shape
+        grid = create_meshgrid(H, W, normalized_coordinates=True)
+        field_x = grid[..., 0].to(input)  # 1xHxW
+        field_y = grid[..., 1].to(input)  # 1xHxW
+        # vectorize the random parameters
+        center_x = params['center_x'].view(B, 1, 1).to(input)
+        center_y = params['center_y'].view(B, 1, 1).to(input)
+        gamma = params['gamma'].view(B, 1, 1).to(input)
+        # compute and apply the distances respect to the camera optical center
+        distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** .5
+        field_x = field_x + field_x * distance ** gamma  # BxHxw
+        field_y = field_y + field_y * distance ** gamma  # BxHxW
+        return remap(input, field_x, field_y, normalized_coordinates=True)
+
+
+class RandomElasticTransform(GeometricAugmentationBase2D):
+    r"""Add random elastic transformation to a tensor image.
+
+    Args:
+        kernel_size (Tuple[int, int]): the size of the Gaussian kernel. Default: (63, 63).
+        sigma (Tuple[float, float]): The standard deviation of the Gaussian in the y and x directions,
+          respecitvely. Larger sigma results in smaller pixel displacements. Default: (32, 32).
+        alpha (Tuple[float, float]): The scaling factor that controls the intensity of the deformation
+          in the y and x directions, respectively. Default: 1.
+        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
+        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> out = RandomElasticTransform()(img)
+        >>> out.shape
+        torch.Size([1, 1, 2, 2])
+    """
+
+    def __init__(self,
+                 kernel_size: Tuple[int, int] = (63, 63),
+                 sigma: Tuple[float, float] = (32., 32.),
+                 alpha: Tuple[float, float] = (1., 1.),
+                 align_corners: bool = False,
+                 mode: str = 'bilinear',
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomElasticTransform, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.alpha = alpha
+        self.align_corners = align_corners
+        self.mode = mode
+
+    def __repr__(self) -> str:
+        return self.__class__.__name__ + f"({super().__repr__()})"
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, _, H, W = shape
+        return dict(noise=torch.rand(B, 2, H, W) * 2 - 1)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return elastic_transform2d(
+            input,
+            params['noise'].to(input),
+            self.kernel_size,
+            self.sigma,
+            self.alpha,
+            self.align_corners,
+            self.mode
+        )
+
+
+class RandomThinPlateSpline(GeometricAugmentationBase2D):
+    r"""Add random noise to the Thin Plate Spline algorithm.
+
+    Args:
+        scale (float): the scale factor to apply to the destionation points. Default: 0.2.
+        align_corners (bool): Interpolation flag used by `grid_sample`. Default: False.
+        mode (str): Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'. Default: 'bilinear'.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 2, 2)
+        >>> out = RandomThinPlateSpline()(img)
+        >>> out.shape
+        torch.Size([1, 1, 2, 2])
+
+    .. note::
+        This function internally uses :func:`warp_image_tps` to perform the warping.
+    """
+
+    def __init__(self,
+                 scale: float = 0.2,
+                 align_corners: bool = False,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomThinPlateSpline, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.align_corners = align_corners
+        self.dist = torch.distributions.Uniform(-scale, scale)
+
+    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+        B, _, H, W = shape
+        src = torch.tensor([[
+            [-1., -1.],
+            [-1., 1.],
+            [1., -1.],
+            [1., -1.],
+            [0., 0.],
+        ]]).repeat(B, 1, 1)  # Bx5x2
+        dst = src + self.dist.rsample((B, 5, 2))
+        return dict(src=src, dst=dst)
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        src = params['src'].to(input)
+        dst = params['dst'].to(input)
+        kernel, affine = get_tps_transform(dst, src)
+        return warp_image_tps(input, src, kernel, affine, self.align_corners)
+
+
+class RandomBoxBlur(GeometricAugmentationBase2D):
+    """Adds random blur with a box filter to an image tensor.
+
+    Args:
+        kernel_size (Tuple[int, int]): the blurring kernel size.
+        border_type (str): the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized (bool): if True, L1 norm of the kernel is set to 1.
+        return_transform (bool): if ``True`` return the matrix describing the transformation applied to each
+            input tensor. If ``False`` and the input is a tuple the applied transformation wont be concatenated.
+        same_on_batch (bool): apply the same transformation across the batch. Default: False.
+        p (float): probability of applying the transformation. Default value is 0.5.
+
+    Examples:
+        >>> img = torch.ones(1, 1, 24, 24)
+        >>> out = RandomBoxBlur((7, 7))(img)
+        >>> out.shape
+        torch.Size([1, 1, 24, 24])
+    """
+
+    def __init__(self,
+                 kernel_size: Tuple[int, int] = (3, 3),
+                 border_type: str = 'reflect',
+                 normalized: bool = True,
+                 return_transform: bool = False,
+                 same_on_batch: bool = False,
+                 p: float = 0.5) -> None:
+        super(RandomBoxBlur, self).__init__(
+            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.)
+        self.kernel_size = kernel_size
+        self.border_type = border_type
+        self.normalized = normalized
+
+    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+        return self.identity_matrix(input)
+
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        return box_blur(input, self.kernel_size, self.border_type, self.normalized)
