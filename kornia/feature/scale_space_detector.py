@@ -160,9 +160,9 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(
+            max_coords_best = _scale_index_to_scale(  # type: ignore
                 max_coords_best, sigmas_oct, self.scale_pyr.n_levels
-            )  # type: ignore
+            )
 
             # Create local affine frames (LAFs)
             rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
@@ -191,11 +191,11 @@ class ScaleSpaceDetector(nn.Module):
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, denormalize_laf(lafs, img)
 
-    def forward(
+    def forward(  # type: ignore
         self,
         img: torch.Tensor,  # type: ignore
         mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

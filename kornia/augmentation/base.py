@@ -114,11 +114,11 @@ class _BasicAugmentationBase(nn.Module):
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
-    def forward(
+    def forward(  # type: ignore
         self,
         input: torch.Tensor,
         params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
@@ -225,12 +225,12 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         return output
 
-    def forward(
+    def forward(  # type: ignore
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
         return_transform: Optional[bool] = None,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         in_tensor, in_transform = self.__unpack_input__(input)
         self.__check_batching__(input)
         ori_shape = in_tensor.shape
@@ -472,12 +472,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
         return _transform_input(input)
 
-    def apply_transform(
+    def apply_transform(  # type: ignore
         self,
         input: torch.Tensor,
         label: torch.Tensor,  # type: ignore
         params: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     def apply_func(

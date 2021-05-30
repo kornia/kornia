@@ -201,13 +201,13 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2]**2 + laf[..., 0:1, 0:1]**2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
-    laf2_ell = torch.cat(
+    laf2_ell = torch.cat(  # type: ignore
         [
             ((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) / (b2a2 * det)),
             (det / b2a2).contiguous()
         ],
         dim=3
-    )  # type: ignore
+    )
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
     return scale_laf(laf_unit_scale, scale)
 

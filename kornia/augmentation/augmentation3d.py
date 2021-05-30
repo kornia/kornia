@@ -887,12 +887,12 @@ class RandomCrop3D(AugmentationBase3D):
             input, transform, self.size, mode=self.resample.name.lower(), align_corners=self.align_corners
         )
 
-    def forward(
+    def forward(  # type: ignore
         self,
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, torch.Tensor]] = None,
         return_transform: Optional[bool] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:  # type: ignore
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if type(input) == tuple:
             input = (self.precrop_padding(input[0]), input[1])
         else:

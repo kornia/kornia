@@ -103,12 +103,12 @@ class RandomMixUp(MixAugmentationBase):
                 torch.tensor(self.lambda_val, device=self.device, dtype=self.dtype)
         return rg.random_mixup_generator(batch_shape[0], self.p, lambda_val, same_on_batch=self.same_on_batch)
 
-    def apply_transform(
+    def apply_transform(  # type: ignore
         self,
         input: torch.Tensor,
         label: torch.Tensor,  # type: ignore
         params: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         input_permute = input.index_select(dim=0, index=params['mixup_pairs'].to(input.device))
         labels_permute = label.index_select(dim=0, index=params['mixup_pairs'].to(label.device))
 
@@ -248,12 +248,12 @@ class RandomCutMix(MixAugmentationBase):
             same_on_batch=self.same_on_batch
         )
 
-    def apply_transform(
+    def apply_transform(  # type: ignore
         self,
         input: torch.Tensor,
         label: torch.Tensor,  # type: ignore
         params: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         height, width = input.size(2), input.size(3)
         num_mixes = params['mix_pairs'].size(0)
         batch_size = params['mix_pairs'].size(1)
