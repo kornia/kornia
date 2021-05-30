@@ -41,8 +41,6 @@ from kornia.enhance import (
     adjust_contrast,
     adjust_saturation,
     adjust_hue,
-    adjust_gamma,
-    Invert,
 )
 from kornia.filters import box_blur
 from kornia.utils import _extract_device_dtype, create_meshgrid

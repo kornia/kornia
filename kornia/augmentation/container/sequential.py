@@ -63,13 +63,6 @@ class Sequential(nn.Sequential):
                 if keepdim is not None:
                     arg.keepdim = keepdim
         self._params = {}
-    
-    def inverse(self):
-        # TODO: This can be enabled after #1013 is merged
-        # However, this function can hardly support behaviours that out of kornia augmentations
-        # since the transformaton matrices will never be returned at current stage.
-        # Also, the intermedia cropping functions can be problematic for this end-to-end functionality.
-        raise NotImplementedError
 
     def apply_to_input(
         self, input, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
