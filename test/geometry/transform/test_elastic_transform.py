@@ -64,9 +64,9 @@ class TestElasticTransform:
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
 
         expected = torch.tensor([[
-            [[0.2193, 0.2193, 0.2193],
-             [0.2193, 0.2193, 0.2193],
-             [0.2193, 0.2193, 0.2193]]
+            [[0.0005, 0.3795, 0.1905],
+             [0.1034, 0.4235, 0.0702],
+             [0.0259, 0.2007, 0.2193]]
         ]], device=device, dtype=dtype)
 
         actual = elastic_transform2d(image, noise)

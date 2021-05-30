@@ -1873,11 +1873,11 @@ class RandomFisheye(GeometricAugmentationBase2D):
         # create the initial sampling fields
         B, C, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)
-        field_x = grid[..., 0].to(input.device)  # 1xHxW
-        field_y = grid[..., 1].to(input.device)  # 1xHxW
+        field_x = grid[..., 0].to(input)  # 1xHxW
+        field_y = grid[..., 1].to(input)  # 1xHxW
         # vectorize the random parameters
-        center_x = params['center_x'].view(B, 1, 1).to(input.device)
-        center_y = params['center_y'].view(B, 1, 1).to(input.device)
+        center_x = params['center_x'].view(B, 1, 1).to(input)
+        center_y = params['center_y'].view(B, 1, 1).to(input)
         gamma = params['gamma'].view(B, 1, 1)
         # compute and apply the distances respect to the camera optical center
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** .5
@@ -1971,6 +1971,7 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`warp_image_tps` to perform the warping.
     """
+
     def __init__(self,
                  scale: float = 0.2,
                  align_corners: bool = False,
