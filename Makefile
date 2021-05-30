@@ -42,7 +42,7 @@ yapf: FORCE
 	yapf --in-place --parallel --recursive kornia/ test/ examples/
 
 doctest:
-	pytest -v --numprocesses auto --doctest-modules kornia/ examples/
+	pytest -v --numprocesses auto --doctest-modules kornia/
 
 docstyle: FORCE
 	pydocstyle kornia/
