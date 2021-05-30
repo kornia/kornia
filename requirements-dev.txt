@@ -4,4 +4,5 @@ pytest-flake8==1.0.6
 pytest-cov==2.9.0
 pytest-mypy==0.7.0
 pydocstyle
+pre-commit>=2.0
 yapf
