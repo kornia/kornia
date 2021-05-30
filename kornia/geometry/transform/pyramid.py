@@ -170,8 +170,7 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: torch.Tensor) -> Tuple[  # type: ignore
-        List, List, List]:
+    def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
         bs, ch, h, w = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 

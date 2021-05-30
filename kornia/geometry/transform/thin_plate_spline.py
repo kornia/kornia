@@ -149,10 +149,9 @@ def warp_points_tps(
 
     # broadcast the kernel distance matrix against the x and y weights to compute the x and y
     # transforms simultaneously
-    warped: torch.Tensor = (
-        k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
-        + points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) + affine_weights[:, None, 0]
-    )
+    k_mul_kernel = k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
+    points_mul_affine = points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2)
+    warped: torch.Tensor = k_mul_kernel + points_mul_affine + affine_weights[:, None, 0]
 
     return warped
 

@@ -111,13 +111,12 @@ class CommonTests(BaseTester):
     def test_gradcheck(self):
         self._test_gradcheck_implementation(params=self._default_param_set)
 
-
-# TODO Implement
-# test_batch
-# test_batch_return_transform
-# test_coordinate check
-# test_jit
-# test_gradcheck
+    # TODO Implement
+    # test_batch
+    # test_batch_return_transform
+    # test_coordinate check
+    # test_jit
+    # test_gradcheck
 
     def _create_augmentation_from_params(self, **params):
         return self._augmentation_cls(**params)

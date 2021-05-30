@@ -52,8 +52,8 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     ax = torch.abs(x)
     y = 3.75 / ax
     ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
-    return (torch.exp(ax)
-            / torch.sqrt(ax)) * (0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans))))
+    coef = (0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans))))
+    return (torch.exp(ax) / torch.sqrt(ax)) * coef
 
 
 def _modified_bessel_1(x: torch.Tensor) -> torch.Tensor:
