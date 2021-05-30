@@ -30,10 +30,10 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	pytest -v --numprocesses auto --flake8 kornia examples test  # -m flake8
+	pytest -v --numprocesses auto --flake8 kornia/ examples/ test/  # -m flake8
 
 mypy: FORCE
-	pytest -v --numprocesses auto --mypy kornia examples test  # -m mypy
+	pytest -v --numprocesses auto --mypy kornia/ examples/ test/  # -m mypy
 
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
@@ -42,7 +42,7 @@ yapf: FORCE
 	yapf --in-place --parallel --recursive kornia/ test/ examples/
 
 doctest:
-	pytest -v --numprocesses auto --doctest-modules kornia
+	pytest -v --numprocesses auto --doctest-modules kornia/ examples/
 
 docstyle: FORCE
 	pydocstyle kornia/
