@@ -30,15 +30,15 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
 
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1x2
 
-    scale = (points - x_mean).norm(dim=-1).mean(dim=-1)   # B
+    scale = (points - x_mean).norm(dim=-1).mean(dim=-1)  # B
     scale = torch.sqrt(torch.tensor(2.)) / (scale + eps)  # B
 
     ones, zeros = torch.ones_like(scale), torch.zeros_like(scale)
 
-    transform = torch.stack([
-        scale, zeros, -scale * x_mean[..., 0, 0],
-        zeros, scale, -scale * x_mean[..., 0, 1],
-        zeros, zeros, ones], dim=-1)  # Bx9
+    transform = torch.stack(
+        [scale, zeros, -scale * x_mean[..., 0, 0], zeros, scale, -scale * x_mean[..., 0, 1], zeros, zeros, ones],
+        dim=-1
+    )  # Bx9
 
     transform = transform.view(-1, 3, 3)  # Bx3x3
     points_norm = kornia.transform_points(transform, points)  # BxNx2
@@ -94,9 +94,7 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
 
-    X = torch.cat([
-        x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones
-    ], dim=-1)  # BxNx9
+    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)  # BxNx9
 
     # apply the weights to the linear system
     w_diag = torch.diag_embed(weights)
@@ -173,6 +171,7 @@ def fundamental_from_essential(E_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/fundamental.cpp#L109
 # https://github.com/openMVG/openMVG/blob/160643be515007580086650f2ae7f1a42d32e9fb/src/openMVG/multiview/projection.cpp#L134
 
+
 def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Tensor:
     r"""Get the Fundamental matrix from Projection matrices.
 
@@ -204,9 +203,16 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
     X1Y3, X2Y3, X3Y3 = vstack(X1, Y3), vstack(X2, Y3), vstack(X3, Y3)
 
     F_vec = torch.cat([
-        X1Y1.det().reshape(-1, 1), X2Y1.det().reshape(-1, 1), X3Y1.det().reshape(-1, 1),
-        X1Y2.det().reshape(-1, 1), X2Y2.det().reshape(-1, 1), X3Y2.det().reshape(-1, 1),
-        X1Y3.det().reshape(-1, 1), X2Y3.det().reshape(-1, 1), X3Y3.det().reshape(-1, 1),
-    ], dim=1)
+        X1Y1.det().reshape(-1, 1),
+        X2Y1.det().reshape(-1, 1),
+        X3Y1.det().reshape(-1, 1),
+        X1Y2.det().reshape(-1, 1),
+        X2Y2.det().reshape(-1, 1),
+        X3Y2.det().reshape(-1, 1),
+        X1Y3.det().reshape(-1, 1),
+        X2Y3.det().reshape(-1, 1),
+        X3Y3.det().reshape(-1, 1),
+    ],
+                      dim=1)
 
     return F_vec.view(*P1.shape[:-2], 3, 3)

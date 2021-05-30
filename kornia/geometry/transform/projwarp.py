@@ -11,20 +11,19 @@ from kornia.testing import check_is_tensor
 from kornia.utils.helpers import _torch_solve_cast, _torch_inverse_cast
 
 __all__ = [
-    "warp_affine3d",
-    "get_projective_transform",
-    "projection_from_Rt",
-    "get_perspective_transform3d",
+    "warp_affine3d", "get_projective_transform", "projection_from_Rt", "get_perspective_transform3d",
     "warp_perspective3d"
 ]
 
 
-def warp_affine3d(src: torch.Tensor,
-                  M: torch.Tensor,
-                  dsize: Tuple[int, int, int],
-                  flags: str = 'bilinear',
-                  padding_mode: str = 'zeros',
-                  align_corners: Optional[bool] = None) -> torch.Tensor:
+def warp_affine3d(
+    src: torch.Tensor,
+    M: torch.Tensor,
+    dsize: Tuple[int, int, int],
+    flags: str = 'bilinear',
+    padding_mode: str = 'zeros',
+    align_corners: Optional[bool] = None
+) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
     .. warning::
@@ -56,7 +55,8 @@ def warp_affine3d(src: torch.Tensor,
         message: str = (
             "The align_corners default value has been changed. By default now is set True "
             "in order to match cv2.warpAffine. In case you want to keep your previous "
-            "behaviour set it to False. This warning will disappear in kornia > v0.6.")
+            "behaviour set it to False. This warning will disappear in kornia > v0.6."
+        )
         warnings.warn(message)
         # set default value for align corners
         align_corners = True
@@ -67,8 +67,7 @@ def warp_affine3d(src: torch.Tensor,
     M_4x4 = convert_affinematrix_to_homography3d(M)  # Bx4x4
 
     # we need to normalize the transformation since grid sample needs -1/1 coordinates
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
-        M_4x4, size_src, size_out)    # Bx4x4
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(M_4x4, size_src, size_out)  # Bx4x4
 
     src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
     P_norm: torch.Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
@@ -77,7 +76,8 @@ def warp_affine3d(src: torch.Tensor,
     dsize_out: List[int] = [B, C] + list(size_out)
     grid = torch.nn.functional.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return torch.nn.functional.grid_sample(
-        src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
+        src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode
+    )
 
 
 def projection_from_Rt(rmat: torch.Tensor, tvec: torch.Tensor) -> torch.Tensor:
@@ -222,24 +222,21 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         This function is often used in conjuntion with :func:`warp_perspective3d`.
     """
     if not isinstance(src, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(src)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(src)))
 
     if not isinstance(dst, (torch.Tensor)):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(dst)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(dst)))
 
     if not src.shape[-2:] == (8, 3):
-        raise ValueError("Inputs must be a Bx8x3 tensor. Got {}"
-                         .format(src.shape))
+        raise ValueError("Inputs must be a Bx8x3 tensor. Got {}".format(src.shape))
 
     if not src.shape == dst.shape:
-        raise ValueError("Inputs must have the same shape. Got {}"
-                         .format(dst.shape))
+        raise ValueError("Inputs must have the same shape. Got {}".format(dst.shape))
 
     if not (src.shape[0] == dst.shape[0]):
-        raise ValueError("Inputs must have same batch size dimension. Expect {} but got {}"
-                         .format(src.shape, dst.shape))
+        raise ValueError(
+            "Inputs must have same batch size dimension. Expect {} but got {}".format(src.shape, dst.shape)
+        )
 
     assert src.device == dst.device and src.dtype == dst.dtype, (
         f"Expect `src` and `dst` to be in the same device (Got {src.dtype}, {dst.dtype}) "
@@ -261,16 +258,29 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
     A = torch.stack(p, dim=1)
 
     # b is a Bx15x1
-    b = torch.stack([
-        dst[:, 0:1, 0], dst[:, 0:1, 1], dst[:, 0:1, 2],
-        dst[:, 1:2, 0], dst[:, 1:2, 1], dst[:, 1:2, 2],
-        dst[:, 2:3, 0], dst[:, 2:3, 1], dst[:, 2:3, 2],
-        # dst[:, 3:4, 0], dst[:, 3:4, 1], dst[:, 3:4, 2],
-        # dst[:, 4:5, 0], dst[:, 4:5, 1], dst[:, 4:5, 2],
-        dst[:, 5:6, 0], dst[:, 5:6, 1], dst[:, 5:6, 2],
-        # dst[:, 6:7, 0], dst[:, 6:7, 1], dst[:, 6:7, 2],
-        dst[:, 7:8, 0], dst[:, 7:8, 1], dst[:, 7:8, 2],
-    ], dim=1)
+    b = torch.stack(
+        [
+            dst[:, 0:1, 0],
+            dst[:, 0:1, 1],
+            dst[:, 0:1, 2],
+            dst[:, 1:2, 0],
+            dst[:, 1:2, 1],
+            dst[:, 1:2, 2],
+            dst[:, 2:3, 0],
+            dst[:, 2:3, 1],
+            dst[:, 2:3, 2],
+            # dst[:, 3:4, 0], dst[:, 3:4, 1], dst[:, 3:4, 2],
+            # dst[:, 4:5, 0], dst[:, 4:5, 1], dst[:, 4:5, 2],
+            dst[:, 5:6, 0],
+            dst[:, 5:6, 1],
+            dst[:, 5:6, 2],
+            # dst[:, 6:7, 0], dst[:, 6:7, 1], dst[:, 6:7, 2],
+            dst[:, 7:8, 0],
+            dst[:, 7:8, 1],
+            dst[:, 7:8, 2],
+        ],
+        dim=1
+    )
 
     # solve the system Ax = b
     X, LU = _torch_solve_cast(b, A)
@@ -288,34 +298,36 @@ def _build_perspective_param3d(p: torch.Tensor, q: torch.Tensor, axis: str) -> t
 
     if axis == 'x':
         return torch.cat([
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            zeros, zeros, zeros, zeros,
-            zeros, zeros, zeros, zeros,
+            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros,
             -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
-        ], dim=1)
+        ],
+                         dim=1)
 
     if axis == 'y':
         return torch.cat([
-            zeros, zeros, zeros, zeros,
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-            zeros, zeros, zeros, zeros,
+            zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros,
             -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
-        ], dim=1)
+        ],
+                         dim=1)
 
     if axis == 'z':
         return torch.cat([
-            zeros, zeros, zeros, zeros,
-            zeros, zeros, zeros, zeros,
-            p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
+            zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
             -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
-        ], dim=1)
+        ],
+                         dim=1)
 
     raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
 
 
-def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int, int],
-                       flags: str = 'bilinear', border_mode: str = 'zeros',
-                       align_corners: bool = False) -> torch.Tensor:
+def warp_perspective3d(
+    src: torch.Tensor,
+    M: torch.Tensor,
+    dsize: Tuple[int, int, int],
+    flags: str = 'bilinear',
+    border_mode: str = 'zeros',
+    align_corners: bool = False
+) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
     The function warp_perspective transforms the source image using
@@ -347,26 +359,23 @@ def warp_perspective3d(src: torch.Tensor, M: torch.Tensor, dsize: Tuple[int, int
     check_is_tensor(M)
 
     if not len(src.shape) == 5:
-        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}"
-                         .format(src.shape))
+        raise ValueError("Input src must be a BxCxDxHxW tensor. Got {}".format(src.shape))
 
     if not (len(M.shape) == 3 or M.shape[-2:] == (4, 4)):
-        raise ValueError("Input M must be a Bx4x4 tensor. Got {}"
-                         .format(M.shape))
+        raise ValueError("Input M must be a Bx4x4 tensor. Got {}".format(M.shape))
 
     # launches the warper
     d, h, w = src.shape[-3:]
     return transform_warp_impl3d(src, M, (d, h, w), dsize, flags, border_mode, align_corners)
 
 
-def transform_warp_impl3d(src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor,
-                          dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int],
-                          grid_mode: str, padding_mode: str, align_corners: bool) -> torch.Tensor:
+def transform_warp_impl3d(
+    src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int],
+    dsize_dst: Tuple[int, int, int], grid_mode: str, padding_mode: str, align_corners: bool
+) -> torch.Tensor:
     """Compute the transform in normalized cooridnates and perform the warping.
     """
-    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(
-        dst_pix_trans_src_pix, dsize_src, dsize_dst)
+    dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
-    return homography_warp3d(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode,
-                             align_corners, True)
+    return homography_warp3d(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode, align_corners, True)

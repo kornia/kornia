@@ -33,8 +33,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     return intrinsics
 
 
-def random_intrinsics(low: Union[float, torch.Tensor],
-                      high: Union[float, torch.Tensor]) -> torch.Tensor:
+def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Generates a random camera matrix based on a given uniform distribution.
 
     Args:
@@ -46,18 +45,23 @@ def random_intrinsics(low: Union[float, torch.Tensor],
 
     """
     sampler = torch.distributions.Uniform(low, high)
-    fx, fy, cx, cy = [sampler.sample((1,)) for _ in range(4)]
+    fx, fy, cx, cy = [sampler.sample((1, )) for _ in range(4)]
     zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
     camera_matrix: torch.Tensor = torch.cat([
-        fx, zeros, cx,
-        zeros, fy, cy,
-        zeros, zeros, ones,
+        fx,
+        zeros,
+        cx,
+        zeros,
+        fy,
+        cy,
+        zeros,
+        zeros,
+        ones,
     ])
     return camera_matrix.view(1, 3, 3)
 
 
-def scale_intrinsics(
-        camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Scale a camera matrix containing the intrinsics.
 
     Applies the scaling factor to the focal length and center of projection.

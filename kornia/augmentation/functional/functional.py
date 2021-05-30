@@ -5,42 +5,19 @@ import torch
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (
-    get_perspective_transform,
-    get_affine_matrix2d,
-    warp_perspective,
-    rotate,
-    crop_by_boxes,
-    bbox_generator,
-    warp_affine,
-    hflip,
-    vflip,
-    deg2rad,
-    bbox_to_mask,
-    infer_box_shape
+    get_perspective_transform, get_affine_matrix2d, warp_perspective, rotate, crop_by_boxes, bbox_generator,
+    warp_affine, hflip, vflip, deg2rad, bbox_to_mask, infer_box_shape
 )
 from kornia.color import rgb_to_grayscale
 from kornia.enhance import (
-    adjust_brightness,
-    adjust_contrast,
-    adjust_saturation,
-    adjust_hue,
-    adjust_gamma,
-    solarize,
-    equalize,
-    posterize,
+    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma, solarize, equalize, posterize,
     sharpness
 )
 from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from .. import random_generator as rg
-from ..utils import (
-    _validate_input_shape,
-    _validate_input_dtype,
-    _range_bound,
-    _shape_validation,
-    _validate_input
-)
+from ..utils import (_validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation, _validate_input)
 
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
@@ -75,9 +52,9 @@ def compute_hflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
 
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1],
-                                           [0, 1, 0],
-                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, w - 1], [0, 1, 0], [0, 0, 1]],
+                                          device=input.device,
+                                          dtype=input.dtype)
 
     return flip_mat.repeat(input.size(0), 1, 1)
 
@@ -110,18 +87,16 @@ def compute_vflip_transformation(input: torch.Tensor) -> torch.Tensor:
     """
 
     h: int = input.shape[-2]
-    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0],
-                                           [0, -1, h - 1],
-                                           [0, 0, 1]], device=input.device, dtype=input.dtype)
+    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]],
+                                          device=input.device,
+                                          dtype=input.dtype)
 
     return flip_mat.repeat(input.size(0), 1, 1)
 
 
 @_deprecation_wrapper
 @_validate_input
-def apply_color_jitter(
-    input: torch.Tensor, params: Dict[str, torch.Tensor]
-) -> torch.Tensor:
+def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Apply Color Jitter on a tensor image or a batch of tensor images with given random parameters.
 
     Args:
@@ -139,10 +114,8 @@ def apply_color_jitter(
     """
 
     transforms = [
-        lambda img: apply_adjust_brightness(img, params),
-        lambda img: apply_adjust_contrast(img, params),
-        lambda img: apply_adjust_saturation(img, params),
-        lambda img: apply_adjust_hue(img, params)
+        lambda img: apply_adjust_brightness(img, params), lambda img: apply_adjust_contrast(img, params),
+        lambda img: apply_adjust_saturation(img, params), lambda img: apply_adjust_hue(img, params)
     ]
 
     jittered = input
@@ -223,9 +196,7 @@ def apply_perspective(
     resample_name: str = Resample(flags['interpolation'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    out_data = warp_perspective(
-        input, transform, (height, width),
-        mode=resample_name, align_corners=align_corners)
+    out_data = warp_perspective(input, transform, (height, width), mode=resample_name, align_corners=align_corners)
 
     return out_data.view_as(input)
 
@@ -246,8 +217,8 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     Returns:
         torch.Tensor: The perspective transformation matrix :math: `(*, 3, 3)`
     """
-    perspective_transform: torch.Tensor = get_perspective_transform(
-        params['start_points'], params['end_points']).type_as(input)
+    perspective_transform: torch.Tensor = get_perspective_transform(params['start_points'],
+                                                                    params['end_points']).type_as(input)
 
     transform: torch.Tensor = K.eye_like(3, input)
 
@@ -290,10 +261,13 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
     padding_mode: str = SamplePadding(flags['padding_mode'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    out_data: torch.Tensor = warp_affine(x_data, transform[:, :2, :],
-                                         (height, width), resample_name,
-                                         align_corners=align_corners,
-                                         padding_mode=padding_mode)
+    out_data: torch.Tensor = warp_affine(
+        x_data,
+        transform[:, :2, :], (height, width),
+        resample_name,
+        align_corners=align_corners,
+        padding_mode=padding_mode
+    )
     return out_data.view_as(input)
 
 
@@ -316,8 +290,8 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
         torch.Tensor: The affine transformation matrix :math: `(*, 3, 3)`.
     """
     transform = get_affine_matrix2d(
-        params['translations'], params['center'], params['scale'], params['angle'],
-        deg2rad(params['sx']), deg2rad(params['sy'])
+        params['translations'], params['center'], params['scale'], params['angle'], deg2rad(params['sx']),
+        deg2rad(params['sy'])
     ).type_as(input)
     return transform
 
@@ -399,8 +373,7 @@ def apply_crop(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    return crop_by_boxes(
-        input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
+    return crop_by_boxes(input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
 @_deprecation_wrapper
@@ -570,8 +543,9 @@ def apply_adjust_gamma(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
 
 @_deprecation_wrapper
 @_validate_input
-def apply_motion_blur(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                      flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_motion_blur(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Perform motion blur on an image.
 
     Args:
@@ -721,8 +695,10 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
     lam = params['mixup_lambdas'].view(-1, 1, 1, 1).expand_as(input).to(labels.device)
     inputs = input * (1 - lam) + input_permute * lam
     labels = torch.stack([
-        labels.to(input.dtype), labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device, input.dtype)
-    ], dim=-1).to(labels.device)
+        labels.to(input.dtype),
+        labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device, input.dtype)
+    ],
+                         dim=-1).to(labels.device)
     return inputs, labels
 
 
@@ -791,7 +767,10 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
         # compute mask to match input shape
         mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
         out_inputs[mask] = input_permute[mask]
-        out_labels.append(torch.stack([
-            labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1))
+        out_labels.append(
+            torch.stack([labels.to(input.dtype),
+                         labels_permute.to(input.dtype),
+                         lam.to(labels.device)], dim=1)
+        )
 
     return out_inputs, torch.stack(out_labels, dim=0)

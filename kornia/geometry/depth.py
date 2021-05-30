@@ -9,9 +9,7 @@ from kornia.geometry.linalg import (
     transform_points, inverse_transformation, compose_transformations, convert_points_to_homogeneous
 )
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.geometry.camera import (
-    PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
-)
+from kornia.geometry.camera import (PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points)
 from kornia.utils import create_meshgrid
 from kornia.filters.sobel import spatial_gradient
 
@@ -49,17 +47,14 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. "
-                        f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
     if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). "
-                         f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
 
     # create base coordinates grid
     batch_size, _, height, width = depth.shape
-    points_2d: torch.Tensor = create_meshgrid(
-        height, width, normalized_coordinates=False)  # 1xHxWx2
+    points_2d: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
     points_2d = points_2d.to(depth.device).to(depth.dtype)
 
     # depth should come in Bx1xHxW
@@ -68,7 +63,8 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
     # project pixels to camera frame
     camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
     points_3d: torch.Tensor = unproject_points(
-        points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points)  # BxHxWx3
+        points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points
+    )  # BxHxWx3
 
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW
 
@@ -98,12 +94,10 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. "
-                        f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
     if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). "
-                         f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
 
     # compute the 3d points from depth
     xyz: torch.Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
@@ -119,11 +113,12 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
 
 
 def warp_frame_depth(
-        image_src: torch.Tensor,
-        depth_dst: torch.Tensor,
-        src_trans_dst: torch.Tensor,
-        camera_matrix: torch.Tensor,
-        normalize_points: bool = False) -> torch.Tensor:
+    image_src: torch.Tensor,
+    depth_dst: torch.Tensor,
+    src_trans_dst: torch.Tensor,
+    camera_matrix: torch.Tensor,
+    normalize_points: bool = False
+) -> torch.Tensor:
     """Warp a tensor from a source to destination frame by the depth in the destination.
 
     Compute 3d points from the depth, transform them using given transformation, then project the point cloud to an
@@ -155,20 +150,16 @@ def warp_frame_depth(
         raise ValueError(f"Input depth_dst musth have a shape (B, 1, H, W). Got: {depth_dst.shape}")
 
     if not isinstance(src_trans_dst, torch.Tensor):
-        raise TypeError(f"Input src_trans_dst type is not a torch.Tensor. "
-                        f"Got {type(src_trans_dst)}.")
+        raise TypeError(f"Input src_trans_dst type is not a torch.Tensor. " f"Got {type(src_trans_dst)}.")
 
     if not len(src_trans_dst.shape) == 3 and src_trans_dst.shape[-2:] == (3, 3):
-        raise ValueError(f"Input src_trans_dst must have a shape (B, 3, 3). "
-                         f"Got: {src_trans_dst.shape}.")
+        raise ValueError(f"Input src_trans_dst must have a shape (B, 3, 3). " f"Got: {src_trans_dst.shape}.")
 
     if not isinstance(camera_matrix, torch.Tensor):
-        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. "
-                        f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a torch.Tensor. " f"Got {type(camera_matrix)}.")
 
     if not len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). "
-                         f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
     # unproject source points to camera frame
     points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
 
@@ -184,8 +175,7 @@ def warp_frame_depth(
 
     # normalize points between [-1 / 1]
     height, width = depth_dst.shape[-2:]
-    points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(
-        points_2d_src, height, width)  # BxHxWx2
+    points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
     return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)  # type: ignore
 
@@ -211,12 +201,15 @@ class DepthWarper(nn.Module):
           https://pytorch.org/docs/stable/nn.functional.html#torch.nn.functional.interpolate for detail
     """
 
-    def __init__(self,
-                 pinhole_dst: PinholeCamera,
-                 height: int, width: int,
-                 mode: str = 'bilinear',
-                 padding_mode: str = 'zeros',
-                 align_corners: bool = True):
+    def __init__(
+        self,
+        pinhole_dst: PinholeCamera,
+        height: int,
+        width: int,
+        mode: str = 'bilinear',
+        padding_mode: str = 'zeros',
+        align_corners: bool = True
+    ):
         super(DepthWarper, self).__init__()
         # constructor members
         self.width: int = width
@@ -235,21 +228,22 @@ class DepthWarper(nn.Module):
 
     @staticmethod
     def _create_meshgrid(height: int, width: int) -> torch.Tensor:
-        grid: torch.Tensor = create_meshgrid(
-            height, width, normalized_coordinates=False)  # 1xHxWx2
+        grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
-    def compute_projection_matrix(
-            self, pinhole_src: PinholeCamera) -> 'DepthWarper':
+    def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> 'DepthWarper':
         r"""Computes the projection matrix from the source to destination frame.
         """
         if not isinstance(self._pinhole_dst, PinholeCamera):
-            raise TypeError("Member self._pinhole_dst expected to be of class "
-                            "PinholeCamera. Got {}"
-                            .format(type(self._pinhole_dst)))
+            raise TypeError(
+                "Member self._pinhole_dst expected to be of class "
+                "PinholeCamera. Got {}".format(type(self._pinhole_dst))
+            )
         if not isinstance(pinhole_src, PinholeCamera):
-            raise TypeError("Argument pinhole_src expected to be of class "
-                            "PinholeCamera. Got {}".format(type(pinhole_src)))
+            raise TypeError(
+                "Argument pinhole_src expected to be of class "
+                "PinholeCamera. Got {}".format(type(pinhole_src))
+            )
         # compute the relative pose between the non reference and the reference
         # camera frames.
         dst_trans_src: torch.Tensor = compose_transformations(
@@ -259,8 +253,7 @@ class DepthWarper(nn.Module):
 
         # compute the projection matrix between the non reference cameras and
         # the reference.
-        dst_proj_src: torch.Tensor = torch.matmul(
-            self._pinhole_dst.intrinsics, dst_trans_src)
+        dst_proj_src: torch.Tensor = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
 
         # update class members
         self._pinhole_src = pinhole_src
@@ -268,8 +261,9 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x, y, invd):
-        point = torch.tensor(
-            [[[x], [y], [1.0], [invd]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype)
+        point = torch.tensor([[[x], [y], [1.0], [invd]]],
+                             device=self._dst_proj_src.device,
+                             dtype=self._dst_proj_src.dtype)
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1. / flow[:, 2]
         x = (flow[:, 0] * z)
@@ -285,10 +279,8 @@ class DepthWarper(nn.Module):
         Vision. Springer Berlin Heidelberg, 2002.
         """
         delta_d = 0.01
-        xy_m1 = self._compute_projection(self.width / 2, self.height / 2,
-                                         1.0 - delta_d)
-        xy_p1 = self._compute_projection(self.width / 2, self.height / 2,
-                                         1.0 + delta_d)
+        xy_m1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 - delta_d)
+        xy_p1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 + delta_d)
         dx = torch.norm((xy_p1 - xy_m1), 2, dim=-1) / 2.0
         dxdd = dx / (delta_d)  # pixel*(1/meter)
         # half pixel sampling, we're interested in the min for all cameras
@@ -308,8 +300,7 @@ class DepthWarper(nn.Module):
             raise ValueError("Please, call compute_projection_matrix.")
 
         if len(depth_src.shape) != 4:
-            raise ValueError("Input depth_src has to be in the shape of "
-                             "Bx1xHxW. Got {}".format(depth_src.shape))
+            raise ValueError("Input depth_src has to be in the shape of " "Bx1xHxW. Got {}".format(depth_src.shape))
 
         # unpack depth attributes
         batch_size, _, height, width = depth_src.shape
@@ -317,28 +308,26 @@ class DepthWarper(nn.Module):
         dtype: torch.dtype = depth_src.dtype
 
         # expand the base coordinate grid according to the input batch size
-        pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(
-            batch_size, -1, -1, -1)  # BxHxWx3
+        pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(batch_size, -1, -1, -1)  # BxHxWx3
 
         # reproject the pixel coordinates to the camera frame
         cam_coords_src: torch.Tensor = pixel2cam(
             depth_src,
-            self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype),
-            pixel_coords)  # BxHxWx3
+            self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel_coords
+        )  # BxHxWx3
 
         # reproject the camera coordinates to the pixel
         pixel_coords_src: torch.Tensor = cam2pixel(
-            cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype))  # (B*N)xHxWx2
+            cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype)
+        )  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
-        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(
-            pixel_coords_src, self.height, self.width)
+        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
         return pixel_coords_src_norm
 
     def forward(  # type: ignore
-            self,
-            depth_src: torch.Tensor,
-            patch_dst: torch.Tensor) -> torch.Tensor:
+        self, depth_src: torch.Tensor, patch_dst: torch.Tensor
+    ) -> torch.Tensor:
         """Warps a tensor from destination frame to reference given the depth
         in the reference frame.
 
@@ -368,17 +357,24 @@ class DepthWarper(nn.Module):
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
         """
-        return F.grid_sample(patch_dst, self.warp_grid(depth_src),  # type: ignore
-                             mode=self.mode, padding_mode=self.padding_mode,
-                             align_corners=self.align_corners)
+        return F.grid_sample(
+            patch_dst,
+            self.warp_grid(depth_src),  # type: ignore
+            mode=self.mode,
+            padding_mode=self.padding_mode,
+            align_corners=self.align_corners
+        )
 
 
-def depth_warp(pinhole_dst: PinholeCamera,
-               pinhole_src: PinholeCamera,
-               depth_src: torch.Tensor,
-               patch_dst: torch.Tensor,
-               height: int, width: int,
-               align_corners: bool = True):
+def depth_warp(
+    pinhole_dst: PinholeCamera,
+    pinhole_src: PinholeCamera,
+    depth_src: torch.Tensor,
+    patch_dst: torch.Tensor,
+    height: int,
+    width: int,
+    align_corners: bool = True
+):
     r"""Function that warps a tensor from destination frame to reference
     given the depth in the reference frame.
 

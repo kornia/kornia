@@ -16,12 +16,13 @@ def _validate_input(f: Callable) -> Callable:
     Returns:
         the wrapped function after input is validated.
     """
+
     @wraps(f)
     def wrapper(input: torch.Tensor, *args, **kwargs):
         if not torch.is_tensor(input):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-        _validate_shape(input.shape, required_shapes=('BCHW',))
+        _validate_shape(input.shape, required_shapes=('BCHW', ))
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
@@ -38,6 +39,7 @@ def _validate_input3d(f: Callable) -> Callable:
     Returns:
         the wrapped function after input is validated.
     """
+
     @wraps(f)
     def wrapper(input: torch.Tensor, *args, **kwargs):
         if not torch.is_tensor(input):
@@ -84,8 +86,7 @@ def _transform_input(input: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) not in [2, 3, 4]:
-        raise ValueError(
-            f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
+        raise ValueError(f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
 
     if len(input.shape) == 2:
         input = input.unsqueeze(0)
@@ -109,7 +110,8 @@ def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
 
     if len(input.shape) not in [3, 4, 5]:
         raise ValueError(
-            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}")
+            f"Input size must have a shape of either (D, H, W), (C, D, H, W) or (*, C, D, H, W). Got {input.shape}"
+        )
 
     if len(input.shape) == 3:
         input = input.unsqueeze(0)
@@ -163,7 +165,7 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
     return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW", )) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape
@@ -193,9 +195,7 @@ def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) 
 
 
 def _adapted_rsampling(
-    shape: Union[Tuple, torch.Size],
-    dist: torch.distributions.Distribution,
-    same_on_batch=False
+    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
 ) -> torch.Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
@@ -209,9 +209,7 @@ def _adapted_rsampling(
 
 
 def _adapted_sampling(
-    shape: Union[Tuple, torch.Size],
-    dist: torch.distributions.Distribution,
-    same_on_batch=False
+    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 

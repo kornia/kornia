@@ -5,11 +5,7 @@ import torch.nn as nn
 
 from kornia.utils import create_meshgrid
 
-__all__ = [
-    "get_tps_transform",
-    "warp_points_tps",
-    "warp_image_tps"
-]
+__all__ = ["get_tps_transform", "warp_points_tps", "warp_image_tps"]
 
 # utilities for computing thin plate spline transforms
 
@@ -93,8 +89,9 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tup
     return (kernel_weights, affine_weights)
 
 
-def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
-                    kernel_weights: torch.Tensor, affine_weights: torch.Tensor) -> torch.Tensor:
+def warp_points_tps(
+    points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
+) -> torch.Tensor:
     r"""Warp a tensor of coordinate points using the thin plate spline defined by kernel points, kernel weights,
     and affine weights.
 
@@ -153,16 +150,20 @@ def warp_points_tps(points_src: torch.Tensor, kernel_centers: torch.Tensor,
     # broadcast the kernel distance matrix against the x and y weights to compute the x and y
     # transforms simultaneously
     warped: torch.Tensor = (
-        k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2) +
-        points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) +
-        affine_weights[:, None, 0]
+        k_matrix[..., None].mul(kernel_weights[:, None]).sum(-2)
+        + points_src[..., None].mul(affine_weights[:, None, 1:]).sum(-2) + affine_weights[:, None, 0]
     )
 
     return warped
 
 
-def warp_image_tps(image: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor,
-                   affine_weights: torch.Tensor, align_corners: bool = False) -> torch.Tensor:
+def warp_image_tps(
+    image: torch.Tensor,
+    kernel_centers: torch.Tensor,
+    kernel_weights: torch.Tensor,
+    affine_weights: torch.Tensor,
+    align_corners: bool = False
+) -> torch.Tensor:
     r"""Warp an image tensor according to the thin plate spline transform defined by kernel centers,
     kernel weights, and affine weights.
 

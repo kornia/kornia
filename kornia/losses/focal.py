@@ -6,17 +6,18 @@ import torch.nn.functional as F
 
 from kornia.utils.one_hot import one_hot
 
-
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
 
+
 def focal_loss(
-        input: torch.Tensor,
-        target: torch.Tensor,
-        alpha: float,
-        gamma: float = 2.0,
-        reduction: str = 'none',
-        eps: float = 1e-8) -> torch.Tensor:
+    input: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float,
+    gamma: float = 2.0,
+    reduction: str = 'none',
+    eps: float = 1e-8
+) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
@@ -50,35 +51,31 @@ def focal_loss(
         >>> output.backward()
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) >= 2:
-        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}".format(input.shape))
 
     if input.size(0) != target.size(0):
-        raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'
-                         .format(input.size(0), target.size(0)))
+        raise ValueError(
+            'Expected input batch_size ({}) to match target batch_size ({}).'.format(input.size(0), target.size(0))
+        )
 
     n = input.size(0)
-    out_size = (n,) + input.size()[2:]
+    out_size = (n, ) + input.size()[2:]
     if target.size()[1:] != input.size()[2:]:
-        raise ValueError('Expected target size {}, got {}'.format(
-            out_size, target.size()))
+        raise ValueError('Expected target size {}, got {}'.format(out_size, target.size()))
 
     if not input.device == target.device:
         raise ValueError(
-            "input and target must be in the same device. Got: {} and {}" .format(
-                input.device, target.device))
+            "input and target must be in the same device. Got: {} and {}".format(input.device, target.device)
+        )
 
     # compute softmax over the classes axis
     input_soft: torch.Tensor = F.softmax(input, dim=1) + eps
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(
-        target, num_classes=input.shape[1],
-        device=input.device, dtype=input.dtype)
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual focal loss
     weight = torch.pow(-input_soft + 1., gamma)
@@ -93,8 +90,7 @@ def focal_loss(
     elif reduction == 'sum':
         loss = torch.sum(loss_tmp)
     else:
-        raise NotImplementedError("Invalid reduction mode: {}"
-                                  .format(reduction))
+        raise NotImplementedError("Invalid reduction mode: {}".format(reduction))
     return loss
 
 
@@ -134,8 +130,7 @@ class FocalLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0,
-                 reduction: str = 'none', eps: float = 1e-8) -> None:
+    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float = 1e-8) -> None:
         super(FocalLoss, self).__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
@@ -147,12 +142,13 @@ class FocalLoss(nn.Module):
 
 
 def binary_focal_loss_with_logits(
-        input: torch.Tensor,
-        target: torch.Tensor,
-        alpha: float = .25,
-        gamma: float = 2.0,
-        reduction: str = 'none',
-        eps: float = 1e-8) -> torch.Tensor:
+    input: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float = .25,
+    gamma: float = 2.0,
+    reduction: str = 'none',
+    eps: float = 1e-8
+) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
     .. math::
@@ -183,16 +179,15 @@ def binary_focal_loss_with_logits(
     """
 
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) >= 2:
-        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCx*. Got: {}".format(input.shape))
 
     if input.size(0) != target.size(0):
-        raise ValueError('Expected input batch_size ({}) to match target batch_size ({}).'
-                         .format(input.size(0), target.size(0)))
+        raise ValueError(
+            'Expected input batch_size ({}) to match target batch_size ({}).'.format(input.size(0), target.size(0))
+        )
 
     probs = torch.sigmoid(input)
     target = target.unsqueeze(dim=1)
@@ -208,8 +203,7 @@ def binary_focal_loss_with_logits(
     elif reduction == 'sum':
         loss = torch.sum(loss_tmp)
     else:
-        raise NotImplementedError("Invalid reduction mode: {}"
-                                  .format(reduction))
+        raise NotImplementedError("Invalid reduction mode: {}".format(reduction))
     return loss
 
 
@@ -247,8 +241,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0,
-                 reduction: str = 'none') -> None:
+    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none') -> None:
         super(BinaryFocalLossWithLogits, self).__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
@@ -256,5 +249,4 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.eps: float = 1e-8
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return binary_focal_loss_with_logits(
-            input, target, self.alpha, self.gamma, self.reduction, self.eps)
+        return binary_focal_loss_with_logits(input, target, self.alpha, self.gamma, self.reduction, self.eps)

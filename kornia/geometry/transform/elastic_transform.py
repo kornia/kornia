@@ -6,17 +6,18 @@ import torch.nn.functional as F
 import kornia
 from kornia.filters.kernels import get_gaussian_kernel2d
 
-
 __all__ = ["elastic_transform2d"]
 
 
-def elastic_transform2d(image: torch.Tensor,
-                        noise: torch.Tensor,
-                        kernel_size: Tuple[int, int] = (63, 63),
-                        sigma: Tuple[float, float] = (32., 32.),
-                        alpha: Tuple[float, float] = (1., 1.),
-                        align_corners: bool = False,
-                        mode: str = 'bilinear') -> torch.Tensor:
+def elastic_transform2d(
+    image: torch.Tensor,
+    noise: torch.Tensor,
+    kernel_size: Tuple[int, int] = (63, 63),
+    sigma: Tuple[float, float] = (32., 32.),
+    alpha: Tuple[float, float] = (1., 1.),
+    align_corners: bool = False,
+    mode: str = 'bilinear'
+) -> torch.Tensor:
     r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     Args:
@@ -86,7 +87,6 @@ def elastic_transform2d(image: torch.Tensor,
     # Warp image based on displacement matrix
     b, c, h, w = image.shape
     grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(
-        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
 
     return warped
