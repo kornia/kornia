@@ -111,8 +111,8 @@ class TestEqualization(BaseTester):
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
         assert torch.allclose(res[..., 0, :], torch.tensor(
-            [[[0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4980,
-               0.4980, 0.2471, 0.7490, 0.4980, 0.4980, 0.2471, 0.4980, 0.4980,
+            [[[0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4993,
+               0.4980, 0.2471, 0.7490, 0.4993, 0.4980, 0.2471, 0.4980, 0.4993,
                0.3333, 0.2471, 0.4980, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
 
     def test_clahe(self, img):
@@ -122,6 +122,6 @@ class TestEqualization(BaseTester):
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
         assert torch.allclose(res[..., 0, :], torch.tensor(
-            [[[0.1216, 0.8745, 0.9373, 0.9137, 0.8745, 0.8745, 0.9373, 0.8745,
+            [[[0.1216, 0.8745, 0.9373, 0.9163, 0.8745, 0.8745, 0.9373, 0.8745,
                0.8745, 0.8118, 0.9373, 0.8745, 0.8745, 0.8118, 0.8745, 0.8745,
-               0.8314, 0.8118, 0.8745, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
+               0.8327, 0.8118, 0.8745, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
