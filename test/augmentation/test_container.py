@@ -154,6 +154,13 @@ class TestAugmentationSequential:
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
 
+        out_inv = aug.inverse(*out)
+        assert out_inv[0].shape == inp.shape
+        assert out_inv[1].shape == mask.shape
+        assert out_inv[2].shape == bbox.shape
+        assert out_inv[3].shape == keypoints.shape
+
+
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
