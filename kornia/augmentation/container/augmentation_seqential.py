@@ -187,7 +187,7 @@ class AugmentationSequential(Sequential):
 
         outputs = []
         for input, itype in zip(args, input_types):
-            for item in self.children():
+            for item in list(self.children())[::-1]:
                 if isinstance(item, _AugmentationBase):
                     func_name = item.__class__.__name__
                     # Check if a param recorded
