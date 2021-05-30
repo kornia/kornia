@@ -10,7 +10,7 @@ In this data you learn how to use `kornia` modules in order to perform the data 
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 # from: https://gist.github.com/edgarriba/a781de516c508826f79568d08598efdb
 

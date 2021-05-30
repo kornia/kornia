@@ -1,7 +1,7 @@
-from typing import Tuple, List, Union, cast, Optional
+from math import sqrt
+from typing import cast, List, Optional, Tuple, Union
 
 import torch
-from math import sqrt
 
 from kornia.geometry.transform.affwarp import rotate, rotate3d
 from kornia.utils import _extract_device_dtype

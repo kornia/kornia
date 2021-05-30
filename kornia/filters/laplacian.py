@@ -4,8 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import get_laplacian_kernel2d
-from kornia.filters.kernels import normalize_kernel2d
+from kornia.filters.kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(

@@ -1,9 +1,8 @@
-from typing import Optional, Union, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from torch.nn.modules.utils import _pair
 
 

@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import kornia
+from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.subpix import dsnt
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.geometry import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> torch.Tensor:

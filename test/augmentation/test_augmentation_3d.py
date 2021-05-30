@@ -1,4 +1,4 @@
-from typing import Union, Tuple
+from typing import Tuple, Union
 
 import pytest
 import torch
@@ -9,12 +9,12 @@ from torch.testing import assert_allclose
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.augmentation import (
-    RandomDepthicalFlip3D,
-    RandomHorizontalFlip3D,
-    RandomVerticalFlip3D,
-    RandomRotation3D,
     RandomCrop3D,
+    RandomDepthicalFlip3D,
     RandomEqualize3D,
+    RandomHorizontalFlip3D,
+    RandomRotation3D,
+    RandomVerticalFlip3D,
 )
 
 

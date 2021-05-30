@@ -3,21 +3,21 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.augmentation.random_generator import (
-    random_prob_generator,
-    random_color_jitter_generator,
-    random_perspective_generator,
+    center_crop_generator,
     random_affine_generator,
-    random_rotation_generator,
+    random_color_jitter_generator,
     random_crop_generator,
     random_crop_size_generator,
-    random_rectangles_params_generator,
-    center_crop_generator,
-    random_motion_blur_generator,
-    random_solarize_generator,
-    random_posterize_generator,
-    random_sharpness_generator,
-    random_mixup_generator,
     random_cutmix_generator,
+    random_mixup_generator,
+    random_motion_blur_generator,
+    random_perspective_generator,
+    random_posterize_generator,
+    random_prob_generator,
+    random_rectangles_params_generator,
+    random_rotation_generator,
+    random_sharpness_generator,
+    random_solarize_generator,
 )
 
 

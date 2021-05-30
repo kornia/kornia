@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import BaseTester, _get_precision
+from kornia.testing import _get_precision, BaseTester
 
 
 class TestRgbToLuv(BaseTester):

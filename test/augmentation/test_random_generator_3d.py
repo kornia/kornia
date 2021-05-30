@@ -3,12 +3,12 @@ import torch
 from torch.testing import assert_allclose
 
 from kornia.augmentation.random_generator import (
-    random_rotation_generator3d,
-    random_affine_generator3d,
-    random_motion_blur_generator3d,
     center_crop_generator3d,
+    random_affine_generator3d,
     random_crop_generator3d,
+    random_motion_blur_generator3d,
     random_perspective_generator3d,
+    random_rotation_generator3d,
 )
 
 
