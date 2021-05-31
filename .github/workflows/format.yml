@@ -44,7 +44,7 @@ jobs:
 
     - name: Run mypy
       run: make mypy
-      
+
   doctest:
     runs-on: [ubuntu-latest]
     steps:

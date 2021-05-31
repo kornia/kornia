@@ -1,15 +1,7 @@
-import pytest
 import torch
-import torch.nn as nn
-
 from torch.testing import assert_allclose
-from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
 import kornia.augmentation.functional as F
-from kornia.constants import pi
-from kornia.augmentation import ColorJitter
 
 
 class TestHorizontalFlipFn:

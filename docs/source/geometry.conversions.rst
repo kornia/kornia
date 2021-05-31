@@ -23,4 +23,3 @@ kornia.geometry.conversions
 .. autofunction:: denormalize_pixel_coordinates3d
 .. autofunction:: normalize_pixel_coordinates3d
 .. autofunction:: normalize_quaternion
-

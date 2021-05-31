@@ -52,7 +52,7 @@ build-docs: FORCE
 
 install: FORCE
 	python setup.py install
-	
+
 install-dev: FORCE
 	python setup.py develop
 

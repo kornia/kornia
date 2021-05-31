@@ -1,8 +1,8 @@
 import pytest
-import kornia.testing as utils  # test utils
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
+
+import kornia.testing as utils  # test utils
 from kornia.feature.siftdesc import *
 
 

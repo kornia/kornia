@@ -25,11 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added unsharp mask filtering ([#1004](https://github.com/kornia/kornia/pull/1004))
 
 ### Fixed
-- Fixed angle axis to quaternion order bug ([#926](https://github.com/kornia/kornia/pull/926)) 
+- Fixed angle axis to quaternion order bug ([#926](https://github.com/kornia/kornia/pull/926))
 - Fixed type error for lab_to_rgb conversion when using coremltools. ([#1002](https://github.com/kornia/kornia/pull/1002))
 
 ### Changed
-- Mask with unbatched motion from essential choose solution ([#998](https://github.com/kornia/kornia/pull/998)) 
+- Mask with unbatched motion from essential choose solution ([#998](https://github.com/kornia/kornia/pull/998))
 
 
 ## [0.5.1] - 2021-04-30
@@ -48,17 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve kornia porphology ([#965](https://github.com/kornia/kornia/pull/965))
 - Improve cuda ci workflow speed ([#975](https://github.com/kornia/kornia/pull/975))
 - Refactor augmentation module ([#948](https://github.com/kornia/kornia/pull/948))
-- Implement fast version of crop function in augmentations ([#967](https://github.com/kornia/kornia/pull/967)) 
-- Implement missing jit ops in kornia.geometry.transform ([#981](https://github.com/kornia/kornia/pull/981)) 
+- Implement fast version of crop function in augmentations ([#967](https://github.com/kornia/kornia/pull/967))
+- Implement missing jit ops in kornia.geometry.transform ([#981](https://github.com/kornia/kornia/pull/981))
 
 ### Fixed
-- Fixed RandomAffine translation range check ([#917](https://github.com/kornia/kornia/pull/917) 
+- Fixed RandomAffine translation range check ([#917](https://github.com/kornia/kornia/pull/917)
 - Fixed the issue of NaN gradients by adding epsilon in focal loss ([#924](https://github.com/kornia/kornia/pull/924))
 - Allow crop size greater than input size. ([#957](https://github.com/kornia/kornia/pull/957))
-- Fixed RandomCrop bug ([#951](https://github.com/kornia/kornia/pull/951)) 
+- Fixed RandomCrop bug ([#951](https://github.com/kornia/kornia/pull/951))
 
 ### Removed
--  Deprecate some augmentation functionals ([#943](https://github.com/kornia/kornia/pull/943)) 
+-  Deprecate some augmentation functionals ([#943](https://github.com/kornia/kornia/pull/943))
 
 
 ## [0.4.1] - 2020-10-20

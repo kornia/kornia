@@ -2,8 +2,6 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torch.testing import assert_allclose
-
 from kornia.augmentation import (RandomAffine3D, RandomRotation3D, RandomPerspective3D, RandomMotionBlur3D)
 
 

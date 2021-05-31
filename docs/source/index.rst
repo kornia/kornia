@@ -1,5 +1,5 @@
 :github_url: https://github.com/kornia/kornia
-             
+
 Kornia Documentation
 ====================
 
