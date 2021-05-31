@@ -16,7 +16,7 @@ A few sentences describing the changes proposed in this pull request.
 ### PR Implementer
 This is a small checklist for the implementation details of this PR.
 
-If there are any questions regarding code style or other conventions check out our 
+If there are any questions regarding code style or other conventions check out our
 [summary](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst).
 
 - [ ] Did you discuss the functionality or any breaking changes before ?
@@ -30,10 +30,10 @@ If there are any questions regarding code style or other conventions check out o
 ### KorniaTeam
 <details>
   <summary>KorniaTeam workflow</summary>
-  
+
   - [ ] Assign correct label
   - [ ] Assign PR to a reviewer
-  - [ ] Does this PR close an Issue? (add `closes #IssueNumber` at the bottom if 
+  - [ ] Does this PR close an Issue? (add `closes #IssueNumber` at the bottom if
         not already in description)
 
 </details>
@@ -46,5 +46,5 @@ If there are any questions regarding code style or other conventions check out o
   - [ ] Does the implementation follow `kornia` design conventions?
   - [ ] Is the documentation complete enough ?
   - [ ] Are the tests covering simple and corner cases ?
- 
+
 </details>

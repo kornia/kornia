@@ -1,4 +1,4 @@
-  
+
   ## Cite Kornia papers
   1. Kornia: an Open Source Differentiable Computer Vision Library for PyTorch
   2. A survey on Kornia: an Open Source Differentiable Computer Vision Library for PyTorch
@@ -15,7 +15,7 @@
   ```
   ```bash
   @misc{riba2020survey,
-      title={A survey on Kornia: an Open Source Differentiable Computer Vision Library for PyTorch}, 
+      title={A survey on Kornia: an Open Source Differentiable Computer Vision Library for PyTorch},
       author={E. Riba and D. Mishkin and J. Shi and D. Ponsa and F. Moreno-Noguer and G. Bradski},
       year={2020},
       eprint={2009.10521},
@@ -25,7 +25,7 @@
   ```
   ```bash
   @misc{shi2020differentiable,
-      title={Differentiable Data Augmentation with Kornia}, 
+      title={Differentiable Data Augmentation with Kornia},
       author={Jian Shi and Edgar Riba and Dmytro Mishkin and Francesc Moreno and Anguelos Nicolaou},
       year={2020},
       eprint={2011.09832},

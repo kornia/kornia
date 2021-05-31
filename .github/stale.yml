@@ -10,7 +10,7 @@ exemptLabels:
   - help wanted
   - pinned
   - security
-  - priority  
+  - priority
 # Label to use when marking an issue as stale
 staleLabel: wontfix
 # Comment to post when marking an issue as stale. Set to `false` to disable

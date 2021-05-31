@@ -4,7 +4,7 @@ Introduction
 Kornia is a differentiable computer vision library for PyTorch.
 
 It consists of a set of routines and differentiable modules to solve generic computer vision problems.
-At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of 
+At its core, the package uses PyTorch as its main backend both for efficiency and to take advantage of
 the reverse-mode auto-differentiation to define and compute the gradient of complex functions.
 
 Inspired by OpenCV, this library is composed by a subset of packages containing operators that can be inserted
@@ -72,8 +72,8 @@ Cite us
 	  booktitle = {Winter Conference on Applications of Computer Vision},
 	  year      = {2020},
 	  url       = {https://arxiv.org/pdf/1910.02190.pdf}
-	}	
-	
+	}
+
 .. code-block:: bash
 
 	@misc{Arraiy2018,
