@@ -11,6 +11,7 @@ from torch.autograd import gradcheck
 
 
 class TestBoxBlur:
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
         blur = kornia.filters.BoxBlur((3, 3))
@@ -22,13 +23,18 @@ class TestBoxBlur:
         assert blur(inp).shape == (2, 6, 4, 4)
 
     def test_kernel_3x3(self, device, dtype):
-        inp = torch.tensor([[[
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [2., 2., 2., 2., 2.],
-            [2., 2., 2., 2., 2.]
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [2., 2., 2., 2., 2.],
+                        [2., 2., 2., 2., 2.]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size)
@@ -38,13 +44,18 @@ class TestBoxBlur:
 
     # TODO(dmytro): normalized does not make any effect
     def test_kernel_3x3_nonormalize(self, device, dtype):
-        inp = torch.tensor([[[
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [2., 2., 2., 2., 2.],
-            [2., 2., 2., 2., 2.]
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [2., 2., 2., 2., 2.],
+                        [2., 2., 2., 2., 2.]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         kernel_size = (3, 3)
         actual = kornia.filters.box_blur(inp, kernel_size, normalized=False)
@@ -53,13 +64,18 @@ class TestBoxBlur:
         assert_allclose(actual.sum(), torch.tensor(35.).to(actual), rtol=tol_val, atol=tol_val)
 
     def test_kernel_5x5(self, device, dtype):
-        inp = torch.tensor([[[
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [2., 2., 2., 2., 2.],
-            [2., 2., 2., 2., 2.]
-        ]]], device=device, dtype=dtype)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [2., 2., 2., 2., 2.],
+                        [2., 2., 2., 2., 2.]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         kernel_size = (5, 5)
         expected = inp.sum((1, 2, 3)) / torch.mul(*kernel_size)
@@ -71,13 +87,18 @@ class TestBoxBlur:
 
     def test_kernel_5x5_batch(self, device, dtype):
         batch_size = 3
-        inp = torch.tensor([[[
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [1., 1., 1., 1., 1.],
-            [2., 2., 2., 2., 2.],
-            [2., 2., 2., 2., 2.]
-        ]]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
+        inp = torch.tensor(
+            [
+                [
+                    [
+                        [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [1., 1., 1., 1., 1.], [2., 2., 2., 2., 2.],
+                        [2., 2., 2., 2., 2.]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).repeat(batch_size, 1, 1, 1)
 
         kernel_size = (5, 5)
         expected = inp.sum((1, 2, 3)) / torch.mul(*kernel_size)
@@ -100,8 +121,10 @@ class TestBoxBlur:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.box_blur, (img, (3, 3),),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.box_blur, (
+            img,
+            (3, 3),
+        ), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.box_blur

@@ -52,7 +52,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
-    mask[..., -1:] *= -1.   # fill last column with negative values
+    mask[..., -1:] *= -1.  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
@@ -233,9 +233,8 @@ def motion_from_essential_choose_solution(
     return R_out, t_out, points3d_out
 
 
-def relative_camera_motion(
-    R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def relative_camera_motion(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor,
+                           t2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Computes the relative camera motion between two cameras.
 
     Given the motion parameters of two cameras, computes the motion parameters of the second

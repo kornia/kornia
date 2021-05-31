@@ -1,7 +1,4 @@
-from .base import (
-    AugmentationBase2D,
-    AugmentationBase3D
-)
+from .base import (AugmentationBase2D, AugmentationBase3D)
 from .augmentation import (
     CenterCrop,
     ColorJitter,
@@ -42,13 +39,8 @@ from .augmentation3d import (
     RandomEqualize3D,
     RandomPerspective3D,
 )
-from .mix_augmentation import (
-    RandomMixUp,
-    RandomCutMix
-)
-from .container import (
-    VideoSequential
-)
+from .mix_augmentation import (RandomMixUp, RandomCutMix)
+from .container import (VideoSequential)
 
 __all__ = [
     "AugmentationBase2D",

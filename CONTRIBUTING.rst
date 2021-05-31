@@ -158,12 +158,14 @@ This section provides general guidance for developing code for the project. The 
 - Format your code:
 
   - We follow `PEP8 style guide <https://www.python.org/dev/peps/pep-0008>`_.
-  - Use ``autopep`` to autoformat: https://pypi.org/project/autopep8/#id3 .
+  - Use ``yapf`` to autoformat: https://github.com/google/yapf
     For doing so, just run the following from the repository root
 
   .. code:: bash
 
-    make autopep8
+    make yapf
+    # OR for specific folder/path
+    yapf kornia/jit -rip
 
 - Changes to PEP8:
 

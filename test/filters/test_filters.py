@@ -9,6 +9,7 @@ from torch.testing import assert_allclose
 
 
 class TestFilter2D:
+
     def test_smoke(self, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
@@ -23,63 +24,111 @@ class TestFilter2D:
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 5., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         actual = kornia.filter2D(input, kernel)
         assert_allclose(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 5., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).expand(2, 2, -1, -1)
 
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 5., 5., 5., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).expand(2, 2, -1, -1)
 
         actual = kornia.filter2D(input, kernel)
         assert_allclose(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3).to(device)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 5., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).expand(2, 2, -1, -1)
 
         nv: float = 5. / 9  # normalization value
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype).expand(2, 2, -1, -1)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., nv, nv, nv, 0.],
+                        [0., nv, nv, nv, 0.],
+                        [0., nv, nv, nv, 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        ).expand(2, 2, -1, -1)
 
         actual = kornia.filter2D(input, kernel, normalized=True)
 
@@ -88,21 +137,37 @@ class TestFilter2D:
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 5., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0., 0., 0., 0., 0.],
+                        [0., 5., 5., 0., 0.],
+                        [0., 5., 5., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                        [0., 0., 0., 0., 0.],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         actual = kornia.filter2D(input, kernel)
         assert_allclose(actual, expected)
@@ -123,8 +188,7 @@ class TestFilter2D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filter2D, (input, kernel),
-                         raise_exception=True)
+        assert gradcheck(kornia.filter2D, (input, kernel), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filter2D
@@ -138,6 +202,7 @@ class TestFilter2D:
 
 
 class TestFilter3D:
+
     def test_smoke(self, device, dtype):
         kernel = torch.rand(1, 3, 3, 3).to(device)
         input = torch.ones(1, 1, 6, 7, 8).to(device)
@@ -152,91 +217,139 @@ class TestFilter3D:
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         actual = kornia.filter3D(input, kernel)
         assert_allclose(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         input = input.expand(2, 2, -1, -1, -1)
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 5., 5., 5., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 5., 5., 5., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3D(input, kernel)
@@ -244,47 +357,71 @@ class TestFilter3D:
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         input = input.expand(2, 2, -1, -1, -1)
 
         nv = 5. / 27  # normalization value
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., nv, nv, nv, 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., nv, nv, nv, 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
         expected = expected.expand(2, 2, -1, -1, -1)
 
         actual = kornia.filter3D(input, kernel, normalized=True)
@@ -294,53 +431,76 @@ class TestFilter3D:
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        input = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
-        expected = torch.tensor([[[[
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 5., 5., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ], [
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-            [0., 0., 0., 0., 0.],
-        ]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 0., 0.],
+                            [0., 5., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 5., 5., 0., 0.],
+                            [0., 5., 5., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ],
+                        [
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                            [0., 0., 0., 0., 0.],
+                        ]
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype
+        )
 
         actual = kornia.filter3D(input, kernel)
         assert_allclose(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        inp = torch.rand(3, 5, 5, 5, device=device, dtype=dtype).expand(
-            batch_size, -1, -1, -1, -1)
+        inp = torch.rand(3, 5, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1, -1)
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
 
         actual = kornia.filter3D(inp, kernel)
@@ -354,8 +514,7 @@ class TestFilter3D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filter3D, (input, kernel),
-                         raise_exception=True)
+        assert gradcheck(kornia.filter3D, (input, kernel), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filter3D

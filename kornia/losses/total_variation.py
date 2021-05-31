@@ -22,9 +22,7 @@ def total_variation(img: torch.Tensor) -> torch.Tensor:
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(img)}")
 
     if len(img.shape) < 3 or len(img.shape) > 4:
-        raise ValueError(
-            f"Expected input tensor to be of ndim 3 or 4, but got {len(img.shape)}."
-        )
+        raise ValueError(f"Expected input tensor to be of ndim 3 or 4, but got {len(img.shape)}.")
 
     pixel_dif1 = img[..., 1:, :] - img[..., :-1, :]
     pixel_dif2 = img[..., :, 1:] - img[..., :, :-1]

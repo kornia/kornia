@@ -44,11 +44,10 @@ class TestIntegrationSoftArgmax2d:
         criterion = nn.MSELoss()
 
         # spatial soft-argmax2d module
-        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(
-            normalized_coordinates=False)
+        soft_argmax2d = kornia.geometry.SpatialSoftArgmax2d(normalized_coordinates=False)
 
         # NOTE: check where this comes from
-        temperature = (self.height * self.width) ** (0.5)
+        temperature = (self.height * self.width)**(0.5)
 
         for iter_id in range(self.num_iterations):
             x = params

@@ -14,12 +14,9 @@ import kornia as tgm
 def load_data(root_path, sequence_name, frame_id):
     # index paths
     file_name = 'frame_%04d' % (frame_id)
-    image_file = os.path.join(root_path, 'clean', sequence_name,
-                              file_name + '.png')
-    depth_file = os.path.join(root_path, 'depth', sequence_name,
-                              file_name + '.dpt')
-    camera_file = os.path.join(root_path, 'camdata_left', sequence_name,
-                               file_name + '.cam')
+    image_file = os.path.join(root_path, 'clean', sequence_name, file_name + '.png')
+    depth_file = os.path.join(root_path, 'depth', sequence_name, file_name + '.dpt')
+    camera_file = os.path.join(root_path, 'camdata_left', sequence_name, file_name + '.cam')
     # load the actual data
     image_tensor = load_image(image_file)
     depth = load_depth(depth_file)
@@ -72,6 +69,7 @@ def clip_and_convert_tensor(tensor):
 
 
 class InvDepth(nn.Module):
+
     def __init__(self, height, width, min_depth=0.50, max_depth=25.):
         super(InvDepth, self).__init__()
         self._min_range = 1. / max_depth
@@ -91,43 +89,34 @@ class InvDepth(nn.Module):
 
 def DepthRegressionApp():
     # data settings
-    parser = argparse.ArgumentParser(
-        description='Depth Regression with photometric loss.')
-    parser.add_argument('--input-dir', type=str, required=True,
-                        help='the path to the directory with the input data.')
-    parser.add_argument('--output-dir', type=str, required=True,
-                        help='the path to output the results.')
-    parser.add_argument('--num-iterations', type=int, default=1000, metavar='N',
-                        help='number of training iterations (default: 1000)')
-    parser.add_argument('--sequence-name', type=str, default='alley_1',
-                        help='the name of the sequence.')
-    parser.add_argument('--frame-ref-id', type=int, default=1,
-                        help='the id for the reference image in the sequence.')
+    parser = argparse.ArgumentParser(description='Depth Regression with photometric loss.')
+    parser.add_argument('--input-dir', type=str, required=True, help='the path to the directory with the input data.')
+    parser.add_argument('--output-dir', type=str, required=True, help='the path to output the results.')
     parser.add_argument(
-        '--frame-i-id',
-        type=int,
-        default=2,
-        help='the id for the image i in the sequence.')
+        '--num-iterations', type=int, default=1000, metavar='N', help='number of training iterations (default: 1000)'
+    )
+    parser.add_argument('--sequence-name', type=str, default='alley_1', help='the name of the sequence.')
+    parser.add_argument('--frame-ref-id', type=int, default=1, help='the id for the reference image in the sequence.')
+    parser.add_argument('--frame-i-id', type=int, default=2, help='the id for the image i in the sequence.')
     # optimization parameters
-    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
-                        help='learning rate (default: 1e-3)')
+    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR', help='learning rate (default: 1e-3)')
     # device parameters
-    parser.add_argument('--cuda', action='store_true', default=False,
-                        help='enables CUDA training')
-    parser.add_argument('--seed', type=int, default=666, metavar='S',
-                        help='random seed (default: 666)')
+    parser.add_argument('--cuda', action='store_true', default=False, help='enables CUDA training')
+    parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     parser.add_argument(
         '--log-interval',
         type=int,
         default=10,
         metavar='N',
-        help='how many batches to wait before logging training status')
+        help='how many batches to wait before logging training status'
+    )
     parser.add_argument(
         '--log-interval-vis',
         type=int,
         default=100,
         metavar='N',
-        help='how many batches to wait before visual logging training status')
+        help='how many batches to wait before visual logging training status'
+    )
     args = parser.parse_args()
 
     # define the device to use for inference
@@ -142,8 +131,7 @@ def DepthRegressionApp():
 
     # load the data
     root_dir = os.path.join(root_path, 'training')
-    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name,
-                                            args.frame_ref_id)
+    img_ref, depth_ref, cam_ref = load_data(root_dir, args.sequence_name, args.frame_ref_id)
     img_i, _, cam_i = load_data(root_dir, args.sequence_name, args.frame_i_id)
 
     # instantiate the depth warper from `kornia`
@@ -177,8 +165,7 @@ def DepthRegressionApp():
 
         if iter_idx % args.log_interval == 0 or \
            iter_idx == args.num_iterations - 1:
-            print('Train iteration: {}/{}\tLoss: {:.6}'.format(
-                  iter_idx, args.num_iterations, loss.item()))
+            print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
 
             if iter_idx % args.log_interval_vis == 0:
                 # merge warped and target image for  visualization
@@ -187,15 +174,15 @@ def DepthRegressionApp():
 
                 img_both_vis = clip_and_convert_tensor(img_both_vis)
                 img_i_to_ref_vis = clip_and_convert_tensor(img_i_to_ref)
-                inv_depth_ref_vis = tgm.utils.tensor_to_image(
-                    inv_depth_ref() / (inv_depth_ref().max() + 1e-6)).squeeze()
+                inv_depth_ref_vis = tgm.utils.tensor_to_image(inv_depth_ref() /
+                                                              (inv_depth_ref().max() + 1e-6)).squeeze()
                 inv_depth_ref_vis = np.clip(255. * inv_depth_ref_vis, 0, 255)
                 inv_depth_ref_vis = inv_depth_ref_vis.astype('uint8')
 
                 # save warped image and depth to disk
                 def file_name(x):
-                    return os.path.join(args.output_dir,
-                                        "{0}_{1}.png".format(x, iter_idx))
+                    return os.path.join(args.output_dir, "{0}_{1}.png".format(x, iter_idx))
+
                 cv2.imwrite(file_name("warped"), img_i_to_ref_vis)
                 cv2.imwrite(file_name("warped_both"), img_both_vis)
                 cv2.imwrite(file_name("inv_depth_ref"), inv_depth_ref_vis)

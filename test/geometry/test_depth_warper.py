@@ -21,12 +21,17 @@ class TestDepthWarper:
 
         # create pinhole cameras
         pinhole_src = kornia.PinholeCamera.from_parameters(
-            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype)
+            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
+        )
         pinhole_dst = kornia.PinholeCamera.from_parameters(
-            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype)
+            fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device=device, dtype=dtype
+        )
         return pinhole_src, pinhole_dst
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_compute_projection_matrix(self, batch_size, device, dtype):
         height, width = 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -48,7 +53,10 @@ class TestDepthWarper:
         dst_proj_src_expected[..., 0, -1] += 1.  # offset to x-axis
         assert_allclose(dst_proj_src, dst_proj_src_expected)
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_warp_grid_offset_x1_depth1(self, batch_size, device, dtype):
         height, width = 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -69,13 +77,14 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        assert_allclose(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
-        assert_allclose(
-            grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
+        assert_allclose(grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_warp_grid_offset_x1y1_depth1(self, batch_size, device, dtype):
         height, width = 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -97,13 +106,16 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_allclose(
-            grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        assert_allclose(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
         assert_allclose(
-            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
+            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4
+        )
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_warp_tensor_offset_x1y1(self, batch_size, device, dtype):
         channels, height, width = 3, 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -118,17 +130,19 @@ class TestDepthWarper:
         warper.compute_projection_matrix(pinhole_src)
 
         # create patch to warp
-        patch_dst = torch.arange(float(height * width), device=device, dtype=dtype).view(
-            1, 1, height, width).expand(batch_size, channels, -1, -1)
+        patch_dst = torch.arange(float(height * width), device=device,
+                                 dtype=dtype).view(1, 1, height, width).expand(batch_size, channels, -1, -1)
 
         # warpd source patch by depth
         patch_src = warper(depth_src, patch_dst)
 
         # compare patches
-        assert_allclose(
-            patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
+        assert_allclose(patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_compute_projection(self, batch_size, device, dtype):
         height, width = 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -141,7 +155,10 @@ class TestDepthWarper:
         xy_projected = warper._compute_projection(0.0, 0.0, 1.0)
         assert xy_projected.shape == (batch_size, 2)
 
-    @pytest.mark.parametrize("batch_size", (1, 2,))
+    @pytest.mark.parametrize("batch_size", (
+        1,
+        2,
+    ))
     def test_compute_subpixel_step(self, batch_size, device, dtype):
         height, width = 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
@@ -169,15 +186,16 @@ class TestDepthWarper:
         img_dst = utils.tensor_to_gradcheck_var(img_dst)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.depth_warp,
-                         (pinhole_dst,
-                          pinhole_src,
-                          depth_src,
-                          img_dst,
-                          height,
-                          width,
-                          ),
-                         raise_exception=True)
+        assert gradcheck(
+            kornia.depth_warp, (
+                pinhole_dst,
+                pinhole_src,
+                depth_src,
+                img_dst,
+                height,
+                width,
+            ), raise_exception=True
+        )
 
     # TODO(edgar): we should include a test showing some kind of occlusion
     # def test_warp_with_occlusion(self):

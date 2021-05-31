@@ -9,7 +9,8 @@ from kornia.feature.matching import *
 class TestMatchNN:
 
     @pytest.mark.parametrize(
-        "num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)],
+        "num_desc1, num_desc2, dim",
+        [(1, 4, 4), (2, 5, 128), (6, 2, 32)],
     )
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -34,14 +35,14 @@ class TestMatchNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
 
 
 class TestMatchMNN:
 
     @pytest.mark.parametrize(
-        "num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)],
+        "num_desc1, num_desc2, dim",
+        [(1, 4, 4), (2, 5, 128), (6, 2, 32)],
     )
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -68,14 +69,14 @@ class TestMatchMNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
 
 
 class TestMatchSNN:
 
     @pytest.mark.parametrize(
-        "num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)],
+        "num_desc1, num_desc2, dim",
+        [(2, 4, 4), (2, 5, 128), (6, 2, 32)],
     )
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -112,14 +113,14 @@ class TestMatchSNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_snn, (desc1, desc2, 0.8),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_snn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
 
 
 class TestMatchSMNN:
 
     @pytest.mark.parametrize(
-        "num_desc1, num_desc2, dim", [(2, 4, 4), (2, 5, 128), (6, 2, 32)],
+        "num_desc1, num_desc2, dim",
+        [(2, 4, 4), (2, 5, 128), (6, 2, 32)],
     )
     def test_shape(self, num_desc1, num_desc2, dim, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
@@ -157,5 +158,4 @@ class TestMatchSMNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_smnn, (desc1, desc2, 0.8),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)

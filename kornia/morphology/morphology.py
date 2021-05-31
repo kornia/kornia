@@ -26,20 +26,16 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     # origin
     se_h, se_w = kernel.shape
@@ -80,20 +76,16 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     # origin
     se_h, se_w = kernel.shape
@@ -134,20 +126,16 @@ def opening(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     return dilation(erosion(tensor, kernel, origin=origin), kernel, origin=origin)
 
@@ -174,20 +162,16 @@ def closing(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     return erosion(dilation(tensor, kernel, origin=origin), kernel, origin=origin)
 
@@ -242,20 +226,16 @@ def top_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     return tensor - opening(tensor, kernel, origin=origin)
 
@@ -285,19 +265,15 @@ def bottom_hat(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List
     """
 
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) != 4:
-        raise ValueError("Input size must have 4 dimensions. Got {}".format(
-            tensor.dim()))
+        raise ValueError("Input size must have 4 dimensions. Got {}".format(tensor.dim()))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(
-            type(kernel)))
+        raise TypeError("Kernel type is not a torch.Tensor. Got {}".format(type(kernel)))
 
     if len(kernel.shape) != 2:
-        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(
-            kernel.dim()))
+        raise ValueError("Kernel size must have 2 dimensions. Got {}".format(kernel.dim()))
 
     return closing(tensor, kernel, origin=origin) - tensor

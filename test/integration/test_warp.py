@@ -30,11 +30,7 @@ class TestWarping:
         img_dst_t: torch.Tensor = torch.rand(1, 3, 120, 120).to(device)
 
         init_homo: torch.Tensor = torch.from_numpy(
-            np.array([
-                [0.0415, 1.2731, -1.1731],
-                [-0.9094, 0.5072, 0.4272],
-                [0.0762, 1.3981, 1.0646]
-            ])
+            np.array([[0.0415, 1.2731, -1.1731], [-0.9094, 0.5072, 0.4272], [0.0762, 1.3981, 1.0646]])
         ).float()
 
         height, width = img_dst_t.shape[-2:]

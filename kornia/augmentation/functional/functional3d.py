@@ -4,26 +4,15 @@ import torch
 
 import kornia as K
 from kornia.constants import Resample, BorderType, pi
-from kornia.geometry.transform.affwarp import (
-    _compute_rotation_matrix3d, _compute_tensor_center3d
-)
+from kornia.geometry.transform.affwarp import (_compute_rotation_matrix3d, _compute_tensor_center3d)
 from kornia.geometry.transform.projwarp import warp_affine3d
 from kornia.geometry import (
-    crop_by_boxes3d,
-    warp_perspective3d,
-    get_perspective_transform3d,
-    rotate3d,
-    get_affine_matrix3d,
-    deg2rad
+    crop_by_boxes3d, warp_perspective3d, get_perspective_transform3d, rotate3d, get_affine_matrix3d, deg2rad
 )
-from kornia.enhance import (
-    equalize3d
-)
+from kornia.enhance import (equalize3d)
 
 from .. import random_generator as rg
-from ..utils import (
-    _validate_input3d
-)
+from ..utils import (_validate_input3d)
 from kornia.filters import motion_blur3d
 
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
@@ -57,10 +46,7 @@ def compute_hflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
 
     w: int = input.shape[-1]
-    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1],
-                                           [0, 1, 0, 0],
-                                           [0, 0, 1, 0],
-                                           [0, 0, 0, 1]])
+    flip_mat: torch.Tensor = torch.tensor([[-1, 0, 0, w - 1], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])
 
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
@@ -93,10 +79,7 @@ def compute_vflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
 
     h: int = input.shape[-2]
-    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
-                                           [0, -1, 0, h - 1],
-                                           [0, 0, 1, 0],
-                                           [0, 0, 0, 1]])
+    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]])
 
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
@@ -144,18 +127,16 @@ def compute_dflip_transformation3d(input: torch.Tensor) -> torch.Tensor:
     """
 
     d: int = input.shape[-3]
-    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0],
-                                           [0, 1, 0, 0],
-                                           [0, 0, -1, d - 1],
-                                           [0, 0, 0, 1]])
+    flip_mat: torch.Tensor = torch.tensor([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]])
 
     return flip_mat.repeat(input.size(0), 1, 1).to(input)
 
 
 @_deprecation_wrapper
 @_validate_input3d
-def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                   flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_affine3d(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Random affine transformation of the image keeping center invariant.
 
     Args:
@@ -190,9 +171,9 @@ def apply_affine3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
     resample_name: str = Resample(flags['resample'].item()).name.lower()
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    out_data: torch.Tensor = warp_affine3d(x_data, transform[:, :3, :],
-                                           (depth, height, width), resample_name,
-                                           align_corners=align_corners)
+    out_data: torch.Tensor = warp_affine3d(
+        x_data, transform[:, :3, :], (depth, height, width), resample_name, align_corners=align_corners
+    )
     return out_data.view_as(input)
 
 
@@ -219,17 +200,18 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
         torch.Tensor: The affine transformation matrix :math: `(*, 4, 4)`.
     """
     transform = get_affine_matrix3d(
-        params['translations'], params['center'], params['scale'], params['angles'],
-        deg2rad(params['sxy']), deg2rad(params['sxz']), deg2rad(params['syx']),
-        deg2rad(params['syz']), deg2rad(params['szx']), deg2rad(params['szy'])
+        params['translations'], params['center'], params['scale'], params['angles'], deg2rad(params['sxy']),
+        deg2rad(params['sxz']), deg2rad(params['syx']), deg2rad(params['syz']), deg2rad(params['szx']),
+        deg2rad(params['szy'])
     ).to(input)
     return transform
 
 
 @_deprecation_wrapper
 @_validate_input3d
-def apply_rotation3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                     flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_rotation3d(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Rotate a tensor image or a batch of tensor images a random amount of degrees.
 
     Args:
@@ -288,8 +270,9 @@ def compute_rotate_tranformation3d(input: torch.Tensor, params: Dict[str, torch.
 
 @_deprecation_wrapper
 @_validate_input3d
-def apply_motion_blur3d(input: torch.Tensor, params: Dict[str, torch.Tensor],
-                        flags: Dict[str, torch.Tensor]) -> torch.Tensor:
+def apply_motion_blur3d(
+    input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, torch.Tensor]
+) -> torch.Tensor:
     r"""Perform motion blur on an image.
 
     Args:
@@ -343,8 +326,7 @@ def apply_crop3d(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
     resample_mode: str = Resample.get(flags['interpolation'].item()).name.lower()  # type: ignore
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
-    return crop_by_boxes3d(
-        input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
+    return crop_by_boxes3d(input, params['src'], params['dst'], resample_mode, align_corners=align_corners)
 
 
 @_deprecation_wrapper
@@ -403,8 +385,8 @@ def apply_perspective3d(
     align_corners: bool = cast(bool, flags['align_corners'].item())
 
     out_data = warp_perspective3d(
-        input, transform, (depth, height, width),
-        flags=resample_name, align_corners=align_corners)
+        input, transform, (depth, height, width), flags=resample_name, align_corners=align_corners
+    )
 
     return out_data.view_as(input)
 
@@ -425,8 +407,8 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     Returns:
         torch.Tensor: The perspective transformation matrix :math: `(*, 4, 4)`
     """
-    perspective_transform: torch.Tensor = get_perspective_transform3d(
-        params['start_points'], params['end_points']).to(input)
+    perspective_transform: torch.Tensor = get_perspective_transform3d(params['start_points'],
+                                                                      params['end_points']).to(input)
 
     transform: torch.Tensor = K.eye_like(4, input)
 

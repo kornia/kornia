@@ -65,14 +65,7 @@ from kornia.contrib import (
     extract_tensor_patches,
     max_blur_pool2d,
 )
-from kornia.feature import (
-    nms2d,
-    harris_response,
-    hessian_response,
-    gftt_response,
-    SIFTDescriptor,
-    MKDDescriptor
-)
+from kornia.feature import (nms2d, harris_response, hessian_response, gftt_response, SIFTDescriptor, MKDDescriptor)
 from kornia.filters import (
     get_gaussian_kernel1d,
     get_gaussian_erf_kernel1d,

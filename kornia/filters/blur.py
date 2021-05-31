@@ -4,15 +4,15 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import (
-    get_box_kernel2d, normalize_kernel2d
-)
+from kornia.filters.kernels import (get_box_kernel2d, normalize_kernel2d)
 
 
-def box_blur(input: torch.Tensor,
-             kernel_size: Tuple[int, int],
-             border_type: str = 'reflect',
-             normalized: bool = True) -> torch.Tensor:
+def box_blur(
+    input: torch.Tensor,
+    kernel_size: Tuple[int, int],
+    border_type: str = 'reflect',
+    normalized: bool = True
+) -> torch.Tensor:
     r"""Blurs an image using the box filter.
 
     The function smooths an image using the kernel:
@@ -85,9 +85,7 @@ class BoxBlur(nn.Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int],
-                 border_type: str = 'reflect',
-                 normalized: bool = True) -> None:
+    def __init__(self, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True) -> None:
         super(BoxBlur, self).__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
         self.border_type: str = border_type
