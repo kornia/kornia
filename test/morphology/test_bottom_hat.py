@@ -1,8 +1,9 @@
 import pytest
 import torch
-from kornia.morphology.morphology import bottom_hat
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+from kornia.morphology.morphology import bottom_hat
 
 
 class TestBlackHat:

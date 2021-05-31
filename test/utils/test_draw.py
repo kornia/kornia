@@ -1,7 +1,6 @@
 import pytest
-
 import torch
-import kornia.testing as utils
+
 from kornia.utils import draw_rectangle
 
 

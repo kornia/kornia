@@ -1,12 +1,11 @@
 import pytest
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
 import kornia
-import kornia.testing as utils  # test utils
 import kornia.geometry.transform.projwarp as proj
+import kornia.testing as utils  # test utils
 
 
 class TestWarpAffine3d:

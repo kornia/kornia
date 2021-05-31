@@ -1,16 +1,12 @@
 from unittest.mock import patch
-from typing import Union, Tuple
 
 import pytest
 import torch
-import torch.nn as nn
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
-import kornia
 import kornia.testing as utils  # test utils
-from kornia.augmentation.base import _BasicAugmentationBase, _AugmentationBase, AugmentationBase2D, AugmentationBase3D
+from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
 
 
 class TestBasicAugmentationBase:
