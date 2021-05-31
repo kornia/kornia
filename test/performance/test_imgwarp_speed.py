@@ -1,7 +1,8 @@
-import pytest
 from time import time
 
+import pytest
 import torch
+
 import kornia as kornia
 
 shapes = [(512, 3, 256, 256), (256, 1, 64, 64)]

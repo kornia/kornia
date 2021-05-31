@@ -1,10 +1,7 @@
-import pytest
-
 import torch
-import kornia as kornia
-import kornia.testing as utils
-
 from torch.testing import assert_allclose
+
+import kornia as kornia
 
 
 class TestMeanIoU:

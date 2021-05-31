@@ -1,12 +1,10 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+import kornia
+from kornia.testing import BaseTester
 
 
 class TestRgbToYuv(BaseTester):

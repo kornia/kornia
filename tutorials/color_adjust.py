@@ -6,13 +6,13 @@ In this tutorial we are going to learn how to adjust the color in image batches.
 
 """
 
-from matplotlib import pyplot as plt
 import cv2
 import numpy as np
-
 import torch
-import kornia
 import torchvision
+from matplotlib import pyplot as plt
+
+import kornia
 
 #############################
 # We use OpenCV to load an image to memory represented in a numpy.ndarray

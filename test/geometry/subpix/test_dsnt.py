@@ -1,9 +1,8 @@
 import pytest
-
-import kornia as kornia
-
 import torch
 from torch.testing import assert_allclose
+
+import kornia as kornia
 
 
 class TestRenderGaussian2d:
