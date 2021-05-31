@@ -9,8 +9,8 @@ import kornia.testing as utils  # test utils
 
 @pytest.mark.parametrize("batch_size", [0, 1, 5])
 @pytest.mark.parametrize("ksize", [3, 11])
-@pytest.mark.parametrize("angle", [0., 360.])
-@pytest.mark.parametrize("direction", [-1., 1.])
+@pytest.mark.parametrize("angle", [0.0, 360.0])
+@pytest.mark.parametrize("direction", [-1.0, 1.0])
 def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
     if batch_size != 0:
         angle = torch.tensor([angle] * batch_size)
@@ -23,11 +23,10 @@ def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
 
 
 class TestMotionBlur:
-
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_motion_blur(self, batch_shape, device, dtype):
         ksize = 5
-        angle = 200.
+        angle = 200.0
         direction = 0.3
 
         input = torch.rand(batch_shape, device=device, dtype=dtype)
@@ -39,7 +38,7 @@ class TestMotionBlur:
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = 3
-        angle = 200.
+        angle = 200.0
         direction = 0.3
         actual = kornia.filters.motion_blur(inp, kernel_size, angle, direction)
         expected = actual
@@ -48,23 +47,19 @@ class TestMotionBlur:
     def test_gradcheck(self, device, dtype):
         batch_shape = (1, 3, 4, 5)
         ksize = 9
-        angle = 34.
+        angle = 34.0
         direction = -0.2
 
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(
-            kornia.motion_blur,
-            (input, ksize, angle, direction, "replicate"),
-            raise_exception=True,
-        )
+        assert gradcheck(kornia.motion_blur, (input, ksize, angle, direction, "replicate"), raise_exception=True)
 
     @pytest.mark.skip("angle can be Union")
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         ksize = 5
-        angle = 65.
-        direction = .1
+        angle = 65.0
+        direction = 0.1
         op = kornia.filters.motion_blur
         op_script = torch.jit.script(op)
         actual = op_script(img, ksize, angle, direction)

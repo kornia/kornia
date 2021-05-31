@@ -23,7 +23,7 @@ urls: Dict[str, str] = {
 
 
 def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
-    """Gets cartesian and polar parametrizations of grid. """
+    """Gets cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
     y = kgrid[0, :, :, 1]
@@ -33,7 +33,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
 
 
 def get_kron_order(d1: int, d2: int) -> torch.Tensor:
-    """Gets order for doing kronecker product. """
+    """Gets order for doing kronecker product."""
     kron_order = torch.zeros([d1 * d2, 2], dtype=torch.int64)
     for i in range(d1):
         for j in range(d2):
@@ -123,8 +123,8 @@ class VonMisesKernel(nn.Module):
         frange = torch.arange(n) + 1
         frange = frange.reshape(-1, 1, 1)
         weights = torch.zeros([2 * n + 1])
-        weights[:n + 1] = torch.sqrt(b_coeffs)
-        weights[n + 1:] = torch.sqrt(b_coeffs[1:])
+        weights[: n + 1] = torch.sqrt(b_coeffs)
+        weights[n + 1 :] = torch.sqrt(b_coeffs[1:])
         weights = weights.reshape(-1, 1, 1)
         self.register_buffer('emb0', emb0)
         self.register_buffer('frange', frange)
@@ -148,11 +148,22 @@ class VonMisesKernel(nn.Module):
         return embedding
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'n=' + str(self.n) +\
-            ', ' + 'd=' + str(self.d) +\
-            ', ' + 'coeffs=' + str(self.coeffs) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'n='
+            + str(self.n)
+            + ', '
+            + 'd='
+            + str(self.d)
+            + ', '
+            + 'coeffs='
+            + str(self.coeffs)
+            + ')'
+        )
 
 
 class EmbedGradients(nn.Module):
@@ -189,7 +200,7 @@ class EmbedGradients(nn.Module):
         self.register_buffer('phi', phi)
 
     def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
-        """Embed square roots of magnitudes with eps for numerical reasons. """
+        """Embed square roots of magnitudes with eps for numerical reasons."""
         mags = torch.sqrt(mags + self.eps)
         return mags
 
@@ -206,13 +217,20 @@ class EmbedGradients(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'relative=' + str(self.relative) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'relative='
+            + str(self.relative)
+            + ')'
+        )
 
 
 def spatial_kernel_embedding(kernel_type, grids: dict) -> torch.Tensor:
-    """Compute embeddings for cartesian and polar parametrizations. """
+    """Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == 'cart':
         coeffs_ = 'xy'
@@ -273,7 +291,7 @@ class ExplicitSpacialEncoding(nn.Module):
         fmap_size: int = 32,
         in_dims: int = 7,
         do_gmask: bool = True,
-        do_l2: bool = True
+        do_l2: bool = True,
     ) -> None:
         super().__init__()
 
@@ -308,13 +326,13 @@ class ExplicitSpacialEncoding(nn.Module):
         self.register_buffer('idx1', idx1)
 
     def get_gmask(self, sigma: float) -> torch.Tensor:
-        """Compute Gaussian mask. """
+        """Compute Gaussian mask."""
         norm_rho = self.grid['rho'] / self.grid['rho'].max()
-        gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
+        gmask = torch.exp(-1 * norm_rho ** 2 / sigma ** 2)
         return gmask
 
     def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Initialize helper variables to calculate kronecker. """
+        """Initialize helper variables to calculate kronecker."""
         kron = get_kron_order(self.in_dims, self.d_emb)
         _emb = torch.jit.annotate(torch.Tensor, self.emb)
         emb2 = torch.index_select(_emb, 1, kron[:, 1])
@@ -334,13 +352,28 @@ class ExplicitSpacialEncoding(nn.Module):
         return output
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_type=' + str(self.kernel_type) +\
-            ', ' + 'fmap_size=' + str(self.fmap_size) +\
-            ', ' + 'in_dims=' + str(self.in_dims) +\
-            ', ' + 'out_dims=' + str(self.out_dims) +\
-            ', ' + 'do_gmask=' + str(self.do_gmask) +\
-            ', ' + 'do_l2=' + str(self.do_l2) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'kernel_type='
+            + str(self.kernel_type)
+            + ', '
+            + 'fmap_size='
+            + str(self.fmap_size)
+            + ', '
+            + 'in_dims='
+            + str(self.in_dims)
+            + ', '
+            + 'out_dims='
+            + str(self.out_dims)
+            + ', '
+            + 'do_gmask='
+            + str(self.do_gmask)
+            + ', '
+            + 'do_l2='
+            + str(self.do_l2)
+            + ')'
+        )
 
 
 class Whitening(nn.Module):
@@ -385,7 +418,7 @@ class Whitening(nn.Module):
         in_dims: int,
         output_dims: int = 128,
         keval: int = 40,
-        t: float = 0.7
+        t: float = 0.7,
     ) -> None:
         super().__init__()
 
@@ -411,34 +444,34 @@ class Whitening(nn.Module):
         algo = 'lw' if self.xform == 'lw' else 'pca'
         wh_model = whitening_model[algo]
         self.mean.data = wh_model['mean']
-        self.evecs.data = wh_model['eigvecs'][:, :self.output_dims]
-        self.evals.data = wh_model['eigvals'][:self.output_dims]
+        self.evecs.data = wh_model['eigvecs'][:, : self.output_dims]
+        self.evals.data = wh_model['eigvals'][: self.output_dims]
 
         modifications = {
             'pca': self._modify_pca,
             'lw': self._modify_lw,
             'pcaws': self._modify_pcaws,
-            'pcawt': self._modify_pcawt
+            'pcawt': self._modify_pcawt,
         }
 
         # Call modification.
         modifications[self.xform]()
 
     def _modify_pca(self) -> None:
-        """ Modify powerlaw parameter."""
+        """Modify powerlaw parameter."""
         self.pval = 0.5
 
     def _modify_lw(self) -> None:
-        """ No modification required."""
+        """No modification required."""
 
     def _modify_pcaws(self) -> None:
-        """ Shrinkage for eigenvalues."""
+        """Shrinkage for eigenvalues."""
         alpha = self.evals[self.keval]
         evals = ((1 - alpha) * self.evals) + alpha
         self.evecs.data = self.evecs @ torch.diag(torch.pow(evals, -0.5))
 
     def _modify_pcawt(self) -> None:
-        """ Attenuation for eigenvalues."""
+        """Attenuation for eigenvalues."""
         m = -0.5 * self.t
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
@@ -453,10 +486,19 @@ class Whitening(nn.Module):
         return F.normalize(x, dim=1)
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'xform=' + str(self.xform) +\
-            ', ' + 'in_dims=' + str(self.in_dims) +\
-            ', ' + 'output_dims=' + str(self.output_dims) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'xform='
+            + str(self.xform)
+            + ', '
+            + 'in_dims='
+            + str(self.in_dims)
+            + ', '
+            + 'output_dims='
+            + str(self.output_dims)
+            + ')'
+        )
 
 
 class MKDDescriptor(nn.Module):
@@ -498,7 +540,7 @@ class MKDDescriptor(nn.Module):
         kernel_type: str = 'concat',
         whitening: str = 'pcawt',
         training_set: str = 'liberty',
-        output_dims: int = 128
+        output_dims: int = 128,
     ) -> None:
         super().__init__()
 
@@ -569,12 +611,25 @@ class MKDDescriptor(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'kernel_type=' + str(self.kernel_type) +\
-            ', ' + 'whitening=' + str(self.whitening) +\
-            ', ' + 'training_set=' + str(self.training_set) +\
-            ', ' + 'output_dims=' + str(self.output_dims) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'kernel_type='
+            + str(self.kernel_type)
+            + ', '
+            + 'whitening='
+            + str(self.whitening)
+            + ', '
+            + 'training_set='
+            + str(self.training_set)
+            + ', '
+            + 'output_dims='
+            + str(self.output_dims)
+            + ')'
+        )
 
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
@@ -584,7 +639,7 @@ def load_whitening_model(kernel_type: str, training_set: str) -> Dict:
 
 
 class SimpleKD(nn.Module):
-    """Example to write custom Kernel Descriptors. """
+    """Example to write custom Kernel Descriptors."""
 
     def __init__(
         self,
@@ -592,7 +647,7 @@ class SimpleKD(nn.Module):
         kernel_type: str = 'polar',  # 'cart' 'polar'
         whitening: str = 'pcawt',  # 'lw', 'pca', 'pcaws', 'pcawt
         training_set: str = 'liberty',  # 'liberty', 'notredame', 'yosemite'
-        output_dims: int = 128
+        output_dims: int = 128,
     ) -> None:
         super().__init__()
 

@@ -31,13 +31,11 @@ def confusion_matrix(
         raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError(
-            "Input target type is not a torch.Tensor with "
-            "torch.int64 dtype. Got {}".format(type(target))
+            "Input target type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(target))
         )
     if not input.shape == target.shape:
         raise ValueError(
-            "Inputs input and target must have the same shape. "
-            "Got: {} and {}".format(input.shape, target.shape)
+            "Inputs input and target must have the same shape. " "Got: {} and {}".format(input.shape, target.shape)
         )
     if not input.device == target.device:
         raise ValueError("Inputs must be in the same device. " "Got: {} - {}".format(input.device, target.device))
@@ -53,7 +51,7 @@ def confusion_matrix(
     confusion_list = []
     for iter_id in range(batch_size):
         pb: torch.Tensor = pre_bincount_vec[iter_id]
-        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes**2)
+        bin_count: torch.Tensor = torch.bincount(pb, minlength=num_classes ** 2)
         confusion_list.append(bin_count)
 
     confusion_vec: torch.Tensor = torch.stack(confusion_list)

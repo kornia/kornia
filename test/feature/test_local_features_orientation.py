@@ -8,7 +8,6 @@ from kornia.feature.orientation import *
 
 
 class TestPassLAF:
-
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -43,7 +42,6 @@ class TestPassLAF:
 
 
 class TestPatchDominantGradientOrientation:
-
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchDominantGradientOrientation(32).to(device)
@@ -65,7 +63,7 @@ class TestPatchDominantGradientOrientation:
         inp = torch.zeros(1, 1, 19, 19, device=device)
         inp[:, :, :10, :] = 1
         ang = ori(inp)
-        expected = torch.tensor([90.], device=device)
+        expected = torch.tensor([90.0], device=device)
         assert_allclose(kornia.rad2deg(ang), expected)
 
     def test_gradcheck(self, device):
@@ -73,7 +71,7 @@ class TestPatchDominantGradientOrientation:
         ori = PatchDominantGradientOrientation(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(ori, (patches, ), raise_exception=True)
+        assert gradcheck(ori, (patches,), raise_exception=True)
 
     @pytest.mark.jit
     @pytest.mark.skip(" Compiled functions can't take variable number")
@@ -86,7 +84,6 @@ class TestPatchDominantGradientOrientation:
 
 
 class TestOriNet:
-
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = OriNet().to(device=device, dtype=inp.dtype).eval()
@@ -123,7 +120,7 @@ class TestOriNet:
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         ori = OriNet().to(device=device, dtype=patches.dtype)
-        assert gradcheck(ori, (patches, ), raise_exception=True)
+        assert gradcheck(ori, (patches,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -135,7 +132,6 @@ class TestOriNet:
 
 
 class TestLAFOrienter:
-
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -158,9 +154,9 @@ class TestLAFOrienter:
         ori = LAFOrienter(32).to(device)
         inp = torch.zeros(1, 1, 19, 19, device=device)
         inp[:, :, :, :10] = 1
-        laf = torch.tensor([[[[0, 5., 8.], [5.0, 0., 8.]]]], device=device)
+        laf = torch.tensor([[[[0, 5.0, 8.0], [5.0, 0.0, 8.0]]]], device=device)
         new_laf = ori(laf, inp)
-        expected = torch.tensor([[[[0., 5., 8.], [-5.0, 0, 8.]]]], device=device)
+        expected = torch.tensor([[[[0.0, 5.0, 8.0], [-5.0, 0, 8.0]]]], device=device)
         assert_allclose(new_laf, expected)
 
     def test_gradcheck(self, device):

@@ -8,10 +8,7 @@ from kornia.filters.kernels import get_gaussian_kernel2d
 
 
 def gaussian_blur2d(
-    input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float],
-    border_type: str = 'reflect'
+    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using a Gaussian filter.
 
@@ -76,10 +73,18 @@ class GaussianBlur2d(nn.Module):
         self.border_type = border_type
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(kernel_size=' + str(self.kernel_size) + ', ' +\
-            'sigma=' + str(self.sigma) + ', ' +\
-            'border_type=' + self.border_type + ')'
+        return (
+            self.__class__.__name__
+            + '(kernel_size='
+            + str(self.kernel_size)
+            + ', '
+            + 'sigma='
+            + str(self.sigma)
+            + ', '
+            + 'border_type='
+            + self.border_type
+            + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type)

@@ -78,7 +78,7 @@ def homography_warp(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,
-    normalized_coordinates: bool = True
+    normalized_coordinates: bool = True,
 ) -> torch.Tensor:
     r"""Warp image patchs or tensors by normalized 2D homographies.
 
@@ -111,7 +111,9 @@ def homography_warp(
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
             "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(patch_src.device, src_homo_dst.device)
+                         Got patch.device: {} src_H_dst.device: {}.".format(
+                patch_src.device, src_homo_dst.device
+            )
         )
 
     height, width = dsize
@@ -128,7 +130,7 @@ def homography_warp3d(
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,
-    normalized_coordinates: bool = True
+    normalized_coordinates: bool = True,
 ) -> torch.Tensor:
     r"""Warp image patchs or tensors by normalized 3D homographies.
 
@@ -159,7 +161,9 @@ def homography_warp3d(
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
             "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(patch_src.device, src_homo_dst.device)
+                         Got patch.device: {} src_H_dst.device: {}.".format(
+                patch_src.device, src_homo_dst.device
+            )
         )
 
     depth, height, width = dsize
@@ -200,7 +204,7 @@ class HomographyWarper(nn.Module):
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         normalized_coordinates: bool = True,
-        align_corners: bool = False
+        align_corners: bool = False,
     ) -> None:
         super(HomographyWarper, self).__init__()
         self.width: int = width
@@ -226,7 +230,7 @@ class HomographyWarper(nn.Module):
               has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
-         """
+        """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
     def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -260,11 +264,12 @@ class HomographyWarper(nn.Module):
         if src_homo_dst is not None:
             warped_patch = homography_warp(
                 patch_src,
-                src_homo_dst, (self.height, self.width),
+                src_homo_dst,
+                (self.height, self.width),
                 mode=self.mode,
                 padding_mode=self.padding_mode,
                 align_corners=self.align_corners,
-                normalized_coordinates=self.normalized_coordinates
+                normalized_coordinates=self.normalized_coordinates,
             )
         elif _warped_grid is not None:
             if not _warped_grid.device == patch_src.device:
@@ -281,7 +286,7 @@ class HomographyWarper(nn.Module):
                 _warped_grid,
                 mode=self.mode,
                 padding_mode=self.padding_mode,
-                align_corners=self.align_corners
+                align_corners=self.align_corners,
             )
         else:
             raise RuntimeError(
@@ -298,7 +303,7 @@ def normal_transform_pixel(
     width: int,
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None
+    dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -328,7 +333,7 @@ def normal_transform_pixel3d(
     width: int,
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None
+    dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -344,7 +349,7 @@ def normal_transform_pixel3d(
     tr_mat = torch.tensor(
         [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )  # 4x4
 
     # prevent divide by zero bugs
@@ -391,7 +396,7 @@ def normalize_homography(
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = (dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm))
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
 
 
@@ -428,5 +433,5 @@ def normalize_homography3d(
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
-    dst_norm_trans_src_norm: torch.Tensor = (dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm))
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm

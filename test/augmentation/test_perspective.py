@@ -9,7 +9,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestPerspective:
-
     def test_smoke(self, device):
         x_data = torch.rand(1, 2, 3, 4).to(device)
         batch_prob = torch.rand(1, device=device) < 0.5
@@ -34,11 +33,7 @@ class TestPerspective:
 
         params = dict(start_points=start_points, end_points=end_points)
         flags = dict(interpolation=torch.tensor(1), align_corners=torch.tensor(False))
-        assert gradcheck(F.apply_perspective, (
-            input,
-            params,
-            flags,
-        ), raise_exception=True)
+        assert gradcheck(F.apply_perspective, (input, params, flags), raise_exception=True)
 
 
 class TestRandomPerspective:
@@ -89,7 +84,7 @@ class TestRandomPerspective:
         torch.manual_seed(0)
         x_data = torch.rand(1, 2, 4, 5).to(device)
 
-        aug = kornia.augmentation.RandomPerspective(p=0., return_transform=True)
+        aug = kornia.augmentation.RandomPerspective(p=0.0, return_transform=True)
 
         out_perspective = aug(x_data)
         assert isinstance(out_perspective, tuple)
@@ -108,26 +103,30 @@ class TestRandomPerspective:
             [
                 [
                     [
-                        [0.0000, 0.0000, 0.0000, 0.0197, 0.0429], [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
-                        [0.0000, 0.3083, 0.4032, 0.1761, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
+                        [0.0000, 0.0000, 0.0000, 0.0197, 0.0429],
+                        [0.0000, 0.5632, 0.5322, 0.3677, 0.1430],
+                        [0.0000, 0.3083, 0.4032, 0.1761, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                     ],
                     [
-                        [0.0000, 0.0000, 0.0000, 0.1189, 0.0586], [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
-                        [0.0000, 0.2695, 0.5981, 0.5888, 0.0000], [0.0000, 0.0000, 0.0000, 0.0000, 0.0000]
-                    ]
+                        [0.0000, 0.0000, 0.0000, 0.1189, 0.0586],
+                        [0.0000, 0.7087, 0.5420, 0.3995, 0.0863],
+                        [0.0000, 0.2695, 0.5981, 0.5888, 0.0000],
+                        [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
+                    ],
                 ]
             ],
             device=device,
-            dtype=x_data.dtype
+            dtype=x_data.dtype,
         )
 
         expected_transform = torch.tensor(
             [[[1.0523, 0.3493, 0.3046], [-0.1066, 1.0426, 0.5846], [0.0351, 0.1213, 1.0000]]],
             device=device,
-            dtype=x_data.dtype
+            dtype=x_data.dtype,
         )
 
-        aug = kornia.augmentation.RandomPerspective(p=.99999999, return_transform=True)  # step one the random state
+        aug = kornia.augmentation.RandomPerspective(p=0.99999999, return_transform=True)  # step one the random state
 
         out_perspective = aug(x_data)
 
@@ -143,7 +142,7 @@ class TestRandomPerspective:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomPerspective(p=0.), (input, ), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomPerspective(p=0.0), (input,), raise_exception=True)
 
 
 class TestRandomAffine:
@@ -152,32 +151,33 @@ class TestRandomAffine:
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomAffine(0.)
+        aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
 
     def test_smoke_no_transform_batch(self, device):
         x_data = torch.rand(2, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomAffine(0.)
+        aug = kornia.augmentation.RandomAffine(0.0)
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
 
-    @pytest.mark.parametrize("degrees", [45., (-45., 45.), torch.tensor([45., 45.])])
+    @pytest.mark.parametrize("degrees", [45.0, (-45.0, 45.0), torch.tensor([45.0, 45.0])])
     @pytest.mark.parametrize("translate", [(0.1, 0.1), torch.tensor([0.1, 0.1])])
     @pytest.mark.parametrize(
-        "scale", [(0.8, 1.2), (0.8, 1.2, 0.9, 1.1),
-                  torch.tensor([0.8, 1.2]),
-                  torch.tensor([0.8, 1.2, 0.7, 1.3])]
+        "scale", [(0.8, 1.2), (0.8, 1.2, 0.9, 1.1), torch.tensor([0.8, 1.2]), torch.tensor([0.8, 1.2, 0.7, 1.3])]
     )
     @pytest.mark.parametrize(
-        "shear", [
-            5., (-5., 5.), (-5., 5., -3., 3.),
-            torch.tensor(5.),
-            torch.tensor([-5., 5.]),
-            torch.tensor([-5., 5., -3., 3.])
-        ]
+        "shear",
+        [
+            5.0,
+            (-5.0, 5.0),
+            (-5.0, 5.0, -3.0, 3.0),
+            torch.tensor(5.0),
+            torch.tensor([-5.0, 5.0]),
+            torch.tensor([-5.0, 5.0, -3.0, 3.0]),
+        ],
     )
     def test_batch_multi_params(self, degrees, translate, scale, shear, device, dtype):
         x_data = torch.rand(2, 2, 8, 9).to(device)
@@ -188,7 +188,7 @@ class TestRandomAffine:
 
     def test_smoke_transform(self, device):
         x_data = torch.rand(1, 2, 4, 5).to(device)
-        aug = kornia.augmentation.RandomAffine(0., return_transform=True)
+        aug = kornia.augmentation.RandomAffine(0.0, return_transform=True)
         out = aug(x_data)
 
         assert isinstance(out, tuple)
@@ -201,4 +201,4 @@ class TestRandomAffine:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.), (input, ), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True)

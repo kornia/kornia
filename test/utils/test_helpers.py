@@ -8,7 +8,8 @@ from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
 
 
 @pytest.mark.parametrize(
-    "tensor_list,out_device,out_dtype,will_throw_error", [
+    "tensor_list,out_device,out_dtype,will_throw_error",
+    [
         ([], torch.device('cpu'), torch.get_default_dtype(), False),
         ([None, None], torch.device('cpu'), torch.get_default_dtype(), False),
         ([torch.tensor(0, device='cpu', dtype=torch.float16), None], torch.device('cpu'), torch.float16, False),
@@ -18,23 +19,30 @@ from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
         ([torch.tensor(0, device='cpu', dtype=torch.float32)] * 2, torch.device('cpu'), torch.float32, False),
         ([torch.tensor(0, device='cpu', dtype=torch.float64)] * 2, torch.device('cpu'), torch.float64, False),
         (
-            [torch.tensor(0, device='cpu', dtype=torch.float16),
-             torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True
+            [torch.tensor(0, device='cpu', dtype=torch.float16), torch.tensor(0, device='cpu', dtype=torch.float64)],
+            None,
+            None,
+            True,
         ),
         (
-            [torch.tensor(0, device='cpu', dtype=torch.float32),
-             torch.tensor(0, device='cpu', dtype=torch.float64)], None, None, True
+            [torch.tensor(0, device='cpu', dtype=torch.float32), torch.tensor(0, device='cpu', dtype=torch.float64)],
+            None,
+            None,
+            True,
         ),
         (
-            [torch.tensor(0, device='cpu', dtype=torch.float16),
-             torch.tensor(0, device='cpu', dtype=torch.float32)], None, None, True
+            [torch.tensor(0, device='cpu', dtype=torch.float16), torch.tensor(0, device='cpu', dtype=torch.float32)],
+            None,
+            None,
+            True,
         ),
-    ]
+    ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
     # Add GPU tests when GPU testing avaliable
     if torch.cuda.is_available():
         import warnings
+
         warnings.warn("Add GPU tests.")
 
     if will_throw_error:
@@ -47,7 +55,6 @@ def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_err
 
 
 class TestInverseCast(object):
-
     @pytest.mark.parametrize("input_shape", [(1, 3, 4, 4), (2, 4, 5, 5)])
     def test_smoke(self, device, dtype, input_shape):
         x = torch.rand(input_shape, device=device, dtype=dtype)
@@ -55,15 +62,9 @@ class TestInverseCast(object):
         assert y.shape == x.shape
 
     def test_values(self, device, dtype):
-        x = torch.tensor([
-            [4., 7.],
-            [2., 6.],
-        ], device=device, dtype=dtype)
+        x = torch.tensor([[4.0, 7.0], [2.0, 6.0]], device=device, dtype=dtype)
 
-        y_expected = torch.tensor([
-            [0.6, -0.7],
-            [-0.2, 0.4],
-        ], device=device, dtype=dtype)
+        y_expected = torch.tensor([[0.6, -0.7], [-0.2, 0.4]], device=device, dtype=dtype)
 
         y = _torch_inverse_cast(x)
 
@@ -77,10 +78,9 @@ class TestInverseCast(object):
 
 
 class TestHistcCast(object):
-
     def test_smoke(self, device, dtype):
-        x = torch.tensor([1., 2., 1.], device=device, dtype=dtype)
-        y_expected = torch.tensor([0., 2., 1., 0.], device=device, dtype=dtype)
+        x = torch.tensor([1.0, 2.0, 1.0], device=device, dtype=dtype)
+        y_expected = torch.tensor([0.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
 
         y = _torch_histc_cast(x, bins=4, min=0, max=3)
 
@@ -88,7 +88,6 @@ class TestHistcCast(object):
 
 
 class TestSvdCast(object):
-
     def test_smoke(self, device, dtype):
         a = torch.randn(5, 3, 3, device=device, dtype=dtype)
         u, s, v = _torch_svd_cast(a)
@@ -98,7 +97,6 @@ class TestSvdCast(object):
 
 
 class TestSolveCast(object):
-
     def test_smoke(self, device, dtype):
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)

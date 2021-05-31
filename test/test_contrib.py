@@ -8,7 +8,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestMaxBlurPool2d:
-
     def test_shape(self, device):
         input = torch.rand(1, 2, 4, 6).to(device)
         pool = kornia.contrib.MaxBlurPool2d(kernel_size=3)
@@ -22,14 +21,10 @@ class TestMaxBlurPool2d:
     def test_gradcheck(self, device):
         input = torch.rand(2, 3, 4, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.contrib.max_blur_pool2d, (
-            input,
-            3,
-        ), raise_exception=True)
+        assert gradcheck(kornia.contrib.max_blur_pool2d, (input, 3), raise_exception=True)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
-
         @torch.jit.script
         def op_script(input: torch.Tensor, kernel_size: int) -> torch.Tensor:
             return kornia.contrib.max_blur_pool2d(input, kernel_size)
@@ -41,14 +36,13 @@ class TestMaxBlurPool2d:
 
 
 class TestExtractTensorPatches:
-
     def test_smoke(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches(3)
         assert m(input).shape == (1, 4, 1, 3, 3)
 
     def test_b1_ch1_h4w4_ws3(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 3, 3)
@@ -58,7 +52,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch2_h4w4_ws3(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         input = input.expand(-1, 2, -1, -1)  # copy all channels
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(input)
@@ -69,7 +63,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches(2)
         patches = m(input)
         assert patches.shape == (1, 9, 1, 2, 2)
@@ -79,7 +73,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 2:4, 1:3], patches[0, 7])
 
     def test_b1_ch1_h4w4_ws2_stride2(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches(2, stride=2)
         patches = m(input)
         assert patches.shape == (1, 4, 1, 2, 2)
@@ -89,7 +83,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 2:4, 2:4], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2_stride21(self, device):
-        input = torch.arange(16.).view(1, 1, 4, 4).to(device)
+        input = torch.arange(16.0).view(1, 1, 4, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches(2, stride=(2, 1))
         patches = m(input)
         assert patches.shape == (1, 6, 1, 2, 2)
@@ -99,7 +93,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 2:4, 2:4], patches[0, 5])
 
     def test_b1_ch1_h3w3_ws2_stride1_padding1(self, device):
-        input = torch.arange(9.).view(1, 1, 3, 3).to(device)
+        input = torch.arange(9.0).view(1, 1, 3, 3).to(device)
         m = kornia.contrib.ExtractTensorPatches(2, stride=1, padding=1)
         patches = m(input)
         assert patches.shape == (1, 16, 1, 2, 2)
@@ -110,7 +104,7 @@ class TestExtractTensorPatches:
 
     def test_b2_ch1_h3w3_ws2_stride1_padding1(self, device):
         batch_size = 2
-        input = torch.arange(9.).view(1, 1, 3, 3).to(device)
+        input = torch.arange(9.0).view(1, 1, 3, 3).to(device)
         input = input.expand(batch_size, -1, -1, -1)
         m = kornia.contrib.ExtractTensorPatches(2, stride=1, padding=1)
         patches = m(input)
@@ -122,7 +116,7 @@ class TestExtractTensorPatches:
             assert_allclose(input[i, :, 1:3, 1:3], patches[i, 10])
 
     def test_b1_ch1_h3w3_ws23(self, device):
-        input = torch.arange(9.).view(1, 1, 3, 3).to(device)
+        input = torch.arange(9.0).view(1, 1, 3, 3).to(device)
         m = kornia.contrib.ExtractTensorPatches((2, 3))
         patches = m(input)
         assert patches.shape == (1, 2, 1, 2, 3)
@@ -130,7 +124,7 @@ class TestExtractTensorPatches:
         assert_allclose(input[0, :, 1:3, 0:3], patches[0, 1])
 
     def test_b1_ch1_h3w4_ws23(self, device):
-        input = torch.arange(12.).view(1, 1, 3, 4).to(device)
+        input = torch.arange(12.0).view(1, 1, 3, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches((2, 3))
         patches = m(input)
         assert patches.shape == (1, 4, 1, 2, 3)
@@ -141,7 +135,6 @@ class TestExtractTensorPatches:
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
-
         @torch.jit.script
         def op_script(input: torch.Tensor, height: int, width: int) -> torch.Tensor:
             return kornia.denormalize_pixel_coordinates(input, height, width)
@@ -157,7 +150,4 @@ class TestExtractTensorPatches:
     def test_gradcheck(self, device):
         input = torch.rand(2, 3, 4, 4).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.contrib.extract_tensor_patches, (
-            input,
-            3,
-        ), raise_exception=True)
+        assert gradcheck(kornia.contrib.extract_tensor_patches, (input, 3), raise_exception=True)

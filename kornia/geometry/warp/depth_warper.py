@@ -3,13 +3,10 @@ from typing import Union
 import torch
 import warnings
 
-from kornia.geometry.depth import (DepthWarper as _DepthWarper, depth_warp as _depth_warp)
-from kornia.geometry.camera import (PinholeCamera, cam2pixel, pixel2cam)
+from kornia.geometry.depth import DepthWarper as _DepthWarper, depth_warp as _depth_warp
+from kornia.geometry.camera import PinholeCamera, cam2pixel, pixel2cam
 
-__all__ = [
-    "depth_warp",
-    "DepthWarper",
-]
+__all__ = ["depth_warp", "DepthWarper"]
 
 
 class DepthWarper(_DepthWarper):
@@ -22,7 +19,7 @@ class DepthWarper(_DepthWarper):
         width: int,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: bool = True
+        align_corners: bool = True,
     ):
         super(DepthWarper, self).__init__(
             pinhole_dst=pinhole_dst,
@@ -30,13 +27,13 @@ class DepthWarper(_DepthWarper):
             width=width,
             mode=mode,
             padding_mode=padding_mode,
-            align_corners=align_corners
+            align_corners=align_corners,
         )
         warnings.warn(
             "`DepthWarper` is deprecated and will be removed > 0.6.0. "
             "Please use `kornia.geometry.DepthWarper instead.`",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
 
 
@@ -47,12 +44,12 @@ def depth_warp(
     patch_dst: torch.Tensor,
     height: int,
     width: int,
-    align_corners: bool = True
+    align_corners: bool = True,
 ):
     __doc__ = _depth_warp.__doc__
     warnings.warn(
         "`depth_warp` is deprecated and will be removed > 0.6.0. Please use `kornia.geometry.depth_warp instead.`",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return _depth_warp(pinhole_dst, pinhole_src, depth_src, patch_dst, height, width, align_corners)

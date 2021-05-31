@@ -102,8 +102,8 @@ def symmetrical_epipolar_distance(
     numerator: torch.Tensor = (pts2 * line1_in_2).sum(2).pow(2)
 
     # denominator_inv =  1/ (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator_inv: torch.Tensor = (
-        1. / (line1_in_2[..., :2].norm(2, dim=2).pow(2)) + 1. / (line2_in_1[..., :2].norm(2, dim=2).pow(2))
+    denominator_inv: torch.Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=2).pow(2)) + 1.0 / (
+        line2_in_1[..., :2].norm(2, dim=2).pow(2)
     )
     out: torch.Tensor = numerator * denominator_inv
     if squared:

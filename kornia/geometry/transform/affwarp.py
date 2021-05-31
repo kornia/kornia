@@ -6,8 +6,8 @@ import torch.nn as nn
 from math import ceil
 
 import kornia
-from kornia.geometry.transform.imgwarp import (warp_affine, get_rotation_matrix2d, get_affine_matrix2d)
-from kornia.geometry.transform.projwarp import (warp_affine3d, get_projective_transform)
+from kornia.geometry.transform.imgwarp import warp_affine, get_rotation_matrix2d, get_affine_matrix2d
+from kornia.geometry.transform.projwarp import warp_affine3d, get_projective_transform
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import _to_bchw
 
@@ -75,8 +75,9 @@ def _compute_rotation_matrix3d(
         pitch = pitch.unsqueeze(dim=1)
         roll = roll.unsqueeze(dim=1)
 
-    assert len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2, \
-        f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
+    assert (
+        len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 2
+    ), f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}."
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
     scales: torch.Tensor = torch.ones_like(yaw)
@@ -122,7 +123,7 @@ def affine(
     matrix: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
 
@@ -172,7 +173,7 @@ def affine3d(
     matrix: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: bool = False
+    align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the 3d volume.
 
@@ -228,7 +229,7 @@ def rotate(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     r"""Rotate the tensor anti-clockwise about the centre.
 
@@ -264,10 +265,7 @@ def rotate(
     if center is not None and not isinstance(center, torch.Tensor):
         raise TypeError("Input center type is not a torch.Tensor. Got {}".format(type(center)))
 
-    if len(tensor.shape) not in (
-        3,
-        4,
-    ):
+    if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
 
     # compute the rotation center
@@ -292,7 +290,7 @@ def rotate3d(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: bool = False
+    align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Rotate 3D the tensor anti-clockwise about the centre.
 
@@ -331,10 +329,7 @@ def rotate3d(
     if center is not None and not isinstance(center, torch.Tensor):
         raise TypeError("Input center type is not a torch.Tensor. Got {}".format(type(center)))
 
-    if len(tensor.shape) not in (
-        4,
-        5,
-    ):
+    if len(tensor.shape) not in (4, 5):
         raise ValueError("Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. " "Got: {}".format(tensor.shape))
 
     # compute the rotation center
@@ -358,7 +353,7 @@ def translate(
     translation: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
 
@@ -389,10 +384,7 @@ def translate(
     if not isinstance(translation, torch.Tensor):
         raise TypeError("Input translation type is not a torch.Tensor. Got {}".format(type(translation)))
 
-    if len(tensor.shape) not in (
-        3,
-        4,
-    ):
+    if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
 
     # compute the translation matrix
@@ -408,7 +400,7 @@ def scale(
     center: Union[None, torch.Tensor] = None,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     r"""Scale the tensor by a factor.
 
@@ -466,7 +458,7 @@ def shear(
     shear: torch.Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: bool = False
+    align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Shear the tensor.
 
@@ -497,10 +489,7 @@ def shear(
     if not isinstance(shear, torch.Tensor):
         raise TypeError("Input shear type is not a torch.Tensor. Got {}".format(type(shear)))
 
-    if len(tensor.shape) not in (
-        3,
-        4,
-    ):
+    if len(tensor.shape) not in (3, 4):
         raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " "Got: {}".format(tensor.shape))
 
     # compute the translation matrix
@@ -529,7 +518,7 @@ def resize(
     interpolation: str = 'bilinear',
     align_corners: Optional[bool] = None,
     side: str = "short",
-    antialias: bool = False
+    antialias: bool = False,
 ) -> torch.Tensor:
     r"""Resize the input torch.Tensor to the given size.
 
@@ -600,7 +589,7 @@ def rescale(
     factor: Union[float, Tuple[float, float]],
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
-    antialias: bool = False
+    antialias: bool = False,
 ) -> torch.Tensor:
     r"""Rescale the input torch.Tensor with the given factor.
 
@@ -667,7 +656,7 @@ class Resize(nn.Module):
         interpolation: str = 'bilinear',
         align_corners: Optional[bool] = None,
         side: str = "short",
-        antialias: bool = False
+        antialias: bool = False,
     ) -> None:
         super(Resize, self).__init__()
         self.size: Union[int, Tuple[int, int]] = size
@@ -683,7 +672,7 @@ class Resize(nn.Module):
             self.interpolation,
             align_corners=self.align_corners,
             side=self.side,
-            antialias=self.antialias
+            antialias=self.antialias,
         )
 
 
@@ -731,7 +720,7 @@ class Affine(nn.Module):
         center: Optional[torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None
+        align_corners: Optional[bool] = None,
     ) -> None:
         batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
         if not batch_sizes:
@@ -811,7 +800,7 @@ class Rescale(nn.Module):
         factor: Union[float, Tuple[float, float]],
         interpolation: str = "bilinear",
         align_corners: Optional[bool] = None,
-        antialias: bool = False
+        antialias: bool = False,
     ) -> None:
         super().__init__()
         self.factor: Union[float, Tuple[float, float]] = factor
@@ -857,7 +846,7 @@ class Rotate(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None
+        align_corners: Optional[bool] = None,
     ) -> None:
         super(Rotate, self).__init__()
         self.angle: torch.Tensor = angle
@@ -899,7 +888,7 @@ class Translate(nn.Module):
         translation: torch.Tensor,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None
+        align_corners: Optional[bool] = None,
     ) -> None:
         super(Translate, self).__init__()
         self.translation: torch.Tensor = translation
@@ -945,7 +934,7 @@ class Scale(nn.Module):
         center: Union[None, torch.Tensor] = None,
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
-        align_corners: Optional[bool] = None
+        align_corners: Optional[bool] = None,
     ) -> None:
         super(Scale, self).__init__()
         self.scale_factor: torch.Tensor = scale_factor
@@ -984,11 +973,7 @@ class Shear(nn.Module):
     """
 
     def __init__(
-        self,
-        shear: torch.Tensor,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
-        align_corners: bool = False
+        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = False
     ) -> None:
         super(Shear, self).__init__()
         self.shear: torch.Tensor = shear

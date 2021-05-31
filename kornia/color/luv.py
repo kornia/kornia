@@ -5,6 +5,7 @@ import torch.nn as nn
 
 from .xyz import rgb_to_xyz, xyz_to_rgb
 from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
+
 """
 The RGB to Luv color transformations were translated from scikit image's rgb2luv and luv2rgb
 
@@ -46,10 +47,10 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     z: torch.Tensor = xyz_im[..., 2, :, :]
 
     threshold = 0.008856
-    L: torch.Tensor = torch.where(y > threshold, 116. * torch.pow(y.clamp(min=threshold), 1. / 3.) - 16., 903.3 * y)
+    L: torch.Tensor = torch.where(y > threshold, 116.0 * torch.pow(y.clamp(min=threshold), 1.0 / 3.0) - 16.0, 903.3 * y)
 
     # Compute reference white point
-    xyz_ref_white: Tuple[float, float, float] = (.95047, 1., 1.08883)
+    xyz_ref_white: Tuple[float, float, float] = (0.95047, 1.0, 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
 
@@ -92,7 +93,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     y: torch.Tensor = torch.where(L > 7.999625, torch.pow((L + 16) / 116, 3.0), L / 903.3)
 
     # Compute white point
-    xyz_ref_white: Tuple[float, float, float] = (0.95047, 1., 1.08883)
+    xyz_ref_white: Tuple[float, float, float] = (0.95047, 1.0, 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
 
@@ -101,7 +102,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     c: torch.Tensor = 3 * y * (5 * d - 3)
 
     z: torch.Tensor = ((a - 4) * c - 15 * a * d * y) / (12 * d + eps)
-    x: torch.Tensor = -(c / (d + eps) + 3. * z)
+    x: torch.Tensor = -(c / (d + eps) + 3.0 * z)
 
     xyz_im: torch.Tensor = torch.stack([x, y, z], -3)
 

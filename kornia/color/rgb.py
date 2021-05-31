@@ -141,7 +141,7 @@ def rgba_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
 
     # compute new channels
-    a_one = torch.tensor(1.) - a
+    a_one = torch.tensor(1.0) - a
     r_new: torch.Tensor = a_one * r + a * r
     g_new: torch.Tensor = a_one * g + a * g
     b_new: torch.Tensor = a_one * b + a * b

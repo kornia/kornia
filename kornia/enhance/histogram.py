@@ -2,16 +2,12 @@ from typing import Tuple
 
 import torch
 
-__all__ = [
-    "histogram",
-    "histogram2d",
-]
+__all__ = ["histogram", "histogram2d"]
 
 
-def marginal_pdf(values: torch.Tensor,
-                 bins: torch.Tensor,
-                 sigma: torch.Tensor,
-                 epsilon: float = 1e-10) -> Tuple[torch.Tensor, torch.Tensor]:
+def marginal_pdf(
+    values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Function that calculates the marginal probability distribution function of the input tensor
         based on the number of histogram bins.
 
@@ -123,11 +119,7 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 
 
 def histogram2d(
-    x1: torch.Tensor,
-    x2: torch.Tensor,
-    bins: torch.Tensor,
-    bandwidth: torch.Tensor,
-    epsilon: float = 1e-10
+    x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
     """Function that estimates the 2d histogram of the input tensor.
 

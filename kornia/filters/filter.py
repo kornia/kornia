@@ -108,10 +108,7 @@ def filter2D(
 
 
 def filter3D(
-    input: torch.Tensor,
-    kernel: torch.Tensor,
-    border_type: str = 'replicate',
-    normalized: bool = False
+    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'replicate', normalized: bool = False
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 3d kernel.
 

@@ -38,6 +38,7 @@ class TVDenoise(torch.nn.Module):
     def get_clean_image(self):
         return self.clean_image
 
+
 tv_denoiser = TVDenoise(noisy_image)
 
 # define the optimizer to optimize the 1 parameter of tv_denoiser
