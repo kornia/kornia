@@ -199,4 +199,3 @@ sphinx_gallery_conf = {
     'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
     'filename_pattern': './',
 }
-
