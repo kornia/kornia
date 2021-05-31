@@ -105,6 +105,7 @@ class clean(distutils.command.clean.clean):
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
+
 requirements = [
     'numpy',
     'torch' + kornia_pt_dependencies[dep_version(version)],

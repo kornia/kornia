@@ -45,6 +45,7 @@ def imshow(input: torch.Tensor):
     plt.axis('off')
     plt.show()
 
+
 #############################
 # Create a batch of images
 xb_bgr = torch.cat([x_bgr, hflip(x_bgr), vflip(x_bgr), rot180(x_bgr)])

@@ -3,6 +3,9 @@ import sys
 
 import torch
 import kornia
+from sphinx import addnodes
+from sphinx.util.docfields import TypedField
+from docutils import nodes
 
 import sphinx_gallery
 import sphinx_rtd_theme
@@ -205,10 +208,6 @@ sphinx_gallery_conf = {
 
 # -- A patch that prevents Sphinx from cross-referencing ivar tags -------
 # See http://stackoverflow.com/a/41184353/3343043
-
-from docutils import nodes
-from sphinx.util.docfields import TypedField
-from sphinx import addnodes
 
 
 def patched_make_field(self, types, domain, items, **kw):

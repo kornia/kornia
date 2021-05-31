@@ -8,6 +8,7 @@ In this data you learn how to use `kornia` modules in order to perform the data 
 ################################
 # 1. Create a dummy data loader
 
+import kornia
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -39,7 +40,6 @@ class DummyDataset(Dataset):
 # 2. Define the data augmentation operations
 # Thanks to the `kornia` design all the operators can be placed inside inside a `nn.Sequential`.
 
-import kornia
 
 transform = nn.Sequential(
     kornia.enhance.AdjustBrightness(0.5),

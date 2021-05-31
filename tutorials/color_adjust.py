@@ -36,6 +36,7 @@ def imshow(input: torch.Tensor):
     plt.axis('off')
     plt.show()
 
+
 #############################
 # Show original
 imshow(x_rgb)

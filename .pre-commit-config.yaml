@@ -15,21 +15,14 @@ repos:
       - id: check-yaml
       - id: pretty-format-json
 
-  - repo: https://github.com/pre-commit/mirrors-yapf
-    rev: v0.31.0
+  - repo: https://github.com/pre-commit/mirrors-autopep8
+    rev: v1.5.7
     hooks:
-      - id: yapf
+      - id: autopep8
         name: formatting
-        entry: yapf
-        args: [--parallel]
-        language: python
-        types: [python]
 
   - repo: https://github.com/PyCQA/flake8
     rev: 3.9.2
     hooks:
       - id: flake8
         name: PEP8
-        entry: flake8
-        language: python
-        types: [python]
