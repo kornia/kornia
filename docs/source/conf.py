@@ -71,6 +71,7 @@ version = ''
 if 'READTHEDOCS' not in os.environ:
     # if developing locally, use pyro.__version__ as version
     from kornia import __version__  # noqaE402
+
     version = __version__
 
 # release = 'master'
@@ -109,11 +110,7 @@ html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-html_theme_options = {
-    'collapse_navigation': False,
-    'display_version': True,
-    'logo_only': True,
-}
+html_theme_options = {'collapse_navigation': False, 'display_version': True, 'logo_only': True}
 
 html_logo = '_static/img/kornia_logo.svg'
 html_favicon = '_static/img/kornia_logo_mini.png'
@@ -124,12 +121,7 @@ html_favicon = '_static/img/kornia_logo_mini.png'
 html_static_path = ['_static']
 
 # html_style_path = 'css/pytorch_theme.css'
-html_context = {
-    'css_files': [
-        'https://fonts.googleapis.com/css?family=Lato',
-        '_static/css/pytorch_theme.css'
-    ],
-}
+html_context = {'css_files': ['https://fonts.googleapis.com/css?family=Lato', '_static/css/pytorch_theme.css']}
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -143,15 +135,12 @@ latex_elements = {
     # The paper size ('letterpaper' or 'a4paper').
     #
     # 'papersize': 'letterpaper',
-
     # The font size ('10pt', '11pt' or '12pt').
     #
     # 'pointsize': '10pt',
-
     # Additional stuff for the LaTeX preamble.
     #
     # 'preamble': '',
-
     # Latex figure (float) alignment
     #
     # 'figure_align': 'htbp',
@@ -160,19 +149,14 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
-latex_documents = [
-    (master_doc, 'kornia.tex', u'Kornia', 'manual'),
-]
+latex_documents = [(master_doc, 'kornia.tex', u'Kornia', 'manual')]
 
 
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'Kornia', u'Kornia Documentation',
-     [author], 1)
-]
+man_pages = [(master_doc, 'Kornia', u'Kornia Documentation', [author], 1)]
 
 
 # -- Options for Texinfo output -------------------------------------------
@@ -181,9 +165,15 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'kornia', 'Kornia Documentation',
-     author, 'Kornia', 'Differentiable Computer Vision in Pytorch.',
-     'Miscellaneous'),
+    (
+        master_doc,
+        'kornia',
+        'Kornia Documentation',
+        author,
+        'Kornia',
+        'Differentiable Computer Vision in Pytorch.',
+        'Miscellaneous',
+    )
 ]
 
 
@@ -197,7 +187,7 @@ intersphinx_mapping = {
 examples_dir = os.path.join(current_path, "tutorials")
 sphinx_gallery_conf = {
     'doc_module': 'kornia',
-    'examples_dirs': [examples_dir],   # path to your example scripts
+    'examples_dirs': [examples_dir],  # path to your example scripts
     'gallery_dirs': ['tutorials'],  # path where to save gallery generated output
     'filename_pattern': './',
 }
@@ -233,8 +223,7 @@ def patched_make_field(self, types, domain, items, **kw):
                 typename = typename.replace('long', 'python:long')
                 typename = typename.replace('float', 'python:float')
                 typename = typename.replace('type', 'python:type')
-                par.extend(self.make_xrefs(self.typerolename, domain, typename,
-                                           addnodes.literal_emphasis, **kw))
+                par.extend(self.make_xrefs(self.typerolename, domain, typename, addnodes.literal_emphasis, **kw))
             else:
                 par += fieldtype
             par += nodes.Text(')')

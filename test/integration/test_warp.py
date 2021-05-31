@@ -8,7 +8,6 @@ import kornia
 
 
 class MyHomography(nn.Module):
-
     def __init__(self, init_homo: torch.Tensor) -> None:
         super().__init__()
         self.homo = nn.Parameter(init_homo.clone().detach())

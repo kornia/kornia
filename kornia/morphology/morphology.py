@@ -44,7 +44,7 @@ def dilation(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[i
 
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=0.)
+    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=0.0)
 
     # computation
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
@@ -94,7 +94,7 @@ def erosion(tensor: torch.Tensor, kernel: torch.Tensor, origin: Optional[List[in
 
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=1.)
+    output: torch.Tensor = F.pad(tensor, pad_e, mode='constant', value=1.0)
 
     # computation
     output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)

@@ -8,7 +8,6 @@ import test_common as utils
 
 
 class TestEssentialFromFundamental:
-
     def test_smoke(self, device, dtype):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
         K1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -61,15 +60,10 @@ class TestEssentialFromFundamental:
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         K2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.essential_from_fundamental, (
-            F_mat,
-            K1,
-            K2,
-        ), raise_exception=True)
+        assert gradcheck(epi.essential_from_fundamental, (F_mat, K1, K2), raise_exception=True)
 
 
 class TestRelativeCameraMotion:
-
     def test_smoke(self, device, dtype):
         R1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         t1 = torch.rand(1, 3, 1, device=device, dtype=dtype)
@@ -79,12 +73,7 @@ class TestRelativeCameraMotion:
         assert R.shape == (1, 3, 3)
         assert t.shape == (1, 3, 1)
 
-    @pytest.mark.parametrize("batch_size", [
-        1,
-        3,
-        5,
-        8,
-    ])
+    @pytest.mark.parametrize("batch_size", [1, 3, 5, 8])
     def test_shape(self, batch_size, device, dtype):
         B: int = batch_size
         R1 = torch.rand(B, 3, 3, device=device, dtype=dtype)
@@ -96,13 +85,9 @@ class TestRelativeCameraMotion:
         assert t.shape == (B, 3, 1)
 
     def test_translation(self, device, dtype):
-        R1 = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        R1 = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        t1 = torch.tensor([[[10.], [0.], [0.]]]).type_as(R1)
+        t1 = torch.tensor([[[10.0], [0.0], [0.0]]]).type_as(R1)
 
         R2 = epi.eye_like(3, R1)
         t2 = epi.vec_like(3, t1)
@@ -115,17 +100,9 @@ class TestRelativeCameraMotion:
         assert_allclose(t_expected, t)
 
     def test_rotate_z(self, device, dtype):
-        R1 = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        R1 = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        R2 = torch.tensor([[
-            [0., 0., 0.],
-            [0., 0., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        R2 = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         t1 = epi.vec_like(3, R1)
         t2 = epi.vec_like(3, R2)
@@ -142,16 +119,10 @@ class TestRelativeCameraMotion:
         R2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         t1 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
         t2 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
-        assert gradcheck(epi.relative_camera_motion, (
-            R1,
-            t1,
-            R2,
-            t2,
-        ), raise_exception=True)
+        assert gradcheck(epi.relative_camera_motion, (R1, t1, R2, t2), raise_exception=True)
 
 
 class TestEssentalFromRt:
-
     def test_smoke(self, device, dtype):
         R1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
         t1 = torch.rand(1, 3, 1, device=device, dtype=dtype)
@@ -160,12 +131,7 @@ class TestEssentalFromRt:
         E_mat = epi.essential_from_Rt(R1, t1, R2, t2)
         assert E_mat.shape == (1, 3, 3)
 
-    @pytest.mark.parametrize("batch_size", [
-        1,
-        3,
-        5,
-        8,
-    ])
+    @pytest.mark.parametrize("batch_size", [1, 3, 5, 8])
     def test_shape(self, batch_size, device, dtype):
         B: int = batch_size
         R1 = torch.rand(B, 3, 3, device=device, dtype=dtype)
@@ -194,16 +160,10 @@ class TestEssentalFromRt:
         R2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         t1 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
         t2 = torch.rand(1, 3, 1, device=device, dtype=torch.float64)
-        assert gradcheck(epi.essential_from_Rt, (
-            R1,
-            t1,
-            R2,
-            t2,
-        ), raise_exception=True)
+        assert gradcheck(epi.essential_from_Rt, (R1, t1, R2, t2), raise_exception=True)
 
 
 class TestDecomposeEssentialMatrix:
-
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
         R1, R2, t = epi.decompose_essential_matrix(E_mat)
@@ -211,18 +171,13 @@ class TestDecomposeEssentialMatrix:
         assert R2.shape == (1, 3, 3)
         assert t.shape == (1, 3, 1)
 
-    @pytest.mark.parametrize("batch_shape", [
-        (1, 3, 3),
-        (2, 3, 3),
-        (2, 1, 3, 3),
-        (3, 2, 1, 3, 3),
-    ])
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 3), (2, 3, 3), (2, 1, 3, 3), (3, 2, 1, 3, 3)])
     def test_shape(self, batch_shape, device, dtype):
         E_mat = torch.rand(batch_shape, device=device, dtype=dtype)
         R1, R2, t = epi.decompose_essential_matrix(E_mat)
         assert R1.shape == batch_shape
         assert R2.shape == batch_shape
-        assert t.shape == batch_shape[:-1] + (1, )
+        assert t.shape == batch_shape[:-1] + (1,)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
@@ -236,25 +191,19 @@ class TestDecomposeEssentialMatrix:
         def eval_vec(input):
             return epi.decompose_essential_matrix(input)[2]
 
-        assert gradcheck(eval_rot1, (E_mat, ), raise_exception=True)
-        assert gradcheck(eval_rot2, (E_mat, ), raise_exception=True)
-        assert gradcheck(eval_vec, (E_mat, ), raise_exception=True)
+        assert gradcheck(eval_rot1, (E_mat,), raise_exception=True)
+        assert gradcheck(eval_rot2, (E_mat,), raise_exception=True)
+        assert gradcheck(eval_vec, (E_mat,), raise_exception=True)
 
 
 class TestMotionFromEssential:
-
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
         Rs, Ts = epi.motion_from_essential(E_mat)
         assert Rs.shape == (1, 4, 3, 3)
         assert Ts.shape == (1, 4, 3, 1)
 
-    @pytest.mark.parametrize("batch_shape", [
-        (1, 3, 3),
-        (2, 3, 3),
-        (2, 1, 3, 3),
-        (3, 2, 1, 3, 3),
-    ])
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 3), (2, 3, 3), (2, 1, 3, 3), (3, 2, 1, 3, 3)])
     def test_shape(self, batch_shape, device, dtype):
         E_mat = torch.rand(batch_shape, device=device, dtype=dtype)
         Rs, Ts = epi.motion_from_essential(E_mat)
@@ -289,12 +238,11 @@ class TestMotionFromEssential:
         def eval_vec(input):
             return epi.motion_from_essential(input)[1]
 
-        assert gradcheck(eval_rot, (E_mat, ), raise_exception=True)
-        assert gradcheck(eval_vec, (E_mat, ), raise_exception=True)
+        assert gradcheck(eval_rot, (E_mat,), raise_exception=True)
+        assert gradcheck(eval_vec, (E_mat,), raise_exception=True)
 
 
 class TestMotionFromEssentialChooseSolution:
-
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
         K1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -306,12 +254,7 @@ class TestMotionFromEssentialChooseSolution:
         assert t.shape == (1, 3, 1)
         assert X.shape == (1, 1, 3)
 
-    @pytest.mark.parametrize("batch_size, num_points", [
-        (1, 3),
-        (2, 3),
-        (2, 8),
-        (3, 2),
-    ])
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 3), (2, 3), (2, 8), (3, 2)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         E_mat = torch.rand(B, 3, 3, device=device, dtype=dtype)
@@ -386,10 +329,4 @@ class TestMotionFromEssentialChooseSolution:
         x1 = torch.rand(1, 2, 2, device=device, dtype=torch.float64)
         x2 = torch.rand(1, 2, 2, device=device, dtype=torch.float64)
 
-        assert gradcheck(epi.motion_from_essential_choose_solution, (
-            E_mat,
-            K1,
-            K2,
-            x1,
-            x2,
-        ), raise_exception=True)
+        assert gradcheck(epi.motion_from_essential_choose_solution, (E_mat, K1, K2, x1, x2), raise_exception=True)

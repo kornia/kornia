@@ -8,7 +8,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestDepthTo3d:
-
     def test_smoke(self, device, dtype):
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -35,43 +34,21 @@ class TestDepthTo3d:
     def test_unproject_denormalized(self, device, dtype):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        camera_matrix = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         points3d_expected = torch.tensor(
             [
                 [
-                    [
-                        [0., 2., 4.],
-                        [0., 2., 4.],
-                        [0., 2., 4.],
-                        [0., 2., 4.],
-                    ], [
-                        [0., 0., 0.],
-                        [2., 2., 2.],
-                        [4., 4., 4.],
-                        [6., 6., 6.],
-                    ], [
-                        [2., 2., 2.],
-                        [2., 2., 2.],
-                        [2., 2., 2.],
-                        [2., 2., 2.],
-                    ]
+                    [[0.0, 2.0, 4.0], [0.0, 2.0, 4.0], [0.0, 2.0, 4.0], [0.0, 2.0, 4.0]],
+                    [[0.0, 0.0, 0.0], [2.0, 2.0, 2.0], [4.0, 4.0, 4.0], [6.0, 6.0, 6.0]],
+                    [[2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0], [2.0, 2.0, 2.0]],
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         points3d = kornia.depth_to_3d(depth, camera_matrix)  # default is normalize_points=False
@@ -80,19 +57,10 @@ class TestDepthTo3d:
     def test_unproject_normalized(self, device, dtype):
         # this is for normalize_points=True
         depth = 2 * torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        camera_matrix = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         points3d_expected = torch.tensor(
             [
@@ -114,11 +82,11 @@ class TestDepthTo3d:
                         [1.4142, 1.1547, 0.8165],
                         [0.8944, 0.8165, 0.6667],
                         [0.6325, 0.6030, 0.5345],
-                    ]
+                    ],
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         points3d = kornia.depth_to_3d(depth, camera_matrix, normalize_points=True)
@@ -126,19 +94,10 @@ class TestDepthTo3d:
 
     def test_unproject_and_project(self, device, dtype):
         depth = 2 * torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        camera_matrix = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         points3d = kornia.depth_to_3d(depth, camera_matrix)
         points2d = kornia.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
@@ -154,14 +113,10 @@ class TestDepthTo3d:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.depth_to_3d, (
-            depth,
-            camera_matrix,
-        ), raise_exception=True)
+        assert gradcheck(kornia.depth_to_3d, (depth, camera_matrix), raise_exception=True)
 
 
 class TestDepthToNormals:
-
     def test_smoke(self, device, dtype):
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -188,43 +143,21 @@ class TestDepthToNormals:
     def test_simple(self, device, dtype):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        camera_matrix = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         normals_expected = torch.tensor(
             [
                 [
-                    [
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                    ], [
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                        [0., 0., 0.],
-                    ], [
-                        [1., 1., 1.],
-                        [1., 1., 1.],
-                        [1., 1., 1.],
-                        [1., 1., 1.],
-                    ]
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         normals = kornia.depth_to_normals(depth, camera_matrix)  # default is normalize_points=False
@@ -233,19 +166,10 @@ class TestDepthToNormals:
     def test_simple_normalized(self, device, dtype):
         # this is for default normalize_points=False
         depth = 2 * torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        camera_matrix = torch.tensor([[
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         normals_expected = torch.tensor(
             [
@@ -267,11 +191,11 @@ class TestDepthToNormals:
                         [0.8253, 0.7981, 0.6415],
                         [0.5432, 0.5807, 0.5105],
                         [0.4129, 0.4824, 0.4784],
-                    ]
+                    ],
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         normals = kornia.depth_to_normals(depth, camera_matrix, normalize_points=True)
@@ -286,14 +210,10 @@ class TestDepthToNormals:
         camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(kornia.depth_to_normals, (
-            depth,
-            camera_matrix,
-        ), raise_exception=True)
+        assert gradcheck(kornia.depth_to_normals, (depth, camera_matrix), raise_exception=True)
 
 
 class TestWarpFrameDepth:
-
     def test_smoke(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         depth_dst = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
@@ -317,46 +237,26 @@ class TestWarpFrameDepth:
     def test_translation(self, device, dtype):
         # this is for normalize_points=False
         image_src = torch.tensor(
-            [[[
-                [1., 2., 3.],
-                [1., 2., 3.],
-                [1., 2., 3.],
-                [1., 2., 3.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]]], device=device, dtype=dtype
         )
 
         depth_dst = torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
         src_trans_dst = torch.tensor(
-            [[
-                [1., 0., 0., 1.],
-                [0., 1., 0., 0.],
-                [0., 0., 1., 0.],
-                [0., 0., 0., 1.],
-            ]], device=device, dtype=dtype
+            [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
         )
 
         h, w = image_src.shape[-2:]
-        camera_matrix = torch.tensor([[
-            [1., 0., w / 2],
-            [0., 1., h / 2],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1.0, 0.0, w / 2], [0.0, 1.0, h / 2], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
 
         image_dst_expected = torch.tensor(
-            [[[
-                [2., 3., 0.],
-                [2., 3., 0.],
-                [2., 3., 0.],
-                [2., 3., 0.],
-            ]]], device=device, dtype=dtype
+            [[[[2.0, 3.0, 0.0], [2.0, 3.0, 0.0], [2.0, 3.0, 0.0], [2.0, 3.0, 0.0]]]], device=device, dtype=dtype
         )
 
         image_dst = kornia.warp_frame_depth(
@@ -367,38 +267,23 @@ class TestWarpFrameDepth:
     def test_translation_normalized(self, device, dtype):
         # this is for normalize_points=True
         image_src = torch.tensor(
-            [[[
-                [1., 2., 3.],
-                [1., 2., 3.],
-                [1., 2., 3.],
-                [1., 2., 3.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]]], device=device, dtype=dtype
         )
 
         depth_dst = torch.tensor(
-            [[[
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-                [1., 1., 1.],
-            ]]], device=device, dtype=dtype
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
         src_trans_dst = torch.tensor(
-            [[
-                [1., 0., 0., 1.],
-                [0., 1., 0., 0.],
-                [0., 0., 1., 0.],
-                [0., 0., 0., 1.],
-            ]], device=device, dtype=dtype
+            [[[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
         )
 
         h, w = image_src.shape[-2:]
-        camera_matrix = torch.tensor([[
-            [1., 0., w / 2],
-            [0., 1., h / 2],
-            [0., 0., 1.],
-        ]], device=device, dtype=dtype)
+        camera_matrix = torch.tensor(
+            [[[1.0, 0.0, w / 2], [0.0, 1.0, h / 2], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
 
         image_dst_expected = torch.tensor(
             [
@@ -412,7 +297,7 @@ class TestWarpFrameDepth:
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         image_dst = kornia.warp_frame_depth(image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True)
@@ -433,10 +318,5 @@ class TestWarpFrameDepth:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.warp_frame_depth, (
-                image_src,
-                depth_dst,
-                src_trans_dst,
-                camera_matrix,
-            ), raise_exception=True
+            kornia.warp_frame_depth, (image_src, depth_dst, src_trans_dst, camera_matrix), raise_exception=True
         )

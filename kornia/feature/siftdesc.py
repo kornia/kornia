@@ -22,7 +22,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     """
     ks_2: float = float(ksize) / 2.0
     xc2: torch.Tensor = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()  # type: ignore # noqa
-    kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2**2)
+    kernel: torch.Tensor = torch.ger(xc2, xc2) / (ks_2 ** 2)
     return kernel
 
 
@@ -77,12 +77,25 @@ class SIFTDescriptor(nn.Module):
     """
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'num_ang_bins=' + str(self.num_ang_bins) +\
-            ', ' + 'num_spatial_bins=' + str(self.num_spatial_bins) +\
-            ', ' + 'patch_size=' + str(self.patch_size) +\
-            ', ' + 'rootsift=' + str(self.rootsift) +\
-            ', ' + 'clipval=' + str(self.clipval) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'num_ang_bins='
+            + str(self.num_ang_bins)
+            + ', '
+            + 'num_spatial_bins='
+            + str(self.num_spatial_bins)
+            + ', '
+            + 'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'rootsift='
+            + str(self.rootsift)
+            + ', '
+            + 'clipval='
+            + str(self.clipval)
+            + ')'
+        )
 
     def __init__(
         self,
@@ -113,7 +126,7 @@ class SIFTDescriptor(nn.Module):
             kernel_size=(nw.size(0), nw.size(1)),
             stride=(self.bin_stride, self.bin_stride),
             padding=(self.pad, self.pad),
-            bias=False
+            bias=False,
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))  # type: ignore  # noqa
         return
@@ -148,7 +161,7 @@ class SIFTDescriptor(nn.Module):
         o_big: torch.Tensor = float(self.num_ang_bins) * ori / (2.0 * pi)
 
         bo0_big_: torch.Tensor = torch.floor(o_big)
-        wo1_big_: torch.Tensor = (o_big - bo0_big_)
+        wo1_big_: torch.Tensor = o_big - bo0_big_
         bo0_big: torch.Tensor = bo0_big_ % self.num_ang_bins
         bo1_big: torch.Tensor = (bo0_big + 1) % self.num_ang_bins
         wo0_big: torch.Tensor = (1.0 - wo1_big_) * mag  # type: ignore
@@ -156,13 +169,12 @@ class SIFTDescriptor(nn.Module):
 
         ang_bins = []
         for i in range(0, self.num_ang_bins):
-            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big +  # noqa
-                          (bo1_big == i).to(input.dtype) * wo1_big)
+            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)  # noqa
             ang_bins.append(out)
         ang_bins = torch.cat(ang_bins, dim=1)
         ang_bins = ang_bins.view(B, -1)
         ang_bins = F.normalize(ang_bins, p=2)
-        ang_bins = torch.clamp(ang_bins, 0., float(self.clipval))
+        ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
         ang_bins = F.normalize(ang_bins, p=2)
         if self.rootsift:
             ang_bins = torch.sqrt(F.normalize(ang_bins, p=1) + self.eps)

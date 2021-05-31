@@ -61,28 +61,28 @@ def ssim(
         raise ValueError("img1 and img2 shapes must be the same. Got: {} and {}".format(img1.shape, img2.shape))
 
     # prepare kernel
-    kernel: torch.Tensor = (get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0))
+    kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
 
     # compute coefficients
-    C1: float = (0.01 * max_val)**2
-    C2: float = (0.03 * max_val)**2
+    C1: float = (0.01 * max_val) ** 2
+    C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
     mu1: torch.Tensor = filter2D(img1, kernel)
     mu2: torch.Tensor = filter2D(img2, kernel)
 
-    mu1_sq = mu1**2
-    mu2_sq = mu2**2
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
     mu1_mu2 = mu1 * mu2
 
     # compute local sigma per channel
-    sigma1_sq = filter2D(img1**2, kernel) - mu1_sq
-    sigma2_sq = filter2D(img2**2, kernel) - mu2_sq
+    sigma1_sq = filter2D(img1 ** 2, kernel) - mu1_sq
+    sigma2_sq = filter2D(img2 ** 2, kernel) - mu2_sq
     sigma12 = filter2D(img1 * img2, kernel) - mu1_mu2
 
     # compute the similarity index map
-    num: torch.Tensor = (2. * mu1_mu2 + C1) * (2. * sigma12 + C2)
-    den: torch.Tensor = ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+    num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
+    den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
     return num / (den + eps)
 
@@ -93,7 +93,7 @@ def ssim_loss(
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
-    reduction: str = 'mean'
+    reduction: str = 'mean',
 ) -> torch.Tensor:
     r"""Function that computes a loss based on the SSIM measurement.
 
@@ -128,7 +128,7 @@ def ssim_loss(
     ssim_map: torch.Tensor = ssim(img1, img2, window_size, max_val, eps)
 
     # compute and reduce the loss
-    loss = torch.clamp((1. - ssim_map) / 2, min=0, max=1)
+    loss = torch.clamp((1.0 - ssim_map) / 2, min=0, max=1)
 
     if reduction == "mean":
         loss = torch.mean(loss)

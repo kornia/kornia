@@ -13,9 +13,9 @@ from kornia.utils.helpers import _torch_histc_cast
 __all__ = ["equalize_clahe"]
 
 
-def _compute_tiles(imgs: torch.Tensor,
-                   grid_size: Tuple[int, int],
-                   even_tile_size: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+def _compute_tiles(
+    imgs: torch.Tensor, grid_size: Tuple[int, int], even_tile_size: bool = False
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute tiles on an image according to a grid size.
 
     Note that padding can be added to the image in order to crop properly the image.
@@ -53,7 +53,9 @@ def _compute_tiles(imgs: torch.Tensor,
     c: int = batch.shape[-3]
     tiles: torch.Tensor = (
         batch.unfold(1, c, c)  # unfold(dimension, size, step)
-        .unfold(2, kernel_vert, kernel_vert).unfold(3, kernel_horz, kernel_horz).squeeze(1)
+        .unfold(2, kernel_vert, kernel_vert)
+        .unfold(3, kernel_horz, kernel_horz)
+        .squeeze(1)
     ).contiguous()  # GH x GW x C x TH x TW
     assert tiles.shape[-5] == grid_size[0]  # check the grid size
     assert tiles.shape[-4] == grid_size[1]
@@ -84,9 +86,10 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
     c: int = padded_imgs.shape[-3]
     interp_tiles: torch.Tensor = (
-        padded_imgs.unfold(1, c, c).unfold(2, interp_kernel_vert,
-                                           interp_kernel_vert).unfold(3, interp_kernel_horz,
-                                                                      interp_kernel_horz).squeeze(1)
+        padded_imgs.unfold(1, c, c)
+        .unfold(2, interp_kernel_vert, interp_kernel_vert)
+        .unfold(3, interp_kernel_horz, interp_kernel_horz)
+        .squeeze(1)
     ).contiguous()  # 2GH x 2GW x C x TH/2 x TW/2
     assert interp_tiles.shape[-3] == c
     assert interp_tiles.shape[-2] == tile_size[0] / 2
@@ -98,7 +101,9 @@ def _my_histc(tiles: torch.Tensor, bins: int) -> torch.Tensor:
     return _torch_histc_cast(tiles, bins=bins, min=0, max=1)
 
 
-def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40., diff: bool = False) -> torch.Tensor:
+def _compute_luts(
+    tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 40.0, diff: bool = False
+) -> torch.Tensor:
     r"""Compute luts for a batched set of tiles.
 
     Same approach as in OpenCV (https://github.com/opencv/opencv/blob/master/modules/imgproc/src/clahe.cpp)
@@ -128,7 +133,7 @@ def _compute_luts(tiles_x_im: torch.Tensor, num_bins: int = 256, clip: float = 4
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
         histos *= pixels
 
-    if clip > 0.:
+    if clip > 0.0:
         max_val: float = max(clip * pixels // num_bins, 1)
         histos.clamp_(max=max_val)
         clipped: torch.Tensor = pixels - histos.sum(1)
@@ -182,19 +187,20 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
     # create a tensor with dims: interp_patches height and width x 4 x num channels x bins in the histograms
     # the tensor is init to -1 to denote non init hists
     luts_x_interp_tiles: torch.Tensor = torch.full(  # B x GH x GW x 4 x C x 256
-        (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        (num_imgs, gh, gw, 4, c, luts.shape[-1]), -1, dtype=interp_tiles.dtype, device=interp_tiles.device
+    )
     # corner regions
-    luts_x_interp_tiles[:, 0::gh - 1, 0::gw - 1, 0] = luts[:, 0::max(gh // 2 - 1, 1), 0::max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 0 :: gw - 1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), 0 :: max(gw // 2 - 1, 1)]
     # border region (h)
-    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 0] = luts[:, j_idxs[:, 0], 0::max(gw // 2 - 1, 1)]
-    luts_x_interp_tiles[:, 1:-1, 0::gw - 1, 1] = luts[:, j_idxs[:, 2], 0::max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 0] = luts[:, j_idxs[:, 0], 0 :: max(gw // 2 - 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 0 :: gw - 1, 1] = luts[:, j_idxs[:, 2], 0 :: max(gw // 2 - 1, 1)]
     # border region (w)
-    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 0] = luts[:, 0::max(gh // 2 - 1, 1), i_idxs[:, 0]]
-    luts_x_interp_tiles[:, 0::gh - 1, 1:-1, 1] = luts[:, 0::max(gh // 2 - 1, 1), i_idxs[:, 1]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 0] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 0]]
+    luts_x_interp_tiles[:, 0 :: gh - 1, 1:-1, 1] = luts[:, 0 :: max(gh // 2 - 1, 1), i_idxs[:, 1]]
     # internal region
-    luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[:,
-                                                 j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2),
-                                                 i_idxs.repeat(max(gw - 2, 1), 1, 1)]
+    luts_x_interp_tiles[:, 1:-1, 1:-1, :] = luts[
+        :, j_idxs.repeat(max(gh - 2, 1), 1, 1).permute(1, 0, 2), i_idxs.repeat(max(gw - 2, 1), 1, 1)
+    ]
 
     return luts_x_interp_tiles
 
@@ -223,19 +229,28 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     # equalize tiles
     flatten_interp_tiles: torch.Tensor = (interp_tiles * 255).long().flatten(-2, -1)  # B x GH x GW x 4 x C x (THxTW)
     flatten_interp_tiles = flatten_interp_tiles.unsqueeze(-3).expand(num_imgs, gh, gw, 4, c, th * tw)
-    preinterp_tiles_equalized = torch.gather(  # B x GH x GW x 4 x C x TH x TW
-        mapped_luts, 5, flatten_interp_tiles
-    ).to(interp_tiles).reshape(num_imgs, gh, gw, 4, c, th, tw)
+    preinterp_tiles_equalized = (
+        torch.gather(mapped_luts, 5, flatten_interp_tiles)  # B x GH x GW x 4 x C x TH x TW
+        .to(interp_tiles)
+        .reshape(num_imgs, gh, gw, 4, c, th, tw)
+    )
 
     # interp tiles
     tiles_equalized: torch.Tensor = torch.zeros_like(interp_tiles)
 
     # compute the interpolation weights (shapes are 2 x TH x TW because they must be applied to 2 interp tiles)
-    ih = torch.arange(2 * th - 1, -1, -1, dtype=interp_tiles.dtype,
-                      device=interp_tiles.device).div(2. * th - 1)[None].transpose(-2, -1).expand(2 * th, tw)
+    ih = (
+        torch.arange(2 * th - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .div(2.0 * th - 1)[None]
+        .transpose(-2, -1)
+        .expand(2 * th, tw)
+    )
     ih = ih.unfold(0, th, th).unfold(1, tw, tw)  # 2 x 1 x TH x TW
-    iw = torch.arange(2 * tw - 1, -1, -1, dtype=interp_tiles.dtype,
-                      device=interp_tiles.device).div(2. * tw - 1).expand(th, 2 * tw)
+    iw = (
+        torch.arange(2 * tw - 1, -1, -1, dtype=interp_tiles.dtype, device=interp_tiles.device)
+        .div(2.0 * tw - 1)
+        .expand(th, 2 * tw)
+    )
     iw = iw.unfold(0, th, th).unfold(1, tw, tw)  # 1 x 2 x TH x TW
 
     # compute row and column interpolation weigths
@@ -249,7 +264,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized[:, 1:-1, 1:-1] = torch.addcmul(b, tih, torch.sub(t, b))
 
     # corner regions
-    tiles_equalized[:, 0::gh - 1, 0::gw - 1] = preinterp_tiles_equalized[:, 0::gh - 1, 0::gw - 1, 0]
+    tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1] = preinterp_tiles_equalized[:, 0 :: gh - 1, 0 :: gw - 1, 0]
 
     # border region (h)
     t, b, _, _ = preinterp_tiles_equalized[:, 1:-1, 0].unbind(2)
@@ -264,10 +279,10 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized[:, gw - 1, 1:-1] = torch.addcmul(r, tiw, torch.sub(l, r))
 
     # same type as the input
-    return tiles_equalized.div(255.)
+    return tiles_equalized.div(255.0)
 
 
-def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
+def equalize_clahe(input: torch.Tensor, clip_limit: float = 40.0, grid_size: Tuple[int, int] = (8, 8)) -> torch.Tensor:
     r"""Apply clahe equalization on the input tensor.
 
     NOTE: Lut computation uses the same approach as in OpenCV, in next versions this can change.
@@ -324,9 +339,7 @@ def equalize_clahe(input: torch.Tensor, clip_limit: float = 40., grid_size: Tupl
     # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
     tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
-    interp_tiles: torch.Tensor = (
-        _compute_interpolation_tiles(img_padded, tile_size)
-    )  # B x 2GH x 2GW x C x TH/2 x TW/2
+    interp_tiles: torch.Tensor = _compute_interpolation_tiles(img_padded, tile_size)  # B x 2GH x 2GW x C x TH/2 x TW/2
     luts: torch.Tensor = _compute_luts(hist_tiles, clip=clip_limit)  # B x GH x GW x C x B
     equalized_tiles: torch.Tensor = _compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 

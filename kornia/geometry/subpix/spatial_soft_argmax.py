@@ -134,7 +134,7 @@ class ConvSoftArgmax2d(nn.Module):
         temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
         normalized_coordinates: bool = True,
         eps: float = 1e-8,
-        output_value: bool = False
+        output_value: bool = False,
     ) -> None:
         super(ConvSoftArgmax2d, self).__init__()
         self.kernel_size = kernel_size
@@ -146,19 +146,42 @@ class ConvSoftArgmax2d(nn.Module):
         self.output_value = output_value
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_size=' + str(self.kernel_size) +\
-            ', ' + 'stride=' + str(self.stride) +\
-            ', ' + 'padding=' + str(self.padding) +\
-            ', ' + 'temperature=' + str(self.temperature) +\
-            ', ' + 'normalized_coordinates=' + str(self.normalized_coordinates) +\
-            ', ' + 'eps=' + str(self.eps) +\
-            ', ' + 'output_value=' + str(self.output_value) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'kernel_size='
+            + str(self.kernel_size)
+            + ', '
+            + 'stride='
+            + str(self.stride)
+            + ', '
+            + 'padding='
+            + str(self.padding)
+            + ', '
+            + 'temperature='
+            + str(self.temperature)
+            + ', '
+            + 'normalized_coordinates='
+            + str(self.normalized_coordinates)
+            + ', '
+            + 'eps='
+            + str(self.eps)
+            + ', '
+            + 'output_value='
+            + str(self.output_value)
+            + ')'
+        )
 
     def forward(self, x: torch.Tensor):  # type: ignore
         return conv_soft_argmax2d(
-            x, self.kernel_size, self.stride, self.padding, self.temperature, self.normalized_coordinates, self.eps,
-            self.output_value
+            x,
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            self.temperature,
+            self.normalized_coordinates,
+            self.eps,
+            self.output_value,
         )
 
 
@@ -177,7 +200,7 @@ class ConvSoftArgmax3d(nn.Module):
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
-        strict_maxima_bonus: float = 0.0
+        strict_maxima_bonus: float = 0.0,
     ) -> None:
         super(ConvSoftArgmax3d, self).__init__()
         self.kernel_size = kernel_size
@@ -191,20 +214,46 @@ class ConvSoftArgmax3d(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(' + 'kernel_size=' + str(self.kernel_size) +\
-            ', ' + 'stride=' + str(self.stride) +\
-            ', ' + 'padding=' + str(self.padding) +\
-            ', ' + 'temperature=' + str(self.temperature) +\
-            ', ' + 'normalized_coordinates=' + str(self.normalized_coordinates) +\
-            ', ' + 'eps=' + str(self.eps) +\
-            ', ' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) +\
-            ', ' + 'output_value=' + str(self.output_value) + ')'
+        return (
+            self.__class__.__name__
+            + '('
+            + 'kernel_size='
+            + str(self.kernel_size)
+            + ', '
+            + 'stride='
+            + str(self.stride)
+            + ', '
+            + 'padding='
+            + str(self.padding)
+            + ', '
+            + 'temperature='
+            + str(self.temperature)
+            + ', '
+            + 'normalized_coordinates='
+            + str(self.normalized_coordinates)
+            + ', '
+            + 'eps='
+            + str(self.eps)
+            + ', '
+            + 'strict_maxima_bonus='
+            + str(self.strict_maxima_bonus)
+            + ', '
+            + 'output_value='
+            + str(self.output_value)
+            + ')'
+        )
 
     def forward(self, x: torch.Tensor):  # type: ignore
         return conv_soft_argmax3d(
-            x, self.kernel_size, self.stride, self.padding, self.temperature, self.normalized_coordinates, self.eps,
-            self.output_value, self.strict_maxima_bonus
+            x,
+            self.kernel_size,
+            self.stride,
+            self.padding,
+            self.temperature,
+            self.normalized_coordinates,
+            self.eps,
+            self.output_value,
+            self.strict_maxima_bonus,
         )
 
 
@@ -216,7 +265,7 @@ def conv_soft_argmax2d(
     temperature: Union[torch.Tensor, float] = torch.tensor(1.0),
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
-    output_value: bool = False
+    output_value: bool = False,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Function that computes the convolutional spatial Soft-Argmax 2D over the windows
     of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
@@ -328,7 +377,7 @@ def conv_soft_argmax3d(
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
-    strict_maxima_bonus: float = 0.0
+    strict_maxima_bonus: float = 0.0,
 ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Function that computes the convolutional spatial Soft-Argmax 3D over the windows
     of a given input heatmap. Function has two outputs: argmax coordinates and the softmaxpooled heatmap values
@@ -430,15 +479,15 @@ def conv_soft_argmax3d(
 
     if not output_value:
         return coords_max
-    x_softmaxpool = pool_coef * F.avg_pool3d(
-        x_exp.view(input.size()) * input, kernel_size, stride=stride, padding=padding
-    ) / den
+    x_softmaxpool = (
+        pool_coef * F.avg_pool3d(x_exp.view(input.size()) * input, kernel_size, stride=stride, padding=padding) / den
+    )
     if strict_maxima_bonus > 0:
         in_levels: int = input.size(2)
         out_levels: int = x_softmaxpool.size(2)
         skip_levels: int = (in_levels - out_levels) // 2
         strict_maxima: torch.Tensor = F.avg_pool3d(kornia.feature.nms3d(input, kernel_size), 1, stride, 0)
-        strict_maxima = strict_maxima[:, :, skip_levels:out_levels - skip_levels]
+        strict_maxima = strict_maxima[:, :, skip_levels : out_levels - skip_levels]
         x_softmaxpool *= 1.0 + strict_maxima_bonus * strict_maxima
     x_softmaxpool = x_softmaxpool.view(b, c, x_softmaxpool.size(2), x_softmaxpool.size(3), x_softmaxpool.size(4))
     return coords_max, x_softmaxpool
@@ -448,7 +497,7 @@ def spatial_soft_argmax2d(
     input: torch.Tensor,
     temperature: torch.Tensor = torch.tensor(1.0),
     normalized_coordinates: bool = True,
-    eps: float = 1e-8
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     r"""Function that computes the Spatial Soft-Argmax 2D
     of a given input heatmap.
@@ -488,10 +537,7 @@ class SpatialSoftArgmax2d(nn.Module):
     """
 
     def __init__(
-        self,
-        temperature: torch.Tensor = torch.tensor(1.0),
-        normalized_coordinates: bool = True,
-        eps: float = 1e-8
+        self, temperature: torch.Tensor = torch.tensor(1.0), normalized_coordinates: bool = True, eps: float = 1e-8
     ) -> None:
         super(SpatialSoftArgmax2d, self).__init__()
         self.temperature: torch.Tensor = temperature
@@ -499,10 +545,18 @@ class SpatialSoftArgmax2d(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(temperature=' + str(self.temperature) + ', ' +\
-            'normalized_coordinates=' + str(self.normalized_coordinates) + ', ' + \
-            'eps=' + str(self.eps) + ')'
+        return (
+            self.__class__.__name__
+            + '(temperature='
+            + str(self.temperature)
+            + ', '
+            + 'normalized_coordinates='
+            + str(self.normalized_coordinates)
+            + ', '
+            + 'eps='
+            + str(self.eps)
+            + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates, self.eps)
@@ -570,7 +624,7 @@ def conv_quad_interp3d(input: torch.Tensor, strict_maxima_bonus: float = 10.0, e
     dx: torch.Tensor = -x_solved
 
     # Ignore ones, which are far from window center
-    mask1 = (dx.abs().max(dim=1, keepdim=True)[0] > 0.7)
+    mask1 = dx.abs().max(dim=1, keepdim=True)[0] > 0.7
     dx.masked_fill_(mask1.expand_as(dx), 0)
     dy: torch.Tensor = 0.5 * torch.bmm(b.permute(0, 2, 1), dx)
     y_max = input + dy.view(B, CH, D, H, W)

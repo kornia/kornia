@@ -73,11 +73,7 @@ def load_pointcloud_ply(filename: str, header_size: Optional[int] = 8) -> torch.
         # iterate over the points
         for line in lines:
             x_str, y_str, z_str = line.split()
-            points.append((
-                torch.tensor(float(x_str)),
-                torch.tensor(float(y_str)),
-                torch.tensor(float(z_str)),
-            ))
+            points.append((torch.tensor(float(x_str)), torch.tensor(float(y_str)), torch.tensor(float(z_str))))
 
         # create tensor from list
         pointcloud: torch.Tensor = torch.tensor(points)

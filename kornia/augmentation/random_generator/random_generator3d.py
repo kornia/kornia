@@ -6,11 +6,7 @@ import torch
 
 from kornia.constants import Resample, BorderType
 from kornia.geometry import bbox_generator3d
-from ..utils import (
-    _adapted_uniform,
-    _joint_range_check,
-    _tuple_range_reader,
-)
+from ..utils import _adapted_uniform, _joint_range_check, _tuple_range_reader
 from kornia.utils import _extract_device_dtype
 
 
@@ -19,7 +15,7 @@ def random_rotation_generator3d(
     degrees: torch.Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32
+    dtype: torch.dtype = torch.float32,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ``rotate`` for a random rotate transform.
 
@@ -39,14 +35,14 @@ def random_rotation_generator3d(
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     _device, _dtype = _extract_device_dtype([degrees])
     degrees = degrees.to(device=device, dtype=dtype)
-    yaw = _adapted_uniform((batch_size, ), degrees[0][0], degrees[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size, ), degrees[1][0], degrees[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size, ), degrees[2][0], degrees[2][1], same_on_batch)
+    yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
 
     return dict(
         yaw=yaw.to(device=_device, dtype=_dtype),
         pitch=pitch.to(device=_device, dtype=_dtype),
-        roll=roll.to(device=_device, dtype=_dtype)
+        roll=roll.to(device=_device, dtype=_dtype),
     )
 
 
@@ -96,16 +92,16 @@ def random_affine_generator3d(
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
     """
-    assert type(depth) == int and depth > 0 and \
-        type(height) == int and height > 0 and type(width) == int and width > 0, \
-        f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
+    assert (
+        type(depth) == int and depth > 0 and type(height) == int and height > 0 and type(width) == int and width > 0
+    ), f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
 
     _device, _dtype = _extract_device_dtype([degrees, translate, scale, shears])
     assert degrees.shape == torch.Size([3, 2]), f"'degrees' must be the shape of (3, 2). Got {degrees.shape}."
     degrees = degrees.to(device=device, dtype=dtype)
-    yaw = _adapted_uniform((batch_size, ), degrees[0][0], degrees[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size, ), degrees[1][0], degrees[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size, ), degrees[2][0], degrees[2][1], same_on_batch)
+    yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
     angles = torch.stack([yaw, pitch, roll], dim=1)
 
     # compute tensor ranges
@@ -114,11 +110,11 @@ def random_affine_generator3d(
         scale = scale.to(device=device, dtype=dtype)
         scale = torch.stack(
             [
-                _adapted_uniform((batch_size, ), scale[0, 0], scale[0, 1], same_on_batch),
-                _adapted_uniform((batch_size, ), scale[1, 0], scale[1, 1], same_on_batch),
-                _adapted_uniform((batch_size, ), scale[2, 0], scale[2, 1], same_on_batch),
+                _adapted_uniform((batch_size,), scale[0, 0], scale[0, 1], same_on_batch),
+                _adapted_uniform((batch_size,), scale[1, 0], scale[1, 1], same_on_batch),
+                _adapted_uniform((batch_size,), scale[2, 0], scale[2, 1], same_on_batch),
             ],
-            dim=1
+            dim=1,
         )
     else:
         scale = torch.ones(batch_size, device=device, dtype=dtype).repeat(1, 3)
@@ -132,28 +128,28 @@ def random_affine_generator3d(
         # translations should be in x,y,z
         translations = torch.stack(
             [
-                _adapted_uniform((batch_size, ), -max_dx, max_dx, same_on_batch),
-                _adapted_uniform((batch_size, ), -max_dy, max_dy, same_on_batch),
-                _adapted_uniform((batch_size, ), -max_dz, max_dz, same_on_batch)
+                _adapted_uniform((batch_size,), -max_dx, max_dx, same_on_batch),
+                _adapted_uniform((batch_size,), -max_dy, max_dy, same_on_batch),
+                _adapted_uniform((batch_size,), -max_dz, max_dz, same_on_batch),
             ],
-            dim=1
+            dim=1,
         )
     else:
         translations = torch.zeros((batch_size, 3), device=device, dtype=dtype)
 
     # center should be in x,y,z
-    center: torch.Tensor = torch.tensor([width, height, depth], device=device, dtype=dtype).view(1, 3) / 2. - 0.5
+    center: torch.Tensor = torch.tensor([width, height, depth], device=device, dtype=dtype).view(1, 3) / 2.0 - 0.5
     center = center.expand(batch_size, -1)
 
     if shears is not None:
         assert shears.shape == torch.Size([6, 2]), f"'shears' must be the shape of (6, 2). Got {shears.shape}."
         shears = shears.to(device=device, dtype=dtype)
-        sxy = _adapted_uniform((batch_size, ), shears[0, 0], shears[0, 1], same_on_batch)
-        sxz = _adapted_uniform((batch_size, ), shears[1, 0], shears[1, 1], same_on_batch)
-        syx = _adapted_uniform((batch_size, ), shears[2, 0], shears[2, 1], same_on_batch)
-        syz = _adapted_uniform((batch_size, ), shears[3, 0], shears[3, 1], same_on_batch)
-        szx = _adapted_uniform((batch_size, ), shears[4, 0], shears[4, 1], same_on_batch)
-        szy = _adapted_uniform((batch_size, ), shears[5, 0], shears[5, 1], same_on_batch)
+        sxy = _adapted_uniform((batch_size,), shears[0, 0], shears[0, 1], same_on_batch)
+        sxz = _adapted_uniform((batch_size,), shears[1, 0], shears[1, 1], same_on_batch)
+        syx = _adapted_uniform((batch_size,), shears[2, 0], shears[2, 1], same_on_batch)
+        syz = _adapted_uniform((batch_size,), shears[3, 0], shears[3, 1], same_on_batch)
+        szx = _adapted_uniform((batch_size,), shears[4, 0], shears[4, 1], same_on_batch)
+        szy = _adapted_uniform((batch_size,), shears[5, 0], shears[5, 1], same_on_batch)
     else:
         sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=device, dtype=dtype)
 
@@ -167,7 +163,7 @@ def random_affine_generator3d(
         syx=syx.to(device=_device, dtype=_dtype),
         syz=syz.to(device=_device, dtype=_dtype),
         szx=szx.to(device=_device, dtype=_dtype),
-        szy=szy.to(device=_device, dtype=_dtype)
+        szy=szy.to(device=_device, dtype=_dtype),
     )
 
 
@@ -178,7 +174,7 @@ def random_motion_blur_generator3d(
     direction: torch.Tensor,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32
+    dtype: torch.dtype = torch.float32,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for motion blur.
 
@@ -206,32 +202,35 @@ def random_motion_blur_generator3d(
     _device, _dtype = _extract_device_dtype([angle, direction])
     _joint_range_check(direction, 'direction', (-1, 1))
     if isinstance(kernel_size, int):
-        assert kernel_size >= 3 and kernel_size % 2 == 1, \
-            f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
+        assert (
+            kernel_size >= 3 and kernel_size % 2 == 1
+        ), f"`kernel_size` must be odd and greater than 3. Got {kernel_size}."
         ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype).int()
     elif isinstance(kernel_size, tuple):
-        assert len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1], \
-            f"`kernel_size` must be greater than 3. Got range {kernel_size}."
+        assert (
+            len(kernel_size) == 2 and kernel_size[0] >= 3 and kernel_size[0] <= kernel_size[1]
+        ), f"`kernel_size` must be greater than 3. Got range {kernel_size}."
         # kernel_size is fixed across the batch
-        ksize_factor = _adapted_uniform((batch_size, ), kernel_size[0] // 2, kernel_size[1] // 2,
-                                        same_on_batch=True).int() * 2 + 1
+        ksize_factor = (
+            _adapted_uniform((batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
+        )
     else:
         raise TypeError(f"Unsupported type: {type(kernel_size)}")
 
     assert angle.shape == torch.Size([3, 2]), f"'angle' must be the shape of (3, 2). Got {angle.shape}."
     angle = angle.to(device=device, dtype=dtype)
-    yaw = _adapted_uniform((batch_size, ), angle[0][0], angle[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size, ), angle[1][0], angle[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size, ), angle[2][0], angle[2][1], same_on_batch)
+    yaw = _adapted_uniform((batch_size,), angle[0][0], angle[0][1], same_on_batch)
+    pitch = _adapted_uniform((batch_size,), angle[1][0], angle[1][1], same_on_batch)
+    roll = _adapted_uniform((batch_size,), angle[2][0], angle[2][1], same_on_batch)
     angle_factor = torch.stack([yaw, pitch, roll], dim=1)
 
     direction = direction.to(device=device, dtype=dtype)
-    direction_factor = _adapted_uniform((batch_size, ), direction[0], direction[1], same_on_batch)
+    direction_factor = _adapted_uniform((batch_size,), direction[0], direction[1], same_on_batch)
 
     return dict(
         ksize_factor=ksize_factor.to(device=_device),
         angle_factor=angle_factor.to(device=_device, dtype=_dtype),
-        direction_factor=direction_factor.to(device=_device, dtype=_dtype)
+        direction_factor=direction_factor.to(device=_device, dtype=_dtype),
     )
 
 
@@ -241,7 +240,7 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: torch.device = torch.device('cpu')
+    device: torch.device = torch.device('cpu'),
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
@@ -261,22 +260,17 @@ def center_crop_generator3d(
     Note:
         No random number will be generated.
     """
-    if not isinstance(size, (
-        tuple,
-        list,
-    )) and len(size) == 3:
+    if not isinstance(size, (tuple, list)) and len(size) == 3:
         raise ValueError("Input size must be a tuple/list of length 3. Got {}".format(size))
-    assert type(depth) == int and depth > 0 and \
-        type(height) == int and height > 0 and type(width) == int and width > 0, \
-        f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
-    assert depth >= size[0] and height >= size[1] and width >= size[2], \
-        f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}."
+    assert (
+        type(depth) == int and depth > 0 and type(height) == int and height > 0 and type(width) == int and width > 0
+    ), f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}."
+    assert (
+        depth >= size[0] and height >= size[1] and width >= size[2]
+    ), f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}."
 
     if batch_size == 0:
-        return dict(
-            src=torch.zeros([0, 8, 3]),
-            dst=torch.zeros([0, 8, 3]),
-        )
+        return dict(src=torch.zeros([0, 8, 3]), dst=torch.zeros([0, 8, 3]))
     # unpack input sizes
     dst_d, dst_h, dst_w = size
     src_d, src_h, src_w = (depth, height, width)
@@ -313,7 +307,7 @@ def center_crop_generator3d(
             ]
         ],
         device=device,
-        dtype=torch.long
+        dtype=torch.long,
     ).expand(batch_size, -1, -1)
 
     # [x, y, z] destination
@@ -333,7 +327,7 @@ def center_crop_generator3d(
             ]
         ],
         device=device,
-        dtype=torch.long
+        dtype=torch.long,
     ).expand(batch_size, -1, -1)
     return dict(src=points_src, dst=points_dst)
 
@@ -345,7 +339,7 @@ def random_crop_generator3d(
     resize_to: Optional[Tuple[int, int, int]] = None,
     same_on_batch: bool = False,
     device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32
+    dtype: torch.dtype = torch.float32,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```crop``` transformation for crop transform.
 
@@ -376,9 +370,15 @@ def random_crop_generator3d(
         "If `size` is a tensor, it must be shaped as (B, 3). "
         f"Got {size.shape} while expecting {torch.Size([batch_size, 3])}."
     )
-    assert len(input_size) == 3 and isinstance(input_size[0], (int,)) and isinstance(input_size[1], (int,)) \
-        and isinstance(input_size[2], (int,)) and input_size[0] > 0 and input_size[1] > 0 and input_size[2] > 0, \
-        f"`input_size` must be a tuple of 3 positive integers. Got {input_size}."
+    assert (
+        len(input_size) == 3
+        and isinstance(input_size[0], (int,))
+        and isinstance(input_size[1], (int,))
+        and isinstance(input_size[2], (int,))
+        and input_size[0] > 0
+        and input_size[1] > 0
+        and input_size[2] > 0
+    ), f"`input_size` must be a tuple of 3 positive integers. Got {input_size}."
 
     x_diff = input_size[2] - size[:, 2] + 1
     y_diff = input_size[1] - size[:, 1] + 1
@@ -397,33 +397,42 @@ def random_crop_generator3d(
 
     if same_on_batch:
         # If same_on_batch, select the first then repeat.
-        x_start = _adapted_uniform((batch_size, ), 0, x_diff[0], same_on_batch).floor()
-        y_start = _adapted_uniform((batch_size, ), 0, y_diff[0], same_on_batch).floor()
-        z_start = _adapted_uniform((batch_size, ), 0, z_diff[0], same_on_batch).floor()
+        x_start = _adapted_uniform((batch_size,), 0, x_diff[0], same_on_batch).floor()
+        y_start = _adapted_uniform((batch_size,), 0, y_diff[0], same_on_batch).floor()
+        z_start = _adapted_uniform((batch_size,), 0, z_diff[0], same_on_batch).floor()
     else:
-        x_start = _adapted_uniform((1, ), 0, x_diff, same_on_batch).floor()
-        y_start = _adapted_uniform((1, ), 0, y_diff, same_on_batch).floor()
-        z_start = _adapted_uniform((1, ), 0, z_diff, same_on_batch).floor()
+        x_start = _adapted_uniform((1,), 0, x_diff, same_on_batch).floor()
+        y_start = _adapted_uniform((1,), 0, y_diff, same_on_batch).floor()
+        z_start = _adapted_uniform((1,), 0, z_diff, same_on_batch).floor()
 
     crop_src = bbox_generator3d(
         x_start.to(device=_device, dtype=_dtype).view(-1),
         y_start.to(device=_device, dtype=_dtype).view(-1),
-        z_start.to(device=_device, dtype=_dtype).view(-1), size[:, 2].to(device=_device, dtype=_dtype) - 1,
-        size[:, 1].to(device=_device, dtype=_dtype) - 1, size[:, 0].to(device=_device, dtype=_dtype) - 1
+        z_start.to(device=_device, dtype=_dtype).view(-1),
+        size[:, 2].to(device=_device, dtype=_dtype) - 1,
+        size[:, 1].to(device=_device, dtype=_dtype) - 1,
+        size[:, 0].to(device=_device, dtype=_dtype) - 1,
     )
 
     if resize_to is None:
         crop_dst = bbox_generator3d(
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
             torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
-            torch.tensor([0] * batch_size, device=_device,
-                         dtype=_dtype), size[:, 2].to(device=_device, dtype=_dtype) - 1,
-            size[:, 1].to(device=_device, dtype=_dtype) - 1, size[:, 0].to(device=_device, dtype=_dtype) - 1
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            size[:, 2].to(device=_device, dtype=_dtype) - 1,
+            size[:, 1].to(device=_device, dtype=_dtype) - 1,
+            size[:, 0].to(device=_device, dtype=_dtype) - 1,
         )
     else:
-        assert len(resize_to) == 3 and isinstance(resize_to[0], (int,)) and isinstance(resize_to[1], (int,)) \
-            and isinstance(resize_to[2], (int,)) and resize_to[0] > 0 and resize_to[1] > 0 and resize_to[2] > 0, \
-            f"`resize_to` must be a tuple of 3 positive integers. Got {resize_to}."
+        assert (
+            len(resize_to) == 3
+            and isinstance(resize_to[0], (int,))
+            and isinstance(resize_to[1], (int,))
+            and isinstance(resize_to[2], (int,))
+            and resize_to[0] > 0
+            and resize_to[1] > 0
+            and resize_to[2] > 0
+        ), f"`resize_to` must be a tuple of 3 positive integers. Got {resize_to}."
         crop_dst = torch.tensor(
             [
                 [
@@ -438,7 +447,7 @@ def random_crop_generator3d(
                 ]
             ],
             device=_device,
-            dtype=_dtype
+            dtype=_dtype,
         ).repeat(batch_size, 1, 1)
 
     return dict(src=crop_src.to(device=_device), dst=crop_dst.to(device=_device))
@@ -474,26 +483,27 @@ def random_perspective_generator3d(
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
     """
-    assert distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1, \
-        f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
+    assert (
+        distortion_scale.dim() == 0 and 0 <= distortion_scale <= 1
+    ), f"'distortion_scale' must be a scalar within [0, 1]. Got {distortion_scale}"
     _device, _dtype = _extract_device_dtype([distortion_scale])
     distortion_scale = distortion_scale.to(device=device, dtype=dtype)
 
     start_points: torch.Tensor = torch.tensor(
         [
             [
-                [0., 0, 0],
+                [0.0, 0, 0],
                 [width - 1, 0, 0],
                 [width - 1, height - 1, 0],
                 [0, height - 1, 0],
-                [0., 0, depth - 1],
+                [0.0, 0, depth - 1],
                 [width - 1, 0, depth - 1],
                 [width - 1, height - 1, depth - 1],
                 [0, height - 1, depth - 1],
             ]
         ],
         device=device,
-        dtype=dtype
+        dtype=dtype,
     ).expand(batch_size, -1, -1)
 
     # generate random offset not larger than half of the image
@@ -504,27 +514,20 @@ def random_perspective_generator3d(
     factor = torch.stack([fx, fy, fz], dim=0).view(-1, 1, 3)
 
     rand_val: torch.Tensor = _adapted_uniform(
-        start_points.shape, torch.tensor(0, device=device, dtype=dtype), torch.tensor(1, device=device, dtype=dtype),
-        same_on_batch
+        start_points.shape,
+        torch.tensor(0, device=device, dtype=dtype),
+        torch.tensor(1, device=device, dtype=dtype),
+        same_on_batch,
     )
 
     pts_norm = torch.tensor(
-        [[
-            [1, 1, 1],
-            [-1, 1, 1],
-            [-1, -1, 1],
-            [1, -1, 1],
-            [1, 1, -1],
-            [-1, 1, -1],
-            [-1, -1, -1],
-            [1, -1, -1],
-        ]],
+        [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
     end_points = start_points + factor * rand_val * pts_norm
 
     return dict(
         start_points=start_points.to(device=_device, dtype=_dtype),
-        end_points=end_points.to(device=_device, dtype=_dtype)
+        end_points=end_points.to(device=_device, dtype=_dtype),
     )

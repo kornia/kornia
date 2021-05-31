@@ -8,7 +8,6 @@ from kornia.testing import BaseTester
 
 
 class TestRgbToYuv(BaseTester):
-
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
@@ -21,7 +20,7 @@ class TestRgbToYuv(BaseTester):
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.rgb_to_yuv([0.])
+            assert kornia.color.rgb_to_yuv([0.0])
 
         with pytest.raises(ValueError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
@@ -48,7 +47,7 @@ class TestRgbToYuv(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_yuv, (img, ), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -68,7 +67,6 @@ class TestRgbToYuv(BaseTester):
 
 
 class TestYuvToRgb(BaseTester):
-
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
@@ -81,7 +79,7 @@ class TestYuvToRgb(BaseTester):
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert kornia.color.yuv_to_rgb([0.])
+            assert kornia.color.yuv_to_rgb([0.0])
 
         with pytest.raises(ValueError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
@@ -108,7 +106,7 @@ class TestYuvToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv_to_rgb, (img, ), raise_exception=True)
+        assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

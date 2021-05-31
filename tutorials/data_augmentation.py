@@ -35,6 +35,7 @@ class DummyDataset(Dataset):
         label = torch.rand(1, 240, 320)
         return dict(images=image, labels=label)
 
+
 ################################
 # 2. Define the data augmentation operations
 # Thanks to the `kornia` design all the operators can be placed inside inside a `nn.Sequential`.
@@ -42,9 +43,7 @@ class DummyDataset(Dataset):
 import kornia
 
 transform = nn.Sequential(
-    kornia.enhance.AdjustBrightness(0.5),
-    kornia.enhance.AdjustGamma(gamma=2.),
-    kornia.enhance.AdjustContrast(0.7),
+    kornia.enhance.AdjustBrightness(0.5), kornia.enhance.AdjustGamma(gamma=2.0), kornia.enhance.AdjustContrast(0.7)
 )
 
 ################################

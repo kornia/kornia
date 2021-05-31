@@ -49,10 +49,7 @@ class PinholeCamera:
 
     @staticmethod
     def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
-        if len(data.shape) not in (
-            3,
-            4,
-        ) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
+        if len(data.shape) not in (3, 4) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
             raise ValueError(
                 "Argument {0} shape must be in the following shape"
                 " Bx4x4 or BxNx4x4. Got {1}".format(data_name, data.shape)
@@ -63,8 +60,7 @@ class PinholeCamera:
     def _check_valid_shape(data: torch.Tensor, data_name: str) -> bool:
         if not len(data.shape) == 1:
             raise ValueError(
-                "Argument {0} shape must be in the following shape"
-                " B. Got {1}".format(data_name, data.shape)
+                "Argument {0} shape must be in the following shape" " B. Got {1}".format(data_name, data.shape)
             )
         return True
 
@@ -294,7 +290,7 @@ class PinholeCamera:
         tz,
         batch_size=1,
         device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None
+        dtype: Optional[torch.dtype] = None,
     ):
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
@@ -339,10 +335,7 @@ class PinholeCamerasList(PinholeCamera):
 
     def _initialize_parameters(self, pinholes: Iterable[PinholeCamera]) -> 'PinholeCamerasList':
         r"""Initialises the class attributes given a cameras list."""
-        if not isinstance(pinholes, (
-            list,
-            tuple,
-        )):
+        if not isinstance(pinholes, (list, tuple)):
             raise TypeError("pinhole must of type list or tuple. Got {}".format(type(pinholes)))
         height, width = [], []
         intrinsics, extrinsics = [], []
@@ -456,10 +449,10 @@ def inverse_pinhole_matrix(pinhole, eps=1e-6):
     k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
     k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)  # Nx4x4
     # fill output with inverse values
-    k[..., 0, 0:1] = 1. / (fx + eps)
-    k[..., 1, 1:2] = 1. / (fy + eps)
-    k[..., 0, 2:3] = -1. * cx / (fx + eps)
-    k[..., 1, 2:3] = -1. * cy / (fy + eps)
+    k[..., 0, 0:1] = 1.0 / (fx + eps)
+    k[..., 1, 1:2] = 1.0 / (fy + eps)
+    k[..., 0, 2:3] = -1.0 * cx / (fx + eps)
+    k[..., 1, 2:3] = -1.0 * cy / (fy + eps)
     return k
 
 
@@ -607,8 +600,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: Opt
     """
     if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
         raise ValueError(
-            "Input cam_coords_src has to be in the shape of "
-            "BxHxWx3. Got {}".format(cam_coords_src.shape)
+            "Input cam_coords_src has to be in the shape of " "BxHxWx3. Got {}".format(cam_coords_src.shape)
         )
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
         raise ValueError("Input dst_proj_src has to be in the shape of " "Bx4x4. Got {}".format(dst_proj_src.shape))

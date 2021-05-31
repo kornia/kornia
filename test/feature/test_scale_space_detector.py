@@ -8,7 +8,6 @@ from kornia.feature.scale_space_detector import *
 
 
 class TestScaleSpaceDetector:
-
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         n_feats = 10

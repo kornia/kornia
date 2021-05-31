@@ -24,8 +24,7 @@ def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> torch.Tensor:
 
 
 class NonMaximaSuppression2d(nn.Module):
-    r"""Applies non maxima suppression to filter.
-    """
+    r"""Applies non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int]):
         super(NonMaximaSuppression2d, self).__init__()
@@ -48,12 +47,16 @@ class NonMaximaSuppression2d(nn.Module):
         assert len(x.shape) == 4, x.shape
         B, CH, H, W = x.size()
         # find local maximum values
-        max_non_center = F.conv2d(
-            F.pad(x, list(self.padding)[::-1], mode='replicate'),
-            self.kernel.repeat(CH, 1, 1, 1).to(x.device, x.dtype),
-            stride=1,
-            groups=CH
-        ).view(B, CH, -1, H, W).max(dim=2)[0]
+        max_non_center = (
+            F.conv2d(
+                F.pad(x, list(self.padding)[::-1], mode='replicate'),
+                self.kernel.repeat(CH, 1, 1, 1).to(x.device, x.dtype),
+                stride=1,
+                groups=CH,
+            )
+            .view(B, CH, -1, H, W)
+            .max(dim=2)[0]
+        )
         mask = x > max_non_center
         if mask_only:
             return mask
@@ -61,8 +64,7 @@ class NonMaximaSuppression2d(nn.Module):
 
 
 class NonMaximaSuppression3d(nn.Module):
-    r"""Applies non maxima suppression to filter.
-    """
+    r"""Applies non maxima suppression to filter."""
 
     def __init__(self, kernel_size: Tuple[int, int, int]):
         super(NonMaximaSuppression3d, self).__init__()
@@ -85,12 +87,16 @@ class NonMaximaSuppression3d(nn.Module):
         assert len(x.shape) == 5, x.shape
         # find local maximum values
         B, CH, D, H, W = x.size()
-        max_non_center = F.conv3d(
-            F.pad(x, list(self.padding)[::-1], mode='replicate'),
-            self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
-            stride=1,
-            groups=CH
-        ).view(B, CH, -1, D, H, W).max(dim=2, keepdim=False)[0]
+        max_non_center = (
+            F.conv3d(
+                F.pad(x, list(self.padding)[::-1], mode='replicate'),
+                self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
+                stride=1,
+                groups=CH,
+            )
+            .view(B, CH, -1, D, H, W)
+            .max(dim=2, keepdim=False)[0]
+        )
         mask = x > max_non_center
         if mask_only:
             return mask

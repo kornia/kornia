@@ -7,7 +7,6 @@ from kornia.morphology.morphology import dilation
 
 
 class TestDilate:
-
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
         assert kernel is not None
@@ -20,11 +19,13 @@ class TestDilate:
         assert dilation(img, krnl).shape == shape
 
     def test_value(self, device, dtype):
-        tensor = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device,
-                              dtype=dtype)[None, None, :, :]
-        kernel = torch.tensor([[-1., 0., -1.], [0., 0., 0.], [-1., 0., -1.]], device=device, dtype=dtype)
-        expected = torch.tensor([[1., 1., 1.], [0.7, 1., 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[None,
-                                                                                                             None, :, :]
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        kernel = torch.tensor([[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[1.0, 1.0, 1.0], [0.7, 1.0, 0.8], [0.9, 0.9, 0.9]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
         assert_allclose(dilation(tensor, kernel), expected)
 
     def test_exception(self, device, dtype):
@@ -32,10 +33,10 @@ class TestDilate:
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert dilation([0.], kernel)
+            assert dilation([0.0], kernel)
 
         with pytest.raises(TypeError):
-            assert dilation(tensor, [0.])
+            assert dilation(tensor, [0.0])
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
