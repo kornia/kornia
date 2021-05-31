@@ -1,7 +1,9 @@
 # Welcome to the Kornia setup.py.
 #
-
+import glob
 import os
+import shutil
+
 from setuptools import setup, find_packages
 import subprocess
 import distutils.command.clean

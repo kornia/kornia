@@ -11,66 +11,54 @@ on:
 jobs:
   linter:
     runs-on: [ubuntu-latest]
-
     steps:
     - uses: actions/checkout@v2
-    - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Cache pip
+      uses: actions/cache@v2
       with:
-        auto-update-conda: true
-        python-version: 3.7
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      shell: bash -l {0}
       run: |
-        conda install curl make -c conda-forge
-        conda install pytorch cpuonly -c pytorch
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
         pip install -r requirements-dev.txt
-        make install
 
     - name: Run linter
-      shell: bash -l {0}
       run: make lint
 
   static-check:
     runs-on: [ubuntu-latest]
-
     steps:
     - uses: actions/checkout@v2
-    - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Cache pip
+      uses: actions/cache@v2
       with:
-        auto-update-conda: true
-        python-version: 3.7
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      shell: bash -l {0}
       run: |
-        conda install curl make -c conda-forge
-        conda install pytorch cpuonly -c pytorch
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
         pip install -r requirements-dev.txt
-        make install
 
     - name: Run mypy
-      shell: bash -l {0}
       run: make mypy
 
   doctest:
     runs-on: [ubuntu-latest]
-
     steps:
     - uses: actions/checkout@v2
-    - name: Setup conda dependencies
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Cache pip
+      uses: actions/cache@v2
       with:
-        auto-update-conda: true
-        python-version: 3.7
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: ${{ runner.os }}-pip-
     - name: Install dependencies
-      shell: bash -l {0}
       run: |
-        conda install curl make -c conda-forge
-        conda install pytorch cpuonly -c pytorch
+        pip install torch --find-links https://download.pytorch.org/whl/cpu/torch_stable.html
         pip install -r requirements-dev.txt
-        make install
 
-    - name: Run mypy
-      shell: bash -l {0}
+    - name: Run doctest
       run: make doctest
