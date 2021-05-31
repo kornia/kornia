@@ -38,7 +38,7 @@ Kornia augmentation implementations have two additional parameters compare to To
             360, return_transform=True, same_on_batch=True
          )
 	 self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3, same_on_batch=True)
-      
+
       def forward(self, input):
 	 input, transform = self.aff(input)
 	 input, transform = self.jit((input, transform))
@@ -57,14 +57,14 @@ Example for semantic segmentation using low-level randomness control:
 	 self.jit = K.ColorJitter(0.2, 0.3, 0.2, 0.3)
 
       def forward(self, input, mask):
-         assert input.shape == mask.shape, 
+         assert input.shape == mask.shape,
 	    f"Input shape should be consistent with mask shape, "
-            f"while got {input.shape}, {mask.shape}" 
+            f"while got {input.shape}, {mask.shape}"
 
 	 aff_params = self.aff.forward_parameters(input.shape)
 	 input = self.aff(input, aff_params)
 	 mask = self.aff(mask, aff_params)
-		
+
 	 jit_params = self.jit.forward_parameters(input.shape)
 	 input = self.jit(input, jit_params)
 	 mask = self.jit(mask, jit_params)

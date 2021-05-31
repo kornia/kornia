@@ -11,4 +11,3 @@ about: Do you need support? We have resources.
 We have a set of [listed resources available on the Wiki](https://github.com/kornia/kornia/wiki). Our primary means of support is our discussion forum:
 
 - [Discussion Forum](https://discuss.pytorch.org/c/vision/kornia)
-

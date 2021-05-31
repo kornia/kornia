@@ -28,4 +28,3 @@ usage: main.py [-h] --input-dir INPUT_DIR --output-dir OUTPUT_DIR
                [--frame-ref-id FRAME_REF_ID] [--frame-i-id FRAME_I_ID]
                [--lr LR] [--cuda] [--seed S] [--log-interval N]
                [--log-interval-vis N]
-

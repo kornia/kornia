@@ -52,7 +52,7 @@ jobs:
     - name: Run mypy
       shell: bash -l {0}
       run: make mypy
-      
+
   doctest:
     runs-on: [ubuntu-latest]
 
