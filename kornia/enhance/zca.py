@@ -6,7 +6,6 @@ import torch.nn as nn
 
 from kornia.utils.helpers import _torch_svd_cast
 
-
 __all__ = [
     "zca_mean",
     "zca_whiten",
@@ -68,9 +67,14 @@ class ZCAWhitening(nn.Module):
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
     """
 
-    def __init__(self, dim: int = 0, eps: float = 1e-6,
-                 unbiased: bool = True, detach_transforms: bool = True,
-                 compute_inv: bool = False) -> None:
+    def __init__(
+        self,
+        dim: int = 0,
+        eps: float = 1e-6,
+        unbiased: bool = True,
+        detach_transforms: bool = True,
+        compute_inv: bool = False
+    ) -> None:
 
         super(ZCAWhitening, self).__init__()
 
@@ -100,7 +104,9 @@ class ZCAWhitening(nn.Module):
         self.mean_vector: torch.Tensor = mean
         self.transform_matrix: torch.Tensor = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0, ])
+            self.transform_inv: Optional[torch.Tensor] = torch.empty([
+                0,
+            ])
         else:
             self.transform_inv = T_inv
 
@@ -164,8 +170,10 @@ class ZCAWhitening(nn.Module):
         return y
 
 
-def zca_mean(inp: torch.Tensor, dim: int = 0,
-             unbiased: bool = True, eps: float = 1e-6,
+def zca_mean(inp: torch.Tensor,
+             dim: int = 0,
+             unbiased: bool = True,
+             eps: float = 1e-6,
              return_inverse: bool = False) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
     r"""
 
@@ -203,8 +211,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(inp)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(inp)))
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -221,8 +228,12 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):
-        raise IndexError("Dimension out of range (expected to be in range of [{},{}], but got {}"
-                         .format(-len(inp_size), len(inp_size) - 1, dim))
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
+                -len(inp_size),
+                len(inp_size) - 1, dim
+            )
+        )
 
     if dim < 0:
         dim = len(inp_size) + dim
@@ -263,8 +274,7 @@ def zca_mean(inp: torch.Tensor, dim: int = 0,
     return T, mean, T_inv
 
 
-def zca_whiten(inp: torch.Tensor, dim: int = 0,
-               unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
+def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""
 
     Applies ZCA whitening transform.
@@ -290,8 +300,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
     """
 
     if not isinstance(inp, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(inp)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(inp)))
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -309,8 +318,9 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0,
     return inp_whiten
 
 
-def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
-                     mean_vector: torch.Tensor, dim: int = 0) -> torch.Tensor:
+def linear_transform(
+    inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
+) -> torch.Tensor:
     r"""
 
     Given a transformation matrix and a mean vector, this function will flatten
@@ -356,8 +366,12 @@ def linear_transform(inp: torch.Tensor, transform_matrix: torch.Tensor,
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):
-        raise IndexError("Dimension out of range (expected to be in range of [{},{}], but got {}"
-                         .format(-len(inp_size), len(inp_size) - 1, dim))
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
+                -len(inp_size),
+                len(inp_size) - 1, dim
+            )
+        )
 
     if dim < 0:
         dim = len(inp_size) + dim

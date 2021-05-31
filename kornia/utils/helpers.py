@@ -14,7 +14,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
     device, dtype = None, None
     for tensor in tensor_list:
         if tensor is not None:
-            if not isinstance(tensor, (torch.Tensor,)):
+            if not isinstance(tensor, (torch.Tensor, )):
                 continue
             _device = tensor.device
             _dtype = tensor.dtype
@@ -22,8 +22,10 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                 device = _device
                 dtype = _dtype
             elif device != _device or dtype != _dtype:
-                raise ValueError("Passed values are not in the same device and dtype."
-                                 f"Got ({device}, {dtype}) and ({_device}, {_dtype}).")
+                raise ValueError(
+                    "Passed values are not in the same device and dtype."
+                    f"Got ({device}, {dtype}) and ({_device}, {_dtype})."
+                )
     if device is None:
         # TODO: update this when having torch.get_default_device()
         device = torch.device('cpu')
@@ -41,7 +43,10 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """
     assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
     dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64,):
+    if dtype not in (
+        torch.float32,
+        torch.float64,
+    ):
         dtype = torch.float32
     return torch.inverse(input.to(dtype)).to(input.dtype)
 
@@ -55,7 +60,10 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: int, max: int) -> tor
     """
     assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
     dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64,):
+    if dtype not in (
+        torch.float32,
+        torch.float64,
+    ):
         dtype = torch.float32
     return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
 
@@ -71,7 +79,10 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     """
     assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
     dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64,):
+    if dtype not in (
+        torch.float32,
+        torch.float64,
+    ):
         dtype = torch.float32
 
     out1, out2, out3 = torch.svd(input.to(dtype))
@@ -88,7 +99,10 @@ def _torch_solve_cast(input: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tenso
     """
     assert isinstance(input, torch.Tensor), f"Input must be torch.Tensor. Got: {type(input)}."
     dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64,):
+    if dtype not in (
+        torch.float32,
+        torch.float64,
+    ):
         dtype = torch.float32
 
     out1, out2 = torch.solve(input.to(dtype), A.to(dtype))

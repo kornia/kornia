@@ -38,6 +38,9 @@ mypy: FORCE
 autopep8: FORCE
 	autopep8 --in-place --aggressive --recursive kornia/ test/ examples/
 
+yapf: FORCE
+	yapf --in-place --parallel --recursive kornia/ test/ examples/
+
 doctest:
 	pytest -v --doctest-modules kornia
 

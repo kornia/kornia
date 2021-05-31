@@ -13,8 +13,7 @@ def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
     return computed[0], computed[1]
 
 
-def median_blur(input: torch.Tensor,
-                kernel_size: Tuple[int, int]) -> torch.Tensor:
+def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
     r"""Blurs an image using the median filter.
 
     Args:
@@ -31,12 +30,10 @@ def median_blur(input: torch.Tensor,
         torch.Size([2, 4, 5, 7])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
 
@@ -45,8 +42,7 @@ def median_blur(input: torch.Tensor,
     b, c, h, w = input.shape
 
     # map the local window to single vector
-    features: torch.Tensor = F.conv2d(
-        input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
     features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis

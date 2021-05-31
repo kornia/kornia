@@ -5,8 +5,9 @@ import warnings
 from kornia.color.rgb import bgr_to_rgb
 
 
-def rgb_to_grayscale(image: torch.Tensor,
-                     rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])) -> torch.Tensor:
+def rgb_to_grayscale(
+    image: torch.Tensor, rgb_weights: torch.Tensor = torch.tensor([0.299, 0.587, 0.114])
+) -> torch.Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1).
@@ -23,20 +24,16 @@ def rgb_to_grayscale(image: torch.Tensor,
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     if not isinstance(rgb_weights, torch.Tensor):
-        raise TypeError("rgb_weights is not a torch.Tensor. Got {}".format(
-            type(rgb_weights)))
+        raise TypeError("rgb_weights is not a torch.Tensor. Got {}".format(type(rgb_weights)))
 
     if rgb_weights.shape[-1] != 3:
-        raise ValueError("rgb_weights must have a shape of (*, 3). Got {}"
-                         .format(rgb_weights.shape))
+        raise ValueError("rgb_weights must have a shape of (*, 3). Got {}".format(rgb_weights.shape))
 
     r: torch.Tensor = image[..., 0:1, :, :]
     g: torch.Tensor = image[..., 1:2, :, :]
@@ -64,12 +61,10 @@ def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     image_rgb = bgr_to_rgb(image)
     gray: torch.Tensor = rgb_to_grayscale(image_rgb)

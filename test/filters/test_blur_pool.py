@@ -11,6 +11,7 @@ from torch.autograd import gradcheck
 
 
 class TestMaxBlurPool:
+
     @pytest.mark.parametrize("ceil_mode", [True, False])
     def test_shape(self, ceil_mode, device, dtype):
         inp = torch.zeros(1, 4, 4, 8, device=device, dtype=dtype)
@@ -36,8 +37,10 @@ class TestMaxBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.max_blur_pool2d, (
+            img,
+            3,
+        ), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
@@ -61,6 +64,7 @@ class TestMaxBlurPool:
 
 
 class TestBlurPool:
+
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 4, 4, 8, device=device, dtype=dtype)
         blur = kornia.filters.BlurPool2D(3, stride=1)
@@ -88,8 +92,10 @@ class TestBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.blur_pool2d, (
+            img,
+            3,
+        ), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.blur_pool2d

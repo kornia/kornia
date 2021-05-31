@@ -24,6 +24,7 @@ def test_get_motion_kernel2d(batch_size, ksize, angle, direction):
 
 
 class TestMotionBlur:
+
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_motion_blur(self, batch_shape, device, dtype):
         ksize = 5

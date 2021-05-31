@@ -4,9 +4,7 @@ import torch
 import torch.nn as nn
 
 import kornia
-from kornia.filters.kernels import (
-    get_motion_kernel2d, get_motion_kernel3d
-)
+from kornia.filters.kernels import (get_motion_kernel2d, get_motion_kernel3d)
 
 
 class MotionBlur(nn.Module):
@@ -35,9 +33,7 @@ class MotionBlur(nn.Module):
         >>> output = motion_blur(input)  # 2x4x5x7
     """
 
-    def __init__(
-            self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant'
-    ) -> None:
+    def __init__(self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant') -> None:
         super(MotionBlur, self).__init__()
         self.kernel_size = kernel_size
         self.angle: float = angle
@@ -79,8 +75,11 @@ class MotionBlur3D(nn.Module):
     """
 
     def __init__(
-            self, kernel_size: int, angle: Union[float, Tuple[float, float, float]],
-            direction: float, border_type: str = 'constant'
+        self,
+        kernel_size: int,
+        angle: Union[float, Tuple[float, float, float]],
+        direction: float,
+        border_type: str = 'constant'
     ) -> None:
         super(MotionBlur3D, self).__init__()
         self.kernel_size = kernel_size

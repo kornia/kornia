@@ -9,10 +9,8 @@ from kornia.filters.kernels import normalize_kernel2d
 
 
 def laplacian(
-        input: torch.Tensor,
-        kernel_size: int,
-        border_type: str = 'reflect',
-        normalized: bool = True) -> torch.Tensor:
+    input: torch.Tensor, kernel_size: int, border_type: str = 'reflect', normalized: bool = True
+) -> torch.Tensor:
     r"""Creates an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
@@ -35,8 +33,7 @@ def laplacian(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    kernel: torch.Tensor = torch.unsqueeze(
-        get_laplacian_kernel2d(kernel_size), dim=0)
+    kernel: torch.Tensor = torch.unsqueeze(get_laplacian_kernel2d(kernel_size), dim=0)
 
     if normalized:
         kernel = normalize_kernel2d(kernel)
@@ -69,9 +66,7 @@ class Laplacian(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self,
-                 kernel_size: int, border_type: str = 'reflect',
-                 normalized: bool = True) -> None:
+    def __init__(self, kernel_size: int, border_type: str = 'reflect', normalized: bool = True) -> None:
         super(Laplacian, self).__init__()
         self.kernel_size: int = kernel_size
         self.border_type: str = border_type

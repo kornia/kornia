@@ -38,7 +38,7 @@ class TestHistogram:
     def test_jit(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
         inputs = (input1, bins, bandwidth)
 
         op = TestHistogram.fcn
@@ -49,7 +49,7 @@ class TestHistogram:
     def test_uniform_dist(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
@@ -91,7 +91,7 @@ class TestHistogram2d:
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
         inputs = (input1, input2, bins, bandwidth)
 
         op = TestHistogram2d.fcn
@@ -103,7 +103,7 @@ class TestHistogram2d:
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        bandwidth = torch.tensor(2 * 0.4 ** 2, device=device, dtype=dtype)
+        bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram2d.fcn(input1, input2, bins, bandwidth)
         ans = 0.1 * kornia.eye_like(10, pdf)

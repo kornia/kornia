@@ -10,7 +10,6 @@ from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.utils.helpers import _torch_histc_cast
 
-
 __all__ = [
     "adjust_brightness",
     "adjust_contrast",
@@ -41,9 +40,14 @@ def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, t
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(saturation_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The saturation_factor should be a float number or torch.Tensor."
-                        f"Got {type(saturation_factor)}")
+    if not isinstance(saturation_factor, (
+        float,
+        torch.Tensor,
+    )):
+        raise TypeError(
+            f"The saturation_factor should be a float number or torch.Tensor."
+            f"Got {type(saturation_factor)}"
+        )
 
     if isinstance(saturation_factor, float):
         saturation_factor = torch.as_tensor(saturation_factor)
@@ -124,8 +128,10 @@ def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) 
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(hue_factor, (float, torch.Tensor)):
-        raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
-                        f" [-PI, PI]. Got {type(hue_factor)}")
+        raise TypeError(
+            f"The hue_factor should be a float number or torch.Tensor in the range between"
+            f" [-PI, PI]. Got {type(hue_factor)}"
+        )
 
     if isinstance(hue_factor, float):
         hue_factor = torch.as_tensor(hue_factor)
@@ -200,8 +206,9 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     return out
 
 
-def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
-                 gain: Union[float, torch.Tensor] = 1.) -> torch.Tensor:
+def adjust_gamma(
+    input: torch.Tensor, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.
+) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -267,8 +274,7 @@ def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
     return out
 
 
-def adjust_contrast(input: torch.Tensor,
-                    contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -300,9 +306,11 @@ def adjust_contrast(input: torch.Tensor,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(contrast_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(contrast_factor)}")
+    if not isinstance(contrast_factor, (
+        float,
+        torch.Tensor,
+    )):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(contrast_factor)}")
 
     if isinstance(contrast_factor, float):
         contrast_factor = torch.tensor([contrast_factor])
@@ -324,8 +332,7 @@ def adjust_contrast(input: torch.Tensor,
     return out
 
 
-def adjust_brightness(input: torch.Tensor,
-                      brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Brightness of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -356,9 +363,11 @@ def adjust_brightness(input: torch.Tensor,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(brightness_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(brightness_factor)}")
+    if not isinstance(brightness_factor, (
+        float,
+        torch.Tensor,
+    )):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(brightness_factor)}")
 
     if isinstance(brightness_factor, float):
         brightness_factor = torch.tensor([brightness_factor])
@@ -393,9 +402,11 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (
+        float,
+        torch.Tensor,
+    )):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
@@ -407,8 +418,11 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     return torch.where(input < thresholds, input, 1.0 - input)
 
 
-def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
-             additions: Optional[Union[float, torch.Tensor]] = None) -> torch.Tensor:
+def solarize(
+    input: torch.Tensor,
+    thresholds: Union[float, torch.Tensor] = 0.5,
+    additions: Optional[Union[float, torch.Tensor]] = None
+) -> torch.Tensor:
     r"""For each pixel in the image less than threshold.
 
     We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
@@ -442,17 +456,21 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (
+        float,
+        torch.Tensor,
+    )):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
         thresholds = torch.tensor(thresholds)
 
     if additions is not None:
-        if not isinstance(additions, (float, torch.Tensor,)):
-            raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                            f"Got {type(additions)}")
+        if not isinstance(additions, (
+            float,
+            torch.Tensor,
+        )):
+            raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(additions)}")
 
         if isinstance(additions, float):
             additions = torch.tensor(additions)
@@ -500,7 +518,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(bits, (int, torch.Tensor,)):
+    if not isinstance(bits, (
+        int,
+        torch.Tensor,
+    )):
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
@@ -517,10 +538,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
     def _left_shift(input: torch.Tensor, shift: torch.Tensor):
-        return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.
+        return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.
 
     def _right_shift(input: torch.Tensor, shift: torch.Tensor):
-        return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.
+        return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor):
         # Single bits value condition
@@ -585,13 +606,11 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if len(factor.size()) != 0:
         assert factor.shape == torch.Size([input.size(0)]), (
             "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
-            f"Got {input.size(0)} and {factor.shape}")
+            f"Got {input.size(0)} and {factor.shape}"
+        )
 
-    kernel = torch.tensor([
-        [1, 1, 1],
-        [1, 5, 1],
-        [1, 1, 1]
-    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
+    kernel = torch.tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype,
+                          device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
@@ -660,13 +679,9 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     max_ = im.max()
 
     if min_.item() < 0. and not torch.isclose(min_, torch.tensor(0., dtype=min_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}."
-        )
+        raise ValueError(f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}.")
     if max_.item() > 1. and not torch.isclose(max_, torch.tensor(1., dtype=max_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}."
-        )
+        raise ValueError(f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}.")
 
     ndims = len(im.shape)
     if ndims not in (2, 3):

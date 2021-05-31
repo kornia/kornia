@@ -10,6 +10,7 @@ from torch.testing import assert_allclose
 
 
 class TestEqualization(BaseTester):
+
     def test_smoke(self, device, dtype):
         C, H, W = 1, 10, 20
         img = torch.rand(C, H, W, device=device, dtype=dtype)
@@ -42,13 +43,12 @@ class TestEqualization(BaseTester):
         assert isinstance(res, torch.Tensor)
         assert res.shape == img.shape
 
-    @pytest.mark.parametrize("B, clip, grid, exception_type", [
-        (0, 1., (2, 2), ValueError),
-        (1, 1, (2, 2), TypeError),
-        (1, 2., 2, TypeError),
-        (1, 2., (2, 2, 2), TypeError),
-        (1, 2., (2, 2.), TypeError),
-        (1, 2., (2, 0), ValueError)])
+    @pytest.mark.parametrize(
+        "B, clip, grid, exception_type", [
+            (0, 1., (2, 2), ValueError), (1, 1, (2, 2), TypeError), (1, 2., 2, TypeError),
+            (1, 2., (2, 2, 2), TypeError), (1, 2., (2, 2.), TypeError), (1, 2., (2, 0), ValueError)
+        ]
+    )
     def test_exception(self, B, clip, grid, exception_type):
         C, H, W = 1, 10, 20
         img = torch.rand(B, C, H, W)
@@ -65,14 +65,15 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    @pytest.mark.xfail(raises=RuntimeError,
-                       reason="Sometimes generates the error: 'Numerical gradient for function expected to be zero'")
+    @pytest.mark.xfail(
+        raises=RuntimeError,
+        reason="Sometimes generates the error: 'Numerical gradient for function expected to be zero'"
+    )
     def test_gradcheck(self, device, dtype):
         bs, channels, height, width = 1, 1, 6, 6
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(enhance.equalize_clahe, (inputs, 40., (2, 2)),
-                         raise_exception=True)
+        assert gradcheck(enhance.equalize_clahe, (inputs, 40., (2, 2)), raise_exception=True)
 
     def test_jit(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 10, 20
@@ -99,10 +100,23 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(res[..., 0, :], torch.tensor(
-            [[[0.0471, 0.0980, 0.1490, 0.2000, 0.2471, 0.2980, 0.3490, 0.3490,
-               0.4471, 0.4471, 0.5490, 0.5490, 0.6471, 0.6471, 0.6980, 0.7490,
-               0.8000, 0.8471, 0.8980, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
+        assert torch.allclose(
+            res[..., 0, :],
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.0471, 0.0980, 0.1490, 0.2000, 0.2471, 0.2980, 0.3490, 0.3490, 0.4471, 0.4471, 0.5490,
+                            0.5490, 0.6471, 0.6471, 0.6980, 0.7490, 0.8000, 0.8471, 0.8980, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
+            atol=1e-04,
+            rtol=1e-04
+        )
 
     def test_ahe(self, img):
         clip_limit: float = 0.
@@ -110,10 +124,23 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(res[..., 0, :], torch.tensor(
-            [[[0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4993,
-               0.4980, 0.2471, 0.7490, 0.4993, 0.4980, 0.2471, 0.4980, 0.4993,
-               0.3333, 0.2471, 0.4980, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
+        assert torch.allclose(
+            res[..., 0, :],
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.2471, 0.4980, 0.7490, 0.6667, 0.4980, 0.4980, 0.7490, 0.4993, 0.4980, 0.2471, 0.7490,
+                            0.4993, 0.4980, 0.2471, 0.4980, 0.4993, 0.3333, 0.2471, 0.4980, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
+            atol=1e-04,
+            rtol=1e-04
+        )
 
     def test_clahe(self, img):
         clip_limit: float = 2.
@@ -121,7 +148,20 @@ class TestEqualization(BaseTester):
         res = enhance.equalize_clahe(img, clip_limit=clip_limit, grid_size=grid_size)
         # NOTE: for next versions we need to improve the computation of the LUT
         # and test with a better image
-        assert torch.allclose(res[..., 0, :], torch.tensor(
-            [[[0.1216, 0.8745, 0.9373, 0.9163, 0.8745, 0.8745, 0.9373, 0.8745,
-               0.8745, 0.8118, 0.9373, 0.8745, 0.8745, 0.8118, 0.8745, 0.8745,
-               0.8327, 0.8118, 0.8745, 1.0000]]], dtype=res.dtype, device=res.device), atol=1e-04, rtol=1e-04)
+        assert torch.allclose(
+            res[..., 0, :],
+            torch.tensor(
+                [
+                    [
+                        [
+                            0.1216, 0.8745, 0.9373, 0.9163, 0.8745, 0.8745, 0.9373, 0.8745, 0.8745, 0.8118, 0.9373,
+                            0.8745, 0.8745, 0.8118, 0.8745, 0.8745, 0.8327, 0.8118, 0.8745, 1.0000
+                        ]
+                    ]
+                ],
+                dtype=res.dtype,
+                device=res.device
+            ),
+            atol=1e-04,
+            rtol=1e-04
+        )

@@ -8,6 +8,7 @@ from kornia.feature.affine_shape import *
 
 
 class TestPatchAffineShapeEstimator:
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         ori = PatchAffineShapeEstimator(32).to(device)
@@ -37,8 +38,7 @@ class TestPatchAffineShapeEstimator:
         ori = PatchAffineShapeEstimator(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(ori, (patches, ),
-                         raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(ori, (patches, ), raise_exception=True, nondet_tol=1e-4)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -50,6 +50,7 @@ class TestPatchAffineShapeEstimator:
 
 
 class TestLAFAffineShapeEstimator:
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -83,8 +84,13 @@ class TestLAFAffineShapeEstimator:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         laf = torch.tensor([[[[5., 0., 26.], [0., 5., 26.]]]], device=device)
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(LAFAffineShapeEstimator(11).to(device), (laf, patches),
-                         raise_exception=True, rtol=1e-3, atol=1e-3, nondet_tol=1e-4)
+        assert gradcheck(
+            LAFAffineShapeEstimator(11).to(device), (laf, patches),
+            raise_exception=True,
+            rtol=1e-3,
+            atol=1e-3,
+            nondet_tol=1e-4
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("Failing because of extract patches")
@@ -99,6 +105,7 @@ class TestLAFAffineShapeEstimator:
 
 
 class TestLAFAffNetShapeEstimator:
+
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
@@ -140,8 +147,13 @@ class TestLAFAffNetShapeEstimator:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         laf = torch.tensor([[[[8., 0., 16.], [0., 8., 16.]]]], device=device)
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype), (laf, patches),
-                         raise_exception=True, rtol=1e-3, atol=1e-3, nondet_tol=1e-4)
+        assert gradcheck(
+            LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype), (laf, patches),
+            raise_exception=True,
+            rtol=1e-3,
+            atol=1e-3,
+            nondet_tol=1e-4
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("Laf type is not a torch.Tensor????")

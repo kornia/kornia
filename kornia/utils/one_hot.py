@@ -3,11 +3,13 @@ from typing import Optional
 import torch
 
 
-def one_hot(labels: torch.Tensor,
-            num_classes: int,
-            device: Optional[torch.device] = None,
-            dtype: Optional[torch.dtype] = None,
-            eps: float = 1e-6) -> torch.Tensor:
+def one_hot(
+    labels: torch.Tensor,
+    num_classes: int,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
+    eps: float = 1e-6
+) -> torch.Tensor:
     r"""Converts an integer label x-D tensor to a one-hot (x+1)-D tensor.
 
     Args:
@@ -39,21 +41,15 @@ def one_hot(labels: torch.Tensor,
 
     """
     if not isinstance(labels, torch.Tensor):
-        raise TypeError("Input labels type is not a torch.Tensor. Got {}"
-                        .format(type(labels)))
+        raise TypeError("Input labels type is not a torch.Tensor. Got {}".format(type(labels)))
 
     if not labels.dtype == torch.int64:
-        raise ValueError(
-            "labels must be of the same dtype torch.int64. Got: {}" .format(
-                labels.dtype))
+        raise ValueError("labels must be of the same dtype torch.int64. Got: {}".format(labels.dtype))
 
     if num_classes < 1:
-        raise ValueError("The number of classes must be bigger than one."
-                         " Got: {}".format(num_classes))
+        raise ValueError("The number of classes must be bigger than one." " Got: {}".format(num_classes))
 
     shape = labels.shape
-    one_hot = torch.zeros(
-        (shape[0], num_classes) + shape[1:], device=device, dtype=dtype
-    )
+    one_hot = torch.zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)
 
     return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
