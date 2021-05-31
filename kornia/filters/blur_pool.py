@@ -56,8 +56,7 @@ class BlurPool2D(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # To align the logic with the whole lib
         kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride)
+        return _blur_pool_by_kernel2d(input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(nn.Module):
@@ -103,7 +102,8 @@ class MaxBlurPool2D(nn.Module):
         # To align the logic with the whole lib
         kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode)
+            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+        )
 
 
 def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
@@ -145,7 +145,11 @@ def blur_pool2d(input: torch.Tensor, kernel_size: int, stride: int = 2):
 
 
 def max_blur_pool2d(
-    input: torch.Tensor, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+    input: torch.Tensor,
+    kernel_size: int,
+    stride: int = 2,
+    max_pool_size: int = 2,
+    ceil_mode: bool = False
 ) -> torch.Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
@@ -187,8 +191,7 @@ def _max_blur_pool_by_kernel2d(
     assert len(kernel.shape) == 4 and kernel.size(-1) == kernel.size(-2), \
         f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}"
     # compute local maxima
-    input = F.max_pool2d(
-        input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
+    input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
     # blur and downsample
     padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))

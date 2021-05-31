@@ -1,12 +1,10 @@
-import math
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 class TestZCA:
@@ -14,10 +12,7 @@ class TestZCA:
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
 
-        data = torch.tensor([[0, 1],
-                             [1, 0],
-                             [-1, 0],
-                             [0, -1]], device=device, dtype=dtype)
+        data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if unbiased:
             unbiased_val = 1.5
@@ -38,25 +33,28 @@ class TestZCA:
         if 'xla' in device.type:
             pytest.skip("buggy with XLA devices.")
 
-        data = torch.tensor([[0, 1],
-                             [1, 0],
-                             [-1, 0],
-                             [0, -1]], device=device, dtype=dtype)
+        data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if dim == 1:
-            expected = torch.tensor([
-                [-0.35360718, 0.35360718],
-                [0.35351562, -0.35351562],
-                [-0.35353088, 0.35353088],
-                [0.35353088, -0.35353088],
-            ], device=device, dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [-0.35360718, 0.35360718],
+                    [0.35351562, -0.35351562],
+                    [-0.35353088, 0.35353088],
+                    [0.35353088, -0.35353088],
+                ],
+                device=device,
+                dtype=dtype
+            )
         elif dim == 0:
-            expected = torch.tensor([
-                [0., 1.2247448],
-                [1.2247448, 0.],
-                [-1.2247448, 0.],
-                [0., -1.2247448],
-            ], device=device, dtype=dtype)
+            expected = torch.tensor(
+                [
+                    [0., 1.2247448],
+                    [1.2247448, 0.],
+                    [-1.2247448, 0.],
+                    [0., -1.2247448],
+                ], device=device, dtype=dtype
+            )
 
         zca = kornia.enhance.ZCAWhitening(dim=dim)
         actual = zca(data, True)
@@ -90,11 +88,7 @@ class TestZCA:
 
         """
 
-        data = torch.tensor([[2, 0],
-                             [0, 1],
-                             [-2, 0],
-                             [0, -1]],
-                            device=device, dtype=dtype)
+        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
 
@@ -107,17 +101,13 @@ class TestZCA:
         def zca_T_inv(x):
             return kornia.enhance.zca_mean(x, return_inverse=True)[2]
 
-        assert gradcheck(zca_T, (data,), raise_exception=True)
-        assert gradcheck(zca_mu, (data,), raise_exception=True)
-        assert gradcheck(zca_T_inv, (data,), raise_exception=True)
+        assert gradcheck(zca_T, (data, ), raise_exception=True)
+        assert gradcheck(zca_mu, (data, ), raise_exception=True)
+        assert gradcheck(zca_T_inv, (data, ), raise_exception=True)
 
     def test_grad_zca_with_fit(self, device, dtype):
 
-        data = torch.tensor([[2, 0],
-                             [0, 1],
-                             [-2, 0],
-                             [0, -1]],
-                            device=device, dtype=dtype)
+        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
 
@@ -125,23 +115,18 @@ class TestZCA:
             zca = kornia.enhance.ZCAWhitening(detach_transforms=False)
             return zca(x, include_fit=True)
 
-        assert gradcheck(zca_fit, (data,), raise_exception=True)
+        assert gradcheck(zca_fit, (data, ), raise_exception=True)
 
     def test_grad_detach_zca(self, device, dtype):
 
-        data = torch.tensor([[1, 0],
-                             [0, 1],
-                             [-2, 0],
-                             [0, -1]],
-                            device=device, dtype=dtype)
+        data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
         zca = kornia.enhance.ZCAWhitening()
 
         zca.fit(data)
 
-        assert gradcheck(zca,
-                         (data,), raise_exception=True)
+        assert gradcheck(zca, (data, ), raise_exception=True)
 
     def test_not_fitted(self, device, dtype):
 
@@ -170,10 +155,7 @@ class TestZCA:
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_whiten_func_unbiased(self, unbiased, device, dtype):
 
-        data = torch.tensor([[0, 1],
-                             [1, 0],
-                             [-1, 0],
-                             [0, -1]], device=device, dtype=dtype)
+        data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if unbiased:
             unbiased_val = 1.5

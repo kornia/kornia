@@ -1,16 +1,12 @@
 from unittest.mock import patch
-from typing import Union, Tuple
 
 import pytest
 import torch
-import torch.nn as nn
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
-import kornia
 import kornia.testing as utils  # test utils
-from kornia.augmentation.base import _BasicAugmentationBase, _AugmentationBase, AugmentationBase2D, AugmentationBase3D
+from kornia.augmentation.base import _BasicAugmentationBase, AugmentationBase2D
 
 
 class TestBasicAugmentationBase:
@@ -29,18 +25,20 @@ class TestBasicAugmentationBase:
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
             assert_allclose(input, output[:, :, 0, :, :])
 
-    @pytest.mark.parametrize("p,p_batch,same_on_batch,num,seed", [
-        (1., 1., False, 12, 1),
-        (1., 0., False, 0, 1),
-        (0., 1., False, 0, 1),
-        (0., 0., False, 0, 1),
-        (.5, .1, False, 7, 3),
-        (.5, .1, True, 12, 3),
-        (.3, 1., False, 2, 1),
-        (.3, 1., True, 0, 1),
-    ])
+    @pytest.mark.parametrize(
+        "p,p_batch,same_on_batch,num,seed", [
+            (1., 1., False, 12, 1),
+            (1., 0., False, 0, 1),
+            (0., 1., False, 0, 1),
+            (0., 0., False, 0, 1),
+            (.5, .1, False, 7, 3),
+            (.5, .1, True, 12, 3),
+            (.3, 1., False, 2, 1),
+            (.3, 1., True, 0, 1),
+        ]
+    )
     def test_forward_params(self, p, p_batch, same_on_batch, num, seed, device, dtype):
-        input_shape = (12,)
+        input_shape = (12, )
         torch.manual_seed(seed)
         augmentation = _BasicAugmentationBase(p, p_batch, same_on_batch)
         with patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters:
@@ -75,14 +73,16 @@ class TestBasicAugmentationBase:
 
 class TestAugmentationBase2D:
 
-    @pytest.mark.parametrize('input_shape, in_trans_shape', [
-        ((2, 3, 4, 5), (2, 3, 3)),
-        ((3, 4, 5), (3, 3)),
-        ((4, 5), (3, 3)),
-        pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
-        pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
-        pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
-    ])
+    @pytest.mark.parametrize(
+        'input_shape, in_trans_shape', [
+            ((2, 3, 4, 5), (2, 3, 3)),
+            ((3, 4, 5), (3, 3)),
+            ((4, 5), (3, 3)),
+            pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
+            pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
+            pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
+        ]
+    )
     def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
         input = torch.rand(input_shape, device=device, dtype=dtype)
         in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)

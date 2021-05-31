@@ -1,14 +1,11 @@
-import pytest
+import torch
+from torch.testing import assert_allclose
 
 import kornia as kornia
-import kornia.testing as utils  # test utils
-
-import torch
-from torch.autograd import gradcheck
-from torch.testing import assert_allclose
 
 
 class TestPinholeCamera:
+
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] = fx
@@ -140,23 +137,19 @@ class TestPinholeCamera:
         pinhole_scale = pinhole.scale(scale_factor)
 
         assert_allclose(
-            pinhole_scale.intrinsics[..., 0, 0],
-            pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
+            pinhole_scale.intrinsics[..., 0, 0], pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4
+        )  # fx
         assert_allclose(
-            pinhole_scale.intrinsics[..., 1, 1],
-            pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
+            pinhole_scale.intrinsics[..., 1, 1], pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4
+        )  # fy
         assert_allclose(
-            pinhole_scale.intrinsics[..., 0, 2],
-            pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
+            pinhole_scale.intrinsics[..., 0, 2], pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4
+        )  # cx
         assert_allclose(
-            pinhole_scale.intrinsics[..., 1, 2],
-            pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
-        assert_allclose(
-            pinhole_scale.height,
-            pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_allclose(
-            pinhole_scale.width,
-            pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
+            pinhole_scale.intrinsics[..., 1, 2], pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4
+        )  # cy
+        assert_allclose(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_scale_inplace(self, device, dtype):
         batch_size = 2
@@ -176,21 +169,19 @@ class TestPinholeCamera:
         pinhole_scale.scale_(scale_factor)
 
         assert_allclose(
-            pinhole_scale.intrinsics[..., 0, 0],
-            pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4)  # fx
+            pinhole_scale.intrinsics[..., 0, 0], pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4
+        )  # fx
         assert_allclose(
-            pinhole_scale.intrinsics[..., 1, 1],
-            pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4)  # fy
+            pinhole_scale.intrinsics[..., 1, 1], pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4
+        )  # fy
         assert_allclose(
-            pinhole_scale.intrinsics[..., 0, 2],
-            pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cx
+            pinhole_scale.intrinsics[..., 0, 2], pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4
+        )  # cx
         assert_allclose(
-            pinhole_scale.intrinsics[..., 1, 2],
-            pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4)  # cy
-        assert_allclose(
-            pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_allclose(
-            pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
+            pinhole_scale.intrinsics[..., 1, 2], pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4
+        )  # cy
+        assert_allclose(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
+        assert_allclose(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
 
 '''@pytest.mark.parametrize("batch_size", [1, 2, 5, 6])

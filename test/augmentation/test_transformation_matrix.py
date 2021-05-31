@@ -1,42 +1,26 @@
-import pytest
 import torch
-import torch.nn as nn
-
 from torch.testing import assert_allclose
-from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
 import kornia.augmentation.functional as F
-from kornia.constants import pi
-from kornia.augmentation import ColorJitter
 
 
 class TestHorizontalFlipFn:
 
     def test_random_hflip(self, device):
-        input = torch.tensor([[0., 0., 0., 0.],
-                              [0., 0., 0., 0.],
-                              [0., 0., 1., 2.]])  # 3 x 4
+        input = torch.tensor([[0., 0., 0., 0.], [0., 0., 0., 0.], [0., 0., 1., 2.]])  # 3 x 4
         input.to(device)
 
-        expected_transform = torch.tensor([[-1., 0., 3.],
-                                           [0., 1., 0.],
-                                           [0., 0., 1.]])  # 3 x 3
+        expected_transform = torch.tensor([[-1., 0., 3.], [0., 1., 0.], [0., 0., 1.]])  # 3 x 3
 
         assert (F.compute_hflip_transformation(input[None, None]) == expected_transform).all()
 
     def test_batch_random_hflip(self, device):
         batch_size = 5
 
-        input = torch.tensor([[[[0., 0., 0.],
-                                [0., 0., 0.],
-                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input = torch.tensor([[[[0., 0., 0.], [0., 0., 0.], [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input.to(device)
 
-        expected_transform = torch.tensor([[[-1., 0., 2.],
-                                            [0., 1., 0.],
-                                            [0., 0., 1.]]])  # 1 x 3 x 3
+        expected_transform = torch.tensor([[[-1., 0., 2.], [0., 1., 0.], [0., 0., 1.]]])  # 1 x 3 x 3
 
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3
@@ -48,28 +32,20 @@ class TestVerticalFlipFn:
 
     def test_random_vflip(self, device):
 
-        input = torch.tensor([[0., 0., 0.],
-                              [0., 0., 0.],
-                              [0., 1., 1.]])  # 3 x 3
+        input = torch.tensor([[0., 0., 0.], [0., 0., 0.], [0., 1., 1.]])  # 3 x 3
         input.to(device)
 
-        expected_transform = torch.tensor([[1., 0., 0.],
-                                           [0., -1., 2.],
-                                           [0., 0., 1.]])  # 3 x 3
+        expected_transform = torch.tensor([[1., 0., 0.], [0., -1., 2.], [0., 0., 1.]])  # 3 x 3
 
         assert (F.compute_vflip_transformation(input[None, None]) == expected_transform).all()
 
     def test_batch_random_vflip(self, device):
         batch_size = 5
 
-        input = torch.tensor([[[[0., 0., 0.],
-                                [0., 0., 0.],
-                                [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
+        input = torch.tensor([[[[0., 0., 0.], [0., 0., 0.], [0., 1., 1.]]]])  # 1 x 1 x 3 x 3
         input.to(device)
 
-        expected_transform = torch.tensor([[[1., 0., 0.],
-                                            [0., -1., 2.],
-                                            [0., 0., 1.]]])  # 1 x 3 x 3
+        expected_transform = torch.tensor([[[1., 0., 0.], [0., -1., 2.], [0., 0., 1.]]])  # 1 x 3 x 3
 
         input = input.repeat(batch_size, 3, 1, 1)  # 5 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(batch_size, 1, 1)  # 5 x 3 x 3

@@ -1,14 +1,9 @@
-from typing import Union, Tuple
-
 import pytest
 import torch
-import torch.nn as nn
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import tensor_to_gradcheck_var
 from kornia.augmentation import (
     RandomMotionBlur,
     RandomMotionBlur3D,
@@ -17,6 +12,7 @@ from kornia.filters import (
     motion_blur,
     motion_blur3d,
 )
+from kornia.testing import tensor_to_gradcheck_var
 
 
 class TestRandomMotionBlur:
@@ -34,8 +30,14 @@ class TestRandomMotionBlur:
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("p", [0., 1.])
     def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
-        f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5,
-                             same_on_batch=same_on_batch, return_transform=return_transform, p=p)
+        f = RandomMotionBlur(
+            kernel_size=(3, 5),
+            angle=(10, 30),
+            direction=0.5,
+            same_on_batch=same_on_batch,
+            return_transform=return_transform,
+            p=p
+        )
         torch.manual_seed(0)
         batch_size = 2
         input = torch.randn(1, 3, 5, 6).repeat(batch_size, 1, 1, 1)
@@ -65,8 +67,10 @@ class TestRandomMotionBlur:
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.)
         output = f(input)
 
-        expected = motion_blur(input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'],
-                               f._params['direction_factor'], f.border_type.name.lower())
+        expected = motion_blur(
+            input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'], f._params['direction_factor'],
+            f.border_type.name.lower()
+        )
 
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
@@ -82,8 +86,10 @@ class TestRandomMotionBlur:
             'direction_factor': torch.tensor([-0.5]),
             'border_type': torch.tensor([0]),
         }
-        assert gradcheck(RandomMotionBlur(
-            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
+        assert gradcheck(
+            RandomMotionBlur(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params),
+            raise_exception=True
+        )
 
 
 class TestRandomMotionBlur3D:
@@ -101,8 +107,14 @@ class TestRandomMotionBlur3D:
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("p", [0., 1.])
     def test_random_motion_blur(self, same_on_batch, return_transform, p, device, dtype):
-        f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5,
-                               same_on_batch=same_on_batch, return_transform=return_transform, p=p)
+        f = RandomMotionBlur3D(
+            kernel_size=(3, 5),
+            angle=(10, 30),
+            direction=0.5,
+            same_on_batch=same_on_batch,
+            return_transform=return_transform,
+            p=p
+        )
         batch_size = 2
         input = torch.randn(1, 3, 5, 6, 7, device=device, dtype=dtype).repeat(batch_size, 1, 1, 1, 1)
 
@@ -131,8 +143,10 @@ class TestRandomMotionBlur3D:
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.)
         output = f(input)
 
-        expected = motion_blur3d(input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'],
-                                 f._params['direction_factor'], f.border_type.name.lower())
+        expected = motion_blur3d(
+            input, f._params['ksize_factor'].unique().item(), f._params['angle_factor'], f._params['direction_factor'],
+            f.border_type.name.lower()
+        )
 
         assert_allclose(output, expected, rtol=1e-4, atol=1e-4)
 
@@ -147,5 +161,7 @@ class TestRandomMotionBlur3D:
             'direction_factor': torch.tensor([-0.5]),
             'border_type': torch.tensor([0]),
         }
-        assert gradcheck(RandomMotionBlur3D(
-            kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params), raise_exception=True)
+        assert gradcheck(
+            RandomMotionBlur3D(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0), (inp, params),
+            raise_exception=True
+        )

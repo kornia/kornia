@@ -5,7 +5,6 @@ import torch.nn as nn
 
 from .xyz import rgb_to_xyz, xyz_to_rgb
 from .rgb import rgb_to_linear_rgb, linear_rgb_to_rgb
-
 """
 The RGB to Lab color transformations were translated from scikit image's rgb2lab and lab2rgb
 
@@ -31,12 +30,10 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_lab(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     # Convert from sRGB to Linear RGB
     lin_rgb = rgb_to_linear_rgb(image)
@@ -44,8 +41,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     xyz_im: torch.Tensor = rgb_to_xyz(lin_rgb)
 
     # normalize for D65 white point
-    xyz_ref_white = torch.tensor(
-        [0.95047, 1., 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
+    xyz_ref_white = torch.tensor([0.95047, 1., 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
     threshold = 0.008856
@@ -81,12 +77,10 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         >>> output = lab_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     L: torch.Tensor = image[..., 0, :, :]
     a: torch.Tensor = image[..., 1, :, :]
@@ -107,14 +101,13 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     xyz = torch.where(fxyz > .2068966, power, scale)
 
     # For D65 white point
-    xyz_ref_white = torch.tensor(
-        [0.95047, 1., 1.08883], device=xyz.device, dtype=xyz.dtype)[..., :, None, None]
+    xyz_ref_white = torch.tensor([0.95047, 1., 1.08883], device=xyz.device, dtype=xyz.dtype)[..., :, None, None]
     xyz_im = xyz * xyz_ref_white
 
     rgbs_im: torch.Tensor = xyz_to_rgb(xyz_im)
 
     # https://github.com/richzhang/colorization-pytorch/blob/66a1cb2e5258f7c8f374f582acc8b1ef99c13c27/util/util.py#L107
-#     rgbs_im = torch.where(rgbs_im < 0, torch.zeros_like(rgbs_im), rgbs_im)
+    #     rgbs_im = torch.where(rgbs_im < 0, torch.zeros_like(rgbs_im), rgbs_im)
 
     # Convert from RGB Linear to sRGB
     rgb_im = linear_rgb_to_rgb(rgbs_im)

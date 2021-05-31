@@ -9,4 +9,4 @@ kornia.morphology
 .. autofunction::  closing
 .. autofunction::  gradient
 .. autofunction::  top_hat
-.. autofunction::  bottom_hat
+.. autofunction::  black_hat

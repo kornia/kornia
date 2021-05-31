@@ -1,11 +1,11 @@
 import pytest
-
 import torch
+
 import kornia as kornia
-import kornia.testing as utils  # test utils
 
 
 class TestOneHot:
+
     def test_smoke(self):
         num_classes = 4
         labels = torch.zeros(2, 2, 1, dtype=torch.int64)

@@ -65,10 +65,11 @@ class ExtractTensorPatches(nn.Module):
     """
 
     def __init__(
-            self,
-            window_size: Union[int, Tuple[int, int]],
-            stride: Optional[Union[int, Tuple[int, int]]] = 1,
-            padding: Optional[Union[int, Tuple[int, int]]] = 0) -> None:
+        self,
+        window_size: Union[int, Tuple[int, int]],
+        stride: Optional[Union[int, Tuple[int, int]]] = 1,
+        padding: Optional[Union[int, Tuple[int, int]]] = 0
+    ) -> None:
         super(ExtractTensorPatches, self).__init__()
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
@@ -81,6 +82,7 @@ class ExtractTensorPatches(nn.Module):
 ######################
 # functional interface
 ######################
+
 
 def _extract_tensor_patchesnd(
     input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
@@ -104,11 +106,9 @@ def extract_tensor_patches(
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
     """
     if not torch.is_tensor(input):
-        raise TypeError("Input input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input input type is not a torch.Tensor. Got {}".format(type(input)))
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     if padding:
         pad_vert, pad_horz = _pair(padding)

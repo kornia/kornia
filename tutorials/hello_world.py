@@ -9,12 +9,12 @@ This is the first tutorial showing how one can simply load an image and convert 
 
 """
 
-import torch
-import kornia
 import cv2
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+import kornia
 
 #############################
 # We use OpenCV to load an image to memory represented in a numpy.ndarray

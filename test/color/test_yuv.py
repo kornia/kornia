@@ -1,22 +1,20 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
+import kornia
+from kornia.testing import BaseTester
+
 
 class TestRgbToYuv(BaseTester):
+
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.rgb_to_yuv(img), torch.Tensor)
 
-    @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_yuv(img).shape == shape
@@ -50,7 +48,7 @@ class TestRgbToYuv(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_yuv, (img, ), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -70,13 +68,13 @@ class TestRgbToYuv(BaseTester):
 
 
 class TestYuvToRgb(BaseTester):
+
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
         assert isinstance(kornia.color.yuv_to_rgb(img), torch.Tensor)
 
-    @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.yuv_to_rgb(img).shape == shape
@@ -110,7 +108,7 @@ class TestYuvToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.yuv_to_rgb, (img, ), raise_exception=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

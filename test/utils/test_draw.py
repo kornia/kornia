@@ -1,11 +1,11 @@
 import pytest
-
 import torch
-import kornia.testing as utils
+
 from kornia.utils import draw_rectangle
 
 
 class TestDrawRectangle:
+
     @pytest.mark.parametrize('batch', (4, 17))
     @pytest.mark.parametrize('color', (torch.Tensor([1.0]), torch.Tensor([0.5])))
     def test_smoke(self, device, batch, color):
@@ -47,10 +47,10 @@ class TestDrawRectangle:
             points_list.append([])
             for n in range(N):
                 points_list[b].append([])
-                points_list[b][n].append(int(torch.randint(0, w - 1, (1,))))
-                points_list[b][n].append(int(torch.randint(0, h - 1, (1,))))
-                points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, w, (1,))))
-                points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, h, (1,))))
+                points_list[b][n].append(int(torch.randint(0, w - 1, (1, ))))
+                points_list[b][n].append(int(torch.randint(0, h - 1, (1, ))))
+                points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, w, (1, ))))
+                points_list[b][n].append(int(torch.randint(points_list[b][n][-2] + 1, h, (1, ))))
 
         points = torch.tensor(points_list).to(device)
 

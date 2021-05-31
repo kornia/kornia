@@ -1,18 +1,17 @@
 import pytest
-
-import kornia
-import kornia.testing as utils  # test utils
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_kernel(window_size, sigma):
     kernel = kornia.get_gaussian_kernel1d(window_size, sigma)
-    assert kernel.shape == (window_size,)
+    assert kernel.shape == (window_size, )
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
@@ -20,7 +19,7 @@ def test_get_gaussian_kernel(window_size, sigma):
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_discrete_kernel(window_size, sigma):
     kernel = kornia.get_gaussian_discrete_kernel1d(window_size, sigma)
-    assert kernel.shape == (window_size,)
+    assert kernel.shape == (window_size, )
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
@@ -28,7 +27,7 @@ def test_get_gaussian_discrete_kernel(window_size, sigma):
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
 def test_get_gaussian_erf_kernel(window_size, sigma):
     kernel = kornia.get_gaussian_erf_kernel1d(window_size, sigma)
-    assert kernel.shape == (window_size,)
+    assert kernel.shape == (window_size, )
     assert kernel.sum().item() == pytest.approx(1.0)
 
 
@@ -42,6 +41,7 @@ def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
 
 
 class TestGaussianBlur2d:
+
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
         kernel_size = (5, 7)

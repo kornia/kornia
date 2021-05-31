@@ -6,10 +6,12 @@ import torch.nn as nn
 from kornia.filters import spatial_gradient, gaussian_blur2d
 
 
-def harris_response(input: torch.Tensor,
-                    k: Union[torch.Tensor, float] = 0.04,
-                    grads_mode: str = 'sobel',
-                    sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+def harris_response(
+    input: torch.Tensor,
+    k: Union[torch.Tensor, float] = 0.04,
+    grads_mode: str = 'sobel',
+    sigmas: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Computes the Harris cornerness function. Function does not do
     any normalization or nms.The response map is computed according the following formulation:
 
@@ -67,15 +69,12 @@ def harris_response(input: torch.Tensor,
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
-            raise TypeError("sigmas type is not a torch.Tensor. Got {}"
-                            .format(type(sigmas)))
+            raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
             raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
@@ -84,22 +83,22 @@ def harris_response(input: torch.Tensor,
 
     # compute the structure tensor M elements
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1., 1.))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1., 1.))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1., 1.))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1., 1.))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
     # compute the response map
-    scores: torch.Tensor = det_m - k * (trace_m ** 2)
+    scores: torch.Tensor = det_m - k * (trace_m**2)
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
 
 
-def gftt_response(input: torch.Tensor,
-                  grads_mode: str = 'sobel',
-                  sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+def gftt_response(
+    input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Computes the Shi-Tomasi cornerness function. Function does not do any normalization or nms.
     The response map is computed according the following formulation:
 
@@ -153,24 +152,22 @@ def gftt_response(input: torch.Tensor,
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
     gradients: torch.Tensor = spatial_gradient(input, grads_mode)
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1., 1.))
-    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1., 1.))
+    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1., 1.))
+    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1., 1.))
     dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
+    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
 
     scores: torch.Tensor = torch.min(e1, e2)
     if sigmas is not None:
@@ -178,9 +175,9 @@ def gftt_response(input: torch.Tensor,
     return scores
 
 
-def hessian_response(input: torch.Tensor,
-                     grads_mode: str = 'sobel',
-                     sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+def hessian_response(
+    input: torch.Tensor, grads_mode: str = 'sobel', sigmas: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Computes the absolute of determinant of the Hessian matrix. Function does not do any normalization or nms.
     The response map is computed according the following formulation:
 
@@ -234,24 +231,20 @@ def hessian_response(input: torch.Tensor,
     """
     # TODO: Recompute doctest
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
     if sigmas is not None:
         if not isinstance(sigmas, torch.Tensor):
-            raise TypeError("sigmas type is not a torch.Tensor. Got {}"
-                            .format(type(sigmas)))
+            raise TypeError("sigmas type is not a torch.Tensor. Got {}".format(type(sigmas)))
         if (not len(sigmas.shape) == 1) or (sigmas.size(0) != input.size(0)):
-            raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}"
-                             .format(sigmas.shape))
+            raise ValueError("Invalid sigmas shape, we expect B == input.size(0). Got: {}".format(sigmas.shape))
     gradients: torch.Tensor = spatial_gradient(input, grads_mode, 2)
     dxx: torch.Tensor = gradients[:, :, 0]
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = dxx * dyy - dxy ** 2
+    scores: torch.Tensor = dxx * dyy - dxy**2
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
@@ -273,11 +266,9 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
 
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
     return input[:, :, 1:] - input[:, :, :-1]
 
 
@@ -293,8 +284,11 @@ class BlobDoG(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        input: torch.Tensor,  # type: ignore
+        sigmas: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return dog_response(input)  # type: ignore
 
 
@@ -303,8 +297,7 @@ class CornerHarris(nn.Module):
     See :func:`~kornia.feature.harris_response` for details.
     """
 
-    def __init__(self, k: Union[float, torch.Tensor],
-                 grads_mode='sobel') -> None:
+    def __init__(self, k: Union[float, torch.Tensor], grads_mode='sobel') -> None:
         super(CornerHarris, self).__init__()
         if type(k) is float:
             self.register_buffer('k', torch.tensor(k))
@@ -318,8 +311,11 @@ class CornerHarris(nn.Module):
             '(k=' + str(self.k) + ', ' +\
             'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        input: torch.Tensor,  # type: ignore
+        sigmas: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return harris_response(input, self.k, self.grads_mode, sigmas)  # type: ignore
 
 
@@ -337,8 +333,11 @@ class CornerGFTT(nn.Module):
         return self.__class__.__name__ +\
             'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        input: torch.Tensor,  # type: ignore
+        sigmas: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -356,6 +355,9 @@ class BlobHessian(nn.Module):
         return self.__class__.__name__ +\
             'grads_mode=' + self.grads_mode + ')'
 
-    def forward(self, input: torch.Tensor,  # type: ignore
-                sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        input: torch.Tensor,  # type: ignore
+        sigmas: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         return hessian_response(input, self.grads_mode, sigmas)

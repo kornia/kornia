@@ -1,12 +1,13 @@
-import pytest
 import os
 
-import kornia
 import torch
 from torch.testing import assert_allclose
 
+import kornia
+
 
 class TestSaveLoadPointCloud:
+
     def test_save_pointcloud(self):
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)

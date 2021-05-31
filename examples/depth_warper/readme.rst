@@ -1,7 +1,7 @@
 Warp Image by Depth
 ===================
 
-This example shows how to use the `DepthWarper` in order to warp an image from a reference camera to a destination 
+This example shows how to use the `DepthWarper` in order to warp an image from a reference camera to a destination
 by the depth using the epipolar geometry constraints assumig a pinhole camera model.
 
 Downloading the data

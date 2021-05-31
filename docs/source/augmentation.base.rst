@@ -36,9 +36,9 @@ Create your own transformation:
       def generate_parameters(self, input_shape: torch.Size):
          # generate the random parameters for your use case.
          angles_rad torch.Tensor = torch.rand(input_shape[0]) * K.pi
-	 angles_deg = kornia.rad2deg(angles_rad) 
+	 angles_deg = kornia.rad2deg(angles_rad)
 	 return dict(angles=angles_deg)
-      
+
       def compute_transformation(self, input, params):
 
     	 B, _, H, W = input.shape

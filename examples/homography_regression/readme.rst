@@ -11,7 +11,7 @@ Quick overview
  # load the data
  img_src = load_image(os.path.join(args.input_dir, 'img1.ppm'))
  img_dst = load_image(os.path.join(args.input_dir, 'img2.ppm'))
-    
+
  # instantiate the homography warper from `kornia`
  height, width = img_src.shape[-2:]
  warper = dgm.HomographyWarper(height, width)

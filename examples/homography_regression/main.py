@@ -1,12 +1,13 @@
 import argparse
 import os
+
 import cv2
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+
 import kornia as dgm
 
 
@@ -33,6 +34,7 @@ def load_image(file_name):
 
 
 class MyHomography(nn.Module):
+
     def __init__(self):
         super(MyHomography, self).__init__()
         self.homo = nn.Parameter(torch.Tensor(3, 3))
@@ -48,32 +50,29 @@ class MyHomography(nn.Module):
 
 def HomographyRegressionApp():
     # Training settings
-    parser = argparse.ArgumentParser(
-        description='Homography Regression with photometric loss.')
-    parser.add_argument('--input-dir', type=str, required=True,
-                        help='the path to the directory with the input data.')
-    parser.add_argument('--output-dir', type=str, required=True,
-                        help='the path to output the results.')
-    parser.add_argument('--num-iterations', type=int, default=1000, metavar='N',
-                        help='number of training iterations (default: 1000)')
-    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR',
-                        help='learning rate (default: 1e-3)')
-    parser.add_argument('--cuda', action='store_true', default=False,
-                        help='enables CUDA training')
-    parser.add_argument('--seed', type=int, default=666, metavar='S',
-                        help='random seed (default: 666)')
+    parser = argparse.ArgumentParser(description='Homography Regression with photometric loss.')
+    parser.add_argument('--input-dir', type=str, required=True, help='the path to the directory with the input data.')
+    parser.add_argument('--output-dir', type=str, required=True, help='the path to output the results.')
+    parser.add_argument(
+        '--num-iterations', type=int, default=1000, metavar='N', help='number of training iterations (default: 1000)'
+    )
+    parser.add_argument('--lr', type=float, default=1e-3, metavar='LR', help='learning rate (default: 1e-3)')
+    parser.add_argument('--cuda', action='store_true', default=False, help='enables CUDA training')
+    parser.add_argument('--seed', type=int, default=666, metavar='S', help='random seed (default: 666)')
     parser.add_argument(
         '--log-interval',
         type=int,
         default=10,
         metavar='N',
-        help='how many batches to wait before logging training status')
+        help='how many batches to wait before logging training status'
+    )
     parser.add_argument(
         '--log-interval-vis',
         type=int,
         default=100,
         metavar='N',
-        help='how many batches to wait before visual logging training status')
+        help='how many batches to wait before visual logging training status'
+    )
     args = parser.parse_args()
 
     # define the device to use for inference
@@ -121,18 +120,19 @@ def HomographyRegressionApp():
         optimizer.step()
 
         if iter_idx % args.log_interval == 0:
-            print('Train iteration: {}/{}\tLoss: {:.6}'.format(
-                  iter_idx, args.num_iterations, loss.item()))
+            print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
             print(dst_homo_src.homo)
 
         def draw_rectangle(image, dst_homo_src):
             height, width = image.shape[:2]
-            pts_src = torch.FloatTensor([[
-                [-1, -1],  # top-left
-                [1, -1],  # bottom-left
-                [1, 1],  # bottom-right
-                [-1, 1],  # top-right
-            ]]).to(dst_homo_src.device)
+            pts_src = torch.FloatTensor(
+                [[
+                    [-1, -1],  # top-left
+                    [1, -1],  # bottom-left
+                    [1, 1],  # bottom-right
+                    [-1, 1],  # top-right
+                ]]
+            ).to(dst_homo_src.device)
             # transform points
             pts_dst = dgm.transform_points(torch.inverse(dst_homo_src), pts_src)
 
@@ -141,14 +141,13 @@ def HomographyRegressionApp():
 
             def convert_coordinates_to_pixel(coordinates, factor):
                 return factor * (coordinates + 1.0)
+
             # compute convertion factor
             x_factor = compute_factor(width - 1)
             y_factor = compute_factor(height - 1)
             pts_dst = pts_dst.cpu().squeeze().detach().numpy()
-            pts_dst[..., 0] = convert_coordinates_to_pixel(
-                pts_dst[..., 0], x_factor)
-            pts_dst[..., 1] = convert_coordinates_to_pixel(
-                pts_dst[..., 1], y_factor)
+            pts_dst[..., 0] = convert_coordinates_to_pixel(pts_dst[..., 0], x_factor)
+            pts_dst[..., 1] = convert_coordinates_to_pixel(pts_dst[..., 1], y_factor)
 
             # do the actual drawing
             for i in range(4):
@@ -163,8 +162,7 @@ def HomographyRegressionApp():
             img_vis_np = dgm.utils.tensor_to_image(img_vis)
             image_draw = draw_rectangle(img_vis_np, dst_homo_src())
             # save warped image to disk
-            file_name = os.path.join(
-                args.output_dir, 'warped_{}.png'.format(iter_idx))
+            file_name = os.path.join(args.output_dir, 'warped_{}.png'.format(iter_idx))
             cv2.imwrite(file_name, image_draw)
 
 

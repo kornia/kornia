@@ -2,16 +2,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torch.testing import assert_allclose
-
 from kornia.augmentation import (
-    ColorJitter,
-    RandomAffine,
-    RandomErasing,
-    RandomRotation,
-    RandomPerspective,
-    RandomSharpness,
-    RandomResizedCrop,
+    ColorJitter, RandomAffine, RandomErasing, RandomRotation, RandomPerspective, RandomSharpness, RandomResizedCrop,
     RandomMotionBlur
 )
 
@@ -74,16 +66,23 @@ class TestRandomAffineBackward:
 
     @pytest.mark.parametrize("degrees", [10, [10., 20.], (10, 20), torch.tensor(10.), torch.tensor([10, 20])])
     @pytest.mark.parametrize("translate", [[0.1, 0.2], torch.tensor([0.1, 0.2])])
-    @pytest.mark.parametrize("scale", [
-        [0.1, 0.2], [0.1, 0.2, 0.3, 0.4], torch.tensor([0.1, 0.2]), torch.tensor([0.1, 0.2, 0.3, 0.4])])
-    @pytest.mark.parametrize("shear", [
-        [10., 20.], [10., 20., 30., 40.], torch.tensor([10, 20]), torch.tensor([10, 20, 30, 40])])
+    @pytest.mark.parametrize(
+        "scale", [[0.1, 0.2], [0.1, 0.2, 0.3, 0.4],
+                  torch.tensor([0.1, 0.2]),
+                  torch.tensor([0.1, 0.2, 0.3, 0.4])]
+    )
+    @pytest.mark.parametrize(
+        "shear", [[10., 20.], [10., 20., 30., 40.],
+                  torch.tensor([10, 20]),
+                  torch.tensor([10, 20, 30, 40])]
+    )
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("return_transform", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, degrees, translate, scale, shear, resample, align_corners, return_transform,
-                   same_on_batch, device, dtype):
+    def test_param(
+        self, degrees, translate, scale, shear, resample, align_corners, return_transform, same_on_batch, device, dtype
+    ):
 
         _degrees = degrees if isinstance(degrees, (int, float, list, tuple)) else \
             nn.Parameter(degrees.clone().to(device=device, dtype=dtype))
@@ -97,8 +96,16 @@ class TestRandomAffineBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomAffine(
-            _degrees, _translate, _scale, _shear, resample, align_corners=align_corners,
-            return_transform=return_transform, same_on_batch=same_on_batch, p=1.)
+            _degrees,
+            _translate,
+            _scale,
+            _shear,
+            resample,
+            align_corners=align_corners,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            p=1.
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -177,8 +184,12 @@ class TestRandomRotationBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomRotation(
-            _degrees, resample, align_corners=align_corners,
-            return_transform=return_transform, same_on_batch=same_on_batch)
+            _degrees,
+            resample,
+            align_corners=align_corners,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -221,8 +232,13 @@ class TestRandomPerspectiveBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomPerspective(
-            _distortion_scale, resample=resample, return_transform=return_transform,
-            same_on_batch=same_on_batch, align_corners=align_corners, p=1.)
+            _distortion_scale,
+            resample=resample,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            align_corners=align_corners,
+            p=1.
+        )
 
         if return_transform:
             output, _ = aug(input)
@@ -267,8 +283,7 @@ class TestRandomMotionBlurBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
-        aug = RandomMotionBlur(
-            (3, 3), _angle, _direction, border_type, resample, return_transform, same_on_batch, p=1.)
+        aug = RandomMotionBlur((3, 3), _angle, _direction, border_type, resample, return_transform, same_on_batch, p=1.)
 
         if return_transform:
             output, _ = aug(input)
@@ -317,8 +332,7 @@ class TestRandomSharpnessBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
-        aug = RandomSharpness(
-            _sharpness, return_transform=return_transform, same_on_batch=same_on_batch)
+        aug = RandomSharpness(_sharpness, return_transform=return_transform, same_on_batch=same_on_batch)
 
         if return_transform:
             output, _ = aug(input)
@@ -357,8 +371,14 @@ class TestRandomResizedCropBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.
         aug = RandomResizedCrop(
-            (8, 8), _scale, _ratio, resample=resample, return_transform=return_transform,
-            same_on_batch=same_on_batch, align_corners=align_corners)
+            (8, 8),
+            _scale,
+            _ratio,
+            resample=resample,
+            return_transform=return_transform,
+            same_on_batch=same_on_batch,
+            align_corners=align_corners
+        )
 
         if return_transform:
             output, _ = aug(input)

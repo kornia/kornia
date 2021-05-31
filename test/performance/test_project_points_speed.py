@@ -1,9 +1,9 @@
-import pytest
 from time import time
 
+import pytest
 import torch
-import kornia as kornia
 
+import kornia as kornia
 
 points_shapes = [(64, 1024**2, 3), (8192, 8192, 3), (1024**2, 64, 3)]
 
