@@ -73,10 +73,18 @@ class Laplacian(nn.Module):
         self.normalized: bool = normalized
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(kernel_size=' + str(self.kernel_size) + ', ' +\
-            'normalized=' + str(self.normalized) + ', ' + \
-            'border_type=' + self.border_type + ')'
+        return (
+            self.__class__.__name__
+            + '(kernel_size='
+            + str(self.kernel_size)
+            + ', '
+            + 'normalized='
+            + str(self.normalized)
+            + ', '
+            + 'border_type='
+            + self.border_type
+            + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

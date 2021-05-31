@@ -7,7 +7,6 @@ from kornia.morphology.morphology import closing
 
 
 class TestClosing:
-
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
         assert kernel is not None
@@ -20,11 +19,13 @@ class TestClosing:
         assert closing(img, krnl).shape == shape
 
     def test_value(self, device, dtype):
-        tensor = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device,
-                              dtype=dtype)[None, None, :, :]
-        kernel = torch.tensor([[-1., 0., -1.], [0., 0., 0.], [-1., 0., -1.]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.7, 1., 0.8], [0.7, 0.7, 0.8], [0.7, 0.9, 0.8]], device=device,
-                                dtype=dtype)[None, None, :, :]
+        tensor = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        kernel = torch.tensor([[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.7, 1.0, 0.8], [0.7, 0.7, 0.8], [0.7, 0.9, 0.8]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
         assert_allclose(closing(tensor, kernel), expected)
 
     def test_exception(self, device, dtype):
@@ -32,10 +33,10 @@ class TestClosing:
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert closing([0.], kernel)
+            assert closing([0.0], kernel)
 
         with pytest.raises(TypeError):
-            assert closing(tensor, [0.])
+            assert closing(tensor, [0.0])
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)

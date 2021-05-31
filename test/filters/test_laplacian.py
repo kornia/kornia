@@ -10,7 +10,7 @@ import kornia.testing as utils  # test utils
 @pytest.mark.parametrize("window_size", [5])
 def test_get_laplacian_kernel(window_size):
     kernel = kornia.get_laplacian_kernel1d(window_size)
-    assert kernel.shape == (window_size, )
+    assert kernel.shape == (window_size,)
     assert kernel.sum().item() == pytest.approx(0.0)
 
 
@@ -34,7 +34,6 @@ def test_get_laplacian_kernel2d(window_size):
 
 
 class TestLaplacian:
-
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
         kernel_size = 5

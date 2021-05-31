@@ -77,10 +77,7 @@ def write_version_file():
 
 
 def read(*names, **kwargs):
-    with io.open(
-        os.path.join(os.path.dirname(__file__), *names),
-        encoding=kwargs.get("encoding", "utf8")
-    ) as fp:
+    with io.open(os.path.join(os.path.dirname(__file__), *names), encoding=kwargs.get("encoding", "utf8")) as fp:
         return fp.read()
 
 
@@ -102,13 +99,12 @@ class clean(distutils.command.clean.clean):
 
         # It's an old-style class in Python 2.7...
         distutils.command.clean.clean.run(self)
+
     # remove compiled and temporary files
     subprocess.call(['rm -rf dist/ build/ kornia.egg*'], shell=True)
 
-requirements = [
-    'numpy',
-    'torch' + kornia_pt_dependencies[dep_version(version)],
-]
+
+requirements = ['numpy', 'torch' + kornia_pt_dependencies[dep_version(version)]]
 
 
 if __name__ == '__main__':
@@ -125,18 +121,12 @@ if __name__ == '__main__':
         long_description_content_type='text/markdown',
         license='Apache License 2.0',
         python_requires='>=3.6',
-
         # Test
         setup_requires=['pytest-runner'],
         tests_require=['pytest'],
-
         # Package info
-        packages=find_packages(exclude=('docs', 'test', 'examples',)),
-
-        package_data={
-            "kornia": ["py.typed"],
-        },
-
+        packages=find_packages(exclude=('docs', 'test', 'examples')),
+        package_data={"kornia": ["py.typed"]},
         zip_safe=True,
         install_requires=requirements,
         classifiers=[

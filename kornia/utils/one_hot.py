@@ -8,7 +8,7 @@ def one_hot(
     num_classes: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
-    eps: float = 1e-6
+    eps: float = 1e-6,
 ) -> torch.Tensor:
     r"""Converts an integer label x-D tensor to a one-hot (x+1)-D tensor.
 

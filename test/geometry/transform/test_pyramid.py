@@ -8,7 +8,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestPyrUp:
-
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrUp()
@@ -22,7 +21,7 @@ class TestPyrUp:
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrup, (img, ), raise_exception=True)
+        assert gradcheck(kornia.geometry.pyrup, (img,), raise_exception=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -32,7 +31,6 @@ class TestPyrUp:
 
 
 class TestPyrDown:
-
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()
@@ -53,7 +51,7 @@ class TestPyrDown:
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrdown, (img, ), raise_exception=True)
+        assert gradcheck(kornia.geometry.pyrdown, (img,), raise_exception=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -63,7 +61,6 @@ class TestPyrDown:
 
 
 class TestScalePyramid:
-
     def test_shape_tuple(self, device, dtype):
         inp = torch.zeros(3, 2, 41, 41, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=30)
@@ -106,7 +103,7 @@ class TestScalePyramid:
         PS = 16
         R = 2
         inp = torch.zeros(1, 1, PS, PS, device=device, dtype=dtype)
-        inp[..., PS // 2 - R:PS // 2 + R, PS // 2 - R:PS // 2 + R] = 1.0
+        inp[..., PS // 2 - R : PS // 2 + R, PS // 2 - R : PS // 2 + R] = 1.0
         SP = kornia.geometry.ScalePyramid(n_levels=3)
         sp, sigmas, pd = SP(inp)
         for i, pyr_level in enumerate(sp):
@@ -125,11 +122,10 @@ class TestScalePyramid:
             sp, sigmas, pd = SP()(img)
             return tuple(sp)
 
-        assert gradcheck(sp_tuple, (img, ), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4)
 
 
 class TestBuildPyramid:
-
     def test_smoke(self, device, dtype):
         input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
         pyramid = kornia.build_pyramid(input, max_level=1)
@@ -146,7 +142,7 @@ class TestBuildPyramid:
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
-            denom = 2**i
+            denom = 2 ** i
             expected_shape = (batch_size, channels, height // denom, width // denom)
             assert img.shape == expected_shape
 
@@ -155,7 +151,4 @@ class TestBuildPyramid:
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.build_pyramid, (
-            img,
-            max_level,
-        ), raise_exception=True)
+        assert gradcheck(kornia.build_pyramid, (img, max_level), raise_exception=True)

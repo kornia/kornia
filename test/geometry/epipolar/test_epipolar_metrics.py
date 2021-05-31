@@ -6,7 +6,6 @@ import kornia.testing as utils
 
 
 class TestSymmetricalEpipolarDistance:
-
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 4, 3, device=device, dtype=dtype)
         pts2 = torch.rand(1, 4, 3, device=device, dtype=dtype)
@@ -30,7 +29,6 @@ class TestSymmetricalEpipolarDistance:
 
 
 class TestSampsonEpipolarDistance:
-
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 4, 3, device=device, dtype=dtype)
         pts2 = torch.rand(1, 4, 3, device=device, dtype=dtype)

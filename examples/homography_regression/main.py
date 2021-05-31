@@ -12,29 +12,26 @@ import kornia as dgm
 
 
 def load_homography(file_name):
-    """Loads an homography from text file.
-    """
+    """Loads an homography from text file."""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
     return torch.from_numpy(np.loadtxt(file_name)).float()
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor
-    """
+    """Loads the image with OpenCV and converts to torch.Tensor"""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
 
     # convert image to torch tensor
-    tensor = dgm.utils.image_to_tensor(img).float() / 255.
+    tensor = dgm.utils.image_to_tensor(img).float() / 255.0
     tensor = tensor.view(1, *tensor.shape)  # 1xCxHxW
 
     return tensor, img
 
 
 class MyHomography(nn.Module):
-
     def __init__(self):
         super(MyHomography, self).__init__()
         self.homo = nn.Parameter(torch.Tensor(3, 3))
@@ -64,14 +61,14 @@ def HomographyRegressionApp():
         type=int,
         default=10,
         metavar='N',
-        help='how many batches to wait before logging training status'
+        help='how many batches to wait before logging training status',
     )
     parser.add_argument(
         '--log-interval-vis',
         type=int,
         default=100,
         metavar='N',
-        help='how many batches to wait before visual logging training status'
+        help='how many batches to wait before visual logging training status',
     )
     args = parser.parse_args()
 
@@ -111,7 +108,7 @@ def HomographyRegressionApp():
         # propagate the error just for a fixed window
         w_size = 100  # window size
         h_2, w_2 = height // 2, width // 2
-        loss = loss[..., h_2 - w_size:h_2 + w_size, w_2 - w_size:w_2 + w_size]
+        loss = loss[..., h_2 - w_size : h_2 + w_size, w_2 - w_size : w_2 + w_size]
         loss = torch.mean(loss)
 
         # compute gradient and update optimizer parameters
@@ -126,12 +123,7 @@ def HomographyRegressionApp():
         def draw_rectangle(image, dst_homo_src):
             height, width = image.shape[:2]
             pts_src = torch.FloatTensor(
-                [[
-                    [-1, -1],  # top-left
-                    [1, -1],  # bottom-left
-                    [1, 1],  # bottom-right
-                    [-1, 1],  # top-right
-                ]]
+                [[[-1, -1], [1, -1], [1, 1], [-1, 1]]]  # top-left  # bottom-left  # bottom-right  # top-right
             ).to(dst_homo_src.device)
             # transform points
             pts_dst = dgm.transform_points(torch.inverse(dst_homo_src), pts_src)
@@ -158,7 +150,7 @@ def HomographyRegressionApp():
         if iter_idx % args.log_interval_vis == 0:
             # merge warped and target image for visualization
             img_src_to_dst = warper(img_src, dst_homo_src())
-            img_vis = 255. * 0.5 * (img_src_to_dst + img_dst)
+            img_vis = 255.0 * 0.5 * (img_src_to_dst + img_dst)
             img_vis_np = dgm.utils.tensor_to_image(img_vis)
             image_draw = draw_rectangle(img_vis_np, dst_homo_src())
             # save warped image to disk

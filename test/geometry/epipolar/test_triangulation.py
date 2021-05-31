@@ -8,7 +8,6 @@ import kornia.geometry.epipolar as epi
 
 
 class TestTriangulation:
-
     def test_smoke(self, device, dtype):
         P1 = torch.rand(1, 3, 4, device=device, dtype=dtype)
         P2 = torch.rand(1, 3, 4, device=device, dtype=dtype)
@@ -51,9 +50,4 @@ class TestTriangulation:
         P1 = torch.nn.functional.pad(P1, [0, 1])
         P2 = epi.eye_like(3, points2)
         P2 = torch.nn.functional.pad(P2, [0, 1])
-        assert gradcheck(epi.triangulate_points, (
-            P1,
-            P2,
-            points1,
-            points2,
-        ), raise_exception=True)
+        assert gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True)

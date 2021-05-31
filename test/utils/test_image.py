@@ -7,11 +7,7 @@ import kornia as kornia
 
 
 @pytest.mark.parametrize(
-    "input_dtype, expected_dtype", [
-        (np.uint8, torch.uint8),
-        (np.float32, torch.float32),
-        (np.float64, torch.float64),
-    ]
+    "input_dtype, expected_dtype", [(np.uint8, torch.uint8), (np.float32, torch.float32), (np.float64, torch.float64)]
 )
 def test_image_to_tensor_keep_dtype(input_dtype, expected_dtype):
     image = np.ones((1, 3, 4, 5), dtype=input_dtype)
@@ -20,14 +16,15 @@ def test_image_to_tensor_keep_dtype(input_dtype, expected_dtype):
 
 
 @pytest.mark.parametrize(
-    "input_shape, expected", [
+    "input_shape, expected",
+    [
         ((4, 4), (4, 4)),
         ((1, 4, 4), (4, 4)),
         ((1, 1, 4, 4), (4, 4)),
         ((3, 4, 4), (4, 4, 3)),
         ((2, 3, 4, 4), (2, 4, 4, 3)),
         ((1, 3, 4, 4), (4, 4, 3)),
-    ]
+    ],
 )
 def test_tensor_to_image(device, input_shape, expected):
     tensor = torch.ones(input_shape).to(device)
@@ -37,14 +34,15 @@ def test_tensor_to_image(device, input_shape, expected):
 
 
 @pytest.mark.parametrize(
-    "input_shape, expected", [
+    "input_shape, expected",
+    [
         ((4, 4), (1, 1, 4, 4)),
         ((1, 4, 4), (1, 4, 1, 4)),
         ((2, 3, 4), (1, 4, 2, 3)),
         ((4, 4, 3), (1, 3, 4, 4)),
         ((2, 4, 4, 3), (2, 3, 4, 4)),
         ((1, 4, 4, 3), (1, 3, 4, 4)),
-    ]
+    ],
 )
 def test_image_to_tensor(input_shape, expected):
     image = np.ones(input_shape)
@@ -57,14 +55,15 @@ def test_image_to_tensor(input_shape, expected):
 
 
 @pytest.mark.parametrize(
-    "input_shape, expected", [
+    "input_shape, expected",
+    [
         ((4, 4), (1, 4, 4)),
         ((1, 4, 4), (4, 1, 4)),
         ((2, 3, 4), (4, 2, 3)),
         ((4, 4, 3), (3, 4, 4)),
         ((2, 4, 4, 3), (2, 3, 4, 4)),
         ((1, 4, 4, 3), (1, 3, 4, 4)),
-    ]
+    ],
 )
 def test_image_to_tensor_keepdim(input_shape, expected):
     image = np.ones(input_shape)

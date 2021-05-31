@@ -13,14 +13,13 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 def _range_bound(
     factor: Union[torch.Tensor, float, Tuple[float, float], List[float]],
     name: str,
-    center: float = 0.,
+    center: float = 0.0,
     bounds: Tuple[float, float] = (0, float('inf')),
     check: Optional[str] = 'joint',
     device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.get_default_dtype()
+    dtype: torch.dtype = torch.get_default_dtype(),
 ) -> torch.Tensor:
-    r"""Check inputs and compute the corresponding factor bounds
-    """
+    r"""Check inputs and compute the corresponding factor bounds"""
     if not isinstance(factor, (torch.Tensor)):
         factor = torch.tensor(factor, device=device, dtype=dtype)
     factor_bound: torch.Tensor
@@ -31,7 +30,7 @@ def _range_bound(
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = factor.repeat(2) * torch.tensor([-1., 1.], device=factor.device, dtype=factor.dtype) + center
+        factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
         factor_bound = factor_bound.clamp(bounds[0], bounds[1])
     else:
         factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
@@ -59,8 +58,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a tensor with length 2 whose values between {bounds}. "
-            f"Got {ranged_factor}."
+            f"{name} should be a tensor with length 2 whose values between {bounds}. " f"Got {ranged_factor}."
         )
 
 
@@ -69,7 +67,7 @@ def _singular_range_check(
     name: str,
     bounds: Optional[Tuple[float, float]] = None,
     skip_none: bool = False,
-    mode: str = '2d'
+    mode: str = '2d',
 ) -> None:
     """check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
     if mode == '2d':
@@ -98,7 +96,7 @@ def _tuple_range_reader(
     input_range: Union[torch.Tensor, float, tuple],
     target_size: int,
     device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None
+    dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
     """
     Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
@@ -115,19 +113,30 @@ def _tuple_range_reader(
         if isinstance(input_range, (float, int)):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = torch.tensor([-input_range, input_range], device=device,
-                                           dtype=dtype).repeat(target_shape[0], 1)
+            input_range_tmp = torch.tensor([-input_range, input_range], device=device, dtype=dtype).repeat(
+                target_shape[0], 1
+            )
 
-        elif isinstance(input_range, (tuple, list)) and len(input_range) == 2 \
-                and isinstance(input_range[0], (float, int)) and isinstance(input_range[1], (float, int)):
+        elif (
+            isinstance(input_range, (tuple, list))
+            and len(input_range) == 2
+            and isinstance(input_range[0], (float, int))
+            and isinstance(input_range[1], (float, int))
+        ):
             input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
 
-        elif isinstance(input_range, (tuple, list)) and len(input_range) == target_shape[0] \
-                and all([isinstance(x, (float, int)) for x in input_range]):
+        elif (
+            isinstance(input_range, (tuple, list))
+            and len(input_range) == target_shape[0]
+            and all([isinstance(x, (float, int)) for x in input_range])
+        ):
             input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
 
-        elif isinstance(input_range, (tuple, list)) and len(input_range) == target_shape[0] \
-                and all([isinstance(x, (tuple, list)) for x in input_range]):
+        elif (
+            isinstance(input_range, (tuple, list))
+            and len(input_range) == target_shape[0]
+            and all([isinstance(x, (tuple, list)) for x in input_range])
+        ):
             input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
 
         else:
@@ -143,7 +152,7 @@ def _tuple_range_reader(
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
             input_range_tmp = input_range.repeat(2) * torch.tensor(
-                [-1., 1.], device=input_range.device, dtype=input_range.dtype
+                [-1.0, 1.0], device=input_range.device, dtype=input_range.dtype
             )
             input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
 

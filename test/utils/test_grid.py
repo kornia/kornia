@@ -17,7 +17,7 @@ def test_create_meshgrid(device, dtype):
     assert grid.shape == (1, height, width, 2)
 
     # check grid corner values
-    assert tuple(grid[0, 0, 0].cpu().numpy()) == (0., 0.)
+    assert tuple(grid[0, 0, 0].cpu().numpy()) == (0.0, 0.0)
     assert tuple(grid[0, height - 1, width - 1].cpu().numpy()) == (width - 1, height - 1)
 
 
@@ -64,5 +64,5 @@ def test_create_meshgrid3d(device, dtype):
     assert grid.shape == (1, depth, height, width, 3)
 
     # check grid corner values
-    assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0., 0., 0.)
+    assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0.0, 0.0, 0.0)
     assert tuple(grid[0, depth - 1, height - 1, width - 1].cpu().numpy()) == (depth - 1, width - 1, height - 1)

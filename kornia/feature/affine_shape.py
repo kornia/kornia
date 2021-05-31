@@ -5,7 +5,7 @@ import torch.nn as nn
 import math
 from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import SpatialGradient
-from kornia.feature.laf import (ellipse_to_laf, get_laf_scale, raise_error_if_laf_is_not_valid, scale_laf, make_upright)
+from kornia.feature.laf import ellipse_to_laf, get_laf_scale, raise_error_if_laf_is_not_valid, scale_laf, make_upright
 from kornia.feature import extract_patches_from_pyramid
 
 urls: Dict[str, str] = dict()
@@ -30,15 +30,13 @@ class PatchAffineShapeEstimator(nn.Module):
         return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'patch_size=' + str(self.patch_size) + ', ' + \
-            'eps=' + str(self.eps) + ')'
+        return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            torch.Tensor: ellipse_shape shape [Bx1x3] """
+            torch.Tensor: ellipse_shape shape [Bx1x3]"""
         if not isinstance(patch, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(patch)))
         if not len(patch.shape) == 4:
@@ -57,16 +55,17 @@ class PatchAffineShapeEstimator(nn.Module):
         # abc == 1st axis, mixture, 2nd axis. Ellipse_shape is a 2nd moment matrix.
         ellipse_shape = torch.cat(
             [
-                gx.pow(2).mean(dim=2).mean(dim=2, keepdim=True), (gx * gy).mean(dim=2).mean(dim=2, keepdim=True),
-                gy.pow(2).mean(dim=2).mean(dim=2, keepdim=True)
+                gx.pow(2).mean(dim=2).mean(dim=2, keepdim=True),
+                (gx * gy).mean(dim=2).mean(dim=2, keepdim=True),
+                gy.pow(2).mean(dim=2).mean(dim=2, keepdim=True),
             ],
-            dim=2
+            dim=2,
         )
 
         # Now lets detect degenerate cases: when 2 or 3 elements are close to zero (e.g. if patch is completely black
         bad_mask = ((ellipse_shape < self.eps).float().sum(dim=2, keepdim=True) >= 2).to(ellipse_shape.dtype)
         # We will replace degenerate shape with circular shapes.
-        circular_shape = torch.tensor([1.0, 0., 1.0]).to(ellipse_shape.device).to(ellipse_shape.dtype).view(1, 1, 3)
+        circular_shape = torch.tensor([1.0, 0.0, 1.0]).to(ellipse_shape.device).to(ellipse_shape.dtype).view(1, 1, 3)
         ellipse_shape = ellipse_shape * (1.0 - bad_mask) + circular_shape * bad_mask
         # normalization
         ellipse_shape = ellipse_shape / ellipse_shape.max(dim=2, keepdim=True)[0]
@@ -82,7 +81,7 @@ class LAFAffineShapeEstimator(nn.Module):
 
     Args:
             patch_size: int, default = 32
-            affine_shape_detector: nn.Module. Patch affine shape estimator, e.g. PatchAffineShapeEstimator. Default: None """  # noqa pylint: disable
+            affine_shape_detector: nn.Module. Patch affine shape estimator, e.g. PatchAffineShapeEstimator. Default: None"""  # noqa pylint: disable
 
     def __init__(self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None) -> None:
         super(LAFAffineShapeEstimator, self).__init__()
@@ -91,9 +90,15 @@ class LAFAffineShapeEstimator(nn.Module):
         return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'patch_size=' + str(self.patch_size) + ', ' + \
-            'affine_shape_detector=' + str(self.affine_shape_detector) + ')'
+        return (
+            self.__class__.__name__ + '('
+            'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'affine_shape_detector='
+            + str(self.affine_shape_detector)
+            + ')'
+        )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
@@ -141,16 +146,28 @@ class LAFAffNetShapeEstimator(nn.Module):
     def __init__(self, pretrained: bool = False):
         super(LAFAffNetShapeEstimator, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False), nn.BatchNorm2d(16, affine=False), nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(16, affine=False),
-            nn.ReLU(), nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32, affine=False), nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(32, affine=False),
-            nn.ReLU(), nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64, affine=False), nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64, affine=False),
-            nn.ReLU(), nn.Dropout(0.25), nn.Conv2d(64, 3, kernel_size=8, stride=1, padding=0, bias=True), nn.Tanh(),
-            nn.AdaptiveAvgPool2d(1)
+            nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Dropout(0.25),
+            nn.Conv2d(64, 3, kernel_size=8, stride=1, padding=0, bias=True),
+            nn.Tanh(),
+            nn.AdaptiveAvgPool2d(1),
         )
         self.patch_size = 32
         # use torch.hub to load pretrained model

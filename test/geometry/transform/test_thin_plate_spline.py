@@ -7,14 +7,13 @@ import kornia as kornia
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
-    src = torch.tensor([[[0., 0.], [0., 10.], [10., 0.], [10., 10.], [5., 5.]]], device=device, dtype=dtype)
+    src = torch.tensor([[[0.0, 0.0], [0.0, 10.0], [10.0, 0.0], [10.0, 10.0], [5.0, 5.0]]], device=device, dtype=dtype)
     src = src.repeat(batch_size, 1, 1)
     dst = src + torch.rand_like(src) * 2.5
     return src, dst
 
 
 class TestTransformParameters:
-
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src = torch.rand(batch_size, 4, 2, device=device)
@@ -27,20 +26,16 @@ class TestTransformParameters:
         kernel, affine = kornia.get_tps_transform(src, src)
         target_kernel = torch.zeros(batch_size, 5, 2, device=device)
         target_affine = torch.zeros(batch_size, 3, 2, device=device)
-        target_affine[:, [1, 2], [0, 1]] = 1.
+        target_affine[:, [1, 2], [0, 1]] = 1.0
         assert_allclose(kernel, target_kernel, atol=1e-4, rtol=1e-4)
         assert_allclose(affine, target_affine, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_affine_only(self, batch_size, device, dtype):
-        src = torch.tensor([[
-            [0., 0.],
-            [0., 1.],
-            [1., 0.],
-            [1., 1.],
-            [.5, .5],
-        ]], device=device).repeat(batch_size, 1, 1)
-        dst = src.clone() * 2.
+        src = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0], [0.5, 0.5]]], device=device).repeat(
+            batch_size, 1, 1
+        )
+        dst = src.clone() * 2.0
         kernel, affine = kornia.get_tps_transform(src, dst)
         assert_allclose(kernel, torch.zeros_like(kernel), atol=1e-4, rtol=1e-4)
 
@@ -77,7 +72,6 @@ class TestTransformParameters:
 
 
 class TestWarpPoints:
-
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -148,7 +142,6 @@ class TestWarpPoints:
 
 
 class TestWarpImage:
-
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -159,17 +152,13 @@ class TestWarpImage:
 
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_warp(self, batch_size, device, dtype):
-        src = torch.tensor([[
-            [-1., -1.],
-            [-1., 1.],
-            [1., -1.],
-            [1., -1.],
-            [0., 0.],
-        ]], device=device).repeat(batch_size, 1, 1)
+        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, -1.0], [0.0, 0.0]]], device=device).repeat(
+            batch_size, 1, 1
+        )
         # zoom in by a factor of 2
-        dst = src.clone() * 2.
+        dst = src.clone() * 2.0
         tensor = torch.zeros(batch_size, 3, 8, 8, device=device)
-        tensor[:, :, 2:6, 2:6] = 1.
+        tensor[:, :, 2:6, 2:6] = 1.0
 
         expected = torch.ones_like(tensor)
         # nn.grid_sample interpolates the at the edges it seems, so the boundaries have values < 1

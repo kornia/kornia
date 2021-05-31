@@ -10,7 +10,7 @@ def harris_response(
     input: torch.Tensor,
     k: Union[torch.Tensor, float] = 0.04,
     grads_mode: str = 'sobel',
-    sigmas: Optional[torch.Tensor] = None
+    sigmas: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     r"""Computes the Harris cornerness function. Function does not do
     any normalization or nms.The response map is computed according the following formulation:
@@ -83,14 +83,14 @@ def harris_response(
 
     # compute the structure tensor M elements
 
-    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1., 1.))
-    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1., 1.))
-    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
+    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
     # compute the response map
-    scores: torch.Tensor = det_m - k * (trace_m**2)
+    scores: torch.Tensor = det_m - k * (trace_m ** 2)
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
@@ -159,15 +159,15 @@ def gftt_response(
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1., 1.))
-    dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1., 1.))
-    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1., 1.))
+    dx2: torch.Tensor = gaussian_blur2d(dx ** 2, (7, 7), (1.0, 1.0))
+    dy2: torch.Tensor = gaussian_blur2d(dy ** 2, (7, 7), (1.0, 1.0))
+    dxy: torch.Tensor = gaussian_blur2d(dx * dy, (7, 7), (1.0, 1.0))
 
     det_m: torch.Tensor = dx2 * dy2 - dxy * dxy
     trace_m: torch.Tensor = dx2 + dy2
 
-    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m**2 - 4 * det_m).abs()))
-    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m**2 - 4 * det_m).abs()))
+    e1: torch.Tensor = 0.5 * (trace_m + torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
+    e2: torch.Tensor = 0.5 * (trace_m - torch.sqrt((trace_m ** 2 - 4 * det_m).abs()))
 
     scores: torch.Tensor = torch.min(e1, e2)
     if sigmas is not None:
@@ -244,7 +244,7 @@ def hessian_response(
     dxy: torch.Tensor = gradients[:, :, 1]
     dyy: torch.Tensor = gradients[:, :, 2]
 
-    scores: torch.Tensor = dxx * dyy - dxy**2
+    scores: torch.Tensor = dxx * dyy - dxy ** 2
     if sigmas is not None:
         scores = scores * sigmas.pow(4).view(-1, 1, 1, 1)
     return scores
@@ -284,11 +284,7 @@ class BlobDoG(nn.Module):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    def forward(
-        self,
-        input: torch.Tensor,  # type: ignore
-        sigmas: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return dog_response(input)  # type: ignore
 
 
@@ -307,15 +303,9 @@ class CornerHarris(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(k=' + str(self.k) + ', ' +\
-            'grads_mode=' + self.grads_mode + ')'
+        return self.__class__.__name__ + '(k=' + str(self.k) + ', ' + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(
-        self,
-        input: torch.Tensor,  # type: ignore
-        sigmas: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return harris_response(input, self.k, self.grads_mode, sigmas)  # type: ignore
 
 
@@ -330,14 +320,9 @@ class CornerGFTT(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            'grads_mode=' + self.grads_mode + ')'
+        return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(
-        self,
-        input: torch.Tensor,  # type: ignore
-        sigmas: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -352,12 +337,7 @@ class BlobHessian(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            'grads_mode=' + self.grads_mode + ')'
+        return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
 
-    def forward(
-        self,
-        input: torch.Tensor,  # type: ignore
-        sigmas: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:  # type: ignore
         return hessian_response(input, self.grads_mode, sigmas)

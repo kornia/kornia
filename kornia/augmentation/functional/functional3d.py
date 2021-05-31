@@ -4,15 +4,20 @@ import torch
 
 import kornia as K
 from kornia.constants import Resample, BorderType, pi
-from kornia.geometry.transform.affwarp import (_compute_rotation_matrix3d, _compute_tensor_center3d)
+from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 from kornia.geometry.transform.projwarp import warp_affine3d
 from kornia.geometry import (
-    crop_by_boxes3d, warp_perspective3d, get_perspective_transform3d, rotate3d, get_affine_matrix3d, deg2rad
+    crop_by_boxes3d,
+    warp_perspective3d,
+    get_perspective_transform3d,
+    rotate3d,
+    get_affine_matrix3d,
+    deg2rad,
 )
-from kornia.enhance import (equalize3d)
+from kornia.enhance import equalize3d
 
 from .. import random_generator as rg
-from ..utils import (_validate_input3d)
+from ..utils import _validate_input3d
 from kornia.filters import motion_blur3d
 
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
@@ -200,9 +205,16 @@ def compute_affine_transformation3d(input: torch.Tensor, params: Dict[str, torch
         torch.Tensor: The affine transformation matrix :math: `(*, 4, 4)`.
     """
     transform = get_affine_matrix3d(
-        params['translations'], params['center'], params['scale'], params['angles'], deg2rad(params['sxy']),
-        deg2rad(params['sxz']), deg2rad(params['syx']), deg2rad(params['syz']), deg2rad(params['szx']),
-        deg2rad(params['szy'])
+        params['translations'],
+        params['center'],
+        params['scale'],
+        params['angles'],
+        deg2rad(params['sxy']),
+        deg2rad(params['sxz']),
+        deg2rad(params['syx']),
+        deg2rad(params['syz']),
+        deg2rad(params['szx']),
+        deg2rad(params['szy']),
     ).to(input)
     return transform
 
@@ -407,8 +419,9 @@ def compute_perspective_transformation3d(input: torch.Tensor, params: Dict[str, 
     Returns:
         torch.Tensor: The perspective transformation matrix :math: `(*, 4, 4)`
     """
-    perspective_transform: torch.Tensor = get_perspective_transform3d(params['start_points'],
-                                                                      params['end_points']).to(input)
+    perspective_transform: torch.Tensor = get_perspective_transform3d(params['start_points'], params['end_points']).to(
+        input
+    )
 
     transform: torch.Tensor = K.eye_like(4, input)
 

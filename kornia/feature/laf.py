@@ -109,8 +109,7 @@ def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torc
     B, N = LAF.shape[:2]
     rotmat: torch.Tensor = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
     laf_out: torch.Tensor = torch.cat(
-        [torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat),
-         LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2
+        [torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat), LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2
     ).view(B, N, 2, 3)
     return laf_out
 
@@ -137,8 +136,7 @@ def laf_from_center_scale_ori(xy: torch.Tensor, scale: torch.Tensor, ori: torch.
                 continue
             if var.size(i) != dim:
                 raise TypeError(
-                    "{} shape should be must be [{}]. "
-                    "Got {}".format(var_name, str(req_shape), var.size())
+                    "{} shape should be must be [{}]. " "Got {}".format(var_name, str(req_shape), var.size())
                 )
     unscaled_laf: torch.Tensor = torch.cat([kornia.angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
     laf: torch.Tensor = scale_laf(unscaled_laf, scale)
@@ -199,14 +197,14 @@ def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     scale = det
     # The function is equivalent to doing 2x2 SVD and reseting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
-    b2a2 = torch.sqrt(laf[..., 0:1, 1:2]**2 + laf[..., 0:1, 0:1]**2) + eps
+    b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
     laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
     laf2_ell = torch.cat(  # type: ignore
         [
             ((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) / (b2a2 * det)),
-            (det / b2a2).contiguous()
+            (det / b2a2).contiguous(),
         ],
-        dim=3
+        dim=3,
     )
     laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
     return scale_laf(laf_unit_scale, scale)
@@ -238,7 +236,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     if n_dims != 3:
         raise TypeError("ellipse shape should be must be [BxNx5]. " "Got {}".format(ells.size()))
     B, N, dim = ells.size()
-    if (dim != 5):
+    if dim != 5:
         raise TypeError("ellipse shape should be must be [BxNx5]. " "Got {}".format(ells.size()))
     # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
     # ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
@@ -283,14 +281,14 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
         [
             torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
             torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.ones(n_pts - 1, 1)
+            torch.ones(n_pts - 1, 1),
         ],
-        dim=1
+        dim=1,
     )
     # Add origin to draw also the orientation
-    pts = torch.cat([torch.tensor([0., 0., 1.]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
+    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
-    aux = torch.tensor([0., 0., 1.]).view(1, 1, 3).expand(B * N, 1, 3)
+    aux = torch.tensor([0.0, 0.0, 1.0]).view(1, 1, 3).expand(B * N, 1, 3)
     HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return kornia.convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
@@ -319,7 +317,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0):
     """
     # TODO: Refactor doctest
     raise_error_if_laf_is_not_valid(LAF)
-    pts = laf_to_boundary_points(LAF[img_idx:img_idx + 1])[0]
+    pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
     return (pts_np[..., 0], pts_np[..., 1])
 
@@ -411,11 +409,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     # and extraction at arbitrary other
     LAF_renorm = denormalize_laf(LAF, img)
 
-    grid = F.affine_grid(
-        LAF_renorm.view(B * N, 2, 3),  # type: ignore
-        [B * N, ch, PS, PS],
-        align_corners=False
-    )
+    grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)  # type: ignore
     grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w) - 1.0
     grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h) - 1.0
     return grid
@@ -446,13 +440,13 @@ def extract_patches_simple(
     out = []
     # for loop temporarily, to be refactored
     for i in range(B):
-        grid = generate_patch_grid_from_normalized_LAF(img[i:i + 1], nlaf[i:i + 1], PS).to(img.device)
+        grid = generate_patch_grid_from_normalized_LAF(img[i : i + 1], nlaf[i : i + 1], PS).to(img.device)
         out.append(
             F.grid_sample(
-                img[i:i + 1].expand(grid.size(0), ch, h, w),
+                img[i : i + 1].expand(grid.size(0), ch, h, w),
                 grid,  # type: ignore
                 padding_mode="border",
-                align_corners=False
+                align_corners=False,
             )
         )
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
@@ -494,12 +488,12 @@ def extract_patches_from_pyramid(
             if (scale_mask.float().sum()) == 0:
                 continue
             scale_mask = (scale_mask > 0).view(-1)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img[i:i + 1], nlaf[i:i + 1, scale_mask, :, :], PS)
+            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i:i + 1].expand(grid.size(0), ch, h, w),
+                cur_img[i : i + 1].expand(grid.size(0), ch, h, w),
                 grid,  # type: ignore
                 padding_mode="border",
-                align_corners=False
+                align_corners=False,
             )
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         cur_img = kornia.pyrdown(cur_img)
@@ -522,10 +516,9 @@ def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0
     raise_error_if_laf_is_not_valid(laf)
     n, ch, h, w = images.size()
     pts: torch.Tensor = laf_to_boundary_points(laf, 12)
-    good_lafs_mask: torch.Tensor = (pts[..., 0] >= border) *\
-        (pts[..., 0] <= w - border) *\
-        (pts[..., 1] >= border) *\
-        (pts[..., 1] <= h - border)
+    good_lafs_mask: torch.Tensor = (
+        (pts[..., 0] >= border) * (pts[..., 0] <= w - border) * (pts[..., 1] >= border) * (pts[..., 1] <= h - border)
+    )
     good_lafs_mask = good_lafs_mask.min(dim=2)[0]
     return good_lafs_mask
 

@@ -8,7 +8,6 @@ from kornia.geometry.transform import elastic_transform2d
 
 
 class TestElasticTransform:
-
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
         noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
@@ -23,7 +22,7 @@ class TestElasticTransform:
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert elastic_transform2d([0.])
+            assert elastic_transform2d([0.0])
 
         with pytest.raises(TypeError):
             assert elastic_transform2d(torch.tensor(), 1)
@@ -39,11 +38,12 @@ class TestElasticTransform:
             assert elastic_transform2d(img, noise)
 
     @pytest.mark.parametrize(
-        "kernel_size, sigma, alpha", [
-            [(3, 3), (4., 4.), (32., 32.)],
-            [(5, 3), (4., 8.), (16., 32.)],
-            [(5, 5), torch.tensor([2., 8.]), torch.tensor([16., 64.])],
-        ]
+        "kernel_size, sigma, alpha",
+        [
+            [(3, 3), (4.0, 4.0), (32.0, 32.0)],
+            [(5, 3), (4.0, 8.0), (16.0, 32.0)],
+            [(5, 5), torch.tensor([2.0, 8.0]), torch.tensor([16.0, 64.0])],
+        ],
     )
     def test_valid_paramters(self, device, dtype, kernel_size, sigma, alpha):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
@@ -58,7 +58,7 @@ class TestElasticTransform:
         image = torch.tensor(
             [[[[0.0018, 0.7521, 0.7550], [0.2053, 0.4249, 0.1369], [0.1027, 0.3992, 0.8773]]]],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         noise = torch.ones(1, 2, 3, 3, device=device, dtype=dtype)
@@ -66,7 +66,7 @@ class TestElasticTransform:
         expected = torch.tensor(
             [[[[0.0005, 0.3795, 0.1905], [0.1034, 0.4235, 0.0702], [0.0259, 0.2007, 0.2193]]]],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
         actual = elastic_transform2d(image, noise)
@@ -76,10 +76,7 @@ class TestElasticTransform:
     def test_gradcheck(self, device, dtype, requires_grad):
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
-        assert gradcheck(elastic_transform2d, (
-            image,
-            noise,
-        ), raise_exception=True)
+        assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True)
 
     def test_jit(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)

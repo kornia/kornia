@@ -29,33 +29,32 @@ def load_data(root_path, sequence_name, frame_id):
 
 
 def load_depth(file_name):
-    """Loads the depth using the sintel SDK and converts to torch.Tensor
-    """
+    """Loads the depth using the sintel SDK and converts to torch.Tensor"""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
     import sintel_io
+
     depth = sintel_io.depth_read(file_name)
     return torch.from_numpy(depth).view(1, 1, *depth.shape).float()
 
 
 def load_camera_data(file_name):
-    """Loads the camera data using the sintel SDK and converts to torch.Tensor.
-    """
+    """Loads the camera data using the sintel SDK and converts to torch.Tensor."""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
     import sintel_io
+
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
     return intrinsic, extrinsic
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor
-    """
+    """Loads the image with OpenCV and converts to torch.Tensor"""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
 
     # convert image to torch tensor
-    tensor = tgm.utils.image_to_tensor(img).float() / 255.
+    tensor = tgm.utils.image_to_tensor(img).float() / 255.0
     return tensor.view(1, *tensor.shape)  # 1xCxHxW
 
 
@@ -63,18 +62,17 @@ def clip_and_convert_tensor(tensor):
     """convert the input torch.Tensor to OpenCV image,clip it to be between
     [0, 255] and convert it to unit
     """
-    img = tgm.utils.tensor_to_image(255. * tensor)  # convert tensor to numpy
+    img = tgm.utils.tensor_to_image(255.0 * tensor)  # convert tensor to numpy
     img_cliped = np.clip(img, 0, 255)  # clip and reorder the channels
     img = img_cliped.astype('uint8')  # convert to uint
     return img
 
 
 class InvDepth(nn.Module):
-
-    def __init__(self, height, width, min_depth=0.50, max_depth=25.):
+    def __init__(self, height, width, min_depth=0.50, max_depth=25.0):
         super(InvDepth, self).__init__()
-        self._min_range = 1. / max_depth
-        self._max_range = 1. / min_depth
+        self._min_range = 1.0 / max_depth
+        self._max_range = 1.0 / min_depth
 
         self.w = nn.Parameter(self._init_weights(height, width))
 
@@ -109,14 +107,14 @@ def DepthRegressionApp():
         type=int,
         default=10,
         metavar='N',
-        help='how many batches to wait before logging training status'
+        help='how many batches to wait before logging training status',
     )
     parser.add_argument(
         '--log-interval-vis',
         type=int,
         default=100,
         metavar='N',
-        help='how many batches to wait before visual logging training status'
+        help='how many batches to wait before visual logging training status',
     )
     args = parser.parse_args()
 
@@ -164,8 +162,7 @@ def DepthRegressionApp():
         loss.backward()
         optimizer.step()
 
-        if iter_idx % args.log_interval == 0 or \
-           iter_idx == args.num_iterations - 1:
+        if iter_idx % args.log_interval == 0 or iter_idx == args.num_iterations - 1:
             print('Train iteration: {}/{}\tLoss: {:.6}'.format(iter_idx, args.num_iterations, loss.item()))
 
             if iter_idx % args.log_interval_vis == 0:
@@ -175,9 +172,10 @@ def DepthRegressionApp():
 
                 img_both_vis = clip_and_convert_tensor(img_both_vis)
                 img_i_to_ref_vis = clip_and_convert_tensor(img_i_to_ref)
-                inv_depth_ref_vis = tgm.utils.tensor_to_image(inv_depth_ref() /
-                                                              (inv_depth_ref().max() + 1e-6)).squeeze()
-                inv_depth_ref_vis = np.clip(255. * inv_depth_ref_vis, 0, 255)
+                inv_depth_ref_vis = tgm.utils.tensor_to_image(
+                    inv_depth_ref() / (inv_depth_ref().max() + 1e-6)
+                ).squeeze()
+                inv_depth_ref_vis = np.clip(255.0 * inv_depth_ref_vis, 0, 255)
                 inv_depth_ref_vis = inv_depth_ref_vis.astype('uint8')
 
                 # save warped image and depth to disk

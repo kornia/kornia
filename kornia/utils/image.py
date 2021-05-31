@@ -18,7 +18,7 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         torch.Tensor: tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
     """
-    if not isinstance(image, (np.ndarray, )):
+    if not isinstance(image, (np.ndarray,)):
         raise TypeError("Input type must be a numpy.ndarray. Got {}".format(type(image)))
 
     if len(image.shape) > 4 or len(image.shape) < 2:

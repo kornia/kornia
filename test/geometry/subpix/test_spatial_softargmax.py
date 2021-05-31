@@ -10,7 +10,6 @@ from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _ge
 
 
 class TestCenterKernel2d:
-
     def test_smoke(self, device, dtype):
         kernel = _get_center_kernel2d(3, 4, device=device).to(dtype=dtype)
         assert kernel.shape == (2, 2, 3, 4)
@@ -19,11 +18,17 @@ class TestCenterKernel2d:
         kernel = _get_center_kernel2d(3, 3, device=device).to(dtype=dtype)
         expected = torch.tensor(
             [
-                [[[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]]],
-                [[[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]], [[0., 0., 0.], [0., 1., 0.], [0., 0., 0.]]]
+                [
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                ],
+                [
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+                ],
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
@@ -36,7 +41,6 @@ class TestCenterKernel2d:
 
 
 class TestCenterKernel3d:
-
     def test_smoke(self, device, dtype):
         kernel = _get_center_kernel3d(6, 3, 4, device=device).to(dtype=dtype)
         assert kernel.shape == (3, 3, 6, 3, 4)
@@ -44,9 +48,9 @@ class TestCenterKernel3d:
     def test_odd(self, device, dtype):
         kernel = _get_center_kernel3d(3, 5, 7, device=device).to(dtype=dtype)
         expected = torch.zeros(3, 3, 3, 5, 7, device=device, dtype=dtype)
-        expected[0, 0, 1, 2, 3] = 1.
-        expected[1, 1, 1, 2, 3] = 1.
-        expected[2, 2, 1, 2, 3] = 1.
+        expected[0, 0, 1, 2, 3] = 1.0
+        expected[1, 1, 1, 2, 3] = 1.0
+        expected[2, 2, 1, 2, 3] = 1.0
         assert_allclose(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
@@ -59,7 +63,6 @@ class TestCenterKernel3d:
 
 
 class TestSpatialSoftArgmax2d:
-
     def test_smoke(self, device, dtype):
         input = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         m = kornia.SpatialSoftArgmax2d()
@@ -161,12 +164,11 @@ class TestSpatialSoftArgmax2d:
     def test_jit_trace(self, device, dtype):
         input = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
         op = kornia.spatial_soft_argmax2d
-        op_jit = torch.jit.trace(op, (input, ))
+        op_jit = torch.jit.trace(op, (input,))
         assert_allclose(op(input), op_jit(input), rtol=0, atol=1e-5)
 
 
 class TestConvSoftArgmax2d:
-
     def test_smoke(self, device, dtype):
         input = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
         m = kornia.ConvSoftArgmax2d((3, 3))
@@ -201,22 +203,24 @@ class TestConvSoftArgmax2d:
             [
                 [
                     [
-                        [0., 0., 0., 0., 0.],
-                        [0., 1., 0., 0., 0.],
-                        [0., 0., 0., 0., 0.],
-                        [0., 0., 0., 1., 0.],
-                        [0., 0., 0., 0., 0.],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax2d(
             (3, 3), (2, 2), (0, 0), temperature=0.05, normalized_coordinates=False, output_value=True
         )
-        expected_val = torch.tensor([[[[1., 0.], [0., 1.]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[1., 3.], [1., 3.]], [[1., 1.], [3., 3.]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[1.0, 0.0], [0.0, 1.0]]]], device=device, dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[1.0, 3.0], [1.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
@@ -226,22 +230,24 @@ class TestConvSoftArgmax2d:
             [
                 [
                     [
-                        [0., 0., 0., 0., 0.],
-                        [0., 1., 0., 0., 0.],
-                        [0., 0., 0., 0., 0.],
-                        [0., 0., 0., 1., 0.],
-                        [0., 0., 0., 0., 0.],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax2d(
-            (3, 3), (2, 2), (0, 0), temperature=10., normalized_coordinates=False, output_value=True
+            (3, 3), (2, 2), (0, 0), temperature=10.0, normalized_coordinates=False, output_value=True
         )
-        expected_val = torch.tensor([[[[0.1214, 0.], [0., 0.1214]]]], device=device, dtype=dtype)
-        expected_coord = torch.tensor([[[[[1., 3.], [1., 3.]], [[1., 1.], [3., 3.]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[0.1214, 0.0], [0.0, 0.1214]]]], device=device, dtype=dtype)
+        expected_coord = torch.tensor(
+            [[[[[1.0, 3.0], [1.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]]]], device=device, dtype=dtype
+        )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
         assert_allclose(coords, expected_coord, atol=1e-4, rtol=1e-4)
@@ -251,21 +257,21 @@ class TestConvSoftArgmax2d:
             [
                 [
                     [
-                        [0., 0., 0., 0., 0.],
-                        [0., 1., 0., 0., 0.],
-                        [0., 0., 0., 0., 0.],
-                        [0., 0., 0., 1., 0.],
-                        [0., 0., 0., 0., 0.],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax2d(
             (3, 3), (2, 2), (0, 0), temperature=0.05, normalized_coordinates=True, output_value=True
         )
-        expected_val = torch.tensor([[[[1., 0.], [0., 1.]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[1.0, 0.0], [0.0, 1.0]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
             [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
         )
@@ -278,21 +284,21 @@ class TestConvSoftArgmax2d:
             [
                 [
                     [
-                        [0., 0., 0., 0., 0.],
-                        [0., 1., 0., 0., 0.],
-                        [0., 0., 0., 0., 0.],
-                        [0., 0., 0., 1., 0.],
-                        [0., 0., 0., 0., 0.],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax2d(
-            (3, 3), (2, 2), (0, 0), temperature=10., normalized_coordinates=True, output_value=True
+            (3, 3), (2, 2), (0, 0), temperature=10.0, normalized_coordinates=True, output_value=True
         )
-        expected_val = torch.tensor([[[[0.1214, 0.], [0., 0.1214]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[0.1214, 0.0], [0.0, 0.1214]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
             [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
         )
@@ -302,7 +308,6 @@ class TestConvSoftArgmax2d:
 
 
 class TestConvSoftArgmax3d:
-
     def test_smoke(self, device, dtype):
         input = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
         m = kornia.ConvSoftArgmax3d((3, 3, 3), output_value=False)
@@ -326,24 +331,26 @@ class TestConvSoftArgmax3d:
                 [
                     [
                         [
-                            [0., 0., 0., 0., 0.],
-                            [0., 1., 0., 0., 0.],
-                            [0., 0., 0., 0., 0.],
-                            [0., 0., 0., 1., 0.],
-                            [0., 0., 0., 0., 0.],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
                         ]
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax3d(
             (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=0.05, normalized_coordinates=False, output_value=True
         )
-        expected_val = torch.tensor([[[[[1., 0.], [0., 1.]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[[1.0, 0.0], [0.0, 1.0]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]], device=device, dtype=dtype
+            [[[[[[0.0, 0.0], [0.0, 0.0]]], [[[1.0, 3.0], [1.0, 3.0]]], [[[1.0, 1.0], [3.0, 3.0]]]]]],
+            device=device,
+            dtype=dtype,
         )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
@@ -355,24 +362,26 @@ class TestConvSoftArgmax3d:
                 [
                     [
                         [
-                            [0., 0., 0., 0., 0.],
-                            [0., 1., 0., 0., 0.],
-                            [0., 0., 0., 0., 0.],
-                            [0., 0., 0., 1., 0.],
-                            [0., 0., 0., 0., 0.],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
                         ]
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax3d(
-            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10., normalized_coordinates=False, output_value=True
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10.0, normalized_coordinates=False, output_value=True
         )
-        expected_val = torch.tensor([[[[[0.1214, 0.], [0., 0.1214]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[[0.1214, 0.0], [0.0, 0.1214]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[0., 0.], [0., 0.]]], [[[1., 3.], [1., 3.]]], [[[1., 1.], [3., 3.]]]]]], device=device, dtype=dtype
+            [[[[[[0.0, 0.0], [0.0, 0.0]]], [[[1.0, 3.0], [1.0, 3.0]]], [[[1.0, 1.0], [3.0, 3.0]]]]]],
+            device=device,
+            dtype=dtype,
         )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
@@ -384,26 +393,26 @@ class TestConvSoftArgmax3d:
                 [
                     [
                         [
-                            [0., 0., 0., 0., 0.],
-                            [0., 1., 0., 0., 0.],
-                            [0., 0., 0., 0., 0.],
-                            [0., 0., 0., 1., 0.],
-                            [0., 0., 0., 0., 0.],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
                         ]
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax3d(
             (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=0.05, normalized_coordinates=True, output_value=True
         )
-        expected_val = torch.tensor([[[[[1., 0.], [0., 1.]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[[1.0, 0.0], [0.0, 1.0]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            [[[[[[-1.0, -1.0], [-1.0, -1.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
@@ -415,26 +424,26 @@ class TestConvSoftArgmax3d:
                 [
                     [
                         [
-                            [0., 0., 0., 0., 0.],
-                            [0., 1., 0., 0., 0.],
-                            [0., 0., 0., 0., 0.],
-                            [0., 0., 0., 1., 0.],
-                            [0., 0., 0., 0., 0.],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 1.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0, 0.0],
+                            [0.0, 0.0, 0.0, 0.0, 0.0],
                         ]
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         softargmax = kornia.ConvSoftArgmax3d(
-            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10., normalized_coordinates=True, output_value=True
+            (1, 3, 3), (1, 2, 2), (0, 0, 0), temperature=10.0, normalized_coordinates=True, output_value=True
         )
-        expected_val = torch.tensor([[[[[0.1214, 0.], [0., 0.1214]]]]], device=device, dtype=dtype)
+        expected_val = torch.tensor([[[[[0.1214, 0.0], [0.0, 0.1214]]]]], device=device, dtype=dtype)
         expected_coord = torch.tensor(
-            [[[[[[-1., -1.], [-1., -1.]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
+            [[[[[[-1.0, -1.0], [-1.0, -1.0]]], [[[-0.5, 0.5], [-0.5, 0.5]]], [[[-0.5, -0.5], [0.5, 0.5]]]]]],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)
@@ -453,13 +462,10 @@ class TestConvQuadInterp3d:
 
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
-        input[0, 0, 1, 2, 2] += 20.
+        input[0, 0, 1, 2, 2] += 20.0
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0), (input),
-            raise_exception=True,
-            atol=1e-3,
-            rtol=1e-3
+            kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0), (input), raise_exception=True, atol=1e-3, rtol=1e-3
         )
 
     def test_diag(self, device, dtype):
@@ -467,24 +473,30 @@ class TestConvQuadInterp3d:
             [
                 [
                     [
-                        [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
-                        [0., 0., 0., 0, 0.]
+                        [0.0, 0.0, 0.0, 0, 0],
+                        [0.0, 0.0, 0.0, 0, 0.0],
+                        [0.0, 0, 0.0, 0, 0.0],
+                        [0.0, 0.0, 0, 0, 0.0],
+                        [0.0, 0.0, 0.0, 0, 0.0],
                     ],
                     [
-                        [0., 0., 0., 0, 0], [0., 0., 1, 0, 0.], [0., 1, 1.2, 1.1, 0.], [0., 0., 1., 0, 0.],
-                        [0., 0., 0., 0, 0.]
+                        [0.0, 0.0, 0.0, 0, 0],
+                        [0.0, 0.0, 1, 0, 0.0],
+                        [0.0, 1, 1.2, 1.1, 0.0],
+                        [0.0, 0.0, 1.0, 0, 0.0],
+                        [0.0, 0.0, 0.0, 0, 0.0],
                     ],
                     [
-                        [0., 0., 0., 0, 0],
-                        [0., 0., 0.0, 0, 0.],
-                        [0., 0, 0., 0, 0.],
-                        [0., 0., 0, 0, 0.],
-                        [0., 0., 0., 0, 0.],
-                    ]
+                        [0.0, 0.0, 0.0, 0, 0],
+                        [0.0, 0.0, 0.0, 0, 0.0],
+                        [0.0, 0, 0.0, 0, 0.0],
+                        [0.0, 0.0, 0, 0, 0.0],
+                        [0.0, 0.0, 0.0, 0, 0.0],
+                    ],
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         input = kornia.gaussian_blur2d(input, (5, 5), (0.5, 0.5)).unsqueeze(0)
         softargmax = kornia.geometry.ConvQuadInterp3d(10)
@@ -493,25 +505,31 @@ class TestConvQuadInterp3d:
                 [
                     [
                         [
-                            [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
-                            [0., 0., 0., 0, 0.]
+                            [0.0, 0.0, 0.0, 0, 0],
+                            [0.0, 0.0, 0.0, 0, 0.0],
+                            [0.0, 0, 0.0, 0, 0.0],
+                            [0.0, 0.0, 0, 0, 0.0],
+                            [0.0, 0.0, 0.0, 0, 0.0],
                         ],
                         [
                             [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
                             [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
-                            [1.6807e-01, 7.4227e-01, 1.1086e+01, 8.0414e-01, 1.8482e-01],
+                            [1.6807e-01, 7.4227e-01, 1.1086e01, 8.0414e-01, 1.8482e-01],
                             [2.3146e-02, 1.8118e-01, 7.4338e-01, 1.8955e-01, 2.5413e-02],
-                            [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04]
+                            [2.2504e-04, 2.3146e-02, 1.6808e-01, 2.3188e-02, 2.3628e-04],
                         ],
                         [
-                            [0., 0., 0., 0, 0], [0., 0., 0.0, 0, 0.], [0., 0, 0., 0, 0.], [0., 0., 0, 0, 0.],
-                            [0., 0., 0., 0, 0.]
-                        ]
+                            [0.0, 0.0, 0.0, 0, 0],
+                            [0.0, 0.0, 0.0, 0, 0.0],
+                            [0.0, 0, 0.0, 0, 0.0],
+                            [0.0, 0.0, 0, 0, 0.0],
+                            [0.0, 0.0, 0.0, 0, 0.0],
+                        ],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         expected_coord = torch.tensor(
             [
@@ -519,51 +537,78 @@ class TestConvQuadInterp3d:
                     [
                         [
                             [
-                                [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0],
-                                [0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0]
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
                             ],
                             [
-                                [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0],
-                                [1.0, 1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0, 1.0]
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
                             ],
                             [
-                                [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                                [2.0, 2.0, 2.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0, 2.0]
-                            ]
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                            ],
                         ],
                         [
                             [
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
                             ],
                             [
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
                             ],
                             [
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0],
-                                [0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 2.0, 3.0, 4.0]
-                            ]
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                            ],
                         ],
                         [
                             [
-                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0],
+                                [4.0, 4.0, 4.0, 4.0, 4.0],
                             ],
                             [
-                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0495, 2.0, 2.0],
-                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [2.0, 2.0, 2.0495, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0],
+                                [4.0, 4.0, 4.0, 4.0, 4.0],
                             ],
                             [
-                                [0.0, 0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], [2.0, 2.0, 2.0, 2.0, 2.0],
-                                [3.0, 3.0, 3.0, 3.0, 3.0], [4.0, 4.0, 4.0, 4.0, 4.0]
-                            ]
-                        ]
+                                [0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1.0, 1.0, 1.0, 1.0, 1.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
+                                [3.0, 3.0, 3.0, 3.0, 3.0],
+                                [4.0, 4.0, 4.0, 4.0, 4.0],
+                            ],
+                        ],
                     ]
                 ]
             ],
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
         coords, val = softargmax(input)
         assert_allclose(val, expected_val, atol=1e-4, rtol=1e-4)

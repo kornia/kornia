@@ -31,13 +31,12 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1x2
 
     scale = (points - x_mean).norm(dim=-1).mean(dim=-1)  # B
-    scale = torch.sqrt(torch.tensor(2.)) / (scale + eps)  # B
+    scale = torch.sqrt(torch.tensor(2.0)) / (scale + eps)  # B
 
     ones, zeros = torch.ones_like(scale), torch.zeros_like(scale)
 
     transform = torch.stack(
-        [scale, zeros, -scale * x_mean[..., 0, 0], zeros, scale, -scale * x_mean[..., 0, 1], zeros, zeros, ones],
-        dim=-1
+        [scale, zeros, -scale * x_mean[..., 0, 0], zeros, scale, -scale * x_mean[..., 0, 1], zeros, zeros, ones], dim=-1
     )  # Bx9
 
     transform = transform.view(-1, 3, 3)  # Bx3x3
@@ -106,7 +105,7 @@ def find_fundamental(points1: torch.Tensor, points2: torch.Tensor, weights: torc
 
     # reconstruct and force the matrix to have rank2
     U, S, V = torch.svd(F_mat)
-    rank_mask = torch.tensor([1., 1., 0]).to(F_mat.device)
+    rank_mask = torch.tensor([1.0, 1.0, 0]).to(F_mat.device)
 
     F_projected = U @ (torch.diag_embed(S * rank_mask) @ V.transpose(-2, -1))
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)
@@ -139,7 +138,7 @@ def compute_correspond_epilines(points: torch.Tensor, F_mat: torch.Tensor) -> to
 
     # compute normal and compose equation line
     nu: torch.Tensor = a * a + b * b
-    nu = torch.where(nu > 0., 1. / torch.sqrt(nu), torch.ones_like(nu))
+    nu = torch.where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
 
     line = torch.cat([a * nu, b * nu, c * nu], dim=1)  # Bx3xN
     return line.permute(0, 2, 1)  # BxNx3
@@ -214,7 +213,7 @@ def fundamental_from_projections(P1: torch.Tensor, P2: torch.Tensor) -> torch.Te
             X2Y3.det().reshape(-1, 1),
             X3Y3.det().reshape(-1, 1),
         ],
-        dim=1
+        dim=1,
     )
 
     return F_vec.view(*P1.shape[:-2], 3, 3)

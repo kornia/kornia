@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.filters.kernels import (get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d)
+from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
 
 def spatial_gradient(input: torch.Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> torch.Tensor:
@@ -95,11 +95,12 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = 'diff', order: int = 1) 
         kernel.size(3) // 2,
         kernel.size(3) // 2,
         kernel.size(4) // 2,
-        kernel.size(4) // 2
+        kernel.size(4) // 2,
     ]
     out_ch: int = 6 if order == 2 else 3
-    return F.conv3d(F.pad(input, spatial_pad, 'replicate'), kernel_flip, padding=0,
-                    groups=c).view(b, c, out_ch, d, h, w)
+    return F.conv3d(F.pad(input, spatial_pad, 'replicate'), kernel_flip, padding=0, groups=c).view(
+        b, c, out_ch, d, h, w
+    )
 
 
 def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
@@ -166,10 +167,10 @@ class SpatialGradient(nn.Module):
         self.mode: str = mode
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'order=' + str(self.order) + ', ' + \
-            'normalized=' + str(self.normalized) + ', ' + \
-            'mode=' + self.mode + ')'
+        return (
+            self.__class__.__name__ + '('
+            'order=' + str(self.order) + ', ' + 'normalized=' + str(self.normalized) + ', ' + 'mode=' + self.mode + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return spatial_gradient(input, self.mode, self.order, self.normalized)
@@ -205,9 +206,7 @@ class SpatialGradient3d(nn.Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'order=' + str(self.order) + ', ' + \
-            'mode=' + self.mode + ')'
+        return self.__class__.__name__ + '(' 'order=' + str(self.order) + ', ' + 'mode=' + self.mode + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
         return spatial_gradient3d(input, self.mode, self.order)
@@ -238,8 +237,7 @@ class Sobel(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'normalized=' + str(self.normalized) + ')'
+        return self.__class__.__name__ + '(' 'normalized=' + str(self.normalized) + ')'
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return sobel(input, self.normalized, self.eps)

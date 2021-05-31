@@ -19,7 +19,6 @@ def test_get_sift_bin_ksize_stride_pad(ps, n_bins, ksize, stride, pad):
 
 
 class TestSIFTDescriptor:
-
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
         sift = SIFTDescriptor(32).to(device)
@@ -36,7 +35,7 @@ class TestSIFTDescriptor:
         inp = torch.ones(3, 1, 19, 19, device=device)
         sift = SIFTDescriptor(19, 5, 3).to(device)
         out = sift(inp)
-        assert out.shape == (3, (3**2) * 5)
+        assert out.shape == (3, (3 ** 2) * 5)
 
     def test_print(self, device):
         sift = SIFTDescriptor(41)
@@ -47,7 +46,7 @@ class TestSIFTDescriptor:
         patch[0, 0, :, 3:] = 0
         sift = SIFTDescriptor(6, num_ang_bins=4, num_spatial_bins=1, clipval=0.2, rootsift=False).to(device)
         out = sift(patch)
-        expected = torch.tensor([[0, 0, 1., 0]], device=device)
+        expected = torch.tensor([[0, 0, 1.0, 0]], device=device)
         assert_allclose(out, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.xfail(reason='May raise checkIfNumericalAnalyticAreClose.')

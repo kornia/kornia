@@ -5,19 +5,36 @@ import torch
 
 from kornia.constants import Resample, BorderType, SamplePadding, pi
 from kornia.geometry import (
-    get_perspective_transform, get_affine_matrix2d, warp_perspective, rotate, crop_by_boxes, bbox_generator,
-    warp_affine, hflip, vflip, deg2rad, bbox_to_mask, infer_box_shape
+    get_perspective_transform,
+    get_affine_matrix2d,
+    warp_perspective,
+    rotate,
+    crop_by_boxes,
+    bbox_generator,
+    warp_affine,
+    hflip,
+    vflip,
+    deg2rad,
+    bbox_to_mask,
+    infer_box_shape,
 )
 from kornia.color import rgb_to_grayscale
 from kornia.enhance import (
-    adjust_brightness, adjust_contrast, adjust_saturation, adjust_hue, adjust_gamma, solarize, equalize, posterize,
-    sharpness
+    adjust_brightness,
+    adjust_contrast,
+    adjust_saturation,
+    adjust_hue,
+    adjust_gamma,
+    solarize,
+    equalize,
+    posterize,
+    sharpness,
 )
 from kornia.filters import motion_blur
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
 
 from .. import random_generator as rg
-from ..utils import (_validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation, _validate_input)
+from ..utils import _validate_input_shape, _validate_input_dtype, _range_bound, _shape_validation, _validate_input
 
 from .__temp__ import __deprecation_warning, _deprecation_wrapper
 
@@ -114,8 +131,10 @@ def apply_color_jitter(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> 
     """
 
     transforms = [
-        lambda img: apply_adjust_brightness(img, params), lambda img: apply_adjust_contrast(img, params),
-        lambda img: apply_adjust_saturation(img, params), lambda img: apply_adjust_hue(img, params)
+        lambda img: apply_adjust_brightness(img, params),
+        lambda img: apply_adjust_contrast(img, params),
+        lambda img: apply_adjust_saturation(img, params),
+        lambda img: apply_adjust_hue(img, params),
     ]
 
     jittered = input
@@ -217,8 +236,9 @@ def compute_perspective_transformation(input: torch.Tensor, params: Dict[str, to
     Returns:
         torch.Tensor: The perspective transformation matrix :math: `(*, 3, 3)`
     """
-    perspective_transform: torch.Tensor = get_perspective_transform(params['start_points'],
-                                                                    params['end_points']).type_as(input)
+    perspective_transform: torch.Tensor = get_perspective_transform(
+        params['start_points'], params['end_points']
+    ).type_as(input)
 
     transform: torch.Tensor = K.eye_like(3, input)
 
@@ -263,10 +283,11 @@ def apply_affine(input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Di
 
     out_data: torch.Tensor = warp_affine(
         x_data,
-        transform[:, :2, :], (height, width),
+        transform[:, :2, :],
+        (height, width),
         resample_name,
         align_corners=align_corners,
-        padding_mode=padding_mode
+        padding_mode=padding_mode,
     )
     return out_data.view_as(input)
 
@@ -290,8 +311,12 @@ def compute_affine_transformation(input: torch.Tensor, params: Dict[str, torch.T
         torch.Tensor: The affine transformation matrix :math: `(*, 3, 3)`.
     """
     transform = get_affine_matrix2d(
-        params['translations'], params['center'], params['scale'], params['angle'], deg2rad(params['sx']),
-        deg2rad(params['sy'])
+        params['translations'],
+        params['center'],
+        params['scale'],
+        params['angle'],
+        deg2rad(params['sx']),
+        deg2rad(params['sy']),
     ).type_as(input)
     return transform
 
@@ -428,7 +453,7 @@ def apply_erase_rectangles(input: torch.Tensor, params: Dict[str, torch.Tensor])
     bboxes = bbox_generator(params['xs'], params['ys'], params['widths'], params['heights'])
     mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
     mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-    transformed = torch.where(mask == 1., values, input)
+    transformed = torch.where(mask == 1.0, values, input)
     return transformed
 
 
@@ -649,8 +674,9 @@ def apply_equalize(input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torc
 
 @_deprecation_wrapper
 @_validate_input
-def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
-                params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_mixup(
+    input: torch.Tensor, labels: torch.Tensor, params: Dict[str, torch.Tensor]
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply mixup to images in a batch.
 
     MixUp augmentation strategy: overlap images with different alpha values.
@@ -697,17 +723,19 @@ def apply_mixup(input: torch.Tensor, labels: torch.Tensor,
     labels = torch.stack(
         [
             labels.to(input.dtype),
-            labels_permute.to(input.dtype), params['mixup_lambdas'].to(labels.device, input.dtype)
+            labels_permute.to(input.dtype),
+            params['mixup_lambdas'].to(labels.device, input.dtype),
         ],
-        dim=-1
+        dim=-1,
     ).to(labels.device)
     return inputs, labels
 
 
 @_deprecation_wrapper
 @_validate_input
-def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
-                 params: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_cutmix(
+    input: torch.Tensor, labels: torch.Tensor, params: Dict[str, torch.Tensor]
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply cutmix to images in a batch.
 
     CutMix augmentation strategy: patches are cut and pasted among training images where the ground
@@ -770,9 +798,7 @@ def apply_cutmix(input: torch.Tensor, labels: torch.Tensor,
         mask = bbox_to_mask(crop, width, height).bool().unsqueeze(dim=1).repeat(1, input.size(1), 1, 1)
         out_inputs[mask] = input_permute[mask]
         out_labels.append(
-            torch.stack([labels.to(input.dtype),
-                         labels_permute.to(input.dtype),
-                         lam.to(labels.device)], dim=1)
+            torch.stack([labels.to(input.dtype), labels_permute.to(input.dtype), lam.to(labels.device)], dim=1)
         )
 
     return out_inputs, torch.stack(out_labels, dim=0)

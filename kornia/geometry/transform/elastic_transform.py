@@ -13,10 +13,10 @@ def elastic_transform2d(
     image: torch.Tensor,
     noise: torch.Tensor,
     kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Tuple[float, float] = (32., 32.),
-    alpha: Tuple[float, float] = (1., 1.),
+    sigma: Tuple[float, float] = (32.0, 32.0),
+    alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
-    mode: str = 'bilinear'
+    mode: str = 'bilinear',
 ) -> torch.Tensor:
     r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
 

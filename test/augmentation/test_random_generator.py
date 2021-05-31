@@ -21,8 +21,7 @@ from kornia.augmentation.random_generator import (
 )
 
 
-class RandomGeneratorBaseTests():
-
+class RandomGeneratorBaseTests:
     def test_valid_param_combinations(self, device, dtype):
         raise NotImplementedError
 
@@ -37,8 +36,7 @@ class RandomGeneratorBaseTests():
 
 
 class TestRandomProbGen(RandomGeneratorBaseTests):
-
-    @pytest.mark.parametrize('p', [0., 0.5, 1.])
+    @pytest.mark.parametrize('p', [0.0, 0.5, 1.0])
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, p, batch_size, same_on_batch, device, dtype):
@@ -48,9 +46,9 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
         'p',
         [
             # Should be failed if p > 1. or p < 0.
-            (-1.),
-            (2.)
-        ]
+            (-1.0),
+            (2.0),
+        ],
     )
     def test_invalid_param_combinations(self, p, device, dtype):
         with pytest.raises(Exception):
@@ -58,7 +56,7 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize(
         'p,expected',
-        [(0., [False] * 8), (0.5, [False, False, True, False, True, False, True, False]), (1., [True] * 8)]
+        [(0.0, [False] * 8), (0.5, [False, False, True, False, True, False, True, False]), (1.0, [True] * 8)],
     )
     def test_random_gen(self, p, expected, device, dtype):
         torch.manual_seed(42)
@@ -66,19 +64,15 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
         res = random_prob_generator(batch_size=batch_size, p=p)
         assert (res == torch.tensor(expected)).long().sum() == batch_size
 
-    @pytest.mark.parametrize("seed,expected", [
-        (42, [False] * 8),
-        (0, [True] * 8),
-    ])
+    @pytest.mark.parametrize("seed,expected", [(42, [False] * 8), (0, [True] * 8)])
     def test_same_on_batch(self, seed, expected, device, dtype):
         torch.manual_seed(seed)
         batch_size = 8
-        res = random_prob_generator(batch_size=batch_size, p=.5, same_on_batch=True)
+        res = random_prob_generator(batch_size=batch_size, p=0.5, same_on_batch=True)
         assert (res == torch.tensor(expected)).long().sum() == batch_size
 
 
 class TestColorJitterGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('brightness', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('contrast', [None, torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize('saturation', [None, torch.tensor([0.8, 1.2])])
@@ -93,32 +87,33 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             brightness.to(device=device, dtype=dtype) if brightness is not None else None,
             contrast.to(device=device, dtype=dtype) if contrast is not None else None,
             saturation.to(device=device, dtype=dtype) if saturation is not None else None,
-            hue.to(device=device, dtype=dtype) if hue is not None else None, same_on_batch
+            hue.to(device=device, dtype=dtype) if hue is not None else None,
+            same_on_batch,
         )
 
     @pytest.mark.parametrize(
         'brightness,contrast,saturation,hue',
         [
             # Should be failed if value out of bounds or tensor.shape != [1, 2]
-            (torch.tensor([-1., 2.]), None, None, None),
-            (torch.tensor([0., 3.]), None, None, None),
-            (torch.tensor(0.), None, None, None),
-            (torch.tensor([0.]), None, None, None),
-            (torch.tensor([0., 1., 2.]), None, None, None),
-            (None, torch.tensor([-1., 2.]), None, None),
-            (None, torch.tensor(0.), None, None),
-            (None, torch.tensor([0.]), None, None),
-            (None, torch.tensor([0., 1., 2.]), None, None),
-            (None, None, torch.tensor([-1., 2.]), None),
-            (None, None, torch.tensor(0.), None),
-            (None, None, torch.tensor([0.]), None),
-            (None, None, torch.tensor([0., 1., 2.]), None),
-            (None, None, None, torch.tensor([-1., 0.])),
-            (None, None, None, torch.tensor([0, 1.])),
-            (None, None, None, torch.tensor(0.)),
-            (None, None, None, torch.tensor([0.])),
-            (None, None, None, torch.tensor([0., 1., 2.])),
-        ]
+            (torch.tensor([-1.0, 2.0]), None, None, None),
+            (torch.tensor([0.0, 3.0]), None, None, None),
+            (torch.tensor(0.0), None, None, None),
+            (torch.tensor([0.0]), None, None, None),
+            (torch.tensor([0.0, 1.0, 2.0]), None, None, None),
+            (None, torch.tensor([-1.0, 2.0]), None, None),
+            (None, torch.tensor(0.0), None, None),
+            (None, torch.tensor([0.0]), None, None),
+            (None, torch.tensor([0.0, 1.0, 2.0]), None, None),
+            (None, None, torch.tensor([-1.0, 2.0]), None),
+            (None, None, torch.tensor(0.0), None),
+            (None, None, torch.tensor([0.0]), None),
+            (None, None, torch.tensor([0.0, 1.0, 2.0]), None),
+            (None, None, None, torch.tensor([-1.0, 0.0])),
+            (None, None, None, torch.tensor([0, 1.0])),
+            (None, None, None, torch.tensor(0.0)),
+            (None, None, None, torch.tensor([0.0])),
+            (None, None, None, torch.tensor([0.0, 1.0, 2.0])),
+        ],
     )
     def test_invalid_param_combinations(self, brightness, contrast, saturation, hue, device, dtype):
         with pytest.raises(Exception):
@@ -127,7 +122,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
                 brightness.to(device=device, dtype=dtype) if brightness is not None else None,
                 contrast.to(device=device, dtype=dtype) if contrast is not None else None,
                 saturation.to(device=device, dtype=dtype) if saturation is not None else None,
-                hue.to(device=device, dtype=dtype) if hue is not None else None
+                hue.to(device=device, dtype=dtype) if hue is not None else None,
             )
 
     def test_random_gen(self, device, dtype):
@@ -138,7 +133,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             brightness=torch.tensor([0.8, 1.2], device=device, dtype=dtype),
             contrast=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             saturation=torch.tensor([0.6, 1.4], device=device, dtype=dtype),
-            hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype)
+            hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype),
         )
 
         expected_jitter_params = {
@@ -154,12 +149,12 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'saturation_factor': torch.tensor(
                 [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype
             ),
-            'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype)
+            'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == set([
-            'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']), \
-            "Redundant keys found apart from \
+        assert set(list(jitter_params.keys())) == set(
+            ['brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order']
+        ), "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_allclose(
@@ -183,7 +178,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             contrast=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             saturation=torch.tensor([0.6, 1.4], device=device, dtype=dtype),
             hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype),
-            same_on_batch=True
+            same_on_batch=True,
         )
 
         expected_res = {
@@ -191,7 +186,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'contrast_factor': torch.tensor([1.2490] * batch_size, device=device, dtype=dtype),
             'hue_factor': torch.tensor([-0.0234] * batch_size, device=device, dtype=dtype),
             'saturation_factor': torch.tensor([1.3674] * batch_size, device=device, dtype=dtype),
-            'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype)
+            'order': torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
         }
 
         assert_allclose(jitter_params['brightness_factor'], expected_res['brightness_factor'], rtol=1e-4, atol=1e-4)
@@ -202,9 +197,8 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
 
 class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('height,width', [(200, 200)])
-    @pytest.mark.parametrize('distortion_scale', [torch.tensor(0.), torch.tensor(0.5), torch.tensor(1.)])
+    @pytest.mark.parametrize('distortion_scale', [torch.tensor(0.0), torch.tensor(0.5), torch.tensor(1.0)])
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, height, width, distortion_scale, batch_size, same_on_batch, device, dtype):
@@ -213,7 +207,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             height=height,
             width=width,
             distortion_scale=distortion_scale.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
@@ -224,8 +218,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             (100, -100, torch.tensor(0.5)),
             (100, 100, torch.tensor(-0.5)),
             (100, 100, torch.tensor(1.5)),
-            (100, 100, torch.tensor([0., 0.5])),
-        ]
+            (100, 100, torch.tensor([0.0, 0.5])),
+        ],
     )
     def test_invalid_param_combinations(self, height, width, distortion_scale, device, dtype):
         with pytest.raises(Exception):
@@ -233,7 +227,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 batch_size=8,
                 height=height,
                 width=width,
-                distortion_scale=distortion_scale.to(device=device, dtype=dtype)
+                distortion_scale=distortion_scale.to(device=device, dtype=dtype),
             )
 
     def test_random_gen(self, device, dtype):
@@ -242,17 +236,20 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         res = random_perspective_generator(batch_size, 200, 200, torch.tensor(0.5, device=device, dtype=dtype))
         expected = dict(
             start_points=torch.tensor(
-                [[[0., 0.], [199., 0.], [199., 199.], [0., 199.]], [[0., 0.], [199., 0.], [199., 199.], [0., 199.]]],
+                [
+                    [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
+                    [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
+                ],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
             end_points=torch.tensor(
                 [
                     [[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]],
-                    [[47.0386, 6.6593], [152.2701, 29.6790], [155.5298, 170.6142], [37.0547, 177.5298]]
+                    [[47.0386, 6.6593], [152.2701, 29.6790], [155.5298, 170.6142], [37.0547, 177.5298]],
                 ],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
         )
         assert res.keys() == expected.keys()
@@ -266,12 +263,13 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             batch_size, 200, 200, torch.tensor(0.5, device=device, dtype=dtype), same_on_batch=True
         )
         expected = dict(
-            start_points=torch.tensor([[[0., 0.], [199., 0.], [199., 199.], [0., 199.]]], device=device,
-                                      dtype=dtype).repeat(2, 1, 1),
+            start_points=torch.tensor(
+                [[[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]]], device=device, dtype=dtype
+            ).repeat(2, 1, 1),
             end_points=torch.tensor(
                 [[[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ).repeat(2, 1, 1),
         )
         assert res.keys() == expected.keys()
@@ -280,7 +278,6 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 4])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
@@ -300,11 +297,12 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'height,width,degrees,translate,scale,shear', [
+        'height,width,degrees,translate,scale,shear',
+        [
             (-100, 100, torch.tensor([10, 20]), None, None, None),
             (100, -100, torch.tensor([10, 20]), None, None, None),
             (100, 100, 0.5, None, None, None),
@@ -318,7 +316,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3])),
             (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4])),
             (10, 10, torch.tensor([1, 2]), None, None, torch.tensor([1, 2, 3, 4, 5])),
-        ]
+        ],
     )
     def test_invalid_param_combinations(self, height, width, degrees, translate, scale, shear, device, dtype):
         with pytest.raises(Exception):
@@ -329,7 +327,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
                 degrees=degrees.to(device=device, dtype=dtype),
                 translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
                 scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-                shear=shear.to(device=device, dtype=dtype) if shear is not None else None
+                shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
             )
 
     def test_random_gen(self, device, dtype):
@@ -346,7 +344,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             translate=translate,
             scale=scale,
             shear=shear,
-            same_on_batch=False
+            same_on_batch=False,
         )
         expected = dict(
             translations=torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
@@ -354,7 +352,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             scale=torch.tensor([[0.8914, 0.8914], [1.1797, 1.1797]], device=device, dtype=dtype),
             angle=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
             sx=torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
-            sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype)
+            sy=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -378,7 +376,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             translate=translate,
             scale=scale,
             shear=shear,
-            same_on_batch=True
+            same_on_batch=True,
         )
         expected = dict(
             translations=torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
@@ -386,7 +384,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             scale=torch.tensor([[1.1575, 1.1575], [1.1575, 1.1575]], device=device, dtype=dtype),
             angle=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
             sx=torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
-            sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype)
+            sy=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
@@ -398,7 +396,6 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
 
 
 class TestRandomRotationGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('degrees', [torch.tensor([0, 30])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -435,7 +432,6 @@ class TestRandomRotationGen(RandomGeneratorBaseTests):
 
 
 class TestRandomCropGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('input_size', [(200, 200)])
     @pytest.mark.parametrize('size', [(100, 100), torch.tensor([50, 50])])
@@ -451,14 +447,12 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             resize_to=resize_to,
             same_on_batch=same_on_batch,
             device=device,
-            dtype=dtype
+            dtype=dtype,
         )
 
     @pytest.mark.parametrize(
-        'input_size,size,resize_to', [
-            ((-300, 300), (200, 200), (100, 100)),
-            ((200, 200), torch.tensor([50, 50]), (100, 100)),
-        ]
+        'input_size,size,resize_to',
+        [((-300, 300), (200, 200), (100, 100)), ((200, 200), torch.tensor([50, 50]), (100, 100))],
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
@@ -467,7 +461,7 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
                 batch_size=batch_size,
                 input_size=input_size,
                 size=size.to(device=device, dtype=dtype) if isinstance(size, torch.Tensor) else size,
-                resize_to=resize_to
+                resize_to=resize_to,
             )
 
     def test_random_gen(self, device, dtype):
@@ -477,20 +471,20 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             batch_size=2,
             input_size=(100, 100),
             size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
-            resize_to=(200, 200)
+            resize_to=(200, 200),
         )
         expected = dict(
             src=torch.tensor(
                 [[[36, 19], [95, 19], [95, 68], [36, 68]], [[19, 29], [98, 29], [98, 98], [19, 98]]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
             dst=torch.tensor(
                 [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
-            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
+            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
@@ -504,20 +498,20 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
             input_size=(100, 100),
             size=torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype),
             resize_to=(200, 200),
-            same_on_batch=True
+            same_on_batch=True,
         )
         expected = dict(
             src=torch.tensor(
                 [[[36, 46], [95, 46], [95, 95], [36, 95]], [[36, 46], [115, 46], [115, 115], [36, 115]]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
             dst=torch.tensor(
                 [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             ),
-            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long)
+            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'], expected['src'])
@@ -525,11 +519,10 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
 
 class TestRandomCropSizeGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('size', [(200, 200)])
-    @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.3])])
-    @pytest.mark.parametrize('ratio', [torch.tensor([.9, 1.1])])
+    @pytest.mark.parametrize('scale', [torch.tensor([0.7, 1.3])])
+    @pytest.mark.parametrize('ratio', [torch.tensor([0.9, 1.1])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, size, scale, ratio, same_on_batch, device, dtype):
         random_crop_size_generator(
@@ -537,18 +530,19 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             size=size,
             scale=scale.to(device=device, dtype=dtype),
             ratio=ratio.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'size,scale,ratio', [
-            ((100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
-            ((100, 100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1])),
-            ((100, 100), torch.tensor([.7]), torch.tensor([.9, 1.1])),
-            ((100, 100), torch.tensor([.7, 1.3, 1.5]), torch.tensor([.9, 1.1])),
-            ((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9])),
-            ((100, 100), torch.tensor([.7, 1.3]), torch.tensor([.9, 1.1, 1.3])),
-        ]
+        'size,scale,ratio',
+        [
+            ((100), torch.tensor([0.7, 1.3]), torch.tensor([0.9, 1.1])),
+            ((100, 100, 100), torch.tensor([0.7, 1.3]), torch.tensor([0.9, 1.1])),
+            ((100, 100), torch.tensor([0.7]), torch.tensor([0.9, 1.1])),
+            ((100, 100), torch.tensor([0.7, 1.3, 1.5]), torch.tensor([0.9, 1.1])),
+            ((100, 100), torch.tensor([0.7, 1.3]), torch.tensor([0.9])),
+            ((100, 100), torch.tensor([0.7, 1.3]), torch.tensor([0.9, 1.1, 1.3])),
+        ],
     )
     def test_invalid_param_combinations(self, size, scale, ratio, device, dtype):
         batch_size = 2
@@ -558,7 +552,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 size=size,
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
-                same_on_batch=same_on_batch
+                same_on_batch=same_on_batch,
             )
 
     def test_random_gen(self, device, dtype):
@@ -568,13 +562,13 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             size=(100, 100),
             scale=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             ratio=torch.tensor([0.9, 1.1], device=device, dtype=dtype),
-            same_on_batch=False
+            same_on_batch=False,
         )
         expected = dict(
             size=torch.tensor(
                 [[99, 94], [91, 95], [90, 96], [87, 86], [94, 98], [87, 81], [85, 93], [83, 90]],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             )
         )
         assert res.keys() == expected.keys()
@@ -583,9 +577,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
         res = random_crop_size_generator(
             batch_size=100,
             size=(100, 100),
-            scale=torch.tensor([0.999, 1.], device=device, dtype=dtype),
-            ratio=torch.tensor([1., 1.], device=device, dtype=dtype),
-            same_on_batch=False
+            scale=torch.tensor([0.999, 1.0], device=device, dtype=dtype),
+            ratio=torch.tensor([1.0, 1.0], device=device, dtype=dtype),
+            same_on_batch=False,
         )
         expected = dict(size=torch.tensor([[100, 100]], device=device, dtype=dtype).repeat(100, 1))
         assert res.keys() == expected.keys()
@@ -599,26 +593,25 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             size=(100, 100),
             scale=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             ratio=torch.tensor([0.9, 1.1], device=device, dtype=dtype),
-            same_on_batch=True
+            same_on_batch=True,
         )
         expected = dict(
             size=torch.tensor(
                 [[99, 95], [99, 95], [99, 95], [99, 95], [99, 95], [99, 95], [99, 95], [99, 95]],
                 device=device,
-                dtype=dtype
-            ),
+                dtype=dtype,
+            )
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['size'], expected['size'])
 
 
 class TestRandomRectangleGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [300])
-    @pytest.mark.parametrize('scale', [torch.tensor([.7, 1.1])])
-    @pytest.mark.parametrize('ratio', [torch.tensor([.7, 1.1])])
+    @pytest.mark.parametrize('scale', [torch.tensor([0.7, 1.1])])
+    @pytest.mark.parametrize('ratio', [torch.tensor([0.7, 1.1])])
     @pytest.mark.parametrize('value', [0])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
@@ -631,11 +624,12 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             scale=scale.to(device=device, dtype=dtype),
             ratio=ratio.to(device=device, dtype=dtype),
             value=value,
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'height,width,scale,ratio,value', [
+        'height,width,scale,ratio,value',
+        [
             (-100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
             (100, -100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 0),
             (100, -100, torch.tensor([0.7]), torch.tensor([0.7, 1.3]), 0),
@@ -644,8 +638,8 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0),
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1),
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2),
-            (100, 100, torch.tensor([.5, .7]), torch.tensor([.7, .9]), torch.tensor(0.5)),
-        ]
+            (100, 100, torch.tensor([0.5, 0.7]), torch.tensor([0.7, 0.9]), torch.tensor(0.5)),
+        ],
     )
     def test_invalid_param_combinations(self, height, width, scale, ratio, value, device, dtype):
         batch_size = 8
@@ -657,7 +651,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
                 scale=scale.to(device=device, dtype=dtype),
                 ratio=ratio.to(device=device, dtype=dtype),
                 value=value,
-                same_on_batch=same_on_batch
+                same_on_batch=same_on_batch,
             )
 
     def test_random_gen(self, device, dtype):
@@ -674,7 +668,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             heights=torch.tensor([0, 0], device=device, dtype=dtype),
             xs=torch.tensor([0, 0], device=device, dtype=dtype),
             ys=torch.tensor([6, 8], device=device, dtype=dtype),
-            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
+            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['widths'], expected['widths'])
@@ -697,7 +691,7 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             heights=torch.tensor([0, 0], device=device, dtype=dtype),
             xs=torch.tensor([0, 0], device=device, dtype=dtype),
             ys=torch.tensor([10, 10], device=device, dtype=dtype),
-            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype)
+            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['widths'], expected['widths'])
@@ -708,7 +702,6 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
 
 
 class TestCenterCropGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 2])
     @pytest.mark.parametrize('height', [200])
     @pytest.mark.parametrize('width', [200])
@@ -717,13 +710,14 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
 
     @pytest.mark.parametrize(
-        'height,width,size', [
+        'height,width,size',
+        [
             (200, -200, (100, 100)),
             (-200, 200, (100, 100)),
             (100, 100, (120, 120)),
             (150, 100, (120, 120)),
             (100, 150, (120, 120)),
-        ]
+        ],
     )
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
         batch_size = 2
@@ -737,14 +731,14 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
             src=torch.tensor(
                 [[[25, 40], [174, 40], [174, 159], [25, 159]], [[25, 40], [174, 40], [174, 159], [25, 159]]],
                 device=device,
-                dtype=torch.long
+                dtype=torch.long,
             ),
             dst=torch.tensor(
                 [[[0, 0], [149, 0], [149, 119], [0, 119]], [[0, 0], [149, 0], [149, 119], [0, 119]]],
                 device=device,
-                dtype=torch.long
+                dtype=torch.long,
             ),
-            input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long)
+            input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['src'].to(device=device), expected['src'])
@@ -755,7 +749,6 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
 
 
 class TestRandomMotionBlur(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('kernel_size', [3, (3, 5)])
     @pytest.mark.parametrize('angle', [torch.tensor([10, 30])])
@@ -767,17 +760,18 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             kernel_size=kernel_size,
             angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'kernel_size,angle,direction', [
+        'kernel_size,angle,direction',
+        [
             (4, torch.tensor([30, 100]), torch.tensor([-1, 1])),
             (1, torch.tensor([30, 100]), torch.tensor([-1, 1])),
             ((1, 2, 3), torch.tensor([30, 100]), torch.tensor([-1, 1])),
             (3, torch.tensor([30, 100]), torch.tensor([-2, 1])),
             (3, torch.tensor([30, 100]), torch.tensor([-1, 2])),
-        ]
+        ],
     )
     def test_invalid_param_combinations(self, kernel_size, angle, direction, device, dtype):
         with pytest.raises(Exception):
@@ -785,7 +779,7 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
                 batch_size=8,
                 kernel_size=kernel_size,
                 angle=angle.to(device=device, dtype=dtype),
-                direction=direction.to(device=device, dtype=dtype)
+                direction=direction.to(device=device, dtype=dtype),
             )
 
     def test_random_gen(self, device, dtype):
@@ -797,12 +791,12 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             kernel_size=3,
             angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype),
-            same_on_batch=False
+            same_on_batch=False,
         )
         expected = dict(
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
-            direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype)
+            direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -818,12 +812,12 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             kernel_size=3,
             angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype),
-            same_on_batch=True
+            same_on_batch=True,
         )
         expected = dict(
             ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
             angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
-            direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype)
+            direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
@@ -832,7 +826,6 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
 
 
 class TestRandomSolarizeGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('thresholds', [torch.tensor([0, 1]), torch.tensor([0.4, 0.6])])
     @pytest.mark.parametrize('additions', [torch.tensor([-0.5, 0.5])])
@@ -842,25 +835,26 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size,
             thresholds=thresholds.to(device=device, dtype=dtype),
             additions=additions.to(device=device, dtype=dtype),
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'thresholds,additions', [
+        'thresholds,additions',
+        [
             (torch.tensor([0, 2]), torch.tensor([-0.5, 0.5])),
             (torch.tensor([-1, 1]), torch.tensor([-0.5, 0.5])),
             ([0, 1], torch.tensor([-0.5, 0.5])),
             (torch.tensor([0, 1]), torch.tensor([-0.5, 1])),
             (torch.tensor([0, 1]), torch.tensor([-1, 0.5])),
             (torch.tensor([0, 1]), [-0.5, 0.5]),
-        ]
+        ],
     )
     def test_invalid_param_combinations(self, thresholds, additions, device, dtype):
         with pytest.raises(Exception):
             random_solarize_generator(
                 batch_size=batch_size,
                 thresholds=thresholds.to(device=device, dtype=dtype),
-                additions=additions.to(device=device, dtype=dtype)
+                additions=additions.to(device=device, dtype=dtype),
             )
 
     def test_random_gen(self, device, dtype):
@@ -870,7 +864,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size,
             thresholds=torch.tensor([0, 1], device=device, dtype=dtype),
             additions=torch.tensor([-0.5, 0.5], device=device, dtype=dtype),
-            same_on_batch=False
+            same_on_batch=False,
         )
         expected = dict(
             thresholds_factor=torch.tensor(
@@ -891,7 +885,7 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size,
             thresholds=torch.tensor([0, 1], device=device, dtype=dtype),
             additions=torch.tensor([-0.5, 0.5], device=device, dtype=dtype),
-            same_on_batch=True
+            same_on_batch=True,
         )
         expected = dict(
             thresholds_factor=torch.tensor(
@@ -907,7 +901,6 @@ class TestRandomSolarizeGen(RandomGeneratorBaseTests):
 
 
 class TestRandomPosterizeGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
     @pytest.mark.parametrize('bits', [torch.tensor([0, 8])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
@@ -916,14 +909,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
             batch_size=batch_size, bits=bits.to(device=device, dtype=dtype), same_on_batch=same_on_batch
         )
 
-    @pytest.mark.parametrize(
-        'bits', [
-            (torch.tensor([-1, 1])),
-            (torch.tensor([0, 9])),
-            (torch.tensor([3])),
-            ([0, 8]),
-        ]
-    )
+    @pytest.mark.parametrize('bits', [(torch.tensor([-1, 1])), (torch.tensor([0, 9])), (torch.tensor([3])), ([0, 8])])
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
             random_posterize_generator(
@@ -952,20 +938,15 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
 
 
 class TestRandomSharpnessGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('sharpness', [torch.tensor([0., 1.])])
+    @pytest.mark.parametrize('sharpness', [torch.tensor([0.0, 1.0])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, sharpness, same_on_batch, device, dtype):
         random_sharpness_generator(
             batch_size=batch_size, sharpness=sharpness.to(device=device, dtype=dtype), same_on_batch=same_on_batch
         )
 
-    @pytest.mark.parametrize('sharpness', [
-        (torch.tensor([-1, 5])),
-        (torch.tensor([3])),
-        ([0, 1.]),
-    ])
+    @pytest.mark.parametrize('sharpness', [(torch.tensor([-1, 5])), (torch.tensor([3])), ([0, 1.0])])
     def test_invalid_param_combinations(self, sharpness, device, dtype):
         with pytest.raises(Exception):
             random_sharpness_generator(
@@ -976,11 +957,12 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
         torch.manual_seed(42)
         batch_size = 8
         res = random_sharpness_generator(
-            batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=False
+            batch_size=batch_size, sharpness=torch.tensor([0.0, 1.0], device=device, dtype=dtype), same_on_batch=False
         )
         expected = dict(
-            sharpness_factor=torch.
-            tensor([0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype)
+            sharpness_factor=torch.tensor(
+                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype
+            )
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
@@ -989,38 +971,34 @@ class TestRandomSharpnessGen(RandomGeneratorBaseTests):
         torch.manual_seed(42)
         batch_size = 8
         res = random_sharpness_generator(
-            batch_size=batch_size, sharpness=torch.tensor([0., 1.], device=device, dtype=dtype), same_on_batch=True
+            batch_size=batch_size, sharpness=torch.tensor([0.0, 1.0], device=device, dtype=dtype), same_on_batch=True
         )
         expected = dict(
-            sharpness_factor=torch.
-            tensor([0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype)
+            sharpness_factor=torch.tensor(
+                [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype
+            )
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
 
 
 class TestRandomMixUpGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('p', [0., 0.5, 1.])
-    @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0., 1.])])
+    @pytest.mark.parametrize('p', [0.0, 0.5, 1.0])
+    @pytest.mark.parametrize('lambda_val', [None, torch.tensor([0.0, 1.0])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
         random_mixup_generator(
             batch_size=batch_size,
             p=p,
-            lambda_val=lambda_val.to(device=device, dtype=dtype) if isinstance(lambda_val,
-                                                                               (torch.Tensor)) else lambda_val,
-            same_on_batch=same_on_batch
+            lambda_val=lambda_val.to(device=device, dtype=dtype)
+            if isinstance(lambda_val, (torch.Tensor))
+            else lambda_val,
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'lambda_val', [
-            (torch.tensor([-1, 1])),
-            (torch.tensor([0, 2])),
-            (torch.tensor([0, 0.5, 1])),
-            ([0., 1.]),
-        ]
+        'lambda_val', [(torch.tensor([-1, 1])), (torch.tensor([0, 2])), (torch.tensor([0, 0.5, 1])), ([0.0, 1.0])]
     )
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
         with pytest.raises(Exception):
@@ -1032,14 +1010,14 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         res = random_mixup_generator(
             batch_size=batch_size,
             p=0.5,
-            lambda_val=torch.tensor([0., 1.], device=device, dtype=dtype),
-            same_on_batch=False
+            lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+            same_on_batch=False,
         )
         expected = dict(
             mixup_pairs=torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
             mixup_lambdas=torch.tensor(
                 [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype
-            )
+            ),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -1050,15 +1028,15 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         batch_size = 8
         res = random_mixup_generator(
             batch_size=batch_size,
-            p=.9999,
-            lambda_val=torch.tensor([0., 1.], device=device, dtype=dtype),
-            same_on_batch=True
+            p=0.9999,
+            lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+            same_on_batch=True,
         )
         expected = dict(
             mixup_pairs=torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
             mixup_lambdas=torch.tensor(
                 [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype
-            )
+            ),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
@@ -1066,13 +1044,12 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
 
 
 class TestRandomCutMixGen(RandomGeneratorBaseTests):
-
     @pytest.mark.parametrize('batch_size', [0, 1, 8])
-    @pytest.mark.parametrize('p', [0, 0.5, 1.])
+    @pytest.mark.parametrize('p', [0, 0.5, 1.0])
     @pytest.mark.parametrize('width,height', [(200, 200)])
     @pytest.mark.parametrize('num_mix', [1, 3])
-    @pytest.mark.parametrize('beta', [None, torch.tensor(1e-15), torch.tensor(1.)])
-    @pytest.mark.parametrize('cut_size', [None, torch.tensor([0., 1.]), torch.tensor([0.3, 0.6])])
+    @pytest.mark.parametrize('beta', [None, torch.tensor(1e-15), torch.tensor(1.0)])
+    @pytest.mark.parametrize('cut_size', [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_valid_param_combinations(
         self, batch_size, p, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype
@@ -1085,19 +1062,20 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             num_mix=num_mix,
             beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
             cut_size=cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
-            same_on_batch=same_on_batch
+            same_on_batch=same_on_batch,
         )
 
     @pytest.mark.parametrize(
-        'width,height,num_mix,beta,cut_size', [
+        'width,height,num_mix,beta,cut_size',
+        [
             (200, -200, 1, None, None),
             (-200, 200, 1, None, None),
             (200, 200, 0, None, None),
             (200, 200, 1.5, None, None),
-            (200, 200, 1, torch.tensor([0., 1.]), None),
-            (200, 200, 1, None, torch.tensor([-1., 1.])),
-            (200, 200, 1, None, torch.tensor([0., 2.])),
-        ]
+            (200, 200, 1, torch.tensor([0.0, 1.0]), None),
+            (200, 200, 1, None, torch.tensor([-1.0, 1.0])),
+            (200, 200, 1, None, torch.tensor([0.0, 2.0])),
+        ],
     )
     @pytest.mark.parametrize('same_on_batch', [True, False])
     def test_invalid_param_combinations(self, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype):
@@ -1110,7 +1088,7 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 num_mix=num_mix,
                 beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (torch.Tensor)) else beta,
                 cut_size=beta.to(device=device, dtype=dtype) if isinstance(cut_size, (torch.Tensor)) else cut_size,
-                same_on_batch=same_on_batch
+                same_on_batch=same_on_batch,
             )
 
     def test_random_gen(self, device, dtype):
@@ -1122,17 +1100,17 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             height=200,
             p=0.5,
             num_mix=1,
-            beta=torch.tensor(1., device=device, dtype=dtype),
-            cut_size=torch.tensor([0., 1.], device=device, dtype=dtype),
-            same_on_batch=False
+            beta=torch.tensor(1.0, device=device, dtype=dtype),
+            cut_size=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+            same_on_batch=False,
         )
         expected = dict(
             mix_pairs=torch.tensor([[0, 1]], device=device, dtype=torch.long),
             crop_src=torch.tensor(
                 [[[[71, 108], [70, 108], [70, 107], [71, 107]], [[39, 1], [38, 1], [38, 0], [39, 0]]]],
                 device=device,
-                dtype=dtype
-            )
+                dtype=dtype,
+            ),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
@@ -1147,17 +1125,17 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             height=200,
             p=0.5,
             num_mix=1,
-            beta=torch.tensor(1., device=device, dtype=dtype),
-            cut_size=torch.tensor([0., 1.], device=device, dtype=dtype),
-            same_on_batch=True
+            beta=torch.tensor(1.0, device=device, dtype=dtype),
+            cut_size=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+            same_on_batch=True,
         )
         expected = dict(
             mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
             crop_src=torch.tensor(
                 [[[[114, 53], [113, 53], [113, 52], [114, 52]], [[114, 53], [113, 53], [113, 52], [114, 52]]]],
                 device=device,
-                dtype=dtype
-            )
+                dtype=dtype,
+            ),
         )
         assert res.keys() == expected.keys()
         assert_allclose(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
