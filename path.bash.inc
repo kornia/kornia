@@ -9,8 +9,8 @@ if [ "$apparent_sdk_dir" = "$script_link" ]; then
 fi
 sdk_dir="$(cd -P "$apparent_sdk_dir" > /dev/null && pwd -P )"
 if [ ! -e $sdk_dir/.dev_env/bin/conda ]; then
-    $sdk_dir/setup_dev_env.sh	      
-fi	
+    $sdk_dir/setup_dev_env.sh
+fi
 
 cmd="source $sdk_dir/.dev_env/bin/activate $sdk_dir/.dev_env/envs/venv"
 if [ -z $CI ]; then

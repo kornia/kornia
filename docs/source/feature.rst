@@ -88,5 +88,3 @@ Module
    :members: forward
 .. autoclass:: LAFAffNetShapeEstimator
    :members: forward
-
-

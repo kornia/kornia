@@ -9,7 +9,7 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
    - Please, don't use GitHub issues for Q&A.
    - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you to join the PyTorch slack. You can apply using this form: `https://bit.ly/ptslack <https://bit.ly/ptslack>`_
-   
+
 
 2. Report bugs through `GitHub issues <https://github.com/arraiyopensource/kornia/issues>`_:
 

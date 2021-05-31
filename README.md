@@ -55,7 +55,7 @@ At a granular level, Kornia is a library that consists of the following componen
   <summary>Other installation options</summary>
 
   #### From source:
-      
+
   ```bash
   python setup.py install
   ```

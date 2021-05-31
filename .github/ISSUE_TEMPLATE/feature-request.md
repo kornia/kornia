@@ -22,4 +22,3 @@ about: Submit a proposal/request for a new Kornia feature
 ## Additional context
 
 <!-- Add any other context or screenshots about the feature request here. -->
-

@@ -21,7 +21,7 @@ references:
       name: Build and push Docker image
       command: |
         gcloud --quiet auth configure-docker
-        cd docker/tpu-tests  
+        cd docker/tpu-tests
         # Update PR refs for testing.
         if [[ -n "${CIRCLE_PR_NUMBER}" ]]
         then

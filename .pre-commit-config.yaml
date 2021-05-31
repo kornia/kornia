@@ -12,8 +12,8 @@ repos:
     hooks:
       - id: end-of-file-fixer
       - id: trailing-whitespace
-      #- id: check-yaml
-      #- id: pretty-format-json
+      - id: check-yaml
+      - id: pretty-format-json
 
   - repo: https://github.com/pre-commit/mirrors-yapf
     rev: v0.31.0
