@@ -1,14 +1,9 @@
-from typing import Union, Tuple
-
 import pytest
 import torch
-import torch.nn as nn
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import kornia
-from kornia.testing import tensor_to_gradcheck_var
 from kornia.augmentation import (
     RandomMotionBlur,
     RandomMotionBlur3D,
@@ -17,6 +12,7 @@ from kornia.filters import (
     motion_blur,
     motion_blur3d,
 )
+from kornia.testing import tensor_to_gradcheck_var
 
 
 class TestRandomMotionBlur:

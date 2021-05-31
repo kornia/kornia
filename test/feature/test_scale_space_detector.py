@@ -1,10 +1,9 @@
 import pytest
-import torch
-import kornia.testing as utils  # test utils
-import kornia
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
+
+import kornia
+import kornia.testing as utils  # test utils
 from kornia.feature.scale_space_detector import *
 
 

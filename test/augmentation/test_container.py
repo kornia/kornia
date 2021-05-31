@@ -1,5 +1,5 @@
-import torch
 import pytest
+import torch
 
 import kornia.augmentation as K
 

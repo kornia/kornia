@@ -1,11 +1,10 @@
 import pytest
-
 import torch
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
-from kornia.feature import SOSNet
 import kornia.testing as utils  # test utils
+from kornia.feature import SOSNet
 
 
 class TestSOSNet:

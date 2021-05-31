@@ -1,12 +1,12 @@
-import pytest
 import random
 
-import kornia
-import kornia.testing as utils  # test utils
-
+import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
+
+import kornia
+import kornia.testing as utils  # test utils
 
 
 def random_shape(dim, min_elem=1, max_elem=10):

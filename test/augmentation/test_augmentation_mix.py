@@ -1,6 +1,5 @@
 import torch
 from torch.testing import assert_allclose
-from torch.autograd import gradcheck
 
 from kornia.augmentation import (RandomMixUp, RandomCutMix)
 

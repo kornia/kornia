@@ -2,23 +2,18 @@ from typing import Union, Tuple
 
 import pytest
 import torch
-from torch._C import dtype
 import torch.nn as nn
-
-from torch.testing import assert_allclose
 from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.constants import pi
 from kornia.augmentation import (
     RandomDepthicalFlip3D,
     RandomHorizontalFlip3D,
     RandomVerticalFlip3D,
-    RandomAffine3D,
     RandomRotation3D,
     RandomCrop3D,
-    CenterCrop3D,
     RandomEqualize3D,
 )
 
