@@ -10,7 +10,11 @@ import kornia
 from kornia.utils.helpers import _torch_inverse_cast
 from . import functional as F
 from .utils import (
-    _transform_input, _transform_input3d, _transform_output_shape, _validate_input_dtype, _adapted_sampling
+    _transform_input,
+    _transform_input3d,
+    _transform_output_shape,
+    _validate_input_dtype,
+    _adapted_sampling,
 )
 
 
@@ -31,16 +35,18 @@ class _BasicAugmentationBase(nn.Module):
                         to the batch form (False). Default: False.
     """
 
-    def __init__(self, p: float = 0.5, p_batch: float = 1., same_on_batch: bool = False, keepdim: bool = False) -> None:
+    def __init__(
+        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
+    ) -> None:
         super(_BasicAugmentationBase, self).__init__()
         self.p = p
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
         self._params: Dict[str, torch.Tensor] = {}
-        if p != 0. or p != 1.:
+        if p != 0.0 or p != 1.0:
             self._p_gen = Bernoulli(self.p)
-        if p_batch != 0. or p_batch != 1.:
+        if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
@@ -83,7 +89,7 @@ class _BasicAugmentationBase(nn.Module):
         elif p_batch == 0:
             batch_prob = torch.tensor([False])
         else:
-            batch_prob = _adapted_sampling((1, ), self._p_batch_gen, same_on_batch).bool()
+            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch).bool()
 
         if batch_prob.sum().item() == 1:
             elem_prob: torch.Tensor
@@ -92,7 +98,7 @@ class _BasicAugmentationBase(nn.Module):
             elif p == 0:
                 elem_prob = torch.tensor([False] * batch_shape[0])
             else:
-                elem_prob = _adapted_sampling((batch_shape[0], ), self._p_gen, same_on_batch).bool()
+                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch).bool()
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])
@@ -107,17 +113,13 @@ class _BasicAugmentationBase(nn.Module):
         return _params
 
     def apply_func(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor]
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         input = self.transform_tensor(input)
         return self.apply_transform(input, params)
 
     def forward(  # type: ignore
-        self,
-        input: torch.Tensor,
-        params: Optional[Dict[str, torch.Tensor]] = None,  # type: ignore
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None  # type: ignore
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         in_tensor = self.__unpack_input__(input)
         self.__check_batching__(input)
@@ -155,8 +157,8 @@ class _AugmentationBase(_BasicAugmentationBase):
         return_transform: bool = None,
         same_on_batch: bool = False,
         p: float = 0.5,
-        p_batch: float = 1.,
-        keepdim: bool = False
+        p_batch: float = 1.0,
+        keepdim: bool = False,
     ) -> None:
         super(_AugmentationBase, self).__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.p = p
@@ -173,10 +175,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def apply_transform(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        transform: Optional[torch.Tensor] = None
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         raise NotImplementedError
 
@@ -196,7 +195,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         in_tensor: torch.Tensor,
         in_transform: Optional[torch.Tensor],  # type: ignore
         params: Dict[str, torch.Tensor],
-        return_transform: bool = False
+        return_transform: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         to_apply = params['batch_prob']
 
@@ -274,13 +273,12 @@ class AugmentationBase2D(_AugmentationBase):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' \
-                                            'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], f'In batch dimension, input has {inp.shape[0]}' \
-                                                     f'but transformation matrix has {mat.shape[0]}'
+                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
+                assert mat.shape[0] == inp.shape[0], (
+                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                )
             elif len(inp.shape) == 3 or len(inp.shape) == 2:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' \
-                                            'but transformation matrix is not'
+                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
@@ -341,15 +339,13 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         input: torch.Tensor,
         transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs
+        **kwargs,
     ) -> torch.Tensor:
-        """By default, the exact transformation as ``apply_transform`` will be used.
-        """
+        """By default, the exact transformation as ``apply_transform`` will be used."""
         return self.apply_transform(input, params=self._params, transform=transform)
 
     def compute_inverse_transformation(self, transform: torch.Tensor):
-        """Compute the inverse transform of given transformation matrices.
-        """
+        """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
     def inverse(
@@ -357,12 +353,9 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         params: Optional[Dict[str, torch.Tensor]] = None,
         size: Optional[Tuple[int, int]] = None,
-        **kwargs
+        **kwargs,
     ) -> torch.Tensor:
-        if isinstance(input, (
-            list,
-            tuple,
-        )):
+        if isinstance(input, (list, tuple)):
             input, transform = input
         else:
             transform = self._transform_matrix
@@ -414,13 +407,12 @@ class AugmentationBase3D(_AugmentationBase):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 5:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' \
-                                            'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], f'In batch dimension, input has {inp.shape[0]}' \
-                                                     f'but transformation matrix has {mat.shape[0]}'
+                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
+                assert mat.shape[0] == inp.shape[0], (
+                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                )
             elif len(inp.shape) == 3 or len(inp.shape) == 4:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' \
-                                            'but transformation matrix is not'
+                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 3, 4 or 5, got {len(inp.shape)}')
 
@@ -457,13 +449,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
         if isinstance(input, tuple):
             inp, mat = input
             if len(inp.shape) == 4:
-                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' \
-                                            'but transformation matrix is not'
-                assert mat.shape[0] == inp.shape[0], f'In batch dimension, input has {inp.shape[0]}' \
-                                                     f'but transformation matrix has {mat.shape[0]}'
+                assert len(mat.shape) == 3, 'Input tensor is in batch mode ' 'but transformation matrix is not'
+                assert mat.shape[0] == inp.shape[0], (
+                    f'In batch dimension, input has {inp.shape[0]}' f'but transformation matrix has {mat.shape[0]}'
+                )
             elif len(inp.shape) == 3 or len(inp.shape) == 2:
-                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' \
-                                            'but transformation matrix is not'
+                assert len(mat.shape) == 2, 'Input tensor is in non-batch mode ' 'but transformation matrix is not'
             else:
                 raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
 
@@ -473,18 +464,12 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return _transform_input(input)
 
     def apply_transform(  # type: ignore
-        self,
-        input: torch.Tensor,
-        label: torch.Tensor,  # type: ignore
-        params: Dict[str, torch.Tensor]
+        self, input: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     def apply_func(  # type: ignore
-        self,
-        in_tensor: torch.Tensor,
-        label: torch.Tensor,  # type: ignore
-        params: Dict[str, torch.Tensor]
+        self, in_tensor: torch.Tensor, label: torch.Tensor, params: Dict[str, torch.Tensor]  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         to_apply = params['batch_prob']
 
@@ -502,10 +487,7 @@ class MixAugmentationBase(_BasicAugmentationBase):
         return output, label
 
     def forward(  # type: ignore
-        self,
-        input: torch.Tensor,
-        label: torch.Tensor,  # type: ignore
-        params: Optional[Dict[str, torch.Tensor]] = None,
+        self, input: torch.Tensor, label: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         in_tensor = self.__unpack_input__(input)
         ori_shape = in_tensor.shape

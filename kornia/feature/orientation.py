@@ -8,8 +8,12 @@ from kornia.filters import get_gaussian_kernel2d
 from kornia.filters import SpatialGradient
 from kornia.constants import pi
 from kornia.feature import (
-    extract_patches_from_pyramid, make_upright, normalize_laf, raise_error_if_laf_is_not_valid, set_laf_orientation,
-    get_laf_orientation
+    extract_patches_from_pyramid,
+    make_upright,
+    normalize_laf,
+    raise_error_if_laf_is_not_valid,
+    set_laf_orientation,
+    get_laf_orientation,
 )
 from kornia.geometry import rad2deg
 
@@ -54,16 +58,24 @@ class PatchDominantGradientOrientation(nn.Module):
         return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'patch_size=' + str(self.patch_size) + ', ' + \
-            'num_ang_bins=' + str(self.num_ang_bins) + ', ' + \
-            'eps=' + str(self.eps) + ')'
+        return (
+            self.__class__.__name__ + '('
+            'patch_size='
+            + str(self.patch_size)
+            + ', '
+            + 'num_ang_bins='
+            + str(self.num_ang_bins)
+            + ', '
+            + 'eps='
+            + str(self.eps)
+            + ')'
+        )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            torch.Tensor: angle shape [B] """
+            torch.Tensor: angle shape [B]"""
         if not isinstance(patch, torch.Tensor):
             raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(patch)))
         if not len(patch.shape) == 4:
@@ -100,7 +112,7 @@ class PatchDominantGradientOrientation(nn.Module):
         ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
         ang_bins = self.angular_smooth(ang_bins)
         values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)
-        angle = -((2. * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
+        angle = -((2.0 * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
         return angle
 
 
@@ -131,16 +143,28 @@ class OriNet(nn.Module):
     def __init__(self, pretrained: bool = False, eps: float = 1e-8):
         super(OriNet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False), nn.BatchNorm2d(16, affine=False), nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(16, affine=False),
-            nn.ReLU(), nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(32, affine=False), nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(32, affine=False),
-            nn.ReLU(), nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(64, affine=False), nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False), nn.BatchNorm2d(64, affine=False),
-            nn.ReLU(), nn.Dropout(0.25), nn.Conv2d(64, 2, kernel_size=8, stride=1, padding=1, bias=True), nn.Tanh(),
-            nn.AdaptiveAvgPool2d(1)
+            nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 16, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(16, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(32, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64, affine=False),
+            nn.ReLU(),
+            nn.Dropout(0.25),
+            nn.Conv2d(64, 2, kernel_size=8, stride=1, padding=1, bias=True),
+            nn.Tanh(),
+            nn.AdaptiveAvgPool2d(1),
         )
         self.eps = eps
         # use torch.hub to load pretrained model
@@ -164,7 +188,7 @@ class OriNet(nn.Module):
         """Args:
             patch: (torch.Tensor) shape [Bx1xHxW]
         Returns:
-            patch: (torch.Tensor) shape [B] """
+            patch: (torch.Tensor) shape [B]"""
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
         angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
         return angle
@@ -178,7 +202,7 @@ class LAFOrienter(nn.Module):
     Args:
             patch_size: int, default = 32
             num_angular_bins: int, default is 36
-            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None """  # noqa pylint: disable
+            angle_detector: nn.Module. Patch orientation estimator, e.g. PatchDominantGradientOrientation or OriNet. Default: None"""  # noqa pylint: disable
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
         super(LAFOrienter, self).__init__()
@@ -192,9 +216,10 @@ class LAFOrienter(nn.Module):
         return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'patch_size=' + str(self.patch_size) + ', ' + \
-            'angle_detector=' + str(self.angle_detector) + ')'
+        return (
+            self.__class__.__name__ + '('
+            'patch_size=' + str(self.patch_size) + ', ' + 'angle_detector=' + str(self.angle_detector) + ')'
+        )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
@@ -203,7 +228,7 @@ class LAFOrienter(nn.Module):
             img: (torch.Tensor), shape [Bx1xHxW]
 
         Returns:
-            torch.Tensor: laf_out, shape [BxNx2x3] """
+            torch.Tensor: laf_out, shape [BxNx2x3]"""
         raise_error_if_laf_is_not_valid(laf)
         img_message: str = "Invalid img shape, we expect BxCxHxW. Got: {}".format(img.shape)
         if not isinstance(img, torch.Tensor):
@@ -215,8 +240,9 @@ class LAFOrienter(nn.Module):
                 "Batch size of laf and img should be the same. Got {}, {}".format(img.size(0), laf.size(0))
             )
         B, N = laf.shape[:2]
-        patches: torch.Tensor = extract_patches_from_pyramid(img, laf, self.patch_size
-                                                             ).view(-1, 1, self.patch_size, self.patch_size)
+        patches: torch.Tensor = extract_patches_from_pyramid(img, laf, self.patch_size).view(
+            -1, 1, self.patch_size, self.patch_size
+        )
         angles_radians: torch.Tensor = self.angle_detector(patches).view(B, N)
         prev_angle = get_laf_orientation(laf).view_as(angles_radians)
         laf_out: torch.Tensor = set_laf_orientation(laf, rad2deg(angles_radians) + prev_angle)

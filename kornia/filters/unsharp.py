@@ -8,10 +8,7 @@ from kornia.filters import gaussian_blur2d
 
 
 def unsharp_mask(
-    input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float],
-    border_type: str = 'reflect'
+    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
 ) -> torch.Tensor:
     r"""Creates an operator that blurs a tensor using the existing Gaussian filter available with the Kornia library.
 

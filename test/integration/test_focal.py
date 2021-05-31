@@ -39,10 +39,7 @@ class TestIntegrationFocalLoss:
         for i in range(1, self.num_classes):
             target[..., i:-i, i:-i] = i
 
-        m = nn.Sequential(
-            nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1),
-            nn.ReLU(True),
-        ).to(device)
+        m = nn.Sequential(nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1), nn.ReLU(True)).to(device)
         m.apply(self.init_weights)
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)

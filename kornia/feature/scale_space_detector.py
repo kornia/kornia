@@ -8,7 +8,7 @@ from kornia.geometry import angle_to_rotation_matrix
 from kornia.feature.responses import BlobHessian
 from kornia.geometry import ConvSoftArgmax3d
 from kornia.feature.orientation import PassLAF
-from kornia.feature.laf import (denormalize_laf, scale_laf, normalize_laf, laf_is_inside_image)
+from kornia.feature.laf import denormalize_laf, scale_laf, normalize_laf, laf_is_inside_image
 from kornia.geometry.transform import ScalePyramid
 
 
@@ -83,7 +83,7 @@ class ScaleSpaceDetector(nn.Module):
         ori_module: nn.Module = PassLAF(),
         aff_module: nn.Module = PassLAF(),
         minima_are_also_good: bool = False,
-        scale_space_response=False
+        scale_space_response=False,
     ):
         super(ScaleSpaceDetector, self).__init__()
         self.mr_size = mr_size
@@ -100,19 +100,34 @@ class ScaleSpaceDetector(nn.Module):
         return
 
     def __repr__(self):
-        return self.__class__.__name__ + '('\
-            'num_features=' + str(self.num_features) + ', ' + \
-            'mr_size=' + str(self.mr_size) + ', ' + \
-            'scale_pyr=' + self.scale_pyr.__repr__() + ', ' + \
-            'resp=' + self.resp.__repr__() + ', ' + \
-            'nms=' + self.nms.__repr__() + ', ' + \
-            'ori=' + self.ori.__repr__() + ', ' + \
-            'aff=' + self.aff.__repr__() + ')'
+        return (
+            self.__class__.__name__ + '('
+            'num_features='
+            + str(self.num_features)
+            + ', '
+            + 'mr_size='
+            + str(self.mr_size)
+            + ', '
+            + 'scale_pyr='
+            + self.scale_pyr.__repr__()
+            + ', '
+            + 'resp='
+            + self.resp.__repr__()
+            + ', '
+            + 'nms='
+            + self.nms.__repr__()
+            + ', '
+            + 'ori='
+            + self.ori.__repr__()
+            + ', '
+            + 'aff='
+            + self.aff.__repr__()
+            + ')'
+        )
 
-    def detect(self,
-               img: torch.Tensor,
-               num_feats: int,
-               mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def detect(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         dev: torch.device = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, pix_dists = self.scale_pyr(img)
@@ -127,8 +142,9 @@ class ScaleSpaceDetector(nn.Module):
             if self.scale_space_response:
                 oct_resp = self.resp(octave, sigmas_oct.view(-1))
             else:
-                oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W),
-                                     sigmas_oct.view(-1)).view(B, L, CH, H, W)
+                oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)).view(
+                    B, L, CH, H, W
+                )
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
@@ -169,9 +185,9 @@ class ScaleSpaceDetector(nn.Module):
             current_lafs = torch.cat(
                 [
                     self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
-                    max_coords_best[:, :, 1:3].view(B, N, 2, 1)
+                    max_coords_best[:, :, 1:3].view(B, N, 2, 1),
                 ],
-                dim=3
+                dim=3,
             )
 
             # Zero response lafs, which touch the boundary
@@ -192,9 +208,7 @@ class ScaleSpaceDetector(nn.Module):
         return responses, denormalize_laf(lafs, img)
 
     def forward(  # type: ignore
-        self,
-        img: torch.Tensor,  # type: ignore
-        mask: Optional[torch.Tensor] = None
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None  # type: ignore
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.

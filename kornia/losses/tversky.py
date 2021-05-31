@@ -74,14 +74,14 @@ def tversky_loss(
     # compute the actual dice score
     dims = (1, 2, 3)
     intersection = torch.sum(input_soft * target_one_hot, dims)
-    fps = torch.sum(input_soft * (-target_one_hot + 1.), dims)
-    fns = torch.sum((-input_soft + 1.) * target_one_hot, dims)
+    fps = torch.sum(input_soft * (-target_one_hot + 1.0), dims)
+    fns = torch.sum((-input_soft + 1.0) * target_one_hot, dims)
 
     numerator = intersection
     denominator = intersection + alpha * fps + beta * fns
     tversky_loss = numerator / (denominator + eps)
 
-    return torch.mean(-tversky_loss + 1.)
+    return torch.mean(-tversky_loss + 1.0)
 
 
 class TverskyLoss(nn.Module):

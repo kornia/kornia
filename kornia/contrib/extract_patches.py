@@ -68,7 +68,7 @@ class ExtractTensorPatches(nn.Module):
         self,
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, Tuple[int, int]]] = 0
+        padding: Optional[Union[int, Tuple[int, int]]] = 0,
     ) -> None:
         super(ExtractTensorPatches, self).__init__()
         self.window_size: Tuple[int, int] = _pair(window_size)
@@ -99,7 +99,7 @@ def extract_tensor_patches(
     input: torch.Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
-    padding: Union[int, Tuple[int, int]] = 0
+    padding: Union[int, Tuple[int, int]] = 0,
 ) -> torch.Tensor:
     r"""Function that extract patches from tensors and stack them.
 

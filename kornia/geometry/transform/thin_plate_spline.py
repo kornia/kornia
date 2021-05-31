@@ -161,7 +161,7 @@ def warp_image_tps(
     kernel_centers: torch.Tensor,
     kernel_weights: torch.Tensor,
     affine_weights: torch.Tensor,
-    align_corners: bool = False
+    align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Warp an image tensor according to the thin plate spline transform defined by kernel centers,
     kernel weights, and affine weights.

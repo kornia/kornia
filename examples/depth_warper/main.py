@@ -9,33 +9,32 @@ import kornia as dgm
 
 
 def load_depth(file_name):
-    """Loads the depth using the syntel SDK and converts to torch.Tensor
-    """
+    """Loads the depth using the syntel SDK and converts to torch.Tensor"""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
     import sintel_io
+
     depth = sintel_io.depth_read(file_name)
     return torch.from_numpy(depth).view(1, 1, *depth.shape).float()
 
 
 def load_camera_data(file_name):
-    """Loads the camera data using the syntel SDK and converts to torch.Tensor.
-    """
+    """Loads the camera data using the syntel SDK and converts to torch.Tensor."""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
     import sintel_io
+
     intrinsic, extrinsic = sintel_io.cam_read(file_name)
     return intrinsic, extrinsic
 
 
 def load_image(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor
-    """
+    """Loads the image with OpenCV and converts to torch.Tensor"""
     assert os.path.isfile(file_name), "Invalid file {}".format(file_name)
 
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)
 
     # convert image to torch tensor
-    tensor = dgm.utils.image_to_tensor(img).float() / 255.
+    tensor = dgm.utils.image_to_tensor(img).float() / 255.0
     return tensor.view(1, *tensor.shape)  # 1xCxHxW
 
 
@@ -88,7 +87,7 @@ def DepthWarperApp():
     warper.compute_homographies(cam_ref)
 
     # compute the inverse depth and warp the source image
-    inv_depth_ref = 1. / depth_ref
+    inv_depth_ref = 1.0 / depth_ref
     img_i_to_ref = warper(inv_depth_ref, img_i)
 
     # generate occlusion mask
@@ -99,9 +98,9 @@ def DepthWarperApp():
 
     # save warped image to disk
     file_name = os.path.join(args.output_dir, 'warped_{0}_to_{1}.png'.format(args.frame_i_id, args.frame_ref_id))
-    cv2.imwrite(file_name, dgm.utils.tensor_to_image(255. * img_vis_warped))
-    cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255. * mask))
-    cv2.imwrite(file_name + 'warpedmask.png', dgm.utils.tensor_to_image(255. * img_vis_warped_masked))
+    cv2.imwrite(file_name, dgm.utils.tensor_to_image(255.0 * img_vis_warped))
+    cv2.imwrite(file_name + 'mask.png', dgm.utils.tensor_to_image(255.0 * mask))
+    cv2.imwrite(file_name + 'warpedmask.png', dgm.utils.tensor_to_image(255.0 * img_vis_warped_masked))
 
 
 if __name__ == "__main__":

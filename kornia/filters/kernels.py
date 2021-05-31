@@ -8,8 +8,7 @@ from kornia.utils import _extract_device_dtype
 
 
 def normalize_kernel2d(input: torch.Tensor) -> torch.Tensor:
-    r"""Normalizes both derivative and smoothing kernel.
-    """
+    r"""Normalizes both derivative and smoothing kernel."""
     if len(input.size()) < 2:
         raise TypeError("input should be at least 2D tensor. Got {}".format(input.size()))
     norm: torch.Tensor = input.abs().sum(dim=-1).sum(dim=-1)
@@ -23,7 +22,7 @@ def gaussian(window_size: int, sigma: float) -> torch.Tensor:
     x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp((-x.pow(2.0) / (2 * sigma**2)))
+    gauss = torch.exp((-x.pow(2.0) / (2 * sigma ** 2)))
     return gauss / gauss.sum()
 
 
@@ -52,7 +51,7 @@ def _modified_bessel_0(x: torch.Tensor) -> torch.Tensor:
     ax = torch.abs(x)
     y = 3.75 / ax
     ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
-    coef = (0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans))))
+    coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
     return (torch.exp(ax) / torch.sqrt(ax)) * coef
 
 
@@ -121,7 +120,7 @@ def gaussian_discrete(window_size, sigma) -> torch.Tensor:
 
 def laplacian_1d(window_size) -> torch.Tensor:
     r"""One could also use the Laplacian of Gaussian formula
-        to design the filter.
+    to design the filter.
     """
 
     filter_1d = torch.ones(window_size)
@@ -134,7 +133,7 @@ def get_box_kernel2d(kernel_size: Tuple[int, int]) -> torch.Tensor:
     r"""Utility function that returns a box filter."""
     kx: float = float(kernel_size[0])
     ky: float = float(kernel_size[1])
-    scale: torch.Tensor = torch.tensor(1.) / torch.tensor([kx * ky])
+    scale: torch.Tensor = torch.tensor(1.0) / torch.tensor([kx * ky])
     tmp_kernel: torch.Tensor = torch.ones(1, kernel_size[0], kernel_size[1])
     return scale.to(tmp_kernel.dtype) * tmp_kernel
 
@@ -152,19 +151,18 @@ def get_binary_kernel2d(window_size: Tuple[int, int]) -> torch.Tensor:
 
 def get_sobel_kernel_3x3() -> torch.Tensor:
     """Utility function that returns a sobel kernel of 3x3"""
-    return torch.tensor([
-        [-1., 0., 1.],
-        [-2., 0., 2.],
-        [-1., 0., 1.],
-    ])
+    return torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]])
 
 
 def get_sobel_kernel_5x5_2nd_order() -> torch.Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5"""
     return torch.tensor(
         [
-            [-1., 0., 2., 0., -1.], [-4., 0., 8., 0., -4.], [-6., 0., 12., 0., -6.], [-4., 0., 8., 0., -4.],
-            [-1., 0., 2., 0., -1.]
+            [-1.0, 0.0, 2.0, 0.0, -1.0],
+            [-4.0, 0.0, 8.0, 0.0, -4.0],
+            [-6.0, 0.0, 12.0, 0.0, -6.0],
+            [-4.0, 0.0, 8.0, 0.0, -4.0],
+            [-1.0, 0.0, 2.0, 0.0, -1.0],
         ]
     )
 
@@ -173,19 +171,18 @@ def _get_sobel_kernel_5x5_2nd_order_xy() -> torch.Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5"""
     return torch.tensor(
         [
-            [-1., -2., 0., 2., 1.], [-2., -4., 0., 4., 2.], [0., 0., 0., 0., 0.], [2., 4., 0., -4., -2.],
-            [1., 2., 0., -2., -1.]
+            [-1.0, -2.0, 0.0, 2.0, 1.0],
+            [-2.0, -4.0, 0.0, 4.0, 2.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0],
+            [2.0, 4.0, 0.0, -4.0, -2.0],
+            [1.0, 2.0, 0.0, -2.0, -1.0],
         ]
     )
 
 
 def get_diff_kernel_3x3() -> torch.Tensor:
     """Utility function that returns a first order derivative kernel of 3x3"""
-    return torch.tensor([
-        [-0., 0., 0.],
-        [-1., 0., 1.],
-        [-0., 0., 0.],
-    ])
+    return torch.tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]])
 
 
 def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Tensor:
@@ -209,7 +206,7 @@ def get_diff_kernel3d(device=torch.device('cpu'), dtype=torch.float) -> torch.Te
             ],
         ],
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
     return kernel.unsqueeze(1)
 
@@ -250,7 +247,7 @@ def get_diff_kernel3d_2nd_order(device=torch.device('cpu'), dtype=torch.float) -
             ],
         ],
         device=device,
-        dtype=dtype
+        dtype=dtype,
     )
     return kernel.unsqueeze(1)
 
@@ -275,17 +272,9 @@ def get_sobel_kernel2d_2nd_order() -> torch.Tensor:
 
 
 def get_diff_kernel2d_2nd_order() -> torch.Tensor:
-    gxx: torch.Tensor = torch.tensor([
-        [0., 0., 0.],
-        [1., -2., 1.],
-        [0., 0., 0.],
-    ])
+    gxx: torch.Tensor = torch.tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]])
     gyy: torch.Tensor = gxx.transpose(0, 1)
-    gxy: torch.Tensor = torch.tensor([
-        [-1., 0., 1.],
-        [0., 0., 0.],
-        [1., 0., -1.],
-    ])
+    gxy: torch.Tensor = torch.tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]])
     return torch.stack([gxx, gxy, gyy])
 
 
@@ -293,11 +282,19 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> torch.Tensor:
     r"""Function that returns kernel for 1st or 2nd order image gradients,
     using one of the following operators: sobel, diff"""
     if mode not in ['sobel', 'diff']:
-        raise TypeError("mode should be either sobel\
-                         or diff. Got {}".format(mode))
+        raise TypeError(
+            "mode should be either sobel\
+                         or diff. Got {}".format(
+                mode
+            )
+        )
     if order not in [1, 2]:
-        raise TypeError("order should be either 1 or 2\
-                         Got {}".format(order))
+        raise TypeError(
+            "order should be either 1 or 2\
+                         Got {}".format(
+                order
+            )
+        )
     if mode == 'sobel' and order == 1:
         kernel: torch.Tensor = get_sobel_kernel2d()
     elif mode == 'sobel' and order == 2:
@@ -315,11 +312,19 @@ def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cp
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients,
     using one of the following operators: sobel, diff"""
     if mode not in ['sobel', 'diff']:
-        raise TypeError("mode should be either sobel\
-                         or diff. Got {}".format(mode))
+        raise TypeError(
+            "mode should be either sobel\
+                         or diff. Got {}".format(
+                mode
+            )
+        )
     if order not in [1, 2]:
-        raise TypeError("order should be either 1 or 2\
-                         Got {}".format(order))
+        raise TypeError(
+            "order should be either 1 or 2\
+                         Got {}".format(
+                order
+            )
+        )
     if mode == 'sobel':
         raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
     elif mode == 'diff' and order == 1:
@@ -353,7 +358,7 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float, force_even: bool = Fal
         >>> get_gaussian_kernel1d(5, 1.5)
         tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
     """
-    if (not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0)):
+    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError("kernel_size must be an odd positive integer. " "Got {}".format(kernel_size))
     window_1d: torch.Tensor = gaussian(kernel_size, sigma)
     return window_1d
@@ -383,7 +388,7 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: float, force_even: b
         >>> get_gaussian_discrete_kernel1d(5, 1.5)
         tensor([0.1096, 0.2323, 0.3161, 0.2323, 0.1096])
     """
-    if (not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0)):
+    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError("kernel_size must be an odd positive integer. " "Got {}".format(kernel_size))
     window_1d = gaussian_discrete(kernel_size, sigma)
     return window_1d
@@ -413,7 +418,7 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool =
         >>> get_gaussian_erf_kernel1d(5, 1.5)
         tensor([0.1226, 0.2331, 0.2887, 0.2331, 0.1226])
     """
-    if (not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0)):
+    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError("kernel_size must be an odd positive integer. " "Got {}".format(kernel_size))
     window_1d = gaussian_discrete_erf(kernel_size, sigma)
     return window_1d
@@ -478,8 +483,7 @@ def get_laplacian_kernel1d(kernel_size: int) -> torch.Tensor:
         tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
-            kernel_size <= 0:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}".format(kernel_size))
     window_1d: torch.Tensor = laplacian_1d(kernel_size)
     return window_1d
@@ -509,13 +513,12 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.]])
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or \
-            kernel_size <= 0:
+    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
         raise TypeError("ksize must be an odd positive integer. Got {}".format(kernel_size))
 
     kernel = torch.ones((kernel_size, kernel_size))
     mid = kernel_size // 2
-    kernel[mid, mid] = 1 - kernel_size**2
+    kernel[mid, mid] = 1 - kernel_size ** 2
     kernel_2d: torch.Tensor = kernel
     return kernel_2d
 
@@ -523,8 +526,8 @@ def get_laplacian_kernel2d(kernel_size: int) -> torch.Tensor:
 def get_motion_kernel2d(
     kernel_size: int,
     angle: Union[torch.Tensor, float],
-    direction: Union[torch.Tensor, float] = 0.,
-    mode: str = 'nearest'
+    direction: Union[torch.Tensor, float] = 0.0,
+    mode: str = 'nearest',
 ) -> torch.Tensor:
     r"""Return 2D motion blur filter.
 
@@ -557,10 +560,7 @@ def get_motion_kernel2d(
                  [0.5000, 0.0000, 0.0000]]])
     """
     device, dtype = _extract_device_dtype(
-        [
-            angle if isinstance(angle, torch.Tensor) else None,
-            direction if isinstance(direction, torch.Tensor) else None,
-        ]
+        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
     )
 
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
@@ -582,12 +582,13 @@ def get_motion_kernel2d(
         direction = direction.unsqueeze(0)
     assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
 
-    assert direction.size(0) == angle.size(0), \
-        f"direction and angle must have the same length. Got {direction} and {angle}."
+    assert direction.size(0) == angle.size(
+        0
+    ), f"direction and angle must have the same length. Got {direction} and {angle}."
 
     kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
-    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
     # kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
@@ -610,8 +611,8 @@ def get_motion_kernel2d(
 def get_motion_kernel3d(
     kernel_size: int,
     angle: Union[torch.Tensor, Tuple[float, float, float]],
-    direction: Union[torch.Tensor, float] = 0.,
-    mode: str = 'nearest'
+    direction: Union[torch.Tensor, float] = 0.0,
+    mode: str = 'nearest',
 ) -> torch.Tensor:
     r"""Return 3D motion blur filter.
 
@@ -663,10 +664,7 @@ def get_motion_kernel3d(
         raise TypeError(f"ksize must be an odd integer >= than 3. Got {kernel_size}.")
 
     device, dtype = _extract_device_dtype(
-        [
-            angle if isinstance(angle, torch.Tensor) else None,
-            direction if isinstance(direction, torch.Tensor) else None,
-        ]
+        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
     )
 
     if not isinstance(angle, torch.Tensor):
@@ -685,12 +683,13 @@ def get_motion_kernel3d(
         direction = direction.unsqueeze(0)
     assert direction.dim() == 1, f"direction must be a 1-dim tensor. Got {direction}."
 
-    assert direction.size(0) == angle.size(0), \
-        f"direction and angle must have the same length. Got {direction} and {angle}."
+    assert direction.size(0) == angle.size(
+        0
+    ), f"direction and angle must have the same length. Got {direction} and {angle}."
 
     kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
     # direction from [-1, 1] to [0, 1] range
-    direction = (torch.clamp(direction, -1., 1.) + 1.) / 2.
+    direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
     kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
@@ -711,7 +710,7 @@ def get_motion_kernel3d(
 
 
 def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> torch.Tensor:
-    """ Generate pascal filter kernel by kernel size.
+    """Generate pascal filter kernel by kernel size.
 
     Args:
         kernel_size (int): height and width of the kernel.
@@ -743,7 +742,7 @@ def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> torch.Tensor:
 
 
 def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
-    """ Generate Yang Hui triangle (Pascal's triangle) by a given number.
+    """Generate Yang Hui triangle (Pascal's triangle) by a given number.
 
     Args:
         kernel_size (int): height and width of the kernel.
@@ -769,7 +768,7 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> torch.Tensor:
     pre: List[float] = []
     cur: List[float] = []
     for i in range(kernel_size):
-        cur = [1.] * (i + 1)
+        cur = [1.0] * (i + 1)
 
         for j in range(1, i // 2 + 1):
             value = pre[j - 1] + pre[j]

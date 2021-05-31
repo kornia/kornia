@@ -6,7 +6,6 @@ import kornia as kornia
 
 
 class TestRenderGaussian2d:
-
     @pytest.fixture
     def gaussian(self, device, dtype):
         return torch.tensor(
@@ -18,7 +17,7 @@ class TestRenderGaussian2d:
                 [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
             ],
             dtype=dtype,
-            device=device
+            device=device,
         )
 
     def test_pixel_coordinates(self, gaussian, device, dtype):
@@ -42,7 +41,6 @@ class TestRenderGaussian2d:
         assert_allclose(op(*args), op_jit(*args), rtol=0, atol=1e-5)
 
     def test_jit_trace(self, device, dtype):
-
         def op(mean, std):
             return kornia.geometry.dsnt.render_gaussian2d(mean, std, (5, 5), True)
 
@@ -54,11 +52,7 @@ class TestRenderGaussian2d:
 
 
 class TestSpatialSoftmax2d:
-
-    @pytest.fixture(params=[
-        torch.ones(1, 1, 5, 7),
-        torch.randn(2, 3, 16, 16),
-    ])
+    @pytest.fixture(params=[torch.ones(1, 1, 5, 7), torch.randn(2, 3, 16, 16)])
     def input(self, request, device, dtype):
         return request.param.to(device, dtype)
 
@@ -75,22 +69,18 @@ class TestSpatialSoftmax2d:
 
     def test_jit_trace(self, input):
         op = kornia.geometry.dsnt.spatial_softmax2d
-        op_jit = torch.jit.trace(op, (input, ))
+        op_jit = torch.jit.trace(op, (input,))
         assert_allclose(op(input), op_jit(input), rtol=0, atol=1e-5)
 
 
 class TestSpatialExpectation2d:
-
     @pytest.fixture(
         params=[
             (
-                torch.tensor([[[
-                    [0.0, 0.0, 1.0],
-                    [0.0, 0.0, 0.0],
-                ]]]),
+                torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]]),
                 torch.tensor([[[1.0, -1.0]]]),
                 torch.tensor([[[2.0, 0.0]]]),
-            ),
+            )
         ]
     )
     def example(self, request, device, dtype):
@@ -113,5 +103,5 @@ class TestSpatialExpectation2d:
     def test_jit_trace(self, example):
         input = example[0]
         op = kornia.geometry.dsnt.spatial_expectation2d
-        op_jit = torch.jit.trace(op, (input, ))
+        op_jit = torch.jit.trace(op, (input,))
         assert_allclose(op(input), op_jit(input), rtol=0, atol=1e-5)

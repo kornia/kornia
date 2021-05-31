@@ -16,7 +16,7 @@ def focal_loss(
     alpha: float,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float = 1e-8
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -62,7 +62,7 @@ def focal_loss(
         )
 
     n = input.size(0)
-    out_size = (n, ) + input.size()[2:]
+    out_size = (n,) + input.size()[2:]
     if target.size()[1:] != input.size()[2:]:
         raise ValueError('Expected target size {}, got {}'.format(out_size, target.size()))
 
@@ -78,7 +78,7 @@ def focal_loss(
     target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # compute the actual focal loss
-    weight = torch.pow(-input_soft + 1., gamma)
+    weight = torch.pow(-input_soft + 1.0, gamma)
 
     focal = -alpha * weight * torch.log(input_soft)
     loss_tmp = torch.sum(target_one_hot * focal, dim=1)
@@ -144,10 +144,10 @@ class FocalLoss(nn.Module):
 def binary_focal_loss_with_logits(
     input: torch.Tensor,
     target: torch.Tensor,
-    alpha: float = .25,
+    alpha: float = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float = 1e-8
+    eps: float = 1e-8,
 ) -> torch.Tensor:
     r"""Function that computes Binary Focal loss.
 
@@ -191,8 +191,9 @@ def binary_focal_loss_with_logits(
 
     probs = torch.sigmoid(input)
     target = target.unsqueeze(dim=1)
-    loss_tmp = - alpha * torch.pow((1. - probs + eps), gamma) * target * torch.log(probs + eps) \
-               - (1 - alpha) * torch.pow(probs + eps, gamma) * (1. - target) * torch.log(1. - probs + eps)
+    loss_tmp = -alpha * torch.pow((1.0 - probs + eps), gamma) * target * torch.log(probs + eps) - (
+        1 - alpha
+    ) * torch.pow(probs + eps, gamma) * (1.0 - target) * torch.log(1.0 - probs + eps)
 
     loss_tmp = loss_tmp.squeeze(dim=1)
 

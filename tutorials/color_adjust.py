@@ -26,7 +26,7 @@ x_rgb: torch.Tensor = kornia.bgr_to_rgb(x_bgr)
 #############################
 # Create batch and normalize
 x_rgb = x_rgb.expand(4, -1, -1, -1)  # 4xCxHxW
-x_rgb = x_rgb.float() / 255.
+x_rgb = x_rgb.float() / 255.0
 
 
 def imshow(input: torch.Tensor):
@@ -35,6 +35,7 @@ def imshow(input: torch.Tensor):
     plt.imshow(out_np)
     plt.axis('off')
     plt.show()
+
 
 #############################
 # Show original
@@ -52,7 +53,7 @@ imshow(x_contrast)
 
 #############################
 # Adjust Gamma
-x_gamma: torch.Tensor = kornia.adjust_gamma(x_rgb, gamma=3., gain=1.5)
+x_gamma: torch.Tensor = kornia.adjust_gamma(x_rgb, gamma=3.0, gain=1.5)
 imshow(x_gamma)
 
 #############################

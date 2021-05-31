@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.geometry.linalg import transform_points
-from kornia.geometry.conversions import (convert_points_to_homogeneous, convert_points_from_homogeneous)
+from kornia.geometry.conversions import convert_points_to_homogeneous, convert_points_from_homogeneous
 
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
@@ -121,6 +121,6 @@ def unproject_points(
     xyz = convert_points_to_homogeneous(xyz)
 
     if normalize:
-        xyz = F.normalize(xyz, dim=-1, p=2.)
+        xyz = F.normalize(xyz, dim=-1, p=2.0)
 
     return xyz * depth

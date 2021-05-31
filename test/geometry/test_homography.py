@@ -10,7 +10,6 @@ from kornia.geometry.homography import find_homography_dlt, find_homography_dlt_
 
 
 class TestFindHomographyDLT:
-
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -18,10 +17,7 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
-    @pytest.mark.parametrize(
-        "batch_size, num_points",
-        [(1, 4), (2, 5), (3, 6)],
-    )
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
@@ -30,10 +26,7 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (B, 3, 3)
 
-    @pytest.mark.parametrize(
-        "batch_size, num_points",
-        [(1, 4), (2, 5), (3, 6)],
-    )
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape_noweights(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
@@ -41,10 +34,7 @@ class TestFindHomographyDLT:
         H = find_homography_dlt(points1, points2, None)
         assert H.shape == (B, 3, 3)
 
-    @pytest.mark.parametrize(
-        "batch_size, num_points",
-        [(1, 4), (2, 5), (3, 6)],
-    )
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_points_noweights(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
@@ -96,14 +86,15 @@ class TestFindHomographyDLT:
                 # All iterations failed
                 if i == max_number_of_checks - 1:
                     assert gradcheck(
-                        find_homography_dlt, (points_src, points_dst, weights),
+                        find_homography_dlt,
+                        (points_src, points_dst, weights),
                         rtol=1e-6,
                         atol=1e-6,
-                        raise_exception=True
+                        raise_exception=True,
                     )
                 # Next iteration
                 else:
-                    current_seed = random.randrange(0xffffffffffffffff)
+                    current_seed = random.randrange(0xFFFFFFFFFFFFFFFF)
                     continue
 
             # Gradcheck succeed
@@ -112,7 +103,6 @@ class TestFindHomographyDLT:
 
 
 class TestFindHomographyDLTIter:
-
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -120,10 +110,7 @@ class TestFindHomographyDLTIter:
         H = find_homography_dlt_iterated(points1, points2, weights, 5)
         assert H.shape == (1, 3, 3)
 
-    @pytest.mark.parametrize(
-        "batch_size, num_points",
-        [(1, 4), (2, 5), (3, 6)],
-    )
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
@@ -165,10 +152,11 @@ class TestFindHomographyDLTIter:
             weights = torch.ones_like(points_src)[..., 0]
             try:
                 gradcheck(
-                    find_homography_dlt_iterated, (points_src, points_dst, weights),
+                    find_homography_dlt_iterated,
+                    (points_src, points_dst, weights),
                     rtol=1e-6,
                     atol=1e-6,
-                    raise_exception=True
+                    raise_exception=True,
                 )
 
             # Gradcheck failed
@@ -177,14 +165,15 @@ class TestFindHomographyDLTIter:
                 # All iterations failed
                 if i == max_number_of_checks - 1:
                     assert gradcheck(
-                        find_homography_dlt_iterated, (points_src, points_dst, weights),
+                        find_homography_dlt_iterated,
+                        (points_src, points_dst, weights),
                         rtol=1e-6,
                         atol=1e-6,
-                        raise_exception=True
+                        raise_exception=True,
                     )
                 # Next iteration
                 else:
-                    current_seed = random.randrange(0xffffffffffffffff)
+                    current_seed = random.randrange(0xFFFFFFFFFFFFFFFF)
                     continue
 
             # Gradcheck succeed
@@ -200,7 +189,7 @@ class TestFindHomographyDLTIter:
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
-        points_src = 100. * torch.rand(batch_size, 20, 2, device=device, dtype=dtype)
+        points_src = 100.0 * torch.rand(batch_size, 20, 2, device=device, dtype=dtype)
         points_dst = kornia.transform_points(H, points_src)
 
         # making last point an outlier

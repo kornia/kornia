@@ -47,11 +47,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     gc: torch.Tensor = maxc_tmp[..., 1, :, :]
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
 
-    h = torch.stack([
-        bc - gc,
-        2.0 * deltac + rc - bc,
-        4.0 * deltac + gc - rc,
-    ], dim=-3)
+    h = torch.stack([bc - gc, 2.0 * deltac + rc - bc, 4.0 * deltac + gc - rc], dim=-3)
 
     h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
     h = h.squeeze(-3)
@@ -91,33 +87,14 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     hi: torch.Tensor = torch.floor(h * 6) % 6
     f: torch.Tensor = ((h * 6) % 6) - hi
-    one: torch.Tensor = torch.tensor(1.).to(image.device)
+    one: torch.Tensor = torch.tensor(1.0).to(image.device)
     p: torch.Tensor = v * (one - s)
     q: torch.Tensor = v * (one - f * s)
     t: torch.Tensor = v * (one - (one - f) * s)
 
     hi = hi.long()
     indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
-    out = torch.stack((
-        v,
-        q,
-        p,
-        p,
-        t,
-        v,
-        t,
-        v,
-        v,
-        q,
-        p,
-        p,
-        p,
-        p,
-        t,
-        v,
-        v,
-        q,
-    ), dim=-3)
+    out = torch.stack((v, q, p, p, t, v, t, v, v, q, p, p, p, p, t, v, v, q), dim=-3)
     out = torch.gather(out, -3, indices)
 
     return out

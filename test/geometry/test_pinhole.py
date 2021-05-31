@@ -5,7 +5,6 @@ import kornia as kornia
 
 
 class TestPinholeCamera:
-
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] = fx
@@ -75,22 +74,22 @@ class TestPinholeCamera:
         assert pinhole.tz.item() == tz
 
         # add offset
-        pinhole.tx += 3.
-        pinhole.ty += 2.
-        pinhole.tz += 1.
+        pinhole.tx += 3.0
+        pinhole.ty += 2.0
+        pinhole.tz += 1.0
 
-        assert pinhole.tx.item() == tx + 3.
-        assert pinhole.ty.item() == ty + 2.
-        assert pinhole.tz.item() == tz + 1.
+        assert pinhole.tx.item() == tx + 3.0
+        assert pinhole.ty.item() == ty + 2.0
+        assert pinhole.tz.item() == tz + 1.0
 
         # set to zero
-        pinhole.tx = 0.
-        pinhole.ty = 0.
-        pinhole.tz = 0.
+        pinhole.tx = 0.0
+        pinhole.ty = 0.0
+        pinhole.tz = 0.0
 
-        assert pinhole.tx.item() == 0.
-        assert pinhole.ty.item() == 0.
-        assert pinhole.tz.item() == 0.
+        assert pinhole.tx.item() == 0.0
+        assert pinhole.ty.item() == 0.0
+        assert pinhole.tz.item() == 0.0
 
     def test_pinhole_camera_attributes_batch2(self, device, dtype):
         batch_size = 2

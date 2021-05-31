@@ -5,7 +5,6 @@ import kornia as kornia
 
 
 class TestMeanIoU:
-
     def test_two_classes_perfect(self):
         batch_size = 1
         num_classes = 2
@@ -64,7 +63,6 @@ class TestMeanIoU:
 
 
 class TestConfusionMatrix:
-
     def test_two_classes(self):
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]])

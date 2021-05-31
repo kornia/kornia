@@ -10,7 +10,6 @@ T = TypeVar('T', bound='ConstantBase')
 
 
 class ConstantBase:
-
     @classmethod
     def get(cls, value: Union[str, int, T]) -> T:  # type: ignore
         if type(value) == str:

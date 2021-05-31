@@ -8,7 +8,6 @@ import kornia.testing as utils  # test utils
 
 
 class TestZCA:
-
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
 
@@ -44,16 +43,11 @@ class TestZCA:
                     [0.35353088, -0.35353088],
                 ],
                 device=device,
-                dtype=dtype
+                dtype=dtype,
             )
         elif dim == 0:
             expected = torch.tensor(
-                [
-                    [0., 1.2247448],
-                    [1.2247448, 0.],
-                    [-1.2247448, 0.],
-                    [0., -1.2247448],
-                ], device=device, dtype=dtype
+                [[0.0, 1.2247448], [1.2247448, 0.0], [-1.2247448, 0.0], [0.0, -1.2247448]], device=device, dtype=dtype
             )
 
         zca = kornia.enhance.ZCAWhitening(dim=dim)
@@ -62,7 +56,7 @@ class TestZCA:
         tol_val: float = utils._get_precision(device, dtype)
         assert_allclose(actual, expected, rtol=tol_val, atol=tol_val)
 
-    @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), .1), ((20, 3, 2, 2), 1e-3)])
+    @pytest.mark.parametrize("input_shape,eps", [((15, 2, 2, 2), 1e-6), ((10, 4), 0.1), ((20, 3, 2, 2), 1e-3)])
     def test_identity(self, input_shape, eps, device, dtype):
         """
 
@@ -101,9 +95,9 @@ class TestZCA:
         def zca_T_inv(x):
             return kornia.enhance.zca_mean(x, return_inverse=True)[2]
 
-        assert gradcheck(zca_T, (data, ), raise_exception=True)
-        assert gradcheck(zca_mu, (data, ), raise_exception=True)
-        assert gradcheck(zca_T_inv, (data, ), raise_exception=True)
+        assert gradcheck(zca_T, (data,), raise_exception=True)
+        assert gradcheck(zca_mu, (data,), raise_exception=True)
+        assert gradcheck(zca_T_inv, (data,), raise_exception=True)
 
     def test_grad_zca_with_fit(self, device, dtype):
 
@@ -115,7 +109,7 @@ class TestZCA:
             zca = kornia.enhance.ZCAWhitening(detach_transforms=False)
             return zca(x, include_fit=True)
 
-        assert gradcheck(zca_fit, (data, ), raise_exception=True)
+        assert gradcheck(zca_fit, (data,), raise_exception=True)
 
     def test_grad_detach_zca(self, device, dtype):
 
@@ -126,7 +120,7 @@ class TestZCA:
 
         zca.fit(data)
 
-        assert gradcheck(zca, (data, ), raise_exception=True)
+        assert gradcheck(zca, (data,), raise_exception=True)
 
     def test_not_fitted(self, device, dtype):
 

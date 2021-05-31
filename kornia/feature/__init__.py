@@ -1,17 +1,37 @@
 from .responses import (
-    CornerHarris, CornerGFTT, BlobHessian, BlobDoG, harris_response, gftt_response, hessian_response, dog_response
+    CornerHarris,
+    CornerGFTT,
+    BlobHessian,
+    BlobDoG,
+    harris_response,
+    gftt_response,
+    hessian_response,
+    dog_response,
 )
-from .nms import (NonMaximaSuppression2d, nms2d, NonMaximaSuppression3d, nms3d)
+from .nms import NonMaximaSuppression2d, nms2d, NonMaximaSuppression3d, nms3d
 
 # Backward compatibility
 from .nms import nms2d as non_maxima_suppression2d
 from .nms import nms3d as non_maxima_suppression3d
 
 from .laf import (
-    extract_patches_from_pyramid, extract_patches_simple, normalize_laf, denormalize_laf, laf_to_boundary_points,
-    ellipse_to_laf, make_upright, scale_laf, get_laf_scale, get_laf_center, get_laf_orientation, set_laf_orientation,
-    raise_error_if_laf_is_not_valid, laf_from_center_scale_ori, laf_is_inside_image, laf_to_three_points,
-    laf_from_three_points
+    extract_patches_from_pyramid,
+    extract_patches_simple,
+    normalize_laf,
+    denormalize_laf,
+    laf_to_boundary_points,
+    ellipse_to_laf,
+    make_upright,
+    scale_laf,
+    get_laf_scale,
+    get_laf_center,
+    get_laf_orientation,
+    set_laf_orientation,
+    raise_error_if_laf_is_not_valid,
+    laf_from_center_scale_ori,
+    laf_is_inside_image,
+    laf_to_three_points,
+    laf_from_three_points,
 )
 from .siftdesc import SIFTDescriptor
 from .mkd import MKDDescriptor

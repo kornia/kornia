@@ -22,7 +22,7 @@ def _validate_input(f: Callable) -> Callable:
         if not torch.is_tensor(input):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-        _validate_shape(input.shape, required_shapes=('BCHW', ))
+        _validate_shape(input.shape, required_shapes=('BCHW',))
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
@@ -55,8 +55,7 @@ def _validate_input3d(f: Callable) -> Callable:
 
 
 def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
-    """
+    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
     if isinstance(input, tuple):
         tensor = _transform_input(input[0])
     else:
@@ -65,8 +64,7 @@ def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tens
 
 
 def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
-    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)
-    """
+    r"""Infer input shape. Input may be either (tensor,) or (tensor, transform_matrix)"""
     if isinstance(input, tuple):
         tensor = _transform_input3d(input[0])
     else:
@@ -132,8 +130,9 @@ def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-                            shape: Tuple) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+def _transform_output_shape(
+    output: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], shape: Tuple
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: torch.Tensor
@@ -153,19 +152,19 @@ def _transform_output_shape(output: Union[torch.Tensor, Tuple[torch.Tensor, torc
 
     if trans_matrix is not None:
         if len(out_tensor.shape) > len(shape):  # if output is broadcasted
-            assert trans_matrix.shape[0] == 1, f'Dimension 0 of transformation matrix is ' \
-                                               f'expected to be 1, got {trans_matrix.shape[0]}'
+            assert trans_matrix.shape[0] == 1, (
+                f'Dimension 0 of transformation matrix is ' f'expected to be 1, got {trans_matrix.shape[0]}'
+            )
         trans_matrix = trans_matrix.squeeze(0)
 
     for dim in range(len(out_tensor.shape) - len(shape)):
-        assert out_tensor.shape[0] == 1, f'Dimension {dim} of input is ' \
-                                         f'expected to be 1, got {out_tensor.shape[0]}'
+        assert out_tensor.shape[0] == 1, f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}'
         out_tensor = out_tensor.squeeze(0)
 
     return (out_tensor, trans_matrix) if is_tuple else out_tensor  # type: ignore
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW", )) -> None:
+def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape
@@ -227,7 +226,7 @@ def _adapted_uniform(
     low: Union[float, int, torch.Tensor],
     high: Union[float, int, torch.Tensor],
     same_on_batch: bool = False,
-    epsilon: float = 1e-6
+    epsilon: float = 1e-6,
 ) -> torch.Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -238,10 +237,7 @@ def _adapted_uniform(
     in the same device/dtype as low/high tensor.
     """
     device, dtype = _extract_device_dtype(
-        [
-            low if isinstance(low, torch.Tensor) else None,
-            high if isinstance(high, torch.Tensor) else None,
-        ]
+        [low if isinstance(low, torch.Tensor) else None, high if isinstance(high, torch.Tensor) else None]
     )
     low = torch.as_tensor(low, device=device, dtype=dtype)
     high = torch.as_tensor(high, device=device, dtype=dtype)
@@ -255,9 +251,9 @@ def _adapted_beta(
     shape: Union[Tuple, torch.Size],
     a: Union[float, int, torch.Tensor],
     b: Union[float, int, torch.Tensor],
-    same_on_batch: bool = False
+    same_on_batch: bool = False,
 ) -> torch.Tensor:
-    r""" The beta sampling function that accepts 'same_on_batch'.
+    r"""The beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
     By default, same_on_batch is set to False.
@@ -266,10 +262,7 @@ def _adapted_beta(
     in the same device/dtype as a/b tensor.
     """
     device, dtype = _extract_device_dtype(
-        [
-            a if isinstance(a, torch.Tensor) else None,
-            b if isinstance(b, torch.Tensor) else None,
-        ]
+        [a if isinstance(a, torch.Tensor) else None, b if isinstance(b, torch.Tensor) else None]
     )
     a = torch.as_tensor(a, device=device, dtype=dtype)
     b = torch.as_tensor(b, device=device, dtype=dtype)

@@ -23,7 +23,6 @@ def test_get_kron_order(d1, d2):
 
 
 class TestMKDGradients:
-
     @pytest.mark.parametrize("ps", [5, 13, 25])
     def test_shape(self, ps, device):
         inp = torch.ones(1, 1, ps, ps).to(device)
@@ -47,7 +46,7 @@ class TestMKDGradients:
         patch[0, 0, :, 3:] = 0
         gradients = MKDGradients().to(device)
         out = gradients(patch)
-        expected_mags_1 = torch.Tensor([0, 0, 1., 1., 0, 0]).to(device)
+        expected_mags_1 = torch.Tensor([0, 0, 1.0, 1.0, 0, 0]).to(device)
         expected_mags = expected_mags_1.unsqueeze(0).repeat(6, 1)
         expected_oris_1 = torch.Tensor([-pi, -pi, 0, 0, -pi, -pi]).to(device)
         expected_oris = expected_oris_1.unsqueeze(0).repeat(6, 1)
@@ -76,7 +75,6 @@ class TestMKDGradients:
 
 
 class TestVonMisesKernel:
-
     @pytest.mark.parametrize("ps", [5, 13, 25])
     def test_shape(self, ps, device):
         inp = torch.ones(1, 1, ps, ps).to(device)
@@ -134,8 +132,9 @@ class TestVonMisesKernel:
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device,
-                                                                                  patches.dtype).eval()  # noqa
+        model = (
+            VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
+        )  # noqa
         model_jit = torch.jit.script(
             VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         )  # noqa
@@ -143,7 +142,6 @@ class TestVonMisesKernel:
 
 
 class TestEmbedGradients:
-
     @pytest.mark.parametrize("ps,relative", [(5, True), (13, True), (25, True), (5, False), (13, False), (25, False)])
     def test_shape(self, ps, relative, device):
         inp = torch.ones(1, 2, ps, ps).to(device)
@@ -168,7 +166,7 @@ class TestEmbedGradients:
         emb_grads = EmbedGradients(patch_size=6, relative=True).to(device)
         out = emb_grads(grads)
         expected = torch.ones_like(out[0, 0, :, :3]).to(device)
-        assert_allclose(out[0, 0, :, :3], expected * .3787, atol=1e-3, rtol=1e-3)
+        assert_allclose(out[0, 0, :, :3], expected * 0.3787, atol=1e-3, rtol=1e-3)
         assert_allclose(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
 
     # TODO: review this test implementation
@@ -204,7 +202,6 @@ def test_spatial_kernel_embedding(kernel_type, ps, d):
 
 
 class TestExplicitSpacialEncoding:
-
     @pytest.mark.parametrize(
         "kernel_type,ps,in_dims", [('cart', 9, 3), ('polar', 9, 3), ('cart', 13, 7), ('polar', 13, 7)]
     )
@@ -262,8 +259,9 @@ class TestExplicitSpacialEncoding:
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device,
-                                                                                       patches.dtype).eval()
+        model = (
+            ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
+        )
         model_jit = torch.jit.script(
             ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
         )  # noqa
@@ -271,12 +269,16 @@ class TestExplicitSpacialEncoding:
 
 
 class TestWhitening:
-
     @pytest.mark.parametrize(
-        "kernel_type,xform,output_dims", [
-            ('cart', None, 3), ('polar', None, 3), ('cart', 'lw', 7), ('polar', 'lw', 7), ('cart', 'pca', 9),
-            ('polar', 'pca', 9)
-        ]
+        "kernel_type,xform,output_dims",
+        [
+            ('cart', None, 3),
+            ('polar', None, 3),
+            ('cart', 'lw', 7),
+            ('polar', 'lw', 7),
+            ('cart', 'pca', 9),
+            ('polar', 'pca', 9),
+        ],
     )
     def test_shape(self, kernel_type, xform, output_dims, device):
         in_dims = 63 if kernel_type == 'cart' else 175
@@ -339,10 +341,15 @@ class TestMKDDescriptor:
         assert out.shape == (1, self.dims[kernel_type])
 
     @pytest.mark.parametrize(
-        "ps,kernel_type,whitening", [
-            (9, 'concat', 'lw'), (9, 'cart', 'lw'), (9, 'polar', 'lw'), (9, 'concat', 'pcawt'), (9, 'cart', 'pcawt'),
-            (9, 'polar', 'pcawt')
-        ]
+        "ps,kernel_type,whitening",
+        [
+            (9, 'concat', 'lw'),
+            (9, 'cart', 'lw'),
+            (9, 'polar', 'lw'),
+            (9, 'concat', 'pcawt'),
+            (9, 'cart', 'pcawt'),
+            (9, 'polar', 'pcawt'),
+        ],
     )
     def test_whitened_shape(self, ps, kernel_type, whitening, device):
         mkd = MKDDescriptor(patch_size=ps, kernel_type=kernel_type, whitening=whitening).to(device)
@@ -436,8 +443,9 @@ class TestSimpleKD:
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device,
-                                                                                patches.dtype).eval()  # noqa
+        model = (
+            SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
+        )  # noqa
         model_jit = torch.jit.script(
             SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
         )  # noqa

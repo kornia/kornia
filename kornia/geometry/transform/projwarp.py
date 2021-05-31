@@ -11,8 +11,11 @@ from kornia.testing import check_is_tensor
 from kornia.utils.helpers import _torch_solve_cast, _torch_inverse_cast
 
 __all__ = [
-    "warp_affine3d", "get_projective_transform", "projection_from_Rt", "get_perspective_transform3d",
-    "warp_perspective3d"
+    "warp_affine3d",
+    "get_projective_transform",
+    "projection_from_Rt",
+    "get_perspective_transform3d",
+    "warp_perspective3d",
 ]
 
 
@@ -22,7 +25,7 @@ def warp_affine3d(
     dsize: Tuple[int, int, int],
     flags: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None
+    align_corners: Optional[bool] = None,
 ) -> torch.Tensor:
     r"""Applies a projective transformation a to 3d tensor.
 
@@ -147,7 +150,7 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
 
     # chain 4x4 transforms
     proj_mat = convert_affinematrix_to_homography3d(proj_mat)  # Bx4x4
-    proj_mat = (from_origin_mat @ proj_mat @ to_origin_mat)
+    proj_mat = from_origin_mat @ proj_mat @ to_origin_mat
 
     return proj_mat[..., :3, :]  # Bx3x4
 
@@ -279,7 +282,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
             dst[:, 7:8, 1],
             dst[:, 7:8, 2],
         ],
-        dim=1
+        dim=1,
     )
 
     # solve the system Ax = b
@@ -299,28 +302,67 @@ def _build_perspective_param3d(p: torch.Tensor, q: torch.Tensor, axis: str) -> t
     if axis == 'x':
         return torch.cat(
             [
-                p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros,
-                -p[:, 0:1] * q[:, 0:1], -p[:, 1:2] * q[:, 0:1], -p[:, 2:3] * q[:, 0:1]
+                p[:, 0:1],
+                p[:, 1:2],
+                p[:, 2:3],
+                ones,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                -p[:, 0:1] * q[:, 0:1],
+                -p[:, 1:2] * q[:, 0:1],
+                -p[:, 2:3] * q[:, 0:1],
             ],
-            dim=1
+            dim=1,
         )
 
     if axis == 'y':
         return torch.cat(
             [
-                zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones, zeros, zeros, zeros, zeros,
-                -p[:, 0:1] * q[:, 1:2], -p[:, 1:2] * q[:, 1:2], -p[:, 2:3] * q[:, 1:2]
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                p[:, 0:1],
+                p[:, 1:2],
+                p[:, 2:3],
+                ones,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                -p[:, 0:1] * q[:, 1:2],
+                -p[:, 1:2] * q[:, 1:2],
+                -p[:, 2:3] * q[:, 1:2],
             ],
-            dim=1
+            dim=1,
         )
 
     if axis == 'z':
         return torch.cat(
             [
-                zeros, zeros, zeros, zeros, zeros, zeros, zeros, zeros, p[:, 0:1], p[:, 1:2], p[:, 2:3], ones,
-                -p[:, 0:1] * q[:, 2:3], -p[:, 1:2] * q[:, 2:3], -p[:, 2:3] * q[:, 2:3]
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                zeros,
+                p[:, 0:1],
+                p[:, 1:2],
+                p[:, 2:3],
+                ones,
+                -p[:, 0:1] * q[:, 2:3],
+                -p[:, 1:2] * q[:, 2:3],
+                -p[:, 2:3] * q[:, 2:3],
             ],
-            dim=1
+            dim=1,
         )
 
     raise NotImplementedError(f"perspective params for axis `{axis}` is not implemented.")
@@ -332,7 +374,7 @@ def warp_perspective3d(
     dsize: Tuple[int, int, int],
     flags: str = 'bilinear',
     border_mode: str = 'zeros',
-    align_corners: bool = False
+    align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Applies a perspective transformation to an image.
 
@@ -376,11 +418,15 @@ def warp_perspective3d(
 
 
 def transform_warp_impl3d(
-    src: torch.Tensor, dst_pix_trans_src_pix: torch.Tensor, dsize_src: Tuple[int, int, int],
-    dsize_dst: Tuple[int, int, int], grid_mode: str, padding_mode: str, align_corners: bool
+    src: torch.Tensor,
+    dst_pix_trans_src_pix: torch.Tensor,
+    dsize_src: Tuple[int, int, int],
+    dsize_dst: Tuple[int, int, int],
+    grid_mode: str,
+    padding_mode: str,
+    align_corners: bool,
 ) -> torch.Tensor:
-    """Compute the transform in normalized cooridnates and perform the warping.
-    """
+    """Compute the transform in normalized cooridnates and perform the warping."""
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
     src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)

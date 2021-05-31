@@ -42,7 +42,7 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     deltac: torch.Tensor = maxc - minc
 
     s: torch.Tensor = torch.where(
-        l < 0.5, deltac / (maxc + minc), deltac / (torch.tensor(2.) - (maxc + minc))
+        l < 0.5, deltac / (maxc + minc), deltac / (torch.tensor(2.0) - (maxc + minc))
     )  # saturation
 
     hi: torch.Tensor = torch.zeros_like(deltac)
@@ -51,14 +51,14 @@ def rgb_to_hls(image: torch.Tensor) -> torch.Tensor:
     hi[imax == 1] = (((b - r) / deltac) + 2)[imax == 1]
     hi[imax == 2] = (((r - g) / deltac) + 4)[imax == 2]
 
-    h: torch.Tensor = 2. * math.pi * (60. * hi) / 360.  # hue [0, 2*pi]
+    h: torch.Tensor = 2.0 * math.pi * (60.0 * hi) / 360.0  # hue [0, 2*pi]
 
     image_hls: torch.Tensor = torch.stack([h, l, s], dim=-3)
 
     # JIT indexing is not supported before 1.6.0 https://github.com/pytorch/pytorch/issues/38962
     # image_hls[torch.isnan(image_hls)] = 0.
     image_hls = torch.where(
-        torch.isnan(image_hls), torch.tensor(0., device=image_hls.device, dtype=image_hls.dtype), image_hls
+        torch.isnan(image_hls), torch.tensor(0.0, device=image_hls.device, dtype=image_hls.dtype), image_hls
     )
 
     return image_hls
@@ -92,21 +92,18 @@ def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     kr = (0 + h / 30) % 12
     kg = (8 + h / 30) % 12
     kb = (4 + h / 30) % 12
-    a = s * torch.min(l, torch.tensor(1.) - l)
+    a = s * torch.min(l, torch.tensor(1.0) - l)
 
     ones_k = torch.ones_like(kr)
 
     fr: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kr - torch.tensor(3.),
-                            torch.tensor(9.) - kr), ones_k), -1 * ones_k
+        torch.min(torch.min(kr - torch.tensor(3.0), torch.tensor(9.0) - kr), ones_k), -1 * ones_k
     )
     fg: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kg - torch.tensor(3.),
-                            torch.tensor(9.) - kg), ones_k), -1 * ones_k
+        torch.min(torch.min(kg - torch.tensor(3.0), torch.tensor(9.0) - kg), ones_k), -1 * ones_k
     )
     fb: torch.Tensor = l - a * torch.max(
-        torch.min(torch.min(kb - torch.tensor(3.),
-                            torch.tensor(9.) - kb), ones_k), -1 * ones_k
+        torch.min(torch.min(kb - torch.tensor(3.0), torch.tensor(9.0) - kb), ones_k), -1 * ones_k
     )
 
     out: torch.Tensor = torch.stack([fr, fg, fb], dim=-3)
