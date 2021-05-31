@@ -5,6 +5,8 @@ import torch.nn as nn
 
 from math import ceil
 
+from functools import wraps
+
 import kornia
 from kornia.geometry.transform.imgwarp import (warp_affine, get_rotation_matrix2d, get_affine_matrix2d)
 from kornia.geometry.transform.projwarp import (warp_affine3d, get_projective_transform)
@@ -524,6 +526,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 
 
 def _reshape_perform_reshape(f):
+    @wraps(f)
     def _wrapper(input, *args, **kwargs):
         dont_care_shape = input.shape[:-3]
         input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
