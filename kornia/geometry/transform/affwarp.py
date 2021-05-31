@@ -523,6 +523,18 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         return int(side_size / aspect_ratio), side_size
 
 
+def _reshape_perform_reshape(f):
+    def _wrapper(input, *args, **kwargs):
+        dont_care_shape = input.shape[:-3]
+        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
+        output = f(input, *args, **kwargs)
+        output = output.view(*(dont_care_shape + output.shape[-3:]))
+        return output
+
+    return _wrapper
+
+
+@_reshape_perform_reshape
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
@@ -534,7 +546,8 @@ def resize(
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
+        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(..., H, W)`.
+            `...` means there can be any number of dimensions.
         size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
