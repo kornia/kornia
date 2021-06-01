@@ -139,10 +139,7 @@ class TestAugmentationSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, input_types=input_types)
 
-    @pytest.mark.parametrize("augmentation_list", [
-        
-    ])
-    def test_forward_and_inverse(self, augmentation_list, device, dtype):
+    def test_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
@@ -165,7 +162,6 @@ class TestAugmentationSequential:
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
-
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")

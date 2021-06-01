@@ -22,19 +22,12 @@ class ConstantBase:
 
 
 class EnumMetaFlags(EnumMeta):
-    def __contains__(self, value: Union[str, int, T]) -> bool:
-        try:
-            if type(value) == str:
-                self[value.upper()]  # type: ignore
-                return True
-            if type(value) == int:
-                self(value)  # type: ignore
-                return True
-            if type(value) == self:
-                return True
-        except TypeError as e:
-            return False
-        return False
+    def __contains__(self, other: Union[str, int, T]) -> bool:
+        if type(other) == str:
+            return any([val.name == other.upper() for val in self])
+        if type(other) == int:
+            return any([val.value == other for val in self])
+        return any([val == other for val in self])
 
     def __repr__(self):
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)

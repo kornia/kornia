@@ -341,8 +341,10 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> torch.Tensor:
-        """By default, the exact transformation as ``apply_transform`` will be used."""
-        return self.apply_transform(input, params=self._params, transform=transform)
+        """By default, the exact transformation as ``apply_transform`` will be used.
+        """
+        return self.apply_transform(
+            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype))
 
     def compute_inverse_transformation(self, transform: torch.Tensor):
         """Compute the inverse transform of given transformation matrices."""
