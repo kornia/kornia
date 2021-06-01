@@ -124,17 +124,10 @@ class TestVideoSequential:
 
 
 class TestAugmentationSequential:
-
-    @pytest.mark.parametrize('input_types', [
-        "input",
-        ["mask", "input"],
-        ["input", "bbox_yxyx"],
-        [0, 10],
-        [BorderType.REFLECT]
-    ])
-    @pytest.mark.parametrize("augmentation_list", [
-        [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)]
-    ])
+    @pytest.mark.parametrize(
+        'input_types', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+    )
+    @pytest.mark.parametrize("augmentation_list", [[K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0)]])
     def test_exception(self, augmentation_list, input_types, device, dtype):
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, input_types=input_types)
@@ -144,13 +137,12 @@ class TestAugmentationSequential:
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype),
-            1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None].float()
-        aug = K.AugmentationSequential([
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
-            K.RandomAffine(360, p=1.)
-        ], input_types=["input", "mask", "bbox", "keypoints"])
+        aug = K.AugmentationSequential(
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
+            input_types=["input", "mask", "bbox", "keypoints"],
+        )
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
         assert out[1].shape == mask.shape
@@ -168,9 +160,8 @@ class TestAugmentationSequential:
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        op = K.AugmentationSequential([
-            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
-            K.RandomAffine(360, p=1.)
-        ], same_on_batch=True)
+        op = K.AugmentationSequential(
+            [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)], same_on_batch=True
+        )
         op_jit = torch.jit.script(op)
         assert_allclose(op(img), op_jit(img))

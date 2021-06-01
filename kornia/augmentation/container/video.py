@@ -100,8 +100,7 @@ class VideoSequential(Sequential):
         return input
 
     def forward(self, input: torch.Tensor) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """Define the video computation performed.
-        """
+        """Define the video computation performed."""
         assert len(input.shape) == 5, f"Input must be a 5-dim tensor. Got {input.shape}."
         # Size of T
         frame_num = input.size(self._temporal_channel)

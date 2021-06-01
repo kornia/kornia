@@ -680,7 +680,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             torch.as_tensor(params['scale'], device=input.device, dtype=input.dtype),
             torch.as_tensor(params['angle'], device=input.device, dtype=input.dtype),
             deg2rad(torch.as_tensor(params['sx'], device=input.device, dtype=input.dtype)),
-            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype))
+            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype)),
         )
 
     def apply_transform(

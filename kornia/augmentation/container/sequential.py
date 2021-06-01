@@ -45,8 +45,11 @@ class Sequential(nn.Sequential):
     """
 
     def __init__(
-        self, *args: nn.Module, same_on_batch: Optional[bool] = None, return_transform: Optional[bool] = None,
-        keepdim: Optional[bool] = None
+        self,
+        *args: nn.Module,
+        same_on_batch: Optional[bool] = None,
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
     ) -> None:
         super(Sequential, self).__init__(*args)
         self.same_on_batch = same_on_batch
@@ -64,9 +67,7 @@ class Sequential(nn.Sequential):
                     arg.keepdim = keepdim
         self._params = {}
 
-    def apply_to_input(
-        self, input, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
-    ) -> torch.Tensor:
+    def apply_to_input(self, input, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         func_name = item.__class__.__name__
         if isinstance(item, _AugmentationBase) and param is None:
             input = item(input)
@@ -83,7 +84,7 @@ class Sequential(nn.Sequential):
         return input
 
     def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        self, input: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         if params is None:
             params = {}

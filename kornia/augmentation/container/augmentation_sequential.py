@@ -5,11 +5,7 @@ from torch.autograd.grad_mode import F
 import torch.nn as nn
 
 from kornia.geometry import transform_points, transform_boxes
-from kornia.augmentation.base import (
-    _AugmentationBase,
-    IntensityAugmentationBase2D,
-    GeometricAugmentationBase2D,
-)
+from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D, GeometricAugmentationBase2D
 from kornia.constants import InputType
 from .sequential import Sequential
 
@@ -59,17 +55,22 @@ class AugmentationSequential(Sequential):
     """
 
     def __init__(
-        self, augmentation_list: List[_AugmentationBase], input_types: List[Union[str, int, InputType]] = [InputType.INPUT],
+        self,
+        augmentation_list: List[_AugmentationBase],
+        input_types: List[Union[str, int, InputType]] = [InputType.INPUT],
         same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None, keepdim: Optional[bool] = None
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
     ) -> None:
         super(AugmentationSequential, self).__init__(
-            *augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
+            *augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
+        )
 
         self.input_types = [InputType.get(inp) for inp in input_types]
 
-        assert all([in_type in InputType for in_type in self.input_types]), \
-            f"`input_types` must be in {InputType}. Got {input_types}."
+        assert all(
+            [in_type in InputType for in_type in self.input_types]
+        ), f"`input_types` must be in {InputType}. Got {input_types}."
 
         if self.input_types[0] != InputType.INPUT:
             raise NotImplementedError(f"The first input must be {InputType.INPUT}.")
@@ -86,14 +87,14 @@ class AugmentationSequential(Sequential):
         return input
 
     def apply_to_bbox(
-        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        mode: str = "xyxy"
+        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None, mode: str = "xyxy"
     ) -> torch.Tensor:
         if isinstance(item, GeometricAugmentationBase2D) and param is None:
             raise ValueError(f"Transformation matrix for {item} has not been computed.")
         elif isinstance(item, GeometricAugmentationBase2D) and param is not None:
             input = transform_boxes(
-                torch.as_tensor(item._transform_matrix, device=input.device, dtype=input.dtype), input, mode)
+                torch.as_tensor(item._transform_matrix, device=input.device, dtype=input.dtype), input, mode
+            )
         else:
             pass  # No need to update anything
         return input
@@ -105,14 +106,18 @@ class AugmentationSequential(Sequential):
             raise ValueError(f"Transformation matrix for {item} has not been computed.")
         elif isinstance(item, GeometricAugmentationBase2D) and param is not None:
             input = transform_points(
-                torch.as_tensor(item._transform_matrix, device=input.device, dtype=input.dtype), input)
+                torch.as_tensor(item._transform_matrix, device=input.device, dtype=input.dtype), input
+            )
         else:
             pass  # No need to update anything
         return input
 
     def apply_by_input_type(
-        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: Union[str, int, InputType] = InputType.INPUT
+        self,
+        input: torch.Tensor,
+        item: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None,
+        itype: Union[str, int, InputType] = InputType.INPUT,
     ) -> torch.Tensor:
         if itype in [InputType.INPUT]:
             return self.apply_to_input(input, item, param)
@@ -127,7 +132,7 @@ class AugmentationSequential(Sequential):
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
     def inverse_input(
-        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
+        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(item, GeometricAugmentationBase2D) and param is None:
             input = item.inverse(input)
@@ -137,25 +142,24 @@ class AugmentationSequential(Sequential):
             pass  # No need to update anything
         return input
 
-    def inverse_bbox(
-        self, input: torch.Tensor, item: nn.Module, mode: str = "xyxy"
-    ) -> torch.Tensor:
+    def inverse_bbox(self, input: torch.Tensor, item: nn.Module, mode: str = "xyxy") -> torch.Tensor:
         if isinstance(item, GeometricAugmentationBase2D):
             transform = item.compute_inverse_transformation(item._transform_matrix)
             input = transform_boxes(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input, mode)
         return input
 
-    def inverse_keypoints(
-        self, input: torch.Tensor, item: nn.Module
-    ) -> torch.Tensor:
+    def inverse_keypoints(self, input: torch.Tensor, item: nn.Module) -> torch.Tensor:
         if isinstance(item, GeometricAugmentationBase2D):
             transform = item.compute_inverse_transformation(item._transform_matrix)
             input = transform_points(torch.as_tensor(transform, device=input.device, dtype=input.dtype), input)
         return input
 
     def inverse_by_input_type(
-        self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: Union[str, int, InputType] = InputType.INPUT
+        self,
+        input: torch.Tensor,
+        item: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None,
+        itype: Union[str, int, InputType] = InputType.INPUT,
     ) -> torch.Tensor:
         if itype in [InputType.INPUT, InputType.MASK]:
             return self.inverse_input(input, item, param)
@@ -168,8 +172,10 @@ class AugmentationSequential(Sequential):
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
     def inverse(
-        self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
-        input_types: Optional[List[Union[str, int, InputType]]] = None
+        self,
+        *args: torch.Tensor,
+        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+        input_types: Optional[List[Union[str, int, InputType]]] = None,
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
         """Reverse the transformation applied.
 
@@ -213,8 +219,7 @@ class AugmentationSequential(Sequential):
     def forward(
         self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
-        """Compute multiple tensors simultaneously according to ``self.input_types``.
-        """
+        """Compute multiple tensors simultaneously according to ``self.input_types``."""
         assert len(args) == len(self.input_types) and self.input_types[0] in [InputType.INPUT], (
             "The number of inputs must align with the number of input_types, "
             f"and the first element must be input. Got {len(args)} and {len(self.input_types)}."
