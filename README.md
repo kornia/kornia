@@ -2,7 +2,7 @@
   <img width="50%" src="https://github.com/kornia/kornia/blob/master/docs/source/_static/img/kornia_logo.svg" />
 </p>
 
---------------------------------------------------------------------------------
+---
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![tests-cpu-versions](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml)
@@ -10,6 +10,7 @@
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://badge.fury.io/py/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)
 
 *Kornia* is a differentiable computer vision library for [PyTorch](https://pytorch.org).
 
