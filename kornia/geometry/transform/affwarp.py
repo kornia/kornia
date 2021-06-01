@@ -527,6 +527,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 
 def _reshape_perform_reshape(f):
     """TODO: where can we put this?"""
+
     @wraps(f)
     def _wrapper(input, *args, **kwargs):
         input_shape = input.shape
