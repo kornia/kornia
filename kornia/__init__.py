@@ -1,6 +1,7 @@
 # Make sure that kornia is running on Python 3.6.0 or later
 # (to avoid running into this bug: https://bugs.python.org/issue29246)
 import sys
+
 if sys.version_info < (3, 6, 0):
     raise RuntimeError("Kornia requires Python 3.6.0 or later")
 
@@ -61,18 +62,8 @@ from kornia.enhance import (
     adjust_hue,
     adjust_saturation,
 )
-from kornia.contrib import (
-    extract_tensor_patches,
-    max_blur_pool2d,
-)
-from kornia.feature import (
-    nms2d,
-    harris_response,
-    hessian_response,
-    gftt_response,
-    SIFTDescriptor,
-    MKDDescriptor
-)
+from kornia.contrib import extract_tensor_patches, max_blur_pool2d
+from kornia.feature import nms2d, harris_response, hessian_response, gftt_response, SIFTDescriptor, MKDDescriptor
 from kornia.filters import (
     get_gaussian_kernel1d,
     get_gaussian_erf_kernel1d,
@@ -90,6 +81,7 @@ from kornia.filters import (
     motion_blur,
     filter2D,
     filter3D,
+    unsharp_mask,
 )
 from kornia.losses import (
     ssim,

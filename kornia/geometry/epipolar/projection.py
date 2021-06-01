@@ -28,13 +28,12 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     intrinsics = numeric.eye_like(3, input)
     intrinsics[..., 0, 0] *= focal
     intrinsics[..., 1, 1] *= focal
-    intrinsics[..., 0, 2] += 1. * W / 2
-    intrinsics[..., 1, 2] += 1. * H / 2
+    intrinsics[..., 0, 2] += 1.0 * W / 2
+    intrinsics[..., 1, 2] += 1.0 * H / 2
     return intrinsics
 
 
-def random_intrinsics(low: Union[float, torch.Tensor],
-                      high: Union[float, torch.Tensor]) -> torch.Tensor:
+def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Generates a random camera matrix based on a given uniform distribution.
 
     Args:
@@ -48,16 +47,11 @@ def random_intrinsics(low: Union[float, torch.Tensor],
     sampler = torch.distributions.Uniform(low, high)
     fx, fy, cx, cy = [sampler.sample((1,)) for _ in range(4)]
     zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
-    camera_matrix: torch.Tensor = torch.cat([
-        fx, zeros, cx,
-        zeros, fy, cy,
-        zeros, zeros, ones,
-    ])
+    camera_matrix: torch.Tensor = torch.cat([fx, zeros, cx, zeros, fy, cy, zeros, zeros, ones])
     return camera_matrix.view(1, 3, 3)
 
 
-def scale_intrinsics(
-        camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Scale a camera matrix containing the intrinsics.
 
     Applies the scaling factor to the focal length and center of projection.
@@ -99,11 +93,11 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
     assert len(K.shape) == len(R.shape) == len(t.shape)
 
     Rt: torch.Tensor = torch.cat([R, t], dim=-1)  # 3x4
-    Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.)  # 4x4
-    Rt_h[..., -1, -1] += 1.
+    Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
+    Rt_h[..., -1, -1] += 1.0
 
-    K_h: torch.Tensor = torch.nn.functional.pad(K, [0, 1, 0, 1], "constant", 0.)  # 4x4
-    K_h[..., -1, -1] += 1.
+    K_h: torch.Tensor = torch.nn.functional.pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
+    K_h[..., -1, -1] += 1.0
 
     return K @ Rt
 

@@ -52,16 +52,16 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     Vt = V.transpose(-2, -1)
 
     mask = torch.ones_like(E_mat)
-    mask[..., -1:] *= -1.   # fill last column with negative values
+    mask[..., -1:] *= -1.0  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
     # avoid singularities
-    U = torch.where((torch.det(U) < 0.)[..., None, None], U * mask, U)
-    Vt = torch.where((torch.det(Vt) < 0.)[..., None, None], Vt * maskt, Vt)
+    U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
+    Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
-    W = numeric.cross_product_matrix(torch.tensor([[0., 0., 1.]]).type_as(E_mat))
-    W[..., 2, 2] += 1.
+    W = numeric.cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
+    W[..., 2, 2] += 1.0
 
     # reconstruct rotations and retrieve translation vector
     U_W_Vt = U @ W @ Vt
@@ -100,7 +100,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     # get the cross product from relative translation vector
     Tx = numeric.cross_product_matrix(t[..., 0])
 
-    return (Tx @ R)
+    return Tx @ R
 
 
 def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -169,8 +169,21 @@ def motion_from_essential_choose_solution(
     assert len(x2.shape) >= 2 and x2.shape[-1] == 2, x2.shape
     assert len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2])
     if mask is not None:
-        assert len(mask.shape) >= 2, mask.shape
+        assert len(mask.shape) >= 1, mask.shape
         assert mask.shape == x1.shape[:-1], mask.shape
+
+    unbatched = len(E_mat.shape) == 2
+
+    if unbatched:
+        # add a leading batch dimension. We will remove it at the end, before
+        # returning the results
+        E_mat = E_mat[None]
+        K1 = K1[None]
+        K2 = K2[None]
+        x1 = x1[None]
+        x2 = x2[None]
+        if mask is not None:
+            mask = mask[None]
 
     # compute four possible pose solutions
     Rs, ts = motion_from_essential(E_mat)
@@ -201,7 +214,7 @@ def motion_from_essential_choose_solution(
     d2 = projection.depth(R2, t2, X)
 
     # verify the point values that have a postive depth value
-    depth_mask = ((d1 > 0.) & (d2 > 0.))
+    depth_mask = (d1 > 0.0) & (d2 > 0.0)
     if mask is not None:
         depth_mask &= mask.unsqueeze(1)
 
@@ -211,6 +224,11 @@ def motion_from_essential_choose_solution(
     R_out = Rs[:, mask_indices][:, 0, 0]
     t_out = ts[:, mask_indices][:, 0, 0]
     points3d_out = X[:, mask_indices][:, 0, 0]
+
+    if unbatched:
+        R_out = R_out[0]
+        t_out = t_out[0]
+        points3d_out = points3d_out[0]
 
     return R_out, t_out, points3d_out
 

@@ -10,7 +10,6 @@ from kornia.color.hsv import rgb_to_hsv, hsv_to_rgb
 from kornia.utils.image import _to_bchw, _to_bcdhw
 from kornia.utils.helpers import _torch_histc_cast
 
-
 __all__ = [
     "adjust_brightness",
     "adjust_contrast",
@@ -35,15 +34,15 @@ __all__ = [
 
 
 def adjust_saturation_raw(input: torch.Tensor, saturation_factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust color saturation of an image. Expecting input to be in hsv format already.
-    """
+    r"""Adjust color saturation of an image. Expecting input to be in hsv format already."""
 
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(saturation_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The saturation_factor should be a float number or torch.Tensor."
-                        f"Got {type(saturation_factor)}")
+    if not isinstance(saturation_factor, (float, torch.Tensor)):
+        raise TypeError(
+            f"The saturation_factor should be a float number or torch.Tensor." f"Got {type(saturation_factor)}"
+        )
 
     if isinstance(saturation_factor, float):
         saturation_factor = torch.as_tensor(saturation_factor)
@@ -117,15 +116,16 @@ def adjust_saturation(input: torch.Tensor, saturation_factor: Union[float, torch
 
 
 def adjust_hue_raw(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> torch.Tensor:
-    r"""Adjust hue of an image. Expecting input to be in hsv format already.
-    """
+    r"""Adjust hue of an image. Expecting input to be in hsv format already."""
 
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not isinstance(hue_factor, (float, torch.Tensor)):
-        raise TypeError(f"The hue_factor should be a float number or torch.Tensor in the range between"
-                        f" [-PI, PI]. Got {type(hue_factor)}")
+        raise TypeError(
+            f"The hue_factor should be a float number or torch.Tensor in the range between"
+            f" [-PI, PI]. Got {type(hue_factor)}"
+        )
 
     if isinstance(hue_factor, float):
         hue_factor = torch.as_tensor(hue_factor)
@@ -200,8 +200,9 @@ def adjust_hue(input: torch.Tensor, hue_factor: Union[float, torch.Tensor]) -> t
     return out
 
 
-def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
-                 gain: Union[float, torch.Tensor] = 1.) -> torch.Tensor:
+def adjust_gamma(
+    input: torch.Tensor, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0
+) -> torch.Tensor:
     r"""Perform gamma correction on an image.
 
     The input image is expected to be in the range of [0, 1].
@@ -267,8 +268,7 @@ def adjust_gamma(input: torch.Tensor, gamma: Union[float, torch.Tensor],
     return out
 
 
-def adjust_contrast(input: torch.Tensor,
-                    contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_contrast(input: torch.Tensor, contrast_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Contrast of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -300,9 +300,8 @@ def adjust_contrast(input: torch.Tensor,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(contrast_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(contrast_factor)}")
+    if not isinstance(contrast_factor, (float, torch.Tensor)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(contrast_factor)}")
 
     if isinstance(contrast_factor, float):
         contrast_factor = torch.tensor([contrast_factor])
@@ -324,8 +323,7 @@ def adjust_contrast(input: torch.Tensor,
     return out
 
 
-def adjust_brightness(input: torch.Tensor,
-                      brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
+def adjust_brightness(input: torch.Tensor, brightness_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust Brightness of an image.
 
     This implementation aligns OpenCV, not PIL. Hence, the output differs from TorchVision.
@@ -356,9 +354,8 @@ def adjust_brightness(input: torch.Tensor,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(brightness_factor, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(brightness_factor)}")
+    if not isinstance(brightness_factor, (float, torch.Tensor)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(brightness_factor)}")
 
     if isinstance(brightness_factor, float):
         brightness_factor = torch.tensor([brightness_factor])
@@ -378,7 +375,7 @@ def adjust_brightness(input: torch.Tensor,
 
 
 def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5) -> torch.Tensor:
-    r""" For each pixel in the image, select the pixel if the value is less than the threshold.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
     Otherwise, subtract 1.0 from the pixel.
 
     Args:
@@ -393,13 +390,13 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (float, torch.Tensor)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
-        assert input.size(0) == len(thresholds) and len(thresholds.shape) == 1, \
-            f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
+        assert (
+            input.size(0) == len(thresholds) and len(thresholds.shape) == 1
+        ), f"threshholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}"
         # TODO: I am not happy about this line, but no easy to do batch-wise operation
         thresholds = thresholds.to(input.device).to(input.dtype)
         thresholds = torch.stack([x.expand(*input.shape[1:]) for x in thresholds])
@@ -407,8 +404,11 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     return torch.where(input < thresholds, input, 1.0 - input)
 
 
-def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
-             additions: Optional[Union[float, torch.Tensor]] = None) -> torch.Tensor:
+def solarize(
+    input: torch.Tensor,
+    thresholds: Union[float, torch.Tensor] = 0.5,
+    additions: Optional[Union[float, torch.Tensor]] = None,
+) -> torch.Tensor:
     r"""For each pixel in the image less than threshold.
 
     We add 'addition' amount to it and then clip the pixel value to be between 0 and 1.0.
@@ -442,32 +442,32 @@ def solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5,
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(thresholds, (float, torch.Tensor,)):
-        raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                        f"Got {type(thresholds)}")
+    if not isinstance(thresholds, (float, torch.Tensor)):
+        raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
         thresholds = torch.tensor(thresholds)
 
     if additions is not None:
-        if not isinstance(additions, (float, torch.Tensor,)):
-            raise TypeError(f"The factor should be either a float or torch.Tensor. "
-                            f"Got {type(additions)}")
+        if not isinstance(additions, (float, torch.Tensor)):
+            raise TypeError(f"The factor should be either a float or torch.Tensor. " f"Got {type(additions)}")
 
         if isinstance(additions, float):
             additions = torch.tensor(additions)
 
-        assert torch.all((additions < 0.5) * (additions > -0.5)), \
-            f"The value of 'addition' is between -0.5 and 0.5. Got {additions}."
+        assert torch.all(
+            (additions < 0.5) * (additions > -0.5)
+        ), f"The value of 'addition' is between -0.5 and 0.5. Got {additions}."
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
-            assert input.size(0) == len(additions) and len(additions.shape) == 1, \
-                f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
+            assert (
+                input.size(0) == len(additions) and len(additions.shape) == 1
+            ), f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}"
             # TODO: I am not happy about this line, but no easy to do batch-wise operation
             additions = additions.to(input.device).to(input.dtype)
             additions = torch.stack([x.expand(*input.shape[1:]) for x in additions])
         input = input + additions
-        input = input.clamp(0., 1.)
+        input = input.clamp(0.0, 1.0)
 
     return _solarize(input, thresholds)
 
@@ -500,7 +500,7 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if not isinstance(input, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
-    if not isinstance(bits, (int, torch.Tensor,)):
+    if not isinstance(bits, (int, torch.Tensor)):
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
@@ -517,10 +517,10 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
     def _left_shift(input: torch.Tensor, shift: torch.Tensor):
-        return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.
+        return ((input * 255).to(torch.uint8) * (2 ** shift)).to(input.dtype) / 255.0
 
     def _right_shift(input: torch.Tensor, shift: torch.Tensor):
-        return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.
+        return (input * 255).to(torch.uint8) / (2 ** shift).to(input.dtype) / 255.0
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor):
         # Single bits value condition
@@ -538,16 +538,18 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if len(bits.shape) == 1:
         input = _to_bchw(input)
 
-        assert bits.shape[0] == input.shape[0], \
-            f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
+        assert (
+            bits.shape[0] == input.shape[0]
+        ), f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
 
         for i in range(input.shape[0]):
             res.append(_posterize_one(input[i], bits[i]))
         return torch.stack(res, dim=0)
 
-    assert bits.shape == input.shape[:len(bits.shape)], \
-        f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
-    _input = input.view(-1, *input.shape[len(bits.shape):])
+    assert (
+        bits.shape == input.shape[: len(bits.shape)]
+    ), f"Batch and channel must be equal between bits and input. Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+    _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()
     for i in range(input.shape[0]):
         res.append(_posterize_one(_input[i], _bits[i]))
@@ -585,18 +587,20 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     if len(factor.size()) != 0:
         assert factor.shape == torch.Size([input.size(0)]), (
             "Input batch size shall match with factor size if factor is not a 0-dim tensor. "
-            f"Got {input.size(0)} and {factor.shape}")
+            f"Got {input.size(0)} and {factor.shape}"
+        )
 
-    kernel = torch.tensor([
-        [1, 1, 1],
-        [1, 5, 1],
-        [1, 1, 1]
-    ], dtype=input.dtype, device=input.device).view(1, 1, 3, 3).repeat(input.size(1), 1, 1, 1) / 13
+    kernel = (
+        torch.tensor([[1, 1, 1], [1, 5, 1], [1, 1, 1]], dtype=input.dtype, device=input.device)
+        .view(1, 1, 3, 3)
+        .repeat(input.size(1), 1, 1, 1)
+        / 13
+    )
 
     # This shall be equivalent to depthwise conv2d:
     # Ref: https://discuss.pytorch.org/t/depthwise-and-separable-convolutions-in-pytorch/7315/2
     degenerate = torch.nn.functional.conv2d(input, kernel, bias=None, stride=1, groups=input.size(1))
-    degenerate = torch.clamp(degenerate, 0., 1.)
+    degenerate = torch.clamp(degenerate, 0.0, 1.0)
 
     # For the borders of the resulting image, fill in the values of the original image.
     mask = torch.ones_like(degenerate)
@@ -625,13 +629,13 @@ def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor)
 
     if isinstance(factor, torch.Tensor):
         assert len(factor.size()) == 0, f"Factor shall be a float or single element tensor. Got {factor}."
-    if factor == 0.:
+    if factor == 0.0:
         return input1
-    if factor == 1.:
+    if factor == 1.0:
         return input2
     diff = (input2 - input1) * factor
     res = input1 + diff
-    if factor > 0. and factor < 1.:
+    if factor > 0.0 and factor < 1.0:
         return res
     return torch.clamp(res, 0, 1)
 
@@ -659,14 +663,10 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     min_ = im.min()
     max_ = im.max()
 
-    if min_.item() < 0. and not torch.isclose(min_, torch.tensor(0., dtype=min_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}."
-        )
-    if max_.item() > 1. and not torch.isclose(max_, torch.tensor(1., dtype=max_.dtype)):
-        raise ValueError(
-            f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}."
-        )
+    if min_.item() < 0.0 and not torch.isclose(min_, torch.tensor(0.0, dtype=min_.dtype)):
+        raise ValueError(f"Values in the input tensor must greater or equal to 0.0. Found {min_.item()}.")
+    if max_.item() > 1.0 and not torch.isclose(max_, torch.tensor(1.0, dtype=max_.dtype)):
+        raise ValueError(f"Values in the input tensor must lower or equal to 1.0. Found {max_.item()}.")
 
     ndims = len(im.shape)
     if ndims not in (2, 3):
@@ -688,7 +688,7 @@ def _scale_channel(im: torch.Tensor) -> torch.Tensor:
         result = torch.gather(_build_lut(histo, step), 0, im.flatten().long())
         result = result.reshape_as(im)
 
-    return result / 255.
+    return result / 255.0
 
 
 def equalize(input: torch.Tensor) -> torch.Tensor:
@@ -892,7 +892,7 @@ class AdjustGamma(nn.Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.) -> None:
+    def __init__(self, gamma: Union[float, torch.Tensor], gain: Union[float, torch.Tensor] = 1.0) -> None:
         super(AdjustGamma, self).__init__()
         self.gamma: Union[float, torch.Tensor] = gamma
         self.gain: Union[float, torch.Tensor] = gain
@@ -996,7 +996,7 @@ class Invert(nn.Module):
         torch.Size([1, 3, 4, 4])
     """
 
-    def __init__(self, max_val: torch.Tensor = torch.tensor(1.)) -> None:
+    def __init__(self, max_val: torch.Tensor = torch.tensor(1.0)) -> None:
         super(Invert, self).__init__()
         if not isinstance(max_val, nn.Parameter):
             self.register_buffer("max_val", max_val)

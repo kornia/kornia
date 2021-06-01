@@ -1,13 +1,10 @@
-from typing import Tuple
-
 import pytest
+import torch
+from torch.autograd import gradcheck
+from torch.testing import assert_allclose
 
 import kornia
 import kornia.testing as utils  # test utils
-
-import torch
-from torch.testing import assert_allclose
-from torch.autograd import gradcheck
 
 
 class TestMaxBlurPool:
@@ -36,8 +33,7 @@ class TestMaxBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
@@ -88,8 +84,7 @@ class TestBlurPool:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.blur_pool2d, (img, 3,),
-                         raise_exception=True)
+        assert gradcheck(kornia.filters.blur_pool2d, (img, 3), raise_exception=True)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.blur_pool2d

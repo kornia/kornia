@@ -1,5 +1,4 @@
 import pytest
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -21,7 +20,7 @@ class TestSkewSymmetric:
         assert cross_product_matrix.shape == (B, 3, 3)
 
     def test_mean_std(self, device, dtype):
-        vec = torch.tensor([[1., 2., 3.]], device=device, dtype=dtype)
+        vec = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(vec)
         assert_allclose(cross_product_matrix[..., 0, 1], -cross_product_matrix[..., 1, 0])
         assert_allclose(cross_product_matrix[..., 0, 2], -cross_product_matrix[..., 2, 0])
@@ -40,9 +39,7 @@ class TestEyeLike:
         assert identity.device == image.device
         assert identity.dtype == image.dtype
 
-    @pytest.mark.parametrize(
-        "batch_size, eye_size", [(1, 2), (2, 3), (3, 3), (2, 4)],
-    )
+    @pytest.mark.parametrize("batch_size, eye_size", [(1, 2), (2, 3), (3, 3), (2, 4)])
     def test_shape(self, batch_size, eye_size, device, dtype):
         B, N = batch_size, eye_size
         image = torch.rand(B, 3, 4, 4, device=device, dtype=dtype)
@@ -60,9 +57,7 @@ class TestVecLike:
         assert vec.device == image.device
         assert vec.dtype == image.dtype
 
-    @pytest.mark.parametrize(
-        "batch_size, eye_size", [(1, 2), (2, 3), (3, 3), (2, 4)],
-    )
+    @pytest.mark.parametrize("batch_size, eye_size", [(1, 2), (2, 3), (3, 3), (2, 4)])
     def test_shape(self, batch_size, eye_size, device, dtype):
         B, N = batch_size, eye_size
         image = torch.rand(B, 3, 4, 4, device=device, dtype=dtype)

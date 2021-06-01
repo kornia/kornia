@@ -19,12 +19,10 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
             :math:`(C, H, W)` otherwise.
     """
     if not isinstance(image, (np.ndarray,)):
-        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(
-            type(image)))
+        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(type(image)))
 
     if len(image.shape) > 4 or len(image.shape) < 2:
-        raise ValueError(
-            "Input size must be a two, three or four dimensional array")
+        raise ValueError("Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
     tensor: torch.Tensor = torch.from_numpy(image)
@@ -40,8 +38,7 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         tensor = tensor.permute(0, 3, 1, 2)
         keepdim = True  # no need to unsqueeze
     else:
-        raise ValueError(
-            "Cannot process image with shape {}".format(input_shape))
+        raise ValueError("Cannot process image with shape {}".format(input_shape))
 
     return tensor.unsqueeze(0) if not keepdim else tensor
 
@@ -110,12 +107,10 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
 
     """
     if not isinstance(tensor, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(tensor)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(tensor)))
 
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
-        raise ValueError(
-            "Input size must be a two, three or four dimensional tensor")
+        raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
     image: np.ndarray = tensor.cpu().detach().numpy()
@@ -138,8 +133,7 @@ def tensor_to_image(tensor: torch.Tensor) -> np.ndarray:
         if input_shape[1] == 1:
             image = image.squeeze(-1)
     else:
-        raise ValueError(
-            "Cannot process tensor with shape {}".format(input_shape))
+        raise ValueError("Cannot process tensor with shape {}".format(input_shape))
 
     return image
 
@@ -151,6 +145,7 @@ class ImageToTensor(nn.Module):
         keepdim (bool): If ``False`` unsqueeze the input image to match the shape
             :math:`(B, H, W, C)`. Default: ``True``
     """
+
     def __init__(self, keepdim: bool = False):
         super().__init__()
         self.keepdim = keepdim

@@ -8,25 +8,25 @@ import torch.nn.functional as F
 
 from kornia.filters import gaussian_blur2d, filter2D
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "pyrdown",
-    "pyrup",
-    "build_pyramid",
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
     """Utility function that return a pre-computed gaussian kernel."""
-    return torch.tensor([[
-        [1., 4., 6., 4., 1.],
-        [4., 16., 24., 16., 4.],
-        [6., 24., 36., 24., 6.],
-        [4., 16., 24., 16., 4.],
-        [1., 4., 6., 4., 1.]
-    ]]) / 256.
+    return (
+        torch.tensor(
+            [
+                [
+                    [1.0, 4.0, 6.0, 4.0, 1.0],
+                    [4.0, 16.0, 24.0, 16.0, 4.0],
+                    [6.0, 24.0, 36.0, 24.0, 6.0],
+                    [4.0, 16.0, 24.0, 16.0, 4.0],
+                    [1.0, 4.0, 6.0, 4.0, 1.0],
+                ]
+            ]
+        )
+        / 256.0
+    )
 
 
 class PyrDown(nn.Module):
@@ -117,11 +117,7 @@ class ScalePyramid(nn.Module):
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
 
-    def __init__(self,
-                 n_levels: int = 3,
-                 init_sigma: float = 1.6,
-                 min_size: int = 15,
-                 double_image: bool = False):
+    def __init__(self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False):
         super(ScalePyramid, self).__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
@@ -129,19 +125,35 @@ class ScalePyramid(nn.Module):
         self.init_sigma = init_sigma
         self.min_size = min_size
         self.border = min_size // 2 - 1
-        self.sigma_step = 2 ** (1. / float(self.n_levels))
+        self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ +\
-            '(n_levels=' + str(self.n_levels) + ', ' +\
-            'init_sigma=' + str(self.init_sigma) + ', ' + \
-            'min_size=' + str(self.min_size) + ', ' + \
-            'extra_levels=' + str(self.extra_levels) + ', ' + \
-            'border=' + str(self.border) + ', ' + \
-            'sigma_step=' + str(self.sigma_step) + ', ' + \
-            'double_image=' + str(self.double_image) + ')'
+        return (
+            self.__class__.__name__
+            + '(n_levels='
+            + str(self.n_levels)
+            + ', '
+            + 'init_sigma='
+            + str(self.init_sigma)
+            + ', '
+            + 'min_size='
+            + str(self.min_size)
+            + ', '
+            + 'extra_levels='
+            + str(self.extra_levels)
+            + ', '
+            + 'border='
+            + str(self.border)
+            + ', '
+            + 'sigma_step='
+            + str(self.sigma_step)
+            + ', '
+            + 'double_image='
+            + str(self.double_image)
+            + ')'
+        )
 
     def get_kernel_size(self, sigma: float):
         ksize = int(2.0 * 4.0 * sigma + 1.0)
@@ -165,7 +177,7 @@ class ScalePyramid(nn.Module):
         else:
             x = input
         if self.init_sigma > cur_sigma:
-            sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
+            sigma = max(math.sqrt(self.init_sigma ** 2 - cur_sigma ** 2), 0.01)
             ksize = self.get_kernel_size(sigma)
             cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
             cur_sigma = self.init_sigma
@@ -173,22 +185,18 @@ class ScalePyramid(nn.Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: torch.Tensor) -> Tuple[  # type: ignore
-            List, List, List]:
+    def forward(self, x: torch.Tensor) -> Tuple[List, List, List]:  # type: ignore
         bs, ch, h, w = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
-        pixel_dists = [pixel_distance * torch.ones(
-                       bs,
-                       self.n_levels + self.extra_levels).to(
-                       x.device).to(x.dtype)]
+        pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pyr = [[cur_level]]
         oct_idx = 0
         while True:
             cur_level = pyr[-1][0]
             for level_idx in range(1, self.n_levels + self.extra_levels):
-                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
+                sigma = cur_sigma * math.sqrt(self.sigma_step ** 2 - 1.0)
                 ksize = self.get_kernel_size(sigma)
 
                 # Hack, because PyTorch does not allow to pad more than original size.
@@ -198,39 +206,29 @@ class ScalePyramid(nn.Module):
                 if ksize % 2 == 0:
                     ksize += 1
 
-                cur_level = gaussian_blur2d(
-                    cur_level, (ksize, ksize), (sigma, sigma))
+                cur_level = gaussian_blur2d(cur_level, (ksize, ksize), (sigma, sigma))
                 cur_sigma *= self.sigma_step
                 pyr[-1].append(cur_level)
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = F.interpolate(_pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2),
-                                                 mode='nearest')  # Nearest matches OpenCV SIFT
+            nextOctaveFirstLevel = F.interpolate(
+                _pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2), mode='nearest'
+            )  # Nearest matches OpenCV SIFT
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
-            if (min(nextOctaveFirstLevel.size(2),
-                    nextOctaveFirstLevel.size(3)) <= self.min_size):
+            if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
                 break
             pyr.append([nextOctaveFirstLevel])
-            sigmas.append(cur_sigma * torch.ones(
-                          bs,
-                          self.n_levels + self.extra_levels).to(
-                          x.device))
-            pixel_dists.append(
-                pixel_distance * torch.ones(
-                    bs,
-                    self.n_levels + self.extra_levels).to(
-                    x.device))
+            sigmas.append(cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
+            pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
             oct_idx += 1
         for i in range(len(pyr)):
             pyr[i] = torch.stack(pyr[i], dim=2)  # type: ignore
         return pyr, sigmas, pixel_dists
 
 
-def pyrdown(
-        input: torch.Tensor,
-        border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
+def pyrdown(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool = False) -> torch.Tensor:
     r"""Blurs a tensor and downsamples it.
 
     Args:
@@ -258,8 +256,9 @@ def pyrdown(
     x_blur: torch.Tensor = filter2D(input, kernel, border_type)
 
     # downsample.
-    out: torch.Tensor = F.interpolate(x_blur, size=(height // 2, width // 2), mode='bilinear',
-                                      align_corners=align_corners)
+    out: torch.Tensor = F.interpolate(
+        x_blur, size=(height // 2, width // 2), mode='bilinear', align_corners=align_corners
+    )
     return out
 
 
@@ -290,8 +289,9 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
     kernel: torch.Tensor = _get_pyramid_gaussian_kernel()
     # upsample tensor
     b, c, height, width = input.shape
-    x_up: torch.Tensor = F.interpolate(input, size=(height * 2, width * 2),
-                                       mode='bilinear', align_corners=align_corners)
+    x_up: torch.Tensor = F.interpolate(
+        input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners
+    )
 
     # blurs upsampled tensor
     x_blur: torch.Tensor = filter2D(x_up, kernel, border_type)
@@ -299,9 +299,8 @@ def pyrup(input: torch.Tensor, border_type: str = 'reflect', align_corners: bool
 
 
 def build_pyramid(
-        input: torch.Tensor,
-        max_level: int,
-        border_type: str = 'reflect', align_corners: bool = False) -> List[torch.Tensor]:
+    input: torch.Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+) -> List[torch.Tensor]:
     r"""Constructs the Gaussian pyramid for an image.
 
     The function constructs a vector of images and builds the Gaussian pyramid

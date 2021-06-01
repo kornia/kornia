@@ -5,12 +5,12 @@ Warp image using perspective transform
 
 """
 
-import torch
-import kornia
 import cv2
-import numpy as np
-
 import matplotlib.pyplot as plt
+import numpy as np
+import torch
+
+import kornia
 
 # read the image with OpenCV
 img: np.ndarray = cv2.imread('./data/bruce.png')
@@ -20,15 +20,11 @@ img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 data: torch.tensor = kornia.image_to_tensor(img, keepdim=False)  # BxCxHxW
 
 # the source points are the region to crop corners
-points_src = torch.tensor([[
-    [125., 150.], [562., 40.], [562., 282.], [54., 328.],
-]])
+points_src = torch.tensor([[[125.0, 150.0], [562.0, 40.0], [562.0, 282.0], [54.0, 328.0]]])
 
 # the destination points are the image vertexes
 h, w = 64, 128  # destination size
-points_dst = torch.tensor([[
-    [0., 0.], [w - 1., 0.], [w - 1., h - 1.], [0., h - 1.],
-]])
+points_dst = torch.tensor([[[0.0, 0.0], [w - 1.0, 0.0], [w - 1.0, h - 1.0], [0.0, h - 1.0]]])
 
 # compute perspective transform
 M: torch.tensor = kornia.get_perspective_transform(points_src, points_dst)

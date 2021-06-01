@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![tests-cpu-versions](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu_versions.yml)
-[![tests-cuda-versions](https://github.com/kornia/kornia/actions/workflows/tests_cuda_versions.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda_versions.yml)
+[![tests-cuda](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://badge.fury.io/py/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
@@ -55,7 +55,7 @@ At a granular level, Kornia is a library that consists of the following componen
   <summary>Other installation options</summary>
 
   #### From source:
-      
+
   ```bash
   python setup.py install
   ```
