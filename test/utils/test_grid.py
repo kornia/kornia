@@ -1,10 +1,8 @@
 import pytest
-
 import torch
-import kornia as kornia
-import kornia.testing as utils  # test utils
-
 from torch.testing import assert_allclose
+
+import kornia as kornia
 
 
 def test_create_meshgrid(device, dtype):
@@ -12,42 +10,33 @@ def test_create_meshgrid(device, dtype):
     normalized_coordinates = False
 
     # create the meshgrid and verify shape
-    grid = kornia.utils.create_meshgrid(
-        height, width, normalized_coordinates,
-        device=device, dtype=dtype)
+    grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates, device=device, dtype=dtype)
 
     assert grid.device == device
     assert grid.dtype == dtype
     assert grid.shape == (1, height, width, 2)
 
     # check grid corner values
-    assert tuple(grid[0, 0, 0].cpu().numpy()) == (0., 0.)
-    assert tuple(
-        grid[0, height - 1, width - 1].cpu().numpy()) == (width - 1, height - 1)
+    assert tuple(grid[0, 0, 0].cpu().numpy()) == (0.0, 0.0)
+    assert tuple(grid[0, height - 1, width - 1].cpu().numpy()) == (width - 1, height - 1)
 
 
 def test_normalize_pixel_grid(device, dtype):
     if device.type == 'cuda' and dtype == torch.float16:
-        pytest.skip(
-            '"inverse_cuda" not implemented for "Half"'
-        )
+        pytest.skip('"inverse_cuda" not implemented for "Half"')
 
     # generate input data
     batch_size = 1
     height, width = 2, 4
 
     # create points grid
-    grid_norm = kornia.utils.create_meshgrid(
-        height, width, normalized_coordinates=True,
-        device=device, dtype=dtype)
+    grid_norm = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device, dtype=dtype)
 
     assert grid_norm.device == device
     assert grid_norm.dtype == dtype
     grid_norm = torch.unsqueeze(grid_norm, dim=0)
 
-    grid_pix = kornia.utils.create_meshgrid(
-        height, width, normalized_coordinates=False,
-        device=device, dtype=dtype)
+    grid_pix = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
 
     assert grid_pix.device == device
     assert grid_pix.dtype == dtype
@@ -68,15 +57,12 @@ def test_create_meshgrid3d(device, dtype):
     normalized_coordinates = False
 
     # create the meshgrid and verify shape
-    grid = kornia.utils.create_meshgrid3d(
-        depth, height, width, normalized_coordinates,
-        device=device, dtype=dtype)
+    grid = kornia.utils.create_meshgrid3d(depth, height, width, normalized_coordinates, device=device, dtype=dtype)
 
     assert grid.device == device
     assert grid.dtype == dtype
     assert grid.shape == (1, depth, height, width, 3)
 
     # check grid corner values
-    assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0., 0., 0.)
-    assert tuple(
-        grid[0, depth - 1, height - 1, width - 1].cpu().numpy()) == (depth - 1, width - 1, height - 1)
+    assert tuple(grid[0, 0, 0, 0].cpu().numpy()) == (0.0, 0.0, 0.0)
+    assert tuple(grid[0, depth - 1, height - 1, width - 1].cpu().numpy()) == (depth - 1, width - 1, height - 1)

@@ -1,12 +1,12 @@
 from typing import Dict
 
 import torch
+
 import kornia.geometry.epipolar as epi
 
 
 def generate_two_view_random_scene(
-    device: torch.device = torch.device("cpu"),
-    dtype: torch.dtype = torch.float32
+    device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
 ) -> Dict[str, torch.Tensor]:
 
     num_views: int = 2
@@ -31,8 +31,7 @@ def generate_two_view_random_scene(
     P2 = scene['P'][1:2].to(device, dtype)
 
     # fundamental matrix
-    F_mat = epi.fundamental_from_projections(
-        P1[..., :3, :], P2[..., :3, :])
+    F_mat = epi.fundamental_from_projections(P1[..., :3, :], P2[..., :3, :])
 
     F_mat = epi.normalize_transformation(F_mat)
 

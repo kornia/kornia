@@ -1,31 +1,47 @@
 import pytest
 import torch
+<<<<<<< HEAD
 from kornia.morphology.morphology import top_hat
+=======
+>>>>>>> upstream/master
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
 
+from kornia.morphology.morphology import top_hat
+
+<<<<<<< HEAD
+class TestTopHat:
+=======
+>>>>>>> upstream/master
 
 class TestTopHat:
-
     def test_smoke(self, device, dtype):
         kernel = torch.rand(3, 3, device=device, dtype=dtype)
         assert kernel is not None
 
-    @pytest.mark.parametrize(
-        "shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
-    @pytest.mark.parametrize(
-        "kernel", [(3, 3), (5, 5)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 5, 5)])
+    @pytest.mark.parametrize("kernel", [(3, 3), (5, 5)])
     def test_cardinality(self, device, dtype, shape, kernel):
         img = torch.ones(shape, device=device, dtype=dtype)
         krnl = torch.ones(kernel, device=device, dtype=dtype)
         assert top_hat(img, krnl).shape == shape
 
     def test_value(self, device, dtype):
+<<<<<<< HEAD
         input = torch.tensor([[0.5, 1., 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]],
                              device=device, dtype=dtype)[None, None, :, :]
         kernel = torch.tensor([[-1., 0., -1.], [0., 0., 0.], [-1., 0., -1.]], device=device, dtype=dtype)
         expected = torch.tensor([[0., 0.5, 0.], [0.2, 0., 0.5], [0., 0.5, 0.]],
                                 device=device, dtype=dtype)[None, None, :, :]
+=======
+        input = torch.tensor([[0.5, 1.0, 0.3], [0.7, 0.3, 0.8], [0.4, 0.9, 0.2]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+        kernel = torch.tensor([[-1.0, 0.0, -1.0], [0.0, 0.0, 0.0], [-1.0, 0.0, -1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.0, 0.5, 0.0], [0.2, 0.0, 0.5], [0.0, 0.5, 0.0]], device=device, dtype=dtype)[
+            None, None, :, :
+        ]
+>>>>>>> upstream/master
         assert_allclose(top_hat(input, kernel), expected)
 
     def test_exception(self, device, dtype):
@@ -33,10 +49,10 @@ class TestTopHat:
         kernel = torch.ones(3, 3, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert top_hat([0.], kernel)
+            assert top_hat([0.0], kernel)
 
         with pytest.raises(TypeError):
-            assert top_hat(input, [0.])
+            assert top_hat(input, [0.0])
 
         with pytest.raises(ValueError):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)

@@ -19,6 +19,7 @@ def get_test_devices() -> Dict[str, torch.device]:
         devices["cuda"] = torch.device("cuda:0")
     if kornia.xla_is_available():
         import torch_xla.core.xla_model as xm
+
         devices["tpu"] = xm.xla_device()
     return devices
 
@@ -72,8 +73,7 @@ def pytest_generate_tests(metafunc):
             dtype_names = raw_value.split(',')
     if device_names is not None and dtype_names is not None:
         # Exclude any blacklisted device/dtype combinations.
-        params = [combo for combo in product(device_names, dtype_names)
-                  if combo not in DEVICE_DTYPE_BLACKLIST]
+        params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
         metafunc.parametrize('device_name,dtype_name', params)
     elif device_names is not None:
         metafunc.parametrize('device_name', device_names)

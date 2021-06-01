@@ -1,30 +1,31 @@
-from .base import (
-    AugmentationBase2D,
-    AugmentationBase3D
-)
+from .base import AugmentationBase2D, AugmentationBase3D
 from .augmentation import (
     CenterCrop,
     ColorJitter,
+    Denormalize,
+    Normalize,
     GaussianBlur,
     RandomAffine,
+    RandomBoxBlur,
+    RandomChannelShuffle,
     RandomCrop,
+    RandomEqualize,
     RandomErasing,
+    RandomElasticTransform,
+    RandomFisheye,
+    RandomGaussianNoise,
     RandomGrayscale,
     RandomHorizontalFlip,
-    RandomVerticalFlip,
+    RandomInvert,
+    RandomMotionBlur,
     RandomPerspective,
+    RandomPosterize,
     RandomResizedCrop,
     RandomRotation,
-    RandomSolarize,
-    RandomPosterize,
     RandomSharpness,
-    RandomEqualize,
-    RandomMotionBlur,
-    Normalize,
-    Denormalize,
-    RandomInvert,
-    RandomChannelShuffle,
-    RandomGaussianNoise,
+    RandomSolarize,
+    RandomThinPlateSpline,
+    RandomVerticalFlip,
 )
 from .augmentation3d import (
     RandomHorizontalFlip3D,
@@ -38,13 +39,8 @@ from .augmentation3d import (
     RandomEqualize3D,
     RandomPerspective3D,
 )
-from .mix_augmentation import (
-    RandomMixUp,
-    RandomCutMix
-)
-from .container import (
-    VideoSequential
-)
+from .mix_augmentation import RandomMixUp, RandomCutMix
+from .container import VideoSequential
 
 __all__ = [
     "AugmentationBase2D",
@@ -54,8 +50,11 @@ __all__ = [
     "Normalize",
     "Denormalize",
     "RandomAffine",
+    "RandomBoxBlur",
     "RandomCrop",
     "RandomErasing",
+    "RandomElasticTransform",
+    "RandomFisheye",
     "RandomGrayscale",
     "RandomHorizontalFlip",
     "RandomVerticalFlip",
@@ -82,5 +81,6 @@ __all__ = [
     "RandomCrop3D",
     "CenterCrop3D",
     "RandomEqualize3D",
-    "VideoSequential"
+    "VideoSequential",
+    "RandomThinPlateSpline",
 ]

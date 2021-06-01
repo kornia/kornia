@@ -20,7 +20,7 @@ from kornia.augmentation.utils.helpers import (
     _shape_validation,
     _validate_input,
     _validate_input3d,
-    _transform_output_shape
+    _transform_output_shape,
 )
 
 __all__ = [
@@ -43,5 +43,5 @@ __all__ = [
     "_tuple_range_reader",
     "_validate_input",
     "_validate_input3d",
-    "_transform_output_shape"
+    "_transform_output_shape",
 ]

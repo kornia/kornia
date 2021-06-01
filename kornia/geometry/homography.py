@@ -12,7 +12,8 @@ TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
 def find_homography_dlt(
-        points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Computes the homography matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Points algorithm.
@@ -66,11 +67,9 @@ def find_homography_dlt(
     return H_norm
 
 
-def find_homography_dlt_iterated(points1: torch.Tensor,
-                                 points2: torch.Tensor,
-                                 weights: torch.Tensor,
-                                 soft_inl_th: float = 3.0,
-                                 n_iter: int = 5) -> torch.Tensor:
+def find_homography_dlt_iterated(
+    points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
+) -> torch.Tensor:
     r"""Computes the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
@@ -86,7 +85,6 @@ def find_homography_dlt_iterated(points1: torch.Tensor,
     Returns:
         torch.Tensor: the computed homography matrix with shape :math:`(B, 3, 3)`.
     """
-
     '''Function, which finds homography via iteratively-reweighted
     least squares ToDo: add citation'''
     H: torch.Tensor = find_homography_dlt(points1, points2, weights)

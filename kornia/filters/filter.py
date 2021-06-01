@@ -29,9 +29,9 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
     return out_padding
 
 
-def filter2D(input: torch.Tensor, kernel: torch.Tensor,
-             border_type: str = 'reflect',
-             normalized: bool = False) -> torch.Tensor:
+def filter2D(
+    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False
+) -> torch.Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -69,24 +69,19 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
                   [0., 0., 0., 0., 0.]]]])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(input)))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}"
-                        .format(type(kernel)))
+        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(kernel)))
 
     if not isinstance(border_type, str):
-        raise TypeError("Input border_type is not string. Got {}"
-                        .format(type(kernel)))
+        raise TypeError("Input border_type is not string. Got {}".format(type(kernel)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     if not len(kernel.shape) == 3 and kernel.shape[0] != 1:
-        raise ValueError("Invalid kernel shape, we expect 1xHxW. Got: {}"
-                         .format(kernel.shape))
+        raise ValueError("Invalid kernel shape, we expect 1xHxW. Got: {}".format(kernel.shape))
 
     # prepare kernel
     b, c, h, w = input.shape
@@ -112,9 +107,9 @@ def filter2D(input: torch.Tensor, kernel: torch.Tensor,
     return output.view(b, c, h, w)
 
 
-def filter3D(input: torch.Tensor, kernel: torch.Tensor,
-             border_type: str = 'replicate',
-             normalized: bool = False) -> torch.Tensor:
+def filter3D(
+    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'replicate', normalized: bool = False
+) -> torch.Tensor:
     r"""Convolve a tensor with a 3d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -175,24 +170,19 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
                    [0., 0., 0., 0., 0.]]]]])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(input)))
 
     if not isinstance(kernel, torch.Tensor):
-        raise TypeError("Input border_type is not torch.Tensor. Got {}"
-                        .format(type(kernel)))
+        raise TypeError("Input border_type is not torch.Tensor. Got {}".format(type(kernel)))
 
     if not isinstance(border_type, str):
-        raise TypeError("Input border_type is not string. Got {}"
-                        .format(type(kernel)))
+        raise TypeError("Input border_type is not string. Got {}".format(type(kernel)))
 
     if not len(input.shape) == 5:
-        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxDxHxW. Got: {}".format(input.shape))
 
     if not len(kernel.shape) == 4 and kernel.shape[0] != 1:
-        raise ValueError("Invalid kernel shape, we expect 1xDxHxW. Got: {}"
-                         .format(kernel.shape))
+        raise ValueError("Invalid kernel shape, we expect 1xDxHxW. Got: {}".format(kernel.shape))
 
     # prepare kernel
     b, c, d, h, w = input.shape
@@ -200,8 +190,7 @@ def filter3D(input: torch.Tensor, kernel: torch.Tensor,
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
-        tmp_kernel = normalize_kernel2d(tmp_kernel.view(
-            bk, dk, hk * wk)).view_as(tmp_kernel)
+        tmp_kernel = normalize_kernel2d(tmp_kernel.view(bk, dk, hk * wk)).view_as(tmp_kernel)
 
     tmp_kernel = tmp_kernel.expand(-1, c, -1, -1, -1)
 

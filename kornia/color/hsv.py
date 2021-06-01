@@ -22,12 +22,10 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         >>> output = rgb_to_hsv(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     # The first or last occurance is not guarenteed before 1.6.0
     # https://github.com/pytorch/pytorch/issues/20414
@@ -42,19 +40,14 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     s: torch.Tensor = deltac / (v + eps)
 
     # avoid division by zero
-    deltac = torch.where(
-        deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
+    deltac = torch.where(deltac == 0, torch.ones_like(deltac, device=deltac.device, dtype=deltac.dtype), deltac)
 
     maxc_tmp = maxc.unsqueeze(-3) - image
     rc: torch.Tensor = maxc_tmp[..., 0, :, :]
     gc: torch.Tensor = maxc_tmp[..., 1, :, :]
     bc: torch.Tensor = maxc_tmp[..., 2, :, :]
 
-    h = torch.stack([
-        bc - gc,
-        2.0 * deltac + rc - bc,
-        4.0 * deltac + gc - rc,
-    ], dim=-3)
+    h = torch.stack([bc - gc, 2.0 * deltac + rc - bc, 4.0 * deltac + gc - rc], dim=-3)
 
     h = torch.gather(h, dim=-3, index=max_indices[..., None, :, :])
     h = h.squeeze(-3)
@@ -83,12 +76,10 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = hsv_to_rgb(input)  # 2x3x4x5
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}".format(
-            type(image)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(image)))
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}"
-                         .format(image.shape))
+        raise ValueError("Input size must have a shape of (*, 3, H, W). Got {}".format(image.shape))
 
     h: torch.Tensor = image[..., 0, :, :] / (2 * math.pi)
     s: torch.Tensor = image[..., 1, :, :]
@@ -96,18 +87,14 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
     hi: torch.Tensor = torch.floor(h * 6) % 6
     f: torch.Tensor = ((h * 6) % 6) - hi
-    one: torch.Tensor = torch.tensor(1.).to(image.device)
+    one: torch.Tensor = torch.tensor(1.0).to(image.device)
     p: torch.Tensor = v * (one - s)
     q: torch.Tensor = v * (one - f * s)
     t: torch.Tensor = v * (one - (one - f) * s)
 
     hi = hi.long()
     indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
-    out = torch.stack((
-        v, q, p, p, t, v,
-        t, v, v, q, p, p,
-        p, p, t, v, v, q,
-    ), dim=-3)
+    out = torch.stack((v, q, p, p, t, v, t, v, v, q, p, p, p, p, t, v, v, q), dim=-3)
     out = torch.gather(out, -3, indices)
 
     return out

@@ -1,5 +1,4 @@
 import pytest
-
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_allclose
@@ -51,5 +50,4 @@ class TestTriangulation:
         P1 = torch.nn.functional.pad(P1, [0, 1])
         P2 = epi.eye_like(3, points2)
         P2 = torch.nn.functional.pad(P2, [0, 1])
-        assert gradcheck(epi.triangulate_points,
-                         (P1, P2, points1, points2,), raise_exception=True)
+        assert gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True)

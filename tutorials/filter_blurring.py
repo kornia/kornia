@@ -6,13 +6,13 @@ In this tutorial you are going to learn how to use the different filtering opera
 
 """
 
-from matplotlib import pyplot as plt
 import cv2
 import numpy as np
-
 import torch
-import kornia
 import torchvision
+from matplotlib import pyplot as plt
+
+import kornia
 
 #############################
 # We use OpenCV to load an image to memory represented in a numpy.ndarray
@@ -26,7 +26,7 @@ x_rgb: torch.Tensor = kornia.bgr_to_rgb(x_bgr)
 #############################
 # Create batch and normalize
 x_rgb = x_rgb.expand(2, -1, -1, -1)  # 4xCxHxW
-x_rgb = x_rgb.float() / 255.
+x_rgb = x_rgb.float() / 255.0
 
 
 def imshow(input: torch.Tensor):
@@ -34,6 +34,7 @@ def imshow(input: torch.Tensor):
     out_np: np.ndarray = kornia.tensor_to_image(out)
     plt.imshow(out_np)
     plt.axis('off')
+
 
 #############################
 # Show original
@@ -51,5 +52,5 @@ imshow(x_blur)
 
 #############################
 # Gaussian Blur
-x_blur: torch.Tensor = kornia.gaussian_blur2d(x_rgb, (11, 11), (11., 11.))
+x_blur: torch.Tensor = kornia.gaussian_blur2d(x_rgb, (11, 11), (11.0, 11.0))
 imshow(x_blur)

@@ -2,8 +2,8 @@
 
 import torch
 
-
 # TODO: this should go to `kornia.geometry.linalg`
+
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     r"""Returns the cross_product_matrix symmetric matrix of a vector.
@@ -23,10 +23,7 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
 
     # construct the matrix, reshape to 3x3 and return
     zeros = torch.zeros_like(x0)
-    cross_product_matrix_flat = torch.stack([
-        zeros, -x2, x1,
-        x2, zeros, -x0,
-        -x1, x0, zeros], dim=-1)
+    cross_product_matrix_flat = torch.stack([zeros, -x2, x1, x2, zeros, -x0, -x1, x0, zeros], dim=-1)
     return cross_product_matrix_flat.view(-1, 3, 3)
 
 

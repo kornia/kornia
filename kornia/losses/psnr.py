@@ -47,7 +47,7 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     if input.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {input.shape} and {target.shape}")
 
-    return 10. * torch.log10(max_val ** 2 / mse(input, target, reduction='mean'))
+    return 10.0 * torch.log10(max_val ** 2 / mse(input, target, reduction='mean'))
 
 
 def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
@@ -75,7 +75,7 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
         tensor(-20.0000)
     """
 
-    return -1. * psnr(input, target, max_val)
+    return -1.0 * psnr(input, target, max_val)
 
 
 class PSNRLoss(nn.Module):
