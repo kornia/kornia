@@ -1,7 +1,6 @@
 from typing import Tuple, Union, Optional, List, Dict
 
 import torch
-from torch.autograd.grad_mode import F
 import torch.nn as nn
 
 from kornia.geometry import transform_points, transform_boxes
