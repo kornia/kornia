@@ -1349,6 +1349,18 @@ class Normalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super(Normalize, self).__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        if isinstance(mean, float):
+            mean = torch.tensor([mean])
+
+        if isinstance(std, float):
+            std = torch.tensor([std])
+
+        if isinstance(mean, tuple) or isinstance(mean, list):
+            mean = torch.tensor(mean)
+
+        if isinstance(std, tuple) or isinstance(std, list):
+            std = torch.tensor(std)
+
         self.mean = mean
         self.std = std
 

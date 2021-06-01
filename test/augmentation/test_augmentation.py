@@ -2705,7 +2705,7 @@ class TestNormalize:
     def test_random_normalize_invalid_parameter_shape(self, mean, std):
         f = Normalize(mean=mean, std=std, p=1.0, return_transform=True)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        with pytest.raises(AssertionError):
+        with pytest.raises(RuntimeError):
             f(inputs)
 
     def test_random_normalize(self, device, dtype):
