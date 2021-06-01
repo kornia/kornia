@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn as nn
+from functools import wraps
 
 
 def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
@@ -152,3 +153,24 @@ class ImageToTensor(nn.Module):
 
     def forward(self, x: np.ndarray) -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
+
+
+def perform_keep_shape(f):
+    """TODO: where can we put this?"""
+
+    @wraps(f)
+    def _wrapper(input, *args, **kwargs):
+        input_shape = input.shape
+        if len(input_shape) == 2:
+            input = input[None]
+
+        dont_care_shape = input.shape[:-3]
+        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
+
+        output = f(input, *args, **kwargs)
+        output = output.view(*(dont_care_shape + output.shape[-3:]))
+        if len(input_shape) == 2:
+            output = output[0]
+        return output
+
+    return _wrapper
