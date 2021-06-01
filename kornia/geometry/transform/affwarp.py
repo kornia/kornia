@@ -5,11 +5,13 @@ import torch.nn as nn
 
 from math import ceil
 
+from functools import wraps
+
 import kornia
 from kornia.geometry.transform.imgwarp import warp_affine, get_rotation_matrix2d, get_affine_matrix2d
 from kornia.geometry.transform.projwarp import warp_affine3d, get_projective_transform
 from kornia.utils import _extract_device_dtype
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import perform_keep_shape
 
 __all__ = [
     "affine",
@@ -512,6 +514,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         return int(side_size / aspect_ratio), side_size
 
 
+@perform_keep_shape
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
@@ -523,7 +526,8 @@ def resize(
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
-        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
+        tensor (torch.Tensor): The image tensor to be skewed with shape of :math:`(..., H, W)`.
+            `...` means there can be any number of dimensions.
         size (int, tuple(int, int)): Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will
             be matched to this number. i.e, if height > width, then image will be rescaled
@@ -550,6 +554,9 @@ def resize(
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input tensor type is not a torch.Tensor. Got {}".format(type(input)))
 
+    if len(input.shape) < 2:
+        raise ValueError('Input tensor must have at least two dimensions. Got {}'.format(len(input.shape)))
+
     input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
         aspect_ratio = w / h
@@ -557,9 +564,6 @@ def resize(
 
     if size == input_size:
         return input
-
-    # TODO: find a proper way to handle this cases in the future
-    input_tmp = _to_bchw(input)
 
     factors = (h / size[0], w / size[1])
 
@@ -574,13 +578,9 @@ def resize(
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
         ks = int(2.0 * 2 * sigmas[0] + 1), int(2.0 * 2 * sigmas[1] + 1)
-        input_tmp = kornia.filters.gaussian_blur2d(input_tmp, ks, sigmas)
+        input = kornia.filters.gaussian_blur2d(input, ks, sigmas)
 
-    output = torch.nn.functional.interpolate(input_tmp, size=size, mode=interpolation, align_corners=align_corners)
-
-    if len(input.shape) != len(output.shape):
-        output = output.squeeze()
-
+    output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
     return output
 
 
