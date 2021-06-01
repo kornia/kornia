@@ -1366,7 +1366,7 @@ class Denormalize(IntensityAugmentationBase2D):
     r"""Denormalize tensor images with mean and standard deviation.
 
     .. math::
-        \text{input[channel] = (input[channel] * mean[channel]) + std[channel]}
+        \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
 
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
