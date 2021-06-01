@@ -38,8 +38,11 @@ class Normalize(nn.Module):
         torch.Size([1, 4, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, Tuple[float], List[float], float],
-                 std: Union[torch.Tensor, Tuple[float], List[float], float]) -> None:
+    def __init__(
+        self,
+        mean: Union[torch.Tensor, Tuple[float], List[float], float],
+        std: Union[torch.Tensor, Tuple[float], List[float], float],
+    ) -> None:
         super(Normalize, self).__init__()
 
         if isinstance(mean, float):
@@ -65,9 +68,7 @@ class Normalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def normalize(
-    data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]
-) -> torch.Tensor:
+def normalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
     r"""Normalize a tensor image with mean and standard deviation.
 
     .. math::
