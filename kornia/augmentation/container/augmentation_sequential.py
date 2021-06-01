@@ -236,7 +236,6 @@ class AugmentationSequential(Sequential):
                 if itype == "input":
                     input = self.apply_to_input(input, item, param)
                 elif isinstance(item, GeometricAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
-                    # Waiting for #1013 to specify the geometric and intensity augmentations.
                     input = self.apply_by_input_type(input, item, param, itype)
                 elif isinstance(item, IntensityAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
                     pass  # Do nothing

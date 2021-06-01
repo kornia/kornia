@@ -675,13 +675,13 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
         return get_affine_matrix2d(
-            params['translations'],
-            params['center'],
-            params['scale'],
-            params['angle'],
-            deg2rad(params['sx']),
-            deg2rad(params['sy']),
-        ).type_as(input)
+            torch.as_tensor(params['translations'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['center'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['scale'], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params['angle'], device=input.device, dtype=input.dtype),
+            deg2rad(torch.as_tensor(params['sx'], device=input.device, dtype=input.dtype)),
+            deg2rad(torch.as_tensor(params['sy'], device=input.device, dtype=input.dtype))
+        )
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None

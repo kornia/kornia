@@ -137,7 +137,7 @@ class TestAugmentationSequential:
             K.AugmentationSequential(augmentation_list, input_types=input_types)
 
     @pytest.mark.parametrize("augmentation_list", [
-        [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.), K.RandomAffine(360, p=1.)]
+        
     ])
     def test_forward_and_inverse(self, augmentation_list, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -147,7 +147,10 @@ class TestAugmentationSequential:
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype),
             1000, 500
         )[:, None].float()
-        aug = K.AugmentationSequential(augmentation_list, input_types=["input", "mask", "bbox", "keypoints"])
+        aug = K.AugmentationSequential([
+            K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.),
+            K.RandomAffine(360, p=1.)
+        ], input_types=["input", "mask", "bbox", "keypoints"])
         out = aug(inp, mask, bbox, keypoints)
         assert out[0].shape == inp.shape
         assert out[1].shape == mask.shape
