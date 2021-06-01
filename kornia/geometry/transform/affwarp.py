@@ -11,7 +11,7 @@ import kornia
 from kornia.geometry.transform.imgwarp import (warp_affine, get_rotation_matrix2d, get_affine_matrix2d)
 from kornia.geometry.transform.projwarp import (warp_affine3d, get_projective_transform)
 from kornia.utils import _extract_device_dtype
-from kornia.utils.image import _to_bchw
+from kornia.utils.image import perform_keep_shape
 
 __all__ = [
     "affine",
@@ -525,28 +525,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         return int(side_size / aspect_ratio), side_size
 
 
-def _reshape_perform_reshape(f):
-    """TODO: where can we put this?"""
-
-    @wraps(f)
-    def _wrapper(input, *args, **kwargs):
-        input_shape = input.shape
-        if len(input_shape) == 2:
-            input = input[None]
-
-        dont_care_shape = input.shape[:-3]
-        input = input.view(-1, input.shape[-3], input.shape[-2], input.shape[-1])
-
-        output = f(input, *args, **kwargs)
-        output = output.view(*(dont_care_shape + output.shape[-3:]))
-        if len(input_shape) == 2:
-            output = output[0]
-        return output
-
-    return _wrapper
-
-
-@_reshape_perform_reshape
+@perform_keep_shape
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
