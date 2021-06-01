@@ -5,6 +5,7 @@ from torch.testing import assert_allclose
 
 import kornia.augmentation as K
 from kornia.geometry.transform import bbox_to_mask
+from kornia.constants import InputType, BorderType
 
 
 class TestVideoSequential:
@@ -127,7 +128,9 @@ class TestAugmentationSequential:
     @pytest.mark.parametrize('input_types', [
         "input",
         ["mask", "input"],
-        ["input", "bbox_yxyx"]
+        ["input", "bbox_yxyx"],
+        [0, 10],
+        [BorderType.REFLECT]
     ])
     @pytest.mark.parametrize("augmentation_list", [
         [K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)]

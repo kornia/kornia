@@ -9,9 +9,8 @@ from kornia.augmentation.base import (
     IntensityAugmentationBase2D,
     GeometricAugmentationBase2D,
 )
+from kornia.constants import InputType
 from .sequential import Sequential
-
-SUPPORTED_INPUT_TYPES = ["input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints"]
 
 
 class AugmentationSequential(Sequential):
@@ -59,18 +58,18 @@ class AugmentationSequential(Sequential):
     """
 
     def __init__(
-        self, augmentation_list: List[_AugmentationBase], input_types: List[str] = ["input"],
+        self, augmentation_list: List[_AugmentationBase], input_types: List[InputType] = [InputType.INPUT],
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None, keepdim: Optional[bool] = None
     ) -> None:
         super(AugmentationSequential, self).__init__(
             *augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim)
 
-        assert all([in_type in SUPPORTED_INPUT_TYPES for in_type in input_types]), \
-            f"`input_types` must be in {SUPPORTED_INPUT_TYPES}. Got {input_types}."
+        assert all([in_type in InputType for in_type in input_types]), \
+            f"`input_types` must be in {InputType}. Got {input_types}."
 
-        if input_types[0] != 'input':
-            raise NotImplementedError("The first input must be 'input'.")
+        if input_types[0] != InputType.INPUT:
+            raise NotImplementedError(f"The first input must be {InputType.INPUT}.")
         self.input_types = input_types
 
     def apply_to_mask(
@@ -112,17 +111,17 @@ class AugmentationSequential(Sequential):
 
     def apply_by_input_type(
         self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: str = 'input'
+        itype: InputType = InputType.INPUT
     ) -> torch.Tensor:
-        if itype in ['input']:
+        if itype in [InputType.INPUT]:
             return self.apply_to_input(input, item, param)
-        if itype in ['mask']:
+        if itype in [InputType.MASK]:
             return self.apply_to_mask(input, item, param)
-        if itype in ['bbox', 'bbox_xyxy']:
+        if itype in [InputType.BBOX, InputType.BBOX_XYXY]:
             return self.apply_to_bbox(input, item, param, mode='xyxy')
-        if itype in ['bbox_xyhw']:
+        if itype in [InputType.BBOX_XYHW]:
             return self.apply_to_bbox(input, item, param, mode='xyhw')
-        if itype in ['keypoints']:
+        if itype in [InputType.KEYPOINTS]:
             return self.apply_to_keypoints(input, item, param)
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
@@ -155,21 +154,21 @@ class AugmentationSequential(Sequential):
 
     def inverse_by_input_type(
         self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: str = 'input'
+        itype: str = InputType.INPUT
     ) -> torch.Tensor:
-        if itype in ['input', 'mask']:
+        if itype in [InputType.INPUT, InputType.MASK]:
             return self.inverse_input(input, item, param)
-        if itype in ['bbox', 'bbox_xyxy']:
+        if itype in [InputType.BBOX, InputType.BBOX_XYXY]:
             return self.inverse_bbox(input, item, mode='xyxy')
-        if itype in ['bbox_xyhw']:
+        if itype in [InputType.BBOX_XYHW]:
             return self.inverse_bbox(input, item, mode='xyhw')
-        if itype in ['keypoints']:
+        if itype in [InputType.KEYPOINTS]:
             return self.inverse_keypoints(input, item)
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
     def inverse(
         self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
-        input_types: Optional[List[str]] = None
+        input_types: Optional[List[InputType]] = None
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
         """Reverse the transformation applied.
 
@@ -196,10 +195,10 @@ class AugmentationSequential(Sequential):
                     param = params[func_name] if func_name in params else param
                 else:
                     param = None
-                if isinstance(item, GeometricAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
+                if isinstance(item, GeometricAugmentationBase2D) and itype in InputType:
                     # Waiting for #1013 to specify the geometric and intensity augmentations.
                     input = self.inverse_by_input_type(input, item, param, itype)
-                elif isinstance(item, IntensityAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
+                elif isinstance(item, IntensityAugmentationBase2D) and itype in InputType:
                     pass  # Do nothing
                 else:
                     raise NotImplementedError(f"input_type {itype} is not implemented for {item}.")
@@ -215,7 +214,7 @@ class AugmentationSequential(Sequential):
     ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
         """Compute multiple tensors simultaneously according to ``self.input_types``.
         """
-        assert len(args) == len(self.input_types) and self.input_types[0] in ['input'], (
+        assert len(args) == len(self.input_types) and self.input_types[0] in [InputType.INPUT], (
             "The number of inputs must align with the number of input_types, "
             f"and the first element must be input. Got {len(args)} and {len(self.input_types)}."
         )
@@ -235,9 +234,9 @@ class AugmentationSequential(Sequential):
                     param = None
                 if itype == "input":
                     input = self.apply_to_input(input, item, param)
-                elif isinstance(item, GeometricAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
+                elif isinstance(item, GeometricAugmentationBase2D) and itype in InputType:
                     input = self.apply_by_input_type(input, item, param, itype)
-                elif isinstance(item, IntensityAugmentationBase2D) and itype in SUPPORTED_INPUT_TYPES:
+                elif isinstance(item, IntensityAugmentationBase2D) and itype in InputType:
                     pass  # Do nothing
                 else:
                     raise NotImplementedError(f"input_type {itype} is not implemented for {item}.")
