@@ -77,8 +77,9 @@ class TestElasticTransformSmoothing:
     def test_gradcheck(self, device, dtype, requires_grad):
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
-        elastic_transform2d_ = lambda image, noise: elastic_transform2d(image=image, noise=noise, approach="smoothing")
-        assert gradcheck(elastic_transform2d_, (image, noise,), raise_exception=True)
+        assert gradcheck(elastic_transform2d,
+                         (image, noise, (63, 63), (32., 32.), (16., 16.), False, 'bilinear', 'smoothing'),
+                         raise_exception=True)
 
     def test_jit(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
@@ -167,9 +168,9 @@ class TestElasticTransformCoarseNoise:
     def test_gradcheck(self, device, dtype, requires_grad):
         image = torch.rand(1, 1, 2, 2, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 8, 8, device=device, dtype=torch.float64, requires_grad=not requires_grad)
-        elastic_transform2d_ = lambda image, noise: elastic_transform2d(image=image, noise=noise,
-                                                                        approach='coarse_noise')
-        assert gradcheck(elastic_transform2d_, (image, noise,), raise_exception=True)
+        assert gradcheck(elastic_transform2d,
+                         (image, noise, (63, 63), (32., 32.), (16., 16.), False, 'bilinear', 'coarse_noise'),
+                         raise_exception=True)
 
     def test_jit(self, device, dtype):
         image = torch.rand(1, 4, 2, 2, device=device, dtype=dtype)
