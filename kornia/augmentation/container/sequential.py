@@ -65,9 +65,12 @@ class Sequential(nn.Sequential):
                     arg.return_transform = return_transform
                 if keepdim is not None:
                     arg.keepdim = keepdim
-        self._params = {}
+        self._params: Dict[str, Dict[str, torch.Tensor]] = {}
 
-    def apply_to_input(self, input, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+    def apply_to_input(
+        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], item: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         func_name = item.__class__.__name__
         if isinstance(item, _AugmentationBase) and param is None:
             input = item(input)
@@ -92,5 +95,5 @@ class Sequential(nn.Sequential):
         for item in self.children():
             func_name = item.__class__.__name__
             param = params[func_name] if func_name in params else None
-            input = self.apply_to_input(input, item, param)
+            input = self.apply_to_input(input, item, param)  # type: ignore
         return input

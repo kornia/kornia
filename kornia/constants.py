@@ -1,4 +1,4 @@
-from typing import Union, TypeVar
+from typing import Union, TypeVar, cast
 from enum import Enum, EnumMeta
 
 import torch
@@ -22,12 +22,13 @@ class ConstantBase:
 
 
 class EnumMetaFlags(EnumMeta):
-    def __contains__(self, other: Union[str, int, T]) -> bool:
+    def __contains__(self, other: Union[str, int, T]) -> bool:  # type: ignore
         if type(other) == str:
-            return any([val.name == other.upper() for val in self])
+            other = cast(str, other)
+            return any([val.name == other.upper() for val in self])  # type: ignore
         if type(other) == int:
-            return any([val.value == other for val in self])
-        return any([val == other for val in self])
+            return any([val.value == other for val in self])  # type: ignore
+        return any([val == other for val in self])  # type: ignore
 
     def __repr__(self):
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
@@ -52,7 +53,7 @@ class SamplePadding(ConstantBase, Enum, metaclass=EnumMetaFlags):
     REFLECTION = 2
 
 
-class InputType(ConstantBase, Enum, metaclass=EnumMetaFlags):
+class DataCategory(ConstantBase, Enum, metaclass=EnumMetaFlags):
     INPUT = 0
     MASK = 1
     BBOX = 2

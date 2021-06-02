@@ -1,11 +1,11 @@
-from typing import Tuple, Union, Optional, List, Dict
+from typing import Tuple, Union, Optional, List, Dict, cast
 
 import torch
 import torch.nn as nn
 
 from kornia.geometry import transform_points, transform_boxes
 from kornia.augmentation.base import _AugmentationBase, IntensityAugmentationBase2D, GeometricAugmentationBase2D
-from kornia.constants import InputType
+from kornia.constants import DataCategory
 from .sequential import Sequential
 
 
@@ -56,7 +56,7 @@ class AugmentationSequential(Sequential):
     def __init__(
         self,
         augmentation_list: List[_AugmentationBase],
-        input_types: List[Union[str, int, InputType]] = [InputType.INPUT],
+        input_types: List[Union[str, int, DataCategory]] = [DataCategory.INPUT],
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
@@ -65,22 +65,22 @@ class AugmentationSequential(Sequential):
             *augmentation_list, same_on_batch=same_on_batch, return_transform=return_transform, keepdim=keepdim
         )
 
-        self.input_types = [InputType.get(inp) for inp in input_types]
+        self.input_types = [DataCategory.get(inp) for inp in input_types]
 
         assert all(
-            [in_type in InputType for in_type in self.input_types]
-        ), f"`input_types` must be in {InputType}. Got {input_types}."
+            [in_type in DataCategory for in_type in self.input_types]
+        ), f"`input_types` must be in {DataCategory}. Got {input_types}."
 
-        if self.input_types[0] != InputType.INPUT:
-            raise NotImplementedError(f"The first input must be {InputType.INPUT}.")
+        if self.input_types[0] != DataCategory.INPUT:
+            raise NotImplementedError(f"The first input must be {DataCategory.INPUT}.")
 
     def apply_to_mask(
         self, input: torch.Tensor, item: nn.Module, param: Optional[Dict[str, torch.Tensor]] = None
     ) -> torch.Tensor:
         if isinstance(item, GeometricAugmentationBase2D) and param is None:
-            input = item(input)
+            input = item(input, return_transform=False)
         elif isinstance(item, GeometricAugmentationBase2D) and param is not None:
-            input = item(input, param)
+            input = item(input, param, return_transform=False)
         else:
             pass  # No need to update anything
         return input
@@ -113,20 +113,28 @@ class AugmentationSequential(Sequential):
 
     def apply_by_input_type(
         self,
-        input: torch.Tensor,
+        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
         item: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: Union[str, int, InputType] = InputType.INPUT,
-    ) -> torch.Tensor:
-        if itype in [InputType.INPUT]:
+        itype: Union[str, int, DataCategory] = DataCategory.INPUT,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        if itype in [DataCategory.INPUT]:
             return self.apply_to_input(input, item, param)
-        if itype in [InputType.MASK]:
+        if itype in [DataCategory.MASK]:
+            if isinstance(input, (tuple,)):
+                return (self.apply_to_mask(input[0], item, param), *input[1:])
             return self.apply_to_mask(input, item, param)
-        if itype in [InputType.BBOX, InputType.BBOX_XYXY]:
+        if itype in [DataCategory.BBOX, DataCategory.BBOX_XYXY]:
+            if isinstance(input, (tuple,)):
+                return (self.apply_to_bbox(input[0], item, param, mode='xyxy'), *input[1:])
             return self.apply_to_bbox(input, item, param, mode='xyxy')
-        if itype in [InputType.BBOX_XYHW]:
+        if itype in [DataCategory.BBOX_XYHW]:
+            if isinstance(input, (tuple,)):
+                return (self.apply_to_bbox(input[0], item, param, mode='xyhw'), *input[1:])
             return self.apply_to_bbox(input, item, param, mode='xyhw')
-        if itype in [InputType.KEYPOINTS]:
+        if itype in [DataCategory.KEYPOINTS]:
+            if isinstance(input, (tuple,)):
+                return (self.apply_to_keypoints(input[0], item, param), *input[1:])
             return self.apply_to_keypoints(input, item, param)
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
@@ -158,15 +166,15 @@ class AugmentationSequential(Sequential):
         input: torch.Tensor,
         item: nn.Module,
         param: Optional[Dict[str, torch.Tensor]] = None,
-        itype: Union[str, int, InputType] = InputType.INPUT,
+        itype: Union[str, int, DataCategory] = DataCategory.INPUT,
     ) -> torch.Tensor:
-        if itype in [InputType.INPUT, InputType.MASK]:
+        if itype in [DataCategory.INPUT, DataCategory.MASK]:
             return self.inverse_input(input, item, param)
-        if itype in [InputType.BBOX, InputType.BBOX_XYXY]:
+        if itype in [DataCategory.BBOX, DataCategory.BBOX_XYXY]:
             return self.inverse_bbox(input, item, mode='xyxy')
-        if itype in [InputType.BBOX_XYHW]:
+        if itype in [DataCategory.BBOX_XYHW]:
             return self.inverse_bbox(input, item, mode='xyhw')
-        if itype in [InputType.KEYPOINTS]:
+        if itype in [DataCategory.KEYPOINTS]:
             return self.inverse_keypoints(input, item)
         raise NotImplementedError(f"input type of {itype} is not implemented.")
 
@@ -174,15 +182,15 @@ class AugmentationSequential(Sequential):
         self,
         *args: torch.Tensor,
         params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
-        input_types: Optional[List[Union[str, int, InputType]]] = None,
-    ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
+        input_types: Optional[List[Union[str, int, DataCategory]]] = None,
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``input_types``. If ``input_types``
         is not set, use ``self.input_types`` by default.
         """
         if input_types is None:
-            input_types = self.input_types
+            input_types = cast(List[Union[str, int, DataCategory]], self.input_types)
         assert len(args) == len(input_types), (
             "The number of inputs must align with the number of input_types, "
             f"Got {len(args)} and {len(input_types)}."
@@ -201,10 +209,10 @@ class AugmentationSequential(Sequential):
                     param = params[func_name] if func_name in params else param
                 else:
                     param = None
-                if isinstance(item, GeometricAugmentationBase2D) and itype in InputType:
+                if isinstance(item, GeometricAugmentationBase2D) and itype in DataCategory:
                     # Waiting for #1013 to specify the geometric and intensity augmentations.
                     input = self.inverse_by_input_type(input, item, param, itype)
-                elif isinstance(item, IntensityAugmentationBase2D) and itype in InputType:
+                elif isinstance(item, IntensityAugmentationBase2D) and itype in DataCategory:
                     pass  # Do nothing
                 else:
                     raise NotImplementedError(f"input_type {itype} is not implemented for {item}.")
@@ -213,13 +221,15 @@ class AugmentationSequential(Sequential):
         if len(outputs) == 1:
             return outputs[0]
 
-        return tuple(outputs)
+        return outputs
 
-    def forward(
-        self, *args: torch.Tensor, params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
-    ) -> Union[torch.Tensor, List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
+    def forward(  # type: ignore
+        self, *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor],
+               List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
         """Compute multiple tensors simultaneously according to ``self.input_types``."""
-        assert len(args) == len(self.input_types) and self.input_types[0] in [InputType.INPUT], (
+        assert len(args) == len(self.input_types) and self.input_types[0] in [DataCategory.INPUT], (
             "The number of inputs must align with the number of input_types, "
             f"and the first element must be input. Got {len(args)} and {len(self.input_types)}."
         )
@@ -237,11 +247,11 @@ class AugmentationSequential(Sequential):
                     param = params[func_name] if func_name in params else param
                 else:
                     param = None
-                if itype == InputType.INPUT:
+                if itype == DataCategory.INPUT:
                     input = self.apply_to_input(input, item, param)
-                elif isinstance(item, GeometricAugmentationBase2D) and itype in InputType:
+                elif isinstance(item, GeometricAugmentationBase2D) and itype in DataCategory:
                     input = self.apply_by_input_type(input, item, param, itype)
-                elif isinstance(item, IntensityAugmentationBase2D) and itype in InputType:
+                elif isinstance(item, IntensityAugmentationBase2D) and itype in DataCategory:
                     pass  # Do nothing
                 else:
                     raise NotImplementedError(f"input_type {itype} is not implemented for {item}.")
@@ -249,4 +259,4 @@ class AugmentationSequential(Sequential):
         if len(outputs) == 1:
             return outputs[0]
 
-        return tuple(outputs)
+        return outputs
