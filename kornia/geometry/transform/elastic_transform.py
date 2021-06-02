@@ -4,21 +4,23 @@ import torch
 import torch.nn.functional as F
 import warnings
 
-import kornia
+from kornia.filters import filter2D
+from kornia.utils import create_meshgrid
+from kornia.geometry.transform import remap, resize
 from kornia.filters.kernels import get_gaussian_kernel2d
 
 __all__ = ["elastic_transform2d"]
 
 
 def elastic_transform2d(
-    image: torch.Tensor,
-    noise: torch.Tensor,
-    kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Tuple[float, float] = (32., 32.),
-    alpha: Tuple[float, float] = (16., 16.),
-    align_corners: bool = False,
-    mode: str = 'bilinear',
-    approach: str = 'coarse_noise'
+        image: torch.Tensor,
+        noise: torch.Tensor,
+        kernel_size: Tuple[int, int] = (63, 63),
+        sigma: Tuple[float, float] = (32.0, 32.0),
+        alpha: Tuple[float, float] = (16.0, 16.0),
+        align_corners: bool = False,
+        mode: str = 'bilinear',
+        approach: str = 'coarse_noise'
 ) -> torch.Tensor:
     r"""Applies elastic transform of images as described in :cite:`Simard2003BestPF`.
 
@@ -100,8 +102,8 @@ def elastic_transform2d(
         # If jit scripting is performed warning is omitted
         if not torch.jit.is_scripting():
             # Show warning if smoothing is utilized.
-            warnings.warn("approach='smoothing' is deprecated and will be removed > 0.6.0. "
-                          "Please use approach='coarse_noise'.", category=DeprecationWarning, stacklevel=2)
+            warnings.warn("Please use the more computationally efficient (500x) times approach 'upsampling'",
+                          category=DeprecationWarning, stacklevel=2)
 
         # Get Gaussian kernel for 'y' and 'x' displacement
         kernel_x: torch.Tensor = get_gaussian_kernel2d(kernel_size, (sigma[0], sigma[0]))[None]
@@ -111,24 +113,25 @@ def elastic_transform2d(
         disp_x: torch.Tensor = noise[:, :1]
         disp_y: torch.Tensor = noise[:, 1:]
 
-        disp_x = kornia.filters.filter2D(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-        disp_y = kornia.filters.filter2D(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+        disp_x = filter2D(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
+        disp_y = filter2D(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
 
         # stack and normalize displacement
         disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
 
         # Warp image based on displacement matrix
         b, c, h, w = image.shape
-        grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-        warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
-
+        grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+        disp_grid = (grid + disp).clamp(-1, 1)
+        warped = remap(image, map_x=disp_grid[..., 0], map_y=disp_grid[..., 1], align_corners=align_corners, mode=mode,
+                       normalized_coordinates=True)
         return warped
 
     # Perform 'coarse_noise' approach
     b, c, h, w = image.shape
 
     # Upsample noise ('coarse_noise') to the size of image
-    disp = F.interpolate(noise, size=(h, w), mode=mode, align_corners=align_corners)
+    disp = resize(noise, size=(h, w), interpolation=mode, align_corners=align_corners)
     disp = disp.permute(0, 2, 3, 1)
 
     # Apply alpha relative to image size
@@ -136,7 +139,9 @@ def elastic_transform2d(
     disp[..., 1] = disp[..., 1] * alpha[1] / float(w)
 
     # Warp image based on displacement matrix
-    grid = kornia.utils.create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode)
+    grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
+    disp_grid = (grid + disp).clamp(-1, 1)
+    warped = remap(image, map_x=disp_grid[..., 0], map_y=disp_grid[..., 1], align_corners=align_corners, mode=mode,
+                   normalized_coordinates=True)
 
     return warped
