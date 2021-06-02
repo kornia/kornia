@@ -224,10 +224,12 @@ class AugmentationSequential(Sequential):
         return outputs
 
     def forward(  # type: ignore
-        self, *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
-        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor],
-               List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]]:
+        self,
+        *args: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        params: Optional[Dict[str, Dict[str, torch.Tensor]]] = None,
+    ) -> Union[
+        torch.Tensor, Tuple[torch.Tensor, torch.Tensor], List[Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]]
+    ]:
         """Compute multiple tensors simultaneously according to ``self.input_types``."""
         assert len(args) == len(self.input_types) and self.input_types[0] in [DataCategory.INPUT], (
             "The number of inputs must align with the number of input_types, "

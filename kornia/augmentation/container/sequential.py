@@ -68,8 +68,10 @@ class Sequential(nn.Sequential):
         self._params: Dict[str, Dict[str, torch.Tensor]] = {}
 
     def apply_to_input(
-        self, input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]], item: nn.Module,
-        param: Optional[Dict[str, torch.Tensor]] = None
+        self,
+        input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]],
+        item: nn.Module,
+        param: Optional[Dict[str, torch.Tensor]] = None,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         func_name = item.__class__.__name__
         if isinstance(item, _AugmentationBase) and param is None:

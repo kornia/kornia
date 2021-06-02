@@ -165,7 +165,7 @@ class TestAugmentationSequential:
         aug = K.AugmentationSequential(
             [
                 K.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0, return_transform=True),
-                K.RandomAffine(360, p=1.0, return_transform=True)
+                K.RandomAffine(360, p=1.0, return_transform=True),
             ],
             input_types=["input", "mask", "bbox", "keypoints"],
         )
