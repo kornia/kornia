@@ -371,11 +371,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         if isinstance(input, (list, tuple)):
             input, transform = input
-        elif not hasattr(self, '_transform_matrix'):
-            params = params if params is not None else self.generate_parameters(input.shape)
-            transform = self.compute_transformation(input, params)
         else:
-            transform = self._transform_matrix
+            transform = self.get_transformation_matrix(input, params)
         if params is not None:
             transform = self.compute_transformation(input, params)
 
