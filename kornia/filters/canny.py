@@ -8,16 +8,20 @@ from kornia.color import rgb_to_grayscale
 
 from kornia.geometry.conversions import rad2deg
 
-from kornia.filters import (
-    gaussian_blur2d, spatial_gradient
-)
+from kornia.filters import gaussian_blur2d, spatial_gradient
 
-from .kernels import (
-    get_canny_nms_kernel, get_hysteresis_kernel
-)
+from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
 
 
-def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float = 0.2, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = True, eps: float = 1e-6) -> torch.Tensor:
+def canny(
+    input: torch.Tensor,
+    low_threshold: float = 0.1,
+    high_threshold: float = 0.2,
+    kernel_size: Tuple[int, int] = (5, 5),
+    sigma: Tuple[float, float] = (1, 1),
+    hysteresis: bool = True,
+    eps: float = 1e-6,
+) -> torch.Tensor:
     r"""Finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
@@ -43,12 +47,10 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
         torch.Size([5, 1, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError("Input type is not a torch.Tensor. Got {}"
-                        .format(type(input)))
+        raise TypeError("Input type is not a torch.Tensor. Got {}".format(type(input)))
 
     if not len(input.shape) == 4:
-        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}"
-                         .format(input.shape))
+        raise ValueError("Invalid input shape, we expect BxCxHxW. Got: {}".format(input.shape))
 
     if low_threshold > high_threshold:
         raise ValueError("Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {} > {}"
@@ -91,7 +93,7 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
 
     # Non-maximal suppression
     nms_kernels: torch.Tensor = get_canny_nms_kernel(device, dtype)
-    nms_magnitude: torch.Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1]//2)
+    nms_magnitude: torch.Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1] // 2)
 
     # Get the indices for both directions
     positive_idx: torch.Tensor = (angle / 45) % 8
@@ -104,7 +106,9 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
     channel_select_filtered_positive: torch.Tensor = torch.gather(nms_magnitude, 1, positive_idx)
     channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
 
-    channel_select_filtered: torch.Tensor = torch.stack([channel_select_filtered_positive,channel_select_filtered_negative], 1)
+    channel_select_filtered: torch.Tensor = torch.stack(
+        [channel_select_filtered_positive, channel_select_filtered_negative], 1
+    )
 
     is_max: torch.Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
 
@@ -120,19 +124,21 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
 
     # Hysteresis
     if hysteresis:
-        edges_old: torch.Tensor = torch.zeros(edges.shape, device=edges.device, dtype=edges.dtype)
+        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=edges.dtype)
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, edges.dtype)
 
         while ((edges_old - edges).abs() != 0).any():
             weak: torch.Tensor = (edges == 0.5).float()
             strong: torch.Tensor = (edges == 1).float()
 
-            hysteresis_magnitude: torch.Tensor = F.conv2d(edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1]//2)
+            hysteresis_magnitude: torch.Tensor = F.conv2d(
+                edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
+            )
             hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).float()
             hysteresis_magnitude = hysteresis_magnitude * weak + strong
 
             edges_old = edges.clone()
-            edges = hysteresis_magnitude + (hysteresis_magnitude==0) * weak * 0.5
+            edges = hysteresis_magnitude + (hysteresis_magnitude == 0) * weak * 0.5
 
         edges = hysteresis_magnitude
 
@@ -165,9 +171,15 @@ class Canny(nn.Module):
         torch.Size([5, 1, 4, 4])
     """
 
-    def __init__(self,
-                 low_threshold: float = 0.1, high_threshold: float = 0.2,
-                 kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> None:
+    def __init__(
+        self,
+        low_threshold: float = 0.1,
+        high_threshold: float = 0.2,
+        kernel_size: Tuple[int, int] = (5, 5),
+        sigma: Tuple[float, float] = (1, 1),
+        hysteresis: bool = True,
+        eps: float = 1e-6,
+    ) -> None:
         super(Canny, self).__init__()
 
         if low_threshold > high_threshold:
@@ -196,14 +208,24 @@ class Canny(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '('\
-            'kernel_size=' + str(self.kernel_size) +\
-            'sigma=' + str(self.sigma) +\
-            'low_threshold=' + str(self.low_threshold) +\
-            'high_threshold=' + str(self.high_threshold) +\
-            'hysteresis=' + str(self.hysteresis) +\
-            'eps=' + str(self.eps) + ')'
+        return (
+            self.__class__.__name__ + '('
+            'kernel_size='
+            + str(self.kernel_size)
+            + 'sigma='
+            + str(self.sigma)
+            + 'low_threshold='
+            + str(self.low_threshold)
+            + 'high_threshold='
+            + str(self.high_threshold)
+            + 'hysteresis='
+            + str(self.hysteresis)
+            + 'eps='
+            + str(self.eps)
+            + ')'
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return canny(input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps)
-
+        return canny(
+            input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
+        )
