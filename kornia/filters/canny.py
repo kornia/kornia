@@ -26,17 +26,21 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
         high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
         kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
         sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
-        hysteresis (bool):
+        hysteresis (bool): if True, applies the hysteresis edge tracking. Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
-    Return:
-        torch.Tensor: the canny edge gradient magnitudes map with shape :math:`(B,C,H,W)`.
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]:
+        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     Example:
-        >>> input = torch.rand(1, 3, 4, 4)
-        >>> output = canny(input)  # 1x3x4x4
-        >>> output.shape
-        torch.Size([1, 3, 4, 4])
+        >>> input = torch.rand(5, 3, 4, 4)
+        >>> magnitude, edges = canny(input)  # 5x3x4x4
+        >>> magnitude.shape
+        torch.Size([5, 1, 4, 4])
+        >>> edges.shape
+        torch.Size([5, 1, 4, 4])
     """
     if not isinstance(input, torch.Tensor):
         raise TypeError("Input type is not a torch.Tensor. Got {}"
@@ -104,7 +108,6 @@ def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float
 
     # Hysteresis
     if hysteresis:
-
         edges_old: torch.Tensor = torch.zeros(edges.shape, device=edges.device, dtype=edges.dtype)
         hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
@@ -128,7 +131,6 @@ class Canny(nn.Module):
     r"""Computes the Canny operator and returns the magnitude per channel.
 
     Args:
-        eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Return:
         torch.Tensor: the sobel edge gradient magnitudes map.
