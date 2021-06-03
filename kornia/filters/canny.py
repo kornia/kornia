@@ -17,13 +17,13 @@ from .kernels import (
 )
 
 
-def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = None, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> torch.Tensor:
-    r"""Finds edgea of the input image and filters them using the Canny algorithm.
+def canny(input: torch.Tensor, low_threshold: float = 0.1, high_threshold: float = 0.2, kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> torch.Tensor:
+    r"""Finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
         input (torch.Tensor): input image tensor with shape :math:`(B,C,H,W)`.
-        low_threshold (int): lower threshold for the hysteresis procedure. If ``'None'``, low_threshold is set to :math:`10%' of dtype's max. Default: ``'None'``.
-        high_threshold (int): upper threshold for the hysteresis procedure. If ``'None'``, high_threshold is set to :math:`20%' of dtype's max. Default: ``'None'``.
+        low_threshold (float): lower threshold for the hysteresis procedure. Default: 0.1.
+        high_threshold (float): upper threshold for the hysteresis procedure. Default: 0.1.
         kernel_size (Tuple[int, int]): the size of the kernel for the gaussian blur.
         sigma (Tuple[float, float]): the standard deviation of the kernel for the gaussian blur.
         hysteresis (bool):
@@ -63,7 +63,7 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
     gx: torch.Tensor = edges[:, :, 0]
     gy: torch.Tensor = edges[:, :, 1]
 
-    # Compute gradient maginitude and angle
+    # Compute gradient magnitude and angle
     magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
     angle: torch.Tensor = torch.atan2(gy, gx)
 
@@ -94,41 +94,40 @@ def canny(input: torch.Tensor, low_threshold: int = None, high_threshold: int = 
 
     magnitude[is_max==0] = 0.0
 
-    # Threshold & Hysteresis
-    if low_threshold is not None:
-        magnitude = F.threshold(magnitude, low_threshold, 0.0)
+    # Threshold
+    edges: torch.Tensor = F.threshold(magnitude, low_threshold, 0.0)
 
-        if high_threshold is not None:
-            low: torch.Tensor = magnitude > low_threshold
-            high: torch.Tensor = magnitude > high_threshold
+    low: torch.Tensor = magnitude > low_threshold
+    high: torch.Tensor = magnitude > high_threshold
 
-            edges: torch.Tensor = low * 0.5 + high * 0.5
+    edges = low * 0.5 + high * 0.5
 
-            if hysteresis:
+    # Hysteresis
+    if hysteresis:
 
-                edges_old: torch.Tensor = torch.zeros(edges.shape, device=edges.device, dtype=edges.dtype)
-                hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
+        edges_old: torch.Tensor = torch.zeros(edges.shape, device=edges.device, dtype=edges.dtype)
+        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
-                while ((edges_old - edges).abs() != 0).any():
-                    weak: torch.Tensor = (edges == 0.5).float()
-                    strong: torch.Tensor = (edges == 1).float()
+        while ((edges_old - edges).abs() != 0).any():
+            weak: torch.Tensor = (edges == 0.5).float()
+            strong: torch.Tensor = (edges == 1).float()
 
-                    hysteresis_magnitude: torch.Tensor = F.conv2d(edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1]//2)
-                    hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).float()
-                    hysteresis_magnitude = hysteresis_magnitude * weak + strong
+            hysteresis_magnitude: torch.Tensor = F.conv2d(edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1]//2)
+            hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).float()
+            hysteresis_magnitude = hysteresis_magnitude * weak + strong
 
-                    edges_old = edges.clone()
-                    edges = hysteresis_magnitude + (hysteresis_magnitude==0) * weak * 0.5
+            edges_old = edges.clone()
+            edges = hysteresis_magnitude + (hysteresis_magnitude==0) * weak * 0.5
 
+        edges = hysteresis_magnitude
 
-    return magnitude, hysteresis_magnitude
+    return magnitude, edges
 
 
 class Canny(nn.Module):
     r"""Computes the Canny operator and returns the magnitude per channel.
 
     Args:
-        normalized (bool): if True, L1 norm of the kernel is set to 1.
         eps (float): regularization number to avoid NaN during backprop. Default: 1e-6.
 
     Return:
@@ -144,8 +143,8 @@ class Canny(nn.Module):
     """
 
     def __init__(self,
-                 low_threshold: int = None, high_threshold: int = None,
-                 kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), normalized: bool = True, hysteresis: bool = False, eps: float = 1e-6) -> None:
+                 low_threshold: float = 0.1, high_threshold: float = 0.2,
+                 kernel_size: Tuple[int, int] = (5,5), sigma: Tuple[float, float] = (1,1), hysteresis: bool = False, eps: float = 1e-6) -> None:
         super(Canny, self).__init__()
 
         # Gaussian blur parameters
